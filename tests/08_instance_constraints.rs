@@ -47,12 +47,14 @@ async fn test_instance_domain_id_immutable() {
     let pool = common::create_pool().await;
     let instance_id = create_instance(&pool).await;
 
-    // Create another domain
+    // Create another domain with a unique key to prevent test isolation failures
     let other_domain = uuid::Uuid::new_v4();
+    let other_key = format!("other-domain-{}", &uuid::Uuid::new_v4().to_string()[..8]);
     sqlx::query(
-        "INSERT INTO domains (domain_id, domain_key, display_name, enabled) VALUES ($1, 'other-domain', 'Other', TRUE)"
+        "INSERT INTO domains (domain_id, domain_key, display_name, enabled) VALUES ($1, $2, 'Other', TRUE)"
     )
     .bind(other_domain)
+    .bind(&other_key)
     .execute(&pool)
     .await
     .expect("insert other domain");
@@ -80,7 +82,55 @@ async fn test_instance_domain_id_immutable() {
 }
 
 #[tokio::test]
-async fn test_instance_definition_version_id_immutable() {
+async fn test_definition_version_id_immutable() {
+    let pool = common::create_pool().await;
+    let instance_id = create_instance(&pool).await;
+
+    // Get the current domain
+    let (domain_id,): (uuid::Uuid,) =
+        sqlx::query_as("SELECT domain_id FROM workflow_instances WHERE workflow_instance_id = $1")
+            .bind(instance_id)
+            .fetch_one(&pool)
+            .await
+            .expect("get instance domain");
+
+    // Create a second definition version under the same domain
+    let (def_id, _, _, _) = common::seed_workflow_definition(&pool, domain_id).await;
+
+    // Get the new version's ID
+    let (new_ver_id,): (uuid::Uuid,) = sqlx::query_as(
+        "SELECT definition_version_id FROM workflow_definition_versions WHERE workflow_definition_id = $1 AND version_number = 1 ORDER BY created_at DESC LIMIT 1"
+    )
+    .bind(def_id)
+    .fetch_one(&pool)
+    .await
+    .expect("get new version id");
+
+    // Try to change definition_version_id
+    let result = sqlx::query(
+        "UPDATE workflow_instances SET definition_version_id = $1 WHERE workflow_instance_id = $2",
+    )
+    .bind(new_ver_id)
+    .bind(instance_id)
+    .execute(&pool)
+    .await;
+
+    match result {
+        Err(e) => {
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("trg_instance_immutable_fields")
+                    || err_str.contains("immutable field"),
+                "expected trigger rejection of definition_version_id change, got: {}",
+                err_str
+            );
+        }
+        Ok(_) => panic!("expected trigger rejection of definition_version_id change"),
+    }
+}
+
+#[tokio::test]
+async fn test_workflow_state_version_mutable() {
     let pool = common::create_pool().await;
     let instance_id = create_instance(&pool).await;
 
@@ -133,6 +183,79 @@ async fn test_instance_created_by_principal_id_immutable() {
         }
         Ok(_) => panic!("expected trigger rejection of created_by_principal_id change"),
     }
+}
+
+#[tokio::test]
+async fn test_instance_external_url_immutable() {
+    let pool = common::create_pool().await;
+    let instance_id = create_instance(&pool).await;
+
+    // Try to change external_url
+    let result = sqlx::query(
+        "UPDATE workflow_instances SET external_url = 'https://changed.example.com' WHERE workflow_instance_id = $1"
+    )
+    .bind(instance_id)
+    .execute(&pool)
+    .await;
+
+    match result {
+        Err(e) => {
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("trg_instance_immutable_fields")
+                    || err_str.contains("immutable field"),
+                "expected trigger rejection of external_url change, got: {}",
+                err_str
+            );
+        }
+        Ok(_) => panic!("expected trigger rejection of external_url change"),
+    }
+}
+
+#[tokio::test]
+async fn test_instance_metadata_immutable() {
+    let pool = common::create_pool().await;
+    let instance_id = create_instance(&pool).await;
+
+    // Try to change metadata
+    let result = sqlx::query(
+        r#"UPDATE workflow_instances SET metadata = '{"changed":true}'::jsonb WHERE workflow_instance_id = $1"#
+    )
+    .bind(instance_id)
+    .execute(&pool)
+    .await;
+
+    match result {
+        Err(e) => {
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("trg_instance_immutable_fields")
+                    || err_str.contains("immutable field"),
+                "expected trigger rejection of metadata change, got: {}",
+                err_str
+            );
+        }
+        Ok(_) => panic!("expected trigger rejection of metadata change"),
+    }
+}
+
+#[tokio::test]
+async fn test_projection_fields_mutable() {
+    let pool = common::create_pool().await;
+    let instance_id = create_instance(&pool).await;
+
+    // Update all three projection fields
+    let result = sqlx::query(
+        r#"UPDATE workflow_instances SET current_context_revision_id = current_context_revision_id, current_node_visit_id = current_node_visit_id, workflow_state_version = 2 WHERE workflow_instance_id = $1"#
+    )
+    .bind(instance_id)
+    .execute(&pool)
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "updating projection fields should be allowed"
+    );
 }
 
 #[tokio::test]

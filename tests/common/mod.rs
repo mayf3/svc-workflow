@@ -6,30 +6,27 @@
 #![allow(dead_code)]
 
 use sqlx::PgPool;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Default test database URL.
 const TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
 
-/// Whether migrations have been applied.
-static MIGRATED: AtomicBool = AtomicBool::new(false);
-
 /// Create a new pool for a test and ensure migrations are applied.
+///
+/// SQLx migration tracking is idempotent: the `_sqlx_migrations` table records
+/// which migrations have been applied. Calling `run()` multiple times is safe
+/// and will only apply pending migrations.
 pub async fn create_pool() -> PgPool {
     let pool = PgPool::connect(TEST_DATABASE_URL)
         .await
         .expect("failed to connect to test database");
 
-    // Run migrations exactly once across all tests
-    if !MIGRATED.swap(true, Ordering::SeqCst) {
-        let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("migrations"))
-            .await
-            .expect("failed to load migrations");
-        migrator
-            .run(&pool)
-            .await
-            .expect("failed to run migrations on test database");
-    }
+    let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("migrations"))
+        .await
+        .expect("failed to load migrations");
+    migrator
+        .run(&pool)
+        .await
+        .expect("failed to run migrations on test database");
 
     pool
 }

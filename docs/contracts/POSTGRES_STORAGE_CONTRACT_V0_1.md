@@ -251,7 +251,83 @@ DEFERRABLE INITIALLY DEFERRED 约束在事务提交时一次性验证，允许�
 
 ---
 
-## 10. 已知限制与后续任务
+## 10. 发布后 Definition 图不可变（审计修复）
+
+| 表 | 触发器 | 效果 |
+|---|---|---|
+| `workflow_node_definitions` | `trg_node_definitions_graph_immutable` | INSERT/UPDATE/DELETE 仅当父版本为 DRAFT 时允许 |
+| `workflow_transition_definitions` | `trg_transition_definitions_graph_immutable` | INSERT/UPDATE/DELETE 仅当父版本为 DRAFT 时允许 |
+
+触发器函数 `fn_check_definition_graph_immutable()` 查询父级 `workflow_definition_versions.version_status`。如果父版本为 PUBLISHED、DEPRECATED 或 REVOKED，拒绝所有修改。
+
+错误信息以 `graph_immutable:` 开头，便于测试断言。
+
+## 11. 审计修复汇总
+
+以下保护由 Migration `0007_definition_graph_immutability.sql` 添加：
+
+### 11.1 Definition 子表保护（Blocker 修复）
+
+见第 10 节。
+
+### 11.2 Workflow Instance 额外不可变字段
+
+`fn_check_instance_immutable_fields()`（重写在 0007 中）新增保护以下字段：
+
+- `external_url` — 创建后不可修改
+- `metadata` — 创建后不可修改
+
+### 11.3 PROCESSING Receipt 身份字段保护
+
+新触发器 `trg_receipt_identity_immutable`（0007 创建）保护 `workflow_command_receipts` 在任意状态下：
+
+| 保护字段 | 说明 |
+|---|---|
+| `command_id` | 命令唯一标识 |
+| `principal_id` | 发起者身份 |
+| `idempotency_key` | 幂等键 |
+| `command_type` | 命令类型 |
+| `request_hash` | 请求哈希 |
+| `created_at` | 创建时间 |
+
+允许修改的字段：`receipt_status`, `response_status`, `response_body`, `response_digest`, `completed_at`。
+
+### 11.4 Size 约束测试覆盖（7/7）
+
+所有 7 个 size CHECK 约束现在都有测试覆盖：
+
+| 约束名 | 表 | 列 | 限制 | 测试 |
+|---|---|---|---|---|
+| `chk_ctx_payload_size` | workflow_context_revisions | payload | ≤ 1 MiB | ✅ `test_context_payload_size_limit` |
+| `chk_submission_payload_size` | workflow_submissions | payload | ≤ 1 MiB | ✅ `test_submission_payload_size_limit` |
+| `chk_instance_metadata_size` | workflow_instances | metadata | ≤ 64 KiB | ✅ `test_instance_metadata_size_limit` |
+| `chk_def_metadata_size` | workflow_definitions | metadata | ≤ 64 KiB | ✅ `test_definition_metadata_size_limit` |
+| `chk_def_ver_metadata_size` | workflow_definition_versions | metadata | ≤ 64 KiB | ✅ `test_definition_version_metadata_size_limit` |
+| `chk_receipt_response_size` | workflow_command_receipts | response_body | ≤ 1 MiB | ✅ `test_receipt_response_body_size_limit` |
+| `chk_event_data_size` | workflow_events | event_data | ≤ 256 KiB | ✅ `test_event_data_size_limit` |
+
+### 11.5 Deferred FK 当前策略
+
+所有复合外键目前使用 `DEFERRABLE INITIALLY DEFERRED`。真正需要 deferral 的 FK：
+
+1. `fk_instance_current_ctx` — Instance ↔ ContextRevision 循环引用
+2. `fk_instance_current_visit` — Instance ↔ NodeVisit 循环引用
+3. `fk_previous_revision` — ContextRevision 自引用循环
+4. `fk_primary_advance_transition` — Node ↔ Transition 循环（同一版本内）
+
+以下 FK 没有循环依赖，但当前保持 deferred 以统一开发模式：
+
+- `fk_submission_visit_same_instance`
+- `fk_submission_ctx_same_instance`
+- `fk_event_source_visit_same_instance`
+- `fk_event_target_visit_same_instance`
+- `fk_event_ctx_same_instance`
+- `fk_event_submission_same_instance`
+- `fk_event_command`
+
+**后续收窄点**：当 Command Service 稳定后，可将非循环 FK 改为 `NOT DEFERRABLE`，前提是不破坏现有事务流程。
+
+## 12. 已知限制与后续任务
 
 1. **大小限制**：DDL 中的 `pg_column_size` 检查是防御性硬限制。精确的输入字符串大小校验应在 Rust 服务层实现。
 2. **幂等 ON CONFLICT 完整流程**：本 PR 已建立唯一约束保护，但完整的 `INSERT ... ON CONFLICT DO NOTHING RETURNING` 命令执行流程在后续 Command Service PR 实现。
