@@ -1,0 +1,12 @@
+[package]
+name = "svc-workflow"
+version = "0.1.0"
+edition = "2021"
+description = "Serial governed workflow kernel (Rust + PostgreSQL). Architecture baseline only."
+license = "MIT"
+
+[[bin]]
+name = "svc-workflow"
+path = "src/main.rs"
+
+[dependencies]
