@@ -83,19 +83,21 @@ async fn test_failure_no_runtime_artifacts_left() {
 // Non-null context_schema tests (H2 coverage)
 // ---------------------------------------------------------------------------
 
-/// Helper: attempt creation with a context_payload and assert schema validation fails.
-///
-/// Note: The current code path for schema validation failure does NOT persist
-/// the PROCESSING receipt (the error propagates via `?` without calling
-/// `complete_receipt` + `commit`). As a result, the entire transaction
-/// (including the receipt INSERT) is rolled back.
-/// This differs from other deterministic failures (domain disabled, etc.)
-/// that explicitly complete the receipt before returning.
+/// Return type for schema rejection assertions that also captures receipt state
+/// for replay verification.
+#[allow(dead_code)]
+struct SchemaRejectionReceipt {
+    command_id: Uuid,
+    response_digest: String,
+}
+
+/// Helper: attempt creation with a context_payload and assert schema validation fails
+/// as a deterministic failure (COMPLETED receipt with error, no runtime facts).
 async fn assert_schema_rejection(
     pool: &PgPool,
     cmd: CreateWorkflowInstanceCommand,
     principal_id: Uuid,
-) {
+) -> SchemaRejectionReceipt {
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(pool, cmd).await;
 
@@ -108,13 +110,29 @@ async fn assert_schema_rejection(
         err
     );
 
-    // No receipt — the transaction (including the PROCESSING receipt INSERT) is rolled back
-    let receipt_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2)",
-    ).bind(principal_id).bind(&idem_key).fetch_one(pool).await.expect("check");
+    // Receipt EXISTS — deterministic failure is persisted as COMPLETED
+    let receipt: (Uuid, String, i32, String) = sqlx::query_as(
+        "SELECT command_id, receipt_status::TEXT, response_status, COALESCE(response_digest, '') \
+         FROM workflow_command_receipts \
+         WHERE principal_id = $1 AND idempotency_key = $2",
+    )
+    .bind(principal_id)
+    .bind(&idem_key)
+    .fetch_one(pool)
+    .await
+    .expect("receipt must exist for deterministic schema failure");
+
+    assert_eq!(
+        receipt.1, "COMPLETED",
+        "schema failure receipt must be COMPLETED"
+    );
+    assert_eq!(
+        receipt.2, 422,
+        "schema failure receipt must have 422 status"
+    );
     assert!(
-        !receipt_exists,
-        "no receipt after schema rejection (tx fully rolled back)"
+        !receipt.3.is_empty(),
+        "schema failure receipt must have response_digest"
     );
 
     // No runtime facts created
@@ -159,6 +177,11 @@ async fn assert_schema_rejection(
     .await
     .expect("count");
     assert_eq!(event_count, 0, "no event after schema rejection");
+
+    SchemaRejectionReceipt {
+        command_id: receipt.0,
+        response_digest: receipt.3,
+    }
 }
 
 #[tokio::test]
@@ -245,4 +268,68 @@ async fn test_context_schema_local_ref_accepted() {
         .await
         .expect("local $ref context should succeed");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
+}
+
+#[tokio::test]
+async fn test_context_schema_failure_replays_completed_error_receipt() {
+    let pool = create_pool().await;
+    let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_d, ver_id) =
+        seed_published_definition_with_schema(&pool, domain_id, &required_fields_schema()).await;
+
+    // First call — should fail with COMPLETED receipt
+    let idempotency_key = Uuid::new_v4().to_string();
+    let mut cmd1 = make_command(principal_id, domain_id, ver_id);
+    cmd1.idempotency_key = idempotency_key.clone();
+    cmd1.context_payload = serde_json::json!({"priority": 1}); // missing "title"
+
+    let receipt = assert_schema_rejection(&pool, cmd1.clone(), principal_id).await;
+
+    // Second call with same idempotency key — must return the same persisted error
+    // without re-running creation logic
+    let err2 = create_workflow_instance(&pool, cmd1).await;
+
+    assert!(
+        matches!(
+            err2,
+            Err(CreateWorkflowInstanceError::ContextValidationFailed(_))
+        ),
+        "replay must return same error, got {:?}",
+        err2
+    );
+
+    // Exactly one receipt — replay did not create a duplicate
+    let receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
+    ).bind(principal_id).bind(&idempotency_key).fetch_one(&pool).await.expect("count");
+    assert_eq!(receipt_count, 1, "replay must not create a second receipt");
+
+    // Receipt command_id and response_digest unchanged
+    let receipt2: (Uuid, String, i32, String) = sqlx::query_as(
+        "SELECT command_id, receipt_status::TEXT, response_status, COALESCE(response_digest, '') \
+         FROM workflow_command_receipts \
+         WHERE principal_id = $1 AND idempotency_key = $2",
+    )
+    .bind(principal_id)
+    .bind(&idempotency_key)
+    .fetch_one(&pool)
+    .await
+    .expect("receipt");
+    assert_eq!(receipt2.0, receipt.command_id, "command_id must not change");
+    assert_eq!(receipt2.1, "COMPLETED");
+    assert_eq!(receipt2.2, 422);
+    assert_eq!(
+        receipt2.3, receipt.response_digest,
+        "response_digest must not change"
+    );
+
+    // Still no runtime facts
+    let instance_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_instances WHERE created_by_principal_id = $1",
+    )
+    .bind(principal_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert_eq!(instance_count, 0, "no instance after schema failure replay");
 }

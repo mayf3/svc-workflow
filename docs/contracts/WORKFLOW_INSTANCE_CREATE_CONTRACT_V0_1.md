@@ -195,9 +195,14 @@ FOR UPDATE
 
 ### 6.4 Deterministic Failure Replay
 
-Deterministic business failures (disabled principal, disabled domain, etc.) are persisted as COMPLETED receipts with an error response body. Replaying the same idempotent request returns the same error response.
+Deterministic business failures (disabled principal, disabled domain, invalid context, etc.) are persisted as COMPLETED receipts with an error response body. Replaying the same idempotent request returns the same error response, without re-running creation logic.
 
-**Note on context schema validation**: In the current code, `validate_context_schema` uses the `?` operator to propagate errors directly without an intermediate `complete_receipt` call or `commit`. As a result, schema validation failures behave like infrastructure failures — the entire transaction (including the PROCESSING receipt INSERT) is rolled back, leaving no receipt. This is a known divergence from the general deterministic failure pattern and may be aligned in a future revision.
+The deterministic failure sequence for all validated checks:
+1. Insert PROCESSING receipt (step 1 of the transaction)
+2. Validate business rules
+3. On failure: complete the receipt with an error response (status + error code)
+4. Commit the transaction — the COMPLETED receipt persists, no runtime facts created
+5. On replay: the existing COMPLETED receipt is detected → same error response returned
 
 ## 7. Context Validation
 

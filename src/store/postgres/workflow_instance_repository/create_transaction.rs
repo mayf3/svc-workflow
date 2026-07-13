@@ -272,7 +272,28 @@ pub(crate) async fn create_workflow_instance_atomically(
             .await?;
 
     // Step 8: Validate context payload against schema
-    validation_helpers::validate_context_schema(&version_info.context_schema, &cmd)?;
+    // This is a deterministic failure — if validation fails, we complete the
+    // receipt with an error and commit, leaving a record for idempotent replay.
+    if let Err(err) =
+        validation_helpers::validate_context_schema(&version_info.context_schema, &cmd)
+    {
+        let status_code = validation_helpers::deterministic_error_code(&err);
+        let error_code = validation_helpers::deterministic_error_label(&err);
+        let response_body = serde_json::json!({"error": error_code});
+        let response_digest = digest::compute_sha256(error_code.as_bytes());
+        complete_receipt(
+            &mut tx,
+            actual_command_id,
+            status_code,
+            &response_body,
+            &response_digest,
+        )
+        .await?;
+        tx.commit()
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        return Err(err);
+    }
 
     // ---------------------------------------------------------------
     // Step 9: Insert WorkflowInstance
