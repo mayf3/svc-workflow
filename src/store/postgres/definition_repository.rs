@@ -1,10 +1,6 @@
 //! PostgreSQL implementation of the [`DefinitionRepository`] trait.
-
 #![allow(clippy::needless_borrow)]
-
-use sqlx::PgPool;
-use uuid::Uuid;
-
+use super::repository_rows::*;
 use crate::application::definition::repository::DefinitionData;
 use crate::application::definition::DefinitionRepository;
 use crate::domain::definition::error::DefinitionError;
@@ -16,23 +12,20 @@ use crate::domain::enums::DefinitionVersionStatus;
 use crate::domain::ids::{
     DefinitionVersionId, DomainId, NodeId, PrincipalId, TransitionId, WorkflowDefinitionId,
 };
-
+use sqlx::PgPool;
+use uuid::Uuid;
 /// Initialize the PgDefinitionRepository with a database connection.
 pub struct PgDefinitionRepository {
     pool: PgPool,
 }
-
 impl PgDefinitionRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
-
 #[allow(async_fn_in_trait)]
 impl DefinitionRepository for PgDefinitionRepository {
-    // -----------------------------------------------------------------------
-    // Principals & Domains
-    // -----------------------------------------------------------------------
+    // -- Principals & Domains -------------------------------------------------
 
     async fn check_principal_enabled(&self, principal_id: Uuid) -> Result<bool, DefinitionError> {
         let row: Option<(bool,)> =
@@ -44,7 +37,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(row.map(|r| r.0).unwrap_or(false))
     }
-
     async fn check_domain_enabled(&self, domain_id: Uuid) -> Result<bool, DefinitionError> {
         let row: Option<(bool,)> =
             sqlx::query_as("SELECT enabled FROM domains WHERE domain_id = $1")
@@ -55,7 +47,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(row.map(|r| r.0).unwrap_or(false))
     }
-
     async fn check_domain_role(
         &self,
         principal_id: Uuid,
@@ -75,9 +66,7 @@ impl DefinitionRepository for PgDefinitionRepository {
         Ok(row.map(|r| r.0).unwrap_or(false))
     }
 
-    // -----------------------------------------------------------------------
-    // Definition CRUD
-    // -----------------------------------------------------------------------
+    // -- Definition CRUD -------------------------------------------------------
 
     async fn create_definition(
         &self,
@@ -115,7 +104,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         self.get_definition(id).await
     }
-
     async fn definition_key_exists(
         &self,
         domain_id: Uuid,
@@ -132,7 +120,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(row.map(|r| r.0 > 0).unwrap_or(false))
     }
-
     async fn get_definition(&self, id: Uuid) -> Result<WorkflowDefinition, DefinitionError> {
         let row: Option<WorkflowDefinition> = sqlx::query_as::<_, WorkflowDefinitionRow>(
             "SELECT * FROM workflow_definitions WHERE workflow_definition_id = $1",
@@ -145,7 +132,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         row.ok_or(DefinitionError::DefinitionNotFound)
     }
-
     async fn get_version(
         &self,
         version_id: Uuid,
@@ -161,7 +147,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         row.ok_or(DefinitionError::DefinitionVersionNotFound)
     }
-
     async fn get_definition_domain(&self, definition_id: Uuid) -> Result<Uuid, DefinitionError> {
         let row: Option<(Uuid,)> = sqlx::query_as(
             "SELECT domain_id FROM workflow_definitions WHERE workflow_definition_id = $1",
@@ -173,7 +158,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         row.map(|r| r.0).ok_or(DefinitionError::DefinitionNotFound)
     }
-
     async fn get_version_definition_id(&self, version_id: Uuid) -> Result<Uuid, DefinitionError> {
         let row: Option<(Uuid,)> = sqlx::query_as(
             "SELECT workflow_definition_id FROM workflow_definition_versions WHERE definition_version_id = $1",
@@ -187,9 +171,7 @@ impl DefinitionRepository for PgDefinitionRepository {
             .ok_or(DefinitionError::DefinitionVersionNotFound)
     }
 
-    // -----------------------------------------------------------------------
-    // Version CRUD
-    // -----------------------------------------------------------------------
+    // -- Version CRUD ----------------------------------------------------------
 
     async fn create_draft_version(
         &self,
@@ -231,7 +213,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         self.get_version(id).await
     }
-
     async fn next_version_number(
         &self,
         workflow_definition_id: Uuid,
@@ -246,7 +227,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(row.and_then(|r| r.0).unwrap_or(0) + 1)
     }
-
     async fn list_versions(
         &self,
         workflow_definition_id: Uuid,
@@ -265,9 +245,7 @@ impl DefinitionRepository for PgDefinitionRepository {
         Ok(rows)
     }
 
-    // -----------------------------------------------------------------------
-    // Graph operations
-    // -----------------------------------------------------------------------
+    // -- Graph operations ------------------------------------------------------
 
     async fn replace_draft_graph(
         &self,
@@ -375,7 +353,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(())
     }
-
     async fn get_complete_graph(
         &self,
         version_id: Uuid,
@@ -405,9 +382,7 @@ impl DefinitionRepository for PgDefinitionRepository {
         Ok((nodes, transitions))
     }
 
-    // -----------------------------------------------------------------------
-    // Lifecycle operations
-    // -----------------------------------------------------------------------
+    // -- Lifecycle operations --------------------------------------------------
 
     async fn lock_version(
         &self,
@@ -424,7 +399,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         row.ok_or(DefinitionError::DefinitionVersionNotFound)
     }
-
     async fn publish_version(
         &self,
         version_id: Uuid,
@@ -445,7 +419,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         self.get_version(version_id).await
     }
-
     async fn update_version_status(
         &self,
         version_id: Uuid,
@@ -473,7 +446,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         self.get_version(version_id).await
     }
-
     async fn get_nodes_by_version(
         &self,
         version_id: Uuid,
@@ -491,7 +463,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(nodes)
     }
-
     async fn get_transitions_by_version(
         &self,
         version_id: Uuid,
@@ -509,7 +480,6 @@ impl DefinitionRepository for PgDefinitionRepository {
 
         Ok(transitions)
     }
-
     async fn check_principal_exists(&self, principal_id: Uuid) -> Result<bool, DefinitionError> {
         let row: Option<(i64,)> =
             sqlx::query_as("SELECT COUNT(*) FROM principals WHERE principal_id = $1")
@@ -519,167 +489,5 @@ impl DefinitionRepository for PgDefinitionRepository {
                 .map_err(|e| DefinitionError::StorageError(e.to_string()))?;
 
         Ok(row.map(|r| r.0 > 0).unwrap_or(false))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Row types for SQLx query_as
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, sqlx::FromRow)]
-struct WorkflowDefinitionRow {
-    workflow_definition_id: Uuid,
-    domain_id: Uuid,
-    definition_key: String,
-    display_name: String,
-    description: Option<String>,
-    metadata: Option<serde_json::Value>,
-    created_at: chrono::DateTime<chrono::Utc>,
-    updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl WorkflowDefinitionRow {
-    fn into_domain(self) -> WorkflowDefinition {
-        WorkflowDefinition {
-            id: WorkflowDefinitionId::from_uuid(self.workflow_definition_id),
-            domain_id: DomainId::from_uuid(self.domain_id),
-            definition_key: self.definition_key,
-            display_name: self.display_name,
-            description: self.description,
-            metadata: self.metadata,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-        }
-    }
-}
-
-#[derive(Debug, sqlx::FromRow)]
-struct WorkflowDefinitionVersionRow {
-    definition_version_id: Uuid,
-    workflow_definition_id: Uuid,
-    version_number: i32,
-    version_status: String,
-    definition_digest: Option<String>,
-    json_schema_dialect: Option<String>,
-    validator_version: Option<String>,
-    context_schema: Option<serde_json::Value>,
-    submission_schema: Option<serde_json::Value>,
-    metadata: Option<serde_json::Value>,
-    created_at: chrono::DateTime<chrono::Utc>,
-    updated_at: chrono::DateTime<chrono::Utc>,
-    published_at: Option<chrono::DateTime<chrono::Utc>>,
-    deprecated_at: Option<chrono::DateTime<chrono::Utc>>,
-    revoked_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-impl WorkflowDefinitionVersionRow {
-    fn into_domain(self) -> WorkflowDefinitionVersion {
-        let status = self
-            .version_status
-            .parse::<DefinitionVersionStatus>()
-            .unwrap_or(DefinitionVersionStatus::DRAFT);
-        WorkflowDefinitionVersion {
-            id: DefinitionVersionId::from_uuid(self.definition_version_id),
-            workflow_definition_id: WorkflowDefinitionId::from_uuid(self.workflow_definition_id),
-            version_number: self.version_number,
-            version_status: status,
-            definition_digest: self.definition_digest,
-            json_schema_dialect: self.json_schema_dialect,
-            validator_version: self.validator_version,
-            context_schema: self.context_schema,
-            submission_schema: self.submission_schema,
-            metadata: self.metadata,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            published_at: self.published_at,
-            deprecated_at: self.deprecated_at,
-            revoked_at: self.revoked_at,
-            published_by_principal_id: None,
-            deprecated_by_principal_id: None,
-            revoked_by_principal_id: None,
-        }
-    }
-}
-
-#[derive(Debug, sqlx::FromRow)]
-struct NodeDefinitionRow {
-    node_id: Uuid,
-    definition_version_id: Uuid,
-    node_key: String,
-    display_name: String,
-    order_index: i32,
-    node_type: String,
-    assignee_ref_type: String,
-    fixed_principal_id: Option<Uuid>,
-    instructions: Option<String>,
-    primary_advance_transition_id: Option<Uuid>,
-    metadata: Option<serde_json::Value>,
-    created_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl NodeDefinitionRow {
-    fn into_domain(self) -> NodeDefinition {
-        let node_type = self
-            .node_type
-            .parse::<crate::domain::enums::NodeType>()
-            .unwrap_or(crate::domain::enums::NodeType::NORMAL);
-        let ref_type = self
-            .assignee_ref_type
-            .parse::<crate::domain::enums::AssigneeRefType>()
-            .unwrap_or(crate::domain::enums::AssigneeRefType::WorkflowCreator);
-
-        NodeDefinition {
-            node_id: NodeId::from_uuid(self.node_id),
-            definition_version_id: DefinitionVersionId::from_uuid(self.definition_version_id),
-            node_key: self.node_key,
-            display_name: self.display_name,
-            order_index: self.order_index,
-            node_type,
-            assignee_ref: AssigneeRef {
-                ref_type,
-                fixed_principal_id: self.fixed_principal_id.map(PrincipalId::from_uuid),
-            },
-            instructions: self.instructions,
-            primary_advance_transition_id: self
-                .primary_advance_transition_id
-                .map(TransitionId::from_uuid),
-            metadata: self.metadata,
-            created_at: self.created_at,
-        }
-    }
-}
-
-#[derive(Debug, sqlx::FromRow)]
-struct TransitionDefinitionRow {
-    transition_id: Uuid,
-    definition_version_id: Uuid,
-    transition_key: String,
-    display_name: String,
-    source_node_id: Uuid,
-    target_node_id: Uuid,
-    transition_effect: String,
-    submission_schema: Option<serde_json::Value>,
-    metadata: Option<serde_json::Value>,
-    created_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl TransitionDefinitionRow {
-    fn into_domain(self) -> TransitionDefinition {
-        let effect = self
-            .transition_effect
-            .parse::<crate::domain::enums::TransitionEffect>()
-            .unwrap_or(crate::domain::enums::TransitionEffect::Advance);
-        TransitionDefinition {
-            transition_id: TransitionId::from_uuid(self.transition_id),
-            definition_version_id: DefinitionVersionId::from_uuid(self.definition_version_id),
-            transition_key: self.transition_key,
-            display_name: self.display_name,
-            source_node_id: NodeId::from_uuid(self.source_node_id),
-            target_node_id: NodeId::from_uuid(self.target_node_id),
-            transition_effect: effect,
-            submission_schema: self.submission_schema,
-            metadata: self.metadata,
-            created_at: self.created_at,
-        }
     }
 }

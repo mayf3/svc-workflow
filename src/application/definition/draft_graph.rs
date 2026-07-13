@@ -1,0 +1,165 @@
+use std::collections::HashMap;
+
+use crate::domain::definition::error::{DefinitionError, GraphValidationError};
+use crate::domain::definition::graph;
+use crate::domain::definition::model::{NodeDefinition, TransitionDefinition, WorkflowGraph};
+use crate::domain::enums::{DefinitionVersionStatus, NodeType, TransitionEffect};
+use crate::domain::ids::{DefinitionVersionId, NodeId, TransitionId};
+
+use super::commands::ReplaceDraftGraph;
+use super::repository::DefinitionRepository;
+use super::service::DefinitionService;
+
+impl<R: DefinitionRepository> DefinitionService<R> {
+    // -----------------------------------------------------------------------
+    // 12.3 ReplaceDraftGraph
+    // -----------------------------------------------------------------------
+
+    /// Atomically replace the graph of a DRAFT version.
+    pub async fn replace_draft_graph(&self, cmd: ReplaceDraftGraph) -> Result<(), DefinitionError> {
+        self.ensure_principal_enabled(cmd.actor_principal_id)
+            .await?;
+
+        // Verify version exists and is DRAFT by locking it
+        let version = self.repo.lock_version(cmd.definition_version_id).await?;
+        if version.version_status != DefinitionVersionStatus::DRAFT {
+            return Err(DefinitionError::VersionNotDraft);
+        }
+
+        // Get the definition for domain ownership
+        let domain_id = self
+            .repo
+            .get_definition_domain(version.workflow_definition_id.into_uuid())
+            .await?;
+        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
+            .await?;
+
+        // Resolve node keys -> IDs
+        let mut node_id_by_key: HashMap<String, NodeId> = HashMap::new();
+        let mut node_defs: Vec<NodeDefinition> = Vec::new();
+        let version_id = version.id.into_uuid();
+
+        for raw_node in &cmd.nodes {
+            let node_id = NodeId::new();
+            node_id_by_key.insert(raw_node.node_key.clone(), node_id);
+
+            let assignee_ref =
+                Self::parse_assignee_ref(&raw_node.assignee_ref_type, raw_node.fixed_principal_id)?;
+
+            let node_type = raw_node.node_type.parse::<NodeType>().map_err(|_| {
+                DefinitionError::StorageError(format!("invalid node_type: {}", raw_node.node_type))
+            })?;
+
+            node_defs.push(NodeDefinition {
+                node_id,
+                definition_version_id: DefinitionVersionId::from_uuid(version_id),
+                node_key: raw_node.node_key.clone(),
+                display_name: raw_node.display_name.clone(),
+                order_index: raw_node.order_index,
+                node_type,
+                assignee_ref,
+                instructions: raw_node.instructions.clone(),
+                primary_advance_transition_id: None, // resolved after transitions
+                metadata: raw_node.metadata.clone(),
+                created_at: chrono::Utc::now(),
+            });
+        }
+
+        // Build transition definitions
+        let mut transition_defs: Vec<TransitionDefinition> = Vec::new();
+        let mut transition_key_to_id: HashMap<String, TransitionId> = HashMap::new();
+
+        for raw_trans in &cmd.transitions {
+            let trans_id = TransitionId::new();
+            transition_key_to_id.insert(raw_trans.transition_key.clone(), trans_id);
+
+            let source_id = node_id_by_key
+                .get(&raw_trans.source_node_key)
+                .ok_or_else(|| {
+                    DefinitionError::GraphValidationFailed(vec![GraphValidationError::new(
+                        "TRANSITION_SOURCE_MISSING",
+                        format!(
+                            "transition '{}' references unknown source node '{}'",
+                            raw_trans.transition_key, raw_trans.source_node_key
+                        ),
+                    )])
+                })?;
+
+            let target_id = node_id_by_key
+                .get(&raw_trans.target_node_key)
+                .ok_or_else(|| {
+                    DefinitionError::GraphValidationFailed(vec![GraphValidationError::new(
+                        "TRANSITION_TARGET_MISSING",
+                        format!(
+                            "transition '{}' references unknown target node '{}'",
+                            raw_trans.transition_key, raw_trans.target_node_key
+                        ),
+                    )])
+                })?;
+
+            let effect = raw_trans
+                .transition_effect
+                .parse::<TransitionEffect>()
+                .map_err(|_| {
+                    DefinitionError::StorageError(format!(
+                        "invalid transition_effect: {}",
+                        raw_trans.transition_effect
+                    ))
+                })?;
+
+            transition_defs.push(TransitionDefinition {
+                transition_id: trans_id,
+                definition_version_id: DefinitionVersionId::from_uuid(version_id),
+                transition_key: raw_trans.transition_key.clone(),
+                display_name: raw_trans.display_name.clone(),
+                source_node_id: *source_id,
+                target_node_id: *target_id,
+                transition_effect: effect,
+                submission_schema: raw_trans.submission_schema.clone(),
+                metadata: raw_trans.metadata.clone(),
+                created_at: chrono::Utc::now(),
+            });
+        }
+
+        // Resolve primary advance transition keys to IDs
+        for node_def in &mut node_defs {
+            // Find the raw node with matching key
+            if let Some(raw_node) = cmd.nodes.iter().find(|n| n.node_key == node_def.node_key) {
+                if let Some(pt_key) = &raw_node.primary_advance_transition_key {
+                    if let Some(pt_id) = transition_key_to_id.get(pt_key) {
+                        node_def.primary_advance_transition_id = Some(*pt_id);
+                    }
+                }
+            }
+        }
+
+        // Build graph model for validation
+        let graph = WorkflowGraph {
+            nodes: node_defs.clone(),
+            transitions: transition_defs.clone(),
+            context_schema: cmd.context_schema.clone(),
+        };
+
+        // Validate the graph
+        let validation_result = graph::validate_graph(&graph);
+
+        // Also validate JSON schemas
+        let schema_errors = self.validate_json_schemas(&graph).await;
+        let mut all_errors = validation_result.errors.clone();
+        all_errors.extend(schema_errors);
+
+        if !all_errors.is_empty() {
+            return Err(DefinitionError::GraphValidationFailed(all_errors));
+        }
+
+        // Replace graph atomically
+        self.repo
+            .replace_draft_graph(
+                version_id,
+                cmd.context_schema.as_ref(),
+                &node_defs,
+                &transition_defs,
+            )
+            .await
+    }
+}

@@ -21,6 +21,19 @@ Current Main Baseline: 619f34320d92e9b6666374b4a56c8cc21614f26b
 |---|---|---|---|
 | PR 1 | PostgreSQL Storage Foundation | MERGED | 不可变事实、约束和 Migration 通过独立审计 |
 | PR 2 | Definition 与不可变版本发布服务 | IN_PROGRESS | 可创建 Draft、校验图、发布、弃用、撤销 |
+
+PR 2 实现分支：`feat/definition-version-service-v0`，基线 `d8e9808`。  
+当前 HEAD：`a64e41a`（含后续结构收敛提交）。
+
+| PR 2 实施文件 | 行数 |
+|---|---|
+| 领域模块（model, graph, digest, error） | 1,396 |
+| 应用层（service, lifecycle, draft_graph, commands, queries, repository trait） | 1,038 |
+| 存储层（PgDefinitionRepository, repository_rows） | 670 |
+| 单元测试（graph_tests, digest_tests, enums, ids） | 1,313 |
+| 集成测试（13_definition_service, 14_lifecycle） | 688 |
+| Migration 0008 | 124 |
+| 合同文档 | 308 |
 | PR 3 | 通用 Command 执行与幂等框架 | PLANNED | Receipt 并发、requestHash、权限、审计 |
 | PR 4 | Instance 与 Workflow Context | PLANNED | 创建实例、Context Revision、Draft 修改 |
 | PR 5 | Transition、Submission 与 Event Engine | PLANNED | ADVANCE、RETURN、TERMINATE 完整闭环 |
