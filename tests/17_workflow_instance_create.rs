@@ -1,6 +1,6 @@
 //! Integration tests for CreateWorkflowInstance.
 //!
-//! Covers 34 scenarios across: normal creation, definition gates,
+//! Covers 34+ scenarios across: normal creation, definition gates,
 //! authorization, context validation, idempotency, concurrency, and atomicity.
 
 #![allow(clippy::needless_borrow)]
@@ -27,7 +27,7 @@ pub(crate) async fn seed_published_definition_wf_creator(
     pool: &PgPool,
     domain_id: Uuid,
 ) -> (Uuid, Uuid) {
-    seed_published_def_inner(pool, domain_id, None, "WORKFLOW_CREATOR").await
+    seed_published_def_inner(pool, domain_id, None, "WORKFLOW_CREATOR", None).await
 }
 
 /// Seed a published definition with DOMAIN_OWNER assignee on the DRAFT node.
@@ -35,7 +35,7 @@ pub(crate) async fn seed_published_definition_domain_owner(
     pool: &PgPool,
     domain_id: Uuid,
 ) -> (Uuid, Uuid) {
-    seed_published_def_inner(pool, domain_id, None, "DOMAIN_OWNER").await
+    seed_published_def_inner(pool, domain_id, None, "DOMAIN_OWNER", None).await
 }
 
 /// Seed a published definition with FIXED_PRINCIPAL assignee.
@@ -44,15 +44,35 @@ pub(crate) async fn seed_published_definition_fixed_principal(
     domain_id: Uuid,
     fixed_principal_id: Uuid,
 ) -> (Uuid, Uuid) {
-    seed_published_def_inner(pool, domain_id, Some(fixed_principal_id), "FIXED_PRINCIPAL").await
+    seed_published_def_inner(
+        pool,
+        domain_id,
+        Some(fixed_principal_id),
+        "FIXED_PRINCIPAL",
+        None,
+    )
+    .await
 }
 
-/// Internal: seed a published definition, setting DRAFT node assignee BEFORE publishing.
+/// Seed a published definition with a non-null context_schema.
+pub(crate) async fn seed_published_definition_with_schema(
+    pool: &PgPool,
+    domain_id: Uuid,
+    schema: &serde_json::Value,
+) -> (Uuid, Uuid) {
+    seed_published_def_inner(pool, domain_id, None, "WORKFLOW_CREATOR", Some(schema)).await
+}
+
+/// Core seed helper: create and publish a minimal definition with one DRAFT
+/// node, one TERMINAL node, and one ADVANCE transition.
+///
+/// `context_schema` if provided is stored in the version's context_schema column.
 async fn seed_published_def_inner(
     pool: &PgPool,
     domain_id: Uuid,
     fixed_principal_id: Option<Uuid>,
     assignee_type: &str,
+    context_schema: Option<&serde_json::Value>,
 ) -> (Uuid, Uuid) {
     let def_id = Uuid::new_v4();
     let ver_id = Uuid::new_v4();
@@ -61,8 +81,14 @@ async fn seed_published_def_inner(
     sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'Test Def')")
         .bind(def_id).bind(domain_id).bind(&def_key)
         .execute(pool).await.expect("insert def");
-    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
-        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    if let Some(schema) = context_schema {
+        sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', $3)")
+            .bind(ver_id).bind(def_id).bind(schema).execute(pool).await.expect("insert version with schema");
+    } else {
+        sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
+            .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+    }
 
     let draft_id = Uuid::new_v4();
     let term_id = Uuid::new_v4();
@@ -163,3 +189,5 @@ mod definition_gates;
 mod idempotency;
 #[path = "17_workflow_instance_create/normal_create.rs"]
 mod normal_create;
+#[path = "17_workflow_instance_create/request_hash_contract.rs"]
+mod request_hash_contract;
