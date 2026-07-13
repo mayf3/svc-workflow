@@ -126,17 +126,19 @@ JCS({
   "commandSchemaVersion": "...",
   "commandType": "CREATE_WORKFLOW_INSTANCE",
   "routeParameters": {},
-  "principalId": "...",
-  "domainId": "...",
-  "definitionVersionId": "...",
-  "contextPayload": ...,
-  "metadata": ...,
-  "externalReference": null,
-  "externalUrl": null
+  "requestBody": {
+    "principalId": "...",
+    "domainId": "...",
+    "definitionVersionId": "...",
+    "contextPayload": ...,
+    "metadata": ...,
+    "externalReference": null,
+    "externalUrl": null
+  }
 }) → SHA-256
 ```
 
-The idempotency key itself is excluded from the hash. `routeParameters` is always `{}` (no HTTP route).
+The idempotency key itself is excluded from the hash. `routeParameters` is always `{}` (no HTTP route). The `requestBody` is a nested object containing all command fields except the idempotency key.
 
 ### 6.2 First Request
 
