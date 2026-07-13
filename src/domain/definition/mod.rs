@@ -7,4 +7,11 @@
 pub mod digest;
 pub mod error;
 pub mod graph;
+pub mod graph_helpers;
 pub mod model;
+
+#[cfg(test)]
+mod digest_tests;
+
+#[cfg(test)]
+mod graph_tests;

@@ -2,6 +2,8 @@
 //! and immutable version publishing lifecycle.
 
 pub mod commands;
+mod draft_graph;
+mod lifecycle;
 pub mod queries;
 pub mod repository;
 mod service;
