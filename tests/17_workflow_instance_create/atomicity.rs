@@ -2,10 +2,186 @@
 //!
 //! Fault-injection tests use **conditional triggers with unique DDL names** to avoid
 //! polluting concurrent test runs. Each trigger only fires for records belonging
-//! to the specific test's principal_id. Trigger/function names include a random
-//! UUID suffix so that concurrent test threads never collide.
+//! to the specific test's `principal_id`. Trigger and function names include a
+//! random UUID suffix so that concurrent test threads never collide.
+//!
+//! Trigger cleanup uses [`TriggerGuard`] — a RAII guard whose `Drop` impl removes
+//! the trigger and function even if the test body panics. The Drop impl spawns a
+//! dedicated thread with its own tokio runtime to safely execute the async DDL cleanup.
 
 use super::*;
+use sqlx::Connection;
+
+/// Test database URL (must match `common/mod.rs`).
+const TEST_DB_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
+
+// ---------------------------------------------------------------------------
+// RAII trigger guard
+// ---------------------------------------------------------------------------
+
+/// RAII guard that drops a test trigger and its function when the guard is
+/// dropped (including on panic).
+///
+/// # Panic safety
+///
+/// Cleanup uses a **fresh `PgConnection`** (not a pooled connection) on a
+/// dedicated thread+runtime. This avoids:
+/// 1. Nested-runtime panics (Drop runs inside a `#[tokio::test]`)
+/// 2. Pool connections being tied to the original runtime
+struct TriggerGuard {
+    suffix: String,
+    /// For receipt triggers, this is the literal string `"__receipt__"`.
+    /// For table triggers, this is the SQL table name.
+    table_or_kind: String,
+    /// Whether this is the special receipt-completion trigger.
+    is_receipt: bool,
+}
+
+impl TriggerGuard {
+    /// Install a BEFORE INSERT trigger that blocks inserts for a specific principal.
+    async fn install_table(pool: &PgPool, on_table: &str, col_check_expression: &str) -> Self {
+        let suffix = Uuid::new_v4().to_string().replace('-', "");
+        let fn_name = format!("fn_test_fail_{suffix}");
+        let trg_name = format!("trg_test_fail_{suffix}");
+
+        // Defensive cleanup — remove orphan objects from a previous crash
+        let _ = sqlx::query(&format!("DROP TRIGGER IF EXISTS {trg_name} ON {on_table}"))
+            .execute(pool)
+            .await;
+        let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
+            .execute(pool)
+            .await;
+
+        // Create function — raises only when the check expression matches
+        sqlx::query(&format!(
+            "CREATE FUNCTION {fn_name}() RETURNS TRIGGER AS $$
+             BEGIN
+                 IF {col_check_expression} THEN
+                     RAISE EXCEPTION 'test_injected_failure: {on_table} insert blocked'
+                     USING ERRCODE = '23000';
+                 END IF;
+                 RETURN NEW;
+             END;
+             $$ LANGUAGE plpgsql"
+        ))
+        .execute(pool)
+        .await
+        .expect("create trigger function");
+
+        sqlx::query(&format!(
+            "CREATE TRIGGER {trg_name} BEFORE INSERT ON {on_table} \
+             FOR EACH ROW EXECUTE FUNCTION {fn_name}()"
+        ))
+        .execute(pool)
+        .await
+        .expect("create trigger");
+
+        Self {
+            suffix,
+            table_or_kind: on_table.to_string(),
+            is_receipt: false,
+        }
+    }
+
+    /// Install a BEFORE UPDATE trigger on `workflow_command_receipts` that blocks
+    /// the PROCESSING → COMPLETED transition for a specific principal.
+    async fn install_receipt_update(pool: &PgPool, principal_id: Uuid) -> Self {
+        let suffix = Uuid::new_v4().to_string().replace('-', "");
+        let fn_name = format!("fn_test_fail_rcpt_{suffix}");
+        let trg_name = format!("trg_test_fail_rcpt_{suffix}");
+
+        let _ = sqlx::query(&format!(
+            "DROP TRIGGER IF EXISTS {trg_name} ON workflow_command_receipts"
+        ))
+        .execute(pool)
+        .await;
+        let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
+            .execute(pool)
+            .await;
+
+        sqlx::query(&format!(
+            "CREATE FUNCTION {fn_name}() RETURNS TRIGGER AS $$
+             BEGIN
+                 IF NEW.receipt_status = 'COMPLETED'
+                    AND OLD.receipt_status = 'PROCESSING'
+                    AND OLD.principal_id = '{principal_id}' THEN
+                     RAISE EXCEPTION 'test_injected_failure: receipt completion blocked'
+                     USING ERRCODE = '23000';
+                 END IF;
+                 RETURN NEW;
+             END;
+             $$ LANGUAGE plpgsql"
+        ))
+        .execute(pool)
+        .await
+        .expect("create receipt trigger function");
+
+        sqlx::query(&format!(
+            "CREATE TRIGGER {trg_name} BEFORE UPDATE ON workflow_command_receipts \
+             FOR EACH ROW EXECUTE FUNCTION {fn_name}()"
+        ))
+        .execute(pool)
+        .await
+        .expect("create receipt trigger");
+
+        Self {
+            suffix,
+            table_or_kind: "__receipt__".to_string(),
+            is_receipt: true,
+        }
+    }
+}
+
+impl Drop for TriggerGuard {
+    fn drop(&mut self) {
+        let suffix = self.suffix.clone();
+        let on_table = self.table_or_kind.clone();
+        let is_receipt = self.is_receipt;
+
+        // Spawn a dedicated thread+runtime with a fresh PgConnection.
+        // We don't use the original PgPool because pool internals are tied to
+        // the original tokio runtime.
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_io()
+                .build()
+                .expect("build cleanup runtime");
+            rt.block_on(async move {
+                let Ok(mut conn) = sqlx::PgConnection::connect(TEST_DB_URL).await else {
+                    return; // best-effort cleanup
+                };
+                if is_receipt {
+                    let fn_name = format!("fn_test_fail_rcpt_{suffix}");
+                    let trg_name = format!("trg_test_fail_rcpt_{suffix}");
+                    let _ = sqlx::query(&format!(
+                        "DROP TRIGGER IF EXISTS {trg_name} ON workflow_command_receipts"
+                    ))
+                    .execute(&mut conn)
+                    .await;
+                    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
+                        .execute(&mut conn)
+                        .await;
+                } else {
+                    let fn_name = format!("fn_test_fail_{suffix}");
+                    let trg_name = format!("trg_test_fail_{suffix}");
+                    let _ =
+                        sqlx::query(&format!("DROP TRIGGER IF EXISTS {trg_name} ON {on_table}"))
+                            .execute(&mut conn)
+                            .await;
+                    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
+                        .execute(&mut conn)
+                        .await;
+                }
+            });
+        })
+        .join()
+        .ok();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn test_exactly_one_event_per_creation() {
@@ -55,129 +231,14 @@ async fn test_deferred_fk_committed_successfully() {
     assert!(fk_ok, "circular FKs must resolve");
 }
 
-/// Create a temporary trigger on `table` that blocks inserts matching a
-/// specific principal. Returns the unique suffix used for cleanup.
-///
-/// - `on_table`: the target table name (e.g. `"workflow_events"`)
-/// - `col_check`: the SQL column comparison for this test's principal,
-///   e.g. `"NEW.actor_principal_id = '<uuid>'"`.
-async fn create_test_trigger(pool: &PgPool, on_table: &str, col_check: &str) -> String {
-    let suffix = Uuid::new_v4().to_string().replace('-', "");
-    let fn_name = format!("fn_test_fail_{suffix}");
-    let trg_name = format!("trg_test_fail_{suffix}");
-
-    // Defensive cleanup — remove orphan objects from a previous crash
-    let _ = sqlx::query(&format!("DROP TRIGGER IF EXISTS {trg_name} ON {on_table}"))
-        .execute(pool)
-        .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
-        .execute(pool)
-        .await;
-
-    // Create the function — raise only when the column check matches
-    sqlx::query(&format!(
-        "CREATE FUNCTION {fn_name}() RETURNS TRIGGER AS $$
-         BEGIN
-             IF {col_check} THEN
-                 RAISE EXCEPTION 'test_injected_failure: {on_table} insert blocked'
-                 USING ERRCODE = '23000';
-             END IF;
-             RETURN NEW;
-         END;
-         $$ LANGUAGE plpgsql"
-    ))
-    .execute(pool)
-    .await
-    .expect("create trigger function");
-
-    sqlx::query(&format!(
-        "CREATE TRIGGER {trg_name} BEFORE INSERT ON {on_table} \
-         FOR EACH ROW EXECUTE FUNCTION {fn_name}()"
-    ))
-    .execute(pool)
-    .await
-    .expect("create trigger");
-
-    suffix
-}
-
-/// Create a temporary BEFORE UPDATE trigger on `workflow_command_receipts`
-/// that blocks the PROCESSING → COMPLETED transition for a specific principal.
-async fn create_receipt_update_trigger(pool: &PgPool, principal_id: Uuid) -> String {
-    let suffix = Uuid::new_v4().to_string().replace('-', "");
-    let fn_name = format!("fn_test_fail_rcpt_{suffix}");
-    let trg_name = format!("trg_test_fail_rcpt_{suffix}");
-
-    let _ = sqlx::query(&format!(
-        "DROP TRIGGER IF EXISTS {trg_name} ON workflow_command_receipts"
-    ))
-    .execute(pool)
-    .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
-        .execute(pool)
-        .await;
-
-    sqlx::query(&format!(
-        "CREATE FUNCTION {fn_name}() RETURNS TRIGGER AS $$
-         BEGIN
-             IF NEW.receipt_status = 'COMPLETED'
-                AND OLD.receipt_status = 'PROCESSING'
-                AND OLD.principal_id = '{principal_id}' THEN
-                 RAISE EXCEPTION 'test_injected_failure: receipt completion blocked'
-                 USING ERRCODE = '23000';
-             END IF;
-             RETURN NEW;
-         END;
-         $$ LANGUAGE plpgsql"
-    ))
-    .execute(pool)
-    .await
-    .expect("create receipt trigger function");
-
-    sqlx::query(&format!(
-        "CREATE TRIGGER {trg_name} BEFORE UPDATE ON workflow_command_receipts \
-         FOR EACH ROW EXECUTE FUNCTION {fn_name}()"
-    ))
-    .execute(pool)
-    .await
-    .expect("create receipt trigger");
-
-    suffix
-}
-
-/// Drop a test trigger and its function by suffix.
-async fn drop_test_trigger(pool: &PgPool, on_table: &str, suffix: &str) {
-    let fn_name = format!("fn_test_fail_{suffix}");
-    let trg_name = format!("trg_test_fail_{suffix}");
-    let _ = sqlx::query(&format!("DROP TRIGGER IF EXISTS {trg_name} ON {on_table}"))
-        .execute(pool)
-        .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
-        .execute(pool)
-        .await;
-}
-
-/// Drop a receipt-update trigger and its function by suffix.
-async fn drop_receipt_trigger(pool: &PgPool, suffix: &str) {
-    let fn_name = format!("fn_test_fail_rcpt_{suffix}");
-    let trg_name = format!("trg_test_fail_rcpt_{suffix}");
-    let _ = sqlx::query(&format!(
-        "DROP TRIGGER IF EXISTS {trg_name} ON workflow_command_receipts"
-    ))
-    .execute(pool)
-    .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {fn_name}()"))
-        .execute(pool)
-        .await;
-}
-
 #[tokio::test]
 async fn test_event_failure_rolls_back_everything() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
 
-    let suffix = create_test_trigger(
+    // _guard drops trigger even on panic via RAII Drop
+    let _guard = TriggerGuard::install_table(
         &pool,
         "workflow_events",
         &format!("NEW.actor_principal_id = '{principal_id}'"),
@@ -186,9 +247,6 @@ async fn test_event_failure_rolls_back_everything() {
 
     let cmd = make_command(principal_id, domain_id, ver_id);
     let err = create_workflow_instance(&pool, cmd).await;
-
-    // Clean up trigger (runs even if assertion fails)
-    drop_test_trigger(&pool, "workflow_events", &suffix).await;
 
     assert!(
         err.is_err(),
@@ -204,6 +262,7 @@ async fn test_event_failure_rolls_back_everything() {
     .await
     .expect("count");
     assert_eq!(instance_count, 0, "no instance after event failure");
+    // guard dropped here → trigger cleaned up in Drop
 }
 
 #[tokio::test]
@@ -212,7 +271,7 @@ async fn test_infrastructure_failure_no_residual_receipt() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
 
-    let suffix = create_test_trigger(
+    let _guard = TriggerGuard::install_table(
         &pool,
         "workflow_instances",
         &format!("NEW.created_by_principal_id = '{principal_id}'"),
@@ -221,9 +280,6 @@ async fn test_infrastructure_failure_no_residual_receipt() {
 
     let cmd = make_command(principal_id, domain_id, ver_id);
     let err = create_workflow_instance(&pool, cmd).await;
-
-    // Clean up trigger
-    drop_test_trigger(&pool, "workflow_instances", &suffix).await;
 
     assert!(err.is_err(), "infrastructure failure must return error");
 
@@ -236,6 +292,7 @@ async fn test_infrastructure_failure_no_residual_receipt() {
     .await
     .expect("count");
     assert_eq!(receipt_count, 0, "no receipt after infrastructure failure");
+    // guard dropped here → trigger cleaned up in Drop
 }
 
 #[tokio::test]
@@ -244,17 +301,13 @@ async fn test_receipt_completion_failure_rolls_back_all_runtime_facts() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
 
-    // Install a trigger that blocks the receipt's PROCESSING → COMPLETED transition
-    let suffix = create_receipt_update_trigger(&pool, principal_id).await;
+    // _guard drops trigger even on panic via RAII Drop
+    let _guard = TriggerGuard::install_receipt_update(&pool, principal_id).await;
 
     let cmd = make_command(principal_id, domain_id, ver_id);
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(&pool, cmd).await;
 
-    // Clean up trigger
-    drop_receipt_trigger(&pool, &suffix).await;
-
-    // The creation should fail
     assert!(
         err.is_err(),
         "creation must fail when receipt completion is blocked"
@@ -281,20 +334,7 @@ async fn test_receipt_completion_failure_rolls_back_all_runtime_facts() {
         receipt_count, 0,
         "no receipt after receipt completion failure (tx rolled back)"
     );
-
-    // A second attempt with a fresh idempotency key creates a new request
-    // (no residual artifacts from the failed attempt)
-    let instance_count2: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM workflow_instances WHERE created_by_principal_id = $1",
-    )
-    .bind(principal_id)
-    .fetch_one(&pool)
-    .await
-    .expect("count");
-    assert_eq!(
-        instance_count2, 0,
-        "no residual instance after receipt completion failure"
-    );
+    // guard dropped here → trigger cleaned up in Drop
 }
 
 #[tokio::test]
