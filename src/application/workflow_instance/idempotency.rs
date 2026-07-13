@@ -2,15 +2,21 @@
 //!
 //! Implements the request hash algorithm per the frozen contract:
 //!
-//! ```text
-//! requestHash = SHA-256(
-//!     JCS({
-//!         commandSchemaVersion,
-//!         commandType,
-//!         routeParameters: {},
-//!         completeRequestBodyWithoutIdempotencyKey
-//!     })
-//! )
+//! ```json
+//! JCS({
+//!   "commandSchemaVersion": "...",
+//!   "commandType": "CREATE_WORKFLOW_INSTANCE",
+//!   "routeParameters": {},
+//!   "requestBody": {
+//!     "principalId": "...",
+//!     "domainId": "...",
+//!     "definitionVersionId": "...",
+//!     "contextPayload": ...,
+//!     "metadata": ...,
+//!     "externalReference": null,
+//!     "externalUrl": null
+//!   }
+//! }) → SHA-256
 //! ```
 //!
 //! For `routeParameters`, we use a stable empty object `{}` since this
@@ -24,13 +30,13 @@ use crate::domain::workflow_instance::events::COMMAND_TYPE_CREATE_INSTANCE;
 
 /// The canonical request envelope used for hash computation.
 ///
-/// All fields are ordered alphabetically (as required by JCS).
+/// Per the frozen contract, `requestBody` is a nested object containing
+/// all request fields except the idempotency key.
 #[derive(Debug, Clone, Serialize)]
 struct RequestEnvelope {
     command_schema_version: String,
     command_type: String,
     route_parameters: serde_json::Value,
-    #[serde(flatten)]
     request_body: RequestBody,
 }
 

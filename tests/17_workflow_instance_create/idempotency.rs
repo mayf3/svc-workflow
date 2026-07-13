@@ -194,3 +194,123 @@ async fn test_concurrent_same_idempotent_request() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_concurrent_different_request_hash() {
+    let pool = create_pool().await;
+    let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
+    let idempotency_key = Uuid::new_v4().to_string();
+    let mut cmd_a = make_command(principal_id, domain_id, ver_id);
+    cmd_a.idempotency_key = idempotency_key.clone();
+    cmd_a.context_payload = serde_json::json!({"variant": "A"});
+    let mut cmd_b = make_command(principal_id, domain_id, ver_id);
+    cmd_b.idempotency_key = idempotency_key.clone();
+    cmd_b.context_payload = serde_json::json!({"variant": "B"});
+
+    let pool1 = pool.clone();
+    let pool2 = pool.clone();
+    let (r1, r2) = tokio::join!(
+        tokio::spawn(async move { create_workflow_instance(&pool1, cmd_a).await }),
+        tokio::spawn(async move { create_workflow_instance(&pool2, cmd_b).await }),
+    );
+    let r1 = r1.expect("join");
+    let r2 = r2.expect("join");
+
+    // One succeeds (creates instance), one gets IdempotencyConflict
+    // The success might be either call depending on runtime scheduling
+    match (&r1, &r2) {
+        (Ok(_), Err(CreateWorkflowInstanceError::IdempotencyConflict { .. }))
+        | (Err(CreateWorkflowInstanceError::IdempotencyConflict { .. }), Ok(_)) => {
+            // Expected: one succeeds, one conflicts
+        }
+        (
+            Err(CreateWorkflowInstanceError::CommandStillProcessing),
+            Err(CreateWorkflowInstanceError::IdempotencyConflict { .. }),
+        )
+        | (
+            Err(CreateWorkflowInstanceError::IdempotencyConflict { .. }),
+            Err(CreateWorkflowInstanceError::CommandStillProcessing),
+        ) => {
+            // One got conflict, other still processing — wait and retry
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let pool3 = pool.clone();
+            let mut retry = make_command(principal_id, domain_id, ver_id);
+            retry.idempotency_key = idempotency_key;
+            let _ = create_workflow_instance(&pool3, retry).await;
+        }
+        (
+            Err(CreateWorkflowInstanceError::CommandStillProcessing),
+            Err(CreateWorkflowInstanceError::CommandStillProcessing),
+        ) => {
+            // Both still processing — wait and check that one succeeded after
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let pool3 = pool.clone();
+            let mut retry = make_command(principal_id, domain_id, ver_id);
+            retry.idempotency_key = idempotency_key;
+            let retry_result = create_workflow_instance(&pool3, retry).await;
+            // One of A or B should have succeeded
+            assert!(
+                retry_result.is_ok()
+                    || matches!(
+                        retry_result,
+                        Err(CreateWorkflowInstanceError::IdempotencyConflict { .. })
+                    ),
+                "retry should resolve to success or conflict: {:?}",
+                retry_result
+            );
+        }
+        _ => {
+            panic!("unexpected concurrent result: r1={:?}, r2={:?}", r1, r2);
+        }
+    }
+
+    // Exactly one instance
+    let instance_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_instances WHERE created_by_principal_id = $1",
+    )
+    .bind(principal_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert_eq!(instance_count, 1, "exactly one instance must exist");
+}
+
+#[tokio::test]
+async fn test_processing_receipt_not_taken_over() {
+    let pool = create_pool().await;
+    let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
+    let idempotency_key = Uuid::new_v4().to_string();
+
+    // Manually insert a PROCESSING receipt to simulate an in-flight request
+    let cmd_id = Uuid::new_v4();
+    let request_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    sqlx::query(
+        "INSERT INTO workflow_command_receipts (command_id, principal_id, idempotency_key, command_type, request_hash, receipt_status) VALUES ($1, $2, $3, 'CREATE_WORKFLOW_INSTANCE', $4, 'PROCESSING')",
+    )
+    .bind(cmd_id).bind(principal_id).bind(&idempotency_key).bind(request_hash)
+    .execute(&pool).await.expect("insert processing receipt");
+
+    // Second request with same key should get CommandStillProcessing
+    let mut cmd = make_command(principal_id, domain_id, ver_id);
+    cmd.idempotency_key = idempotency_key;
+    let err = create_workflow_instance(&pool, cmd).await.unwrap_err();
+    assert!(matches!(
+        err,
+        CreateWorkflowInstanceError::CommandStillProcessing
+    ));
+
+    // Verify the original PROCESSING receipt is untouched
+    let (status,): (String,) = sqlx::query_as(
+        "SELECT receipt_status::TEXT FROM workflow_command_receipts WHERE command_id = $1",
+    )
+    .bind(cmd_id)
+    .fetch_one(&pool)
+    .await
+    .expect("receipt");
+    assert_eq!(
+        status, "PROCESSING",
+        "original receipt must remain PROCESSING"
+    );
+}
