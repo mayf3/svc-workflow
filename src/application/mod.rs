@@ -5,3 +5,4 @@
 //! external frameworks.
 
 pub mod definition;
+pub mod workflow_instance;
