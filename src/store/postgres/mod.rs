@@ -1,5 +1,6 @@
 //! PostgreSQL storage layer.
 
+pub mod definition_repository;
 pub mod migrations;
 pub mod pool;
 

@@ -68,6 +68,14 @@ pub async fn seed_principal_and_domain(pool: &PgPool) -> (uuid::Uuid, uuid::Uuid
     (principal_id, domain_id)
 }
 
+/// Seed a principal, domain, and domain owner binding in one call.
+/// Returns (principal_id, domain_id).
+pub async fn seed_principal_domain_with_owner(pool: &PgPool) -> (uuid::Uuid, uuid::Uuid) {
+    let (principal_id, domain_id) = seed_principal_and_domain(pool).await;
+    seed_domain_owner(pool, domain_id, principal_id).await;
+    (principal_id, domain_id)
+}
+
 /// Seed a second principal (for multiple-principal tests).
 pub async fn seed_second_principal(pool: &PgPool) -> uuid::Uuid {
     let principal_id = uuid::Uuid::new_v4();
