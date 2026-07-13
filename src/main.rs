@@ -1,16 +1,11 @@
-//! svc-workflow
+//! svc-workflow — Serial governed workflow kernel (Rust + PostgreSQL).
 //!
-//! Serial governed workflow kernel (Rust + PostgreSQL).
+//! 当前状态：`IMPLEMENTATION_IN_PROGRESS` — PR 2 完成 Definition 与不可变版本发布服务。
 //!
-//! 当前状态：`IMPLEMENTATION_IN_PROGRESS` — PR 1 完成数据库骨架与不可变事实表。
-//!
-//! 本程序目前只提供 PostgreSQL 持久化基础类型、Schema 迁移入口和数据库约束测试。
-//! 不启动 HTTP 服务，不实现 Command Service、Transition 引擎或 Legacy 导入。
+//! 本程序目前只提供 PostgreSQL 持久化基础类型、Schema 迁移入口、数据库约束测试
+//! 以及 Workflow Definition / Version 管理服务。
 
-mod domain;
-mod store;
-
-use store::postgres::migrations;
+use svc_workflow::store::postgres::migrations;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,13 +17,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    tracing::info!("svc-workflow: storage foundation");
+    tracing::info!("svc-workflow: definition version service");
 
-    let pool = store::postgres::pool::create_pool().await;
+    let pool = svc_workflow::store::postgres::pool::create_pool().await;
     migrations::run(&pool).await;
 
     tracing::info!("migrations applied successfully");
-    println!("svc-workflow: PostgreSQL storage foundation ready");
+    println!("svc-workflow: Definition & Version service ready");
 
     Ok(())
 }

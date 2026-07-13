@@ -47,6 +47,19 @@ macro_rules! make_enum {
             }
         }
 
+        impl serde::Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.collect_str(self)
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let s = String::deserialize(deserializer)?;
+                s.parse().map_err(serde::de::Error::custom)
+            }
+        }
+
         impl sqlx::Type<sqlx::Postgres> for $name {
             fn type_info() -> sqlx::postgres::PgTypeInfo {
                 <&str as sqlx::Type<sqlx::Postgres>>::type_info()

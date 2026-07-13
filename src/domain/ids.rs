@@ -13,7 +13,8 @@ use uuid::Uuid;
 
 macro_rules! make_id {
     ($name:ident, $display:literal) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+        #[serde(transparent)]
         pub struct $name(pub Uuid);
 
         impl $name {
