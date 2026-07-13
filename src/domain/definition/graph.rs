@@ -4,7 +4,7 @@
 //! Rules are specified in the architecture document section 14.
 #![allow(clippy::needless_borrow)]
 use super::error::GraphValidationError;
-use super::graph_helpers::{compute_reachable_nodes, compute_weakly_reachable};
+use super::graph_helpers::compute_weakly_reachable;
 use super::model::{
     AssigneeRef, NodeDefinition, TransitionDefinition, ValidationResult, WorkflowGraph,
 };
@@ -300,29 +300,18 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
         }
     }
     // 7. All nodes must be reachable from DRAFT (via any transition, not just primary)
-    {
-        let _reachable =
-            compute_reachable_nodes(&graph.nodes, &graph.transitions, nodes_by_id.clone());
-        // Actually, the rule says "all nodes from Draft reachable" - meaning from the draft node,
-        // there should be a path to every node. But this would be too strict for RETURN transitions
-        // that go to lower order_index nodes. Let's check reachability via forward transitions.
-        // Actually, the architecture says "所有节点从 Draft 可达" - this means via the graph structure
-        // (both forward and backward transitions), all nodes should be reachable from draft.
-        // But this is ambiguous. Let's check that there are no disconnected subgraphs.
-        // Check weak connectivity: every node should be in the same weakly connected component as draft
-        if let Some(draft) = draft_nodes.first() {
-            let weakly_reachable =
-                compute_weakly_reachable(&graph.nodes, &graph.transitions, draft.node_id);
-            for node in &graph.nodes {
-                if !weakly_reachable.contains(&node.node_id) {
-                    errors.push(GraphValidationError::new(
-                        "NODE_NOT_REACHABLE",
-                        format!(
-                            "node '{}' is not reachable from draft node via any path",
-                            node.node_key
-                        ),
-                    ));
-                }
+    if let Some(draft) = draft_nodes.first() {
+        let weakly_reachable =
+            compute_weakly_reachable(&graph.nodes, &graph.transitions, draft.node_id);
+        for node in &graph.nodes {
+            if !weakly_reachable.contains(&node.node_id) {
+                errors.push(GraphValidationError::new(
+                    "NODE_NOT_REACHABLE",
+                    format!(
+                        "node '{}' is not reachable from draft node via any path",
+                        node.node_key
+                    ),
+                ));
             }
         }
     }
