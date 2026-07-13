@@ -4,6 +4,7 @@ pub mod definition_repository;
 pub mod migrations;
 pub mod pool;
 pub mod repository_rows;
+pub mod workflow_instance_repository;
 
 /// Default database name used in development / CI.
 #[allow(dead_code)]

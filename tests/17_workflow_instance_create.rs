@@ -1,0 +1,165 @@
+//! Integration tests for CreateWorkflowInstance.
+//!
+//! Covers 34 scenarios across: normal creation, definition gates,
+//! authorization, context validation, idempotency, concurrency, and atomicity.
+
+#![allow(clippy::needless_borrow)]
+
+#[path = "common/mod.rs"]
+mod common;
+
+use common::*;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use svc_workflow::application::workflow_instance::create::create_workflow_instance;
+use svc_workflow::application::workflow_instance::create::CreateWorkflowInstanceResult;
+use svc_workflow::domain::ids::*;
+use svc_workflow::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
+use svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+
+// ---------------------------------------------------------------------------
+// Seed helpers
+// ---------------------------------------------------------------------------
+
+/// Seed a published definition with a DRAFT node (WORKFLOW_CREATOR assignee).
+pub(crate) async fn seed_published_definition_wf_creator(
+    pool: &PgPool,
+    domain_id: Uuid,
+) -> (Uuid, Uuid) {
+    seed_published_def_inner(pool, domain_id, None, "WORKFLOW_CREATOR").await
+}
+
+/// Seed a published definition with DOMAIN_OWNER assignee on the DRAFT node.
+pub(crate) async fn seed_published_definition_domain_owner(
+    pool: &PgPool,
+    domain_id: Uuid,
+) -> (Uuid, Uuid) {
+    seed_published_def_inner(pool, domain_id, None, "DOMAIN_OWNER").await
+}
+
+/// Seed a published definition with FIXED_PRINCIPAL assignee.
+pub(crate) async fn seed_published_definition_fixed_principal(
+    pool: &PgPool,
+    domain_id: Uuid,
+    fixed_principal_id: Uuid,
+) -> (Uuid, Uuid) {
+    seed_published_def_inner(pool, domain_id, Some(fixed_principal_id), "FIXED_PRINCIPAL").await
+}
+
+/// Internal: seed a published definition, setting DRAFT node assignee BEFORE publishing.
+async fn seed_published_def_inner(
+    pool: &PgPool,
+    domain_id: Uuid,
+    fixed_principal_id: Option<Uuid>,
+    assignee_type: &str,
+) -> (Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("test-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'Test Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
+        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', $3::assignee_ref_type, $4)")
+        .bind(draft_id).bind(ver_id).bind(assignee_type).bind(fixed_principal_id)
+        .execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    let trans_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance', 'Advance', $3, $4, 'ADVANCE')")
+        .bind(trans_id).bind(ver_id).bind(draft_id).bind(term_id)
+        .execute(pool).await.expect("insert transition");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(trans_id).bind(draft_id).execute(pool).await.expect("set primary");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id)
+}
+
+/// Create a basic CreateWorkflowInstanceCommand.
+pub(crate) fn make_command(
+    principal_id: Uuid,
+    domain_id: Uuid,
+    definition_version_id: Uuid,
+) -> CreateWorkflowInstanceCommand {
+    CreateWorkflowInstanceCommand {
+        principal_id: PrincipalId::from_uuid(principal_id),
+        idempotency_key: Uuid::new_v4().to_string(),
+        command_schema_version: "v1".to_string(),
+        domain_id: DomainId::from_uuid(domain_id),
+        definition_version_id: DefinitionVersionId::from_uuid(definition_version_id),
+        external_reference: None,
+        external_url: None,
+        metadata: serde_json::json!({"source": "test"}),
+        context_payload: serde_json::json!({"hello": "world"}),
+    }
+}
+
+/// Verify a successful creation result structure.
+pub(crate) async fn verify_creation(
+    pool: &PgPool,
+    result: &CreateWorkflowInstanceResult,
+    _principal_id: Uuid,
+    _domain_id: Uuid,
+    _definition_version_id: Uuid,
+) {
+    assert_eq!(result.workflow_state_version, 1);
+    assert_eq!(result.event_sequence, 1);
+
+    let row: (i32, Uuid, Uuid) = sqlx::query_as(
+        "SELECT workflow_state_version, current_context_revision_id, current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",
+    ).bind(result.workflow_instance_id).fetch_one(pool).await.expect("instance");
+    assert_eq!(row.0, 1);
+    assert_eq!(row.1, result.current_context_revision_id);
+    assert_eq!(row.2, result.current_node_visit_id);
+
+    let ctx: (i32,) = sqlx::query_as(
+        "SELECT revision_number FROM workflow_context_revisions WHERE context_revision_id = $1 AND workflow_instance_id = $2",
+    ).bind(result.current_context_revision_id).bind(result.workflow_instance_id)
+        .fetch_one(pool).await.expect("context");
+    assert_eq!(ctx.0, 1);
+
+    let visit: (i32,) = sqlx::query_as(
+        "SELECT visit_number FROM workflow_node_visits WHERE node_visit_id = $1 AND workflow_instance_id = $2",
+    ).bind(result.current_node_visit_id).bind(result.workflow_instance_id)
+        .fetch_one(pool).await.expect("visit");
+    assert_eq!(visit.0, 1);
+
+    let ev: (String, i32, i32) = sqlx::query_as(
+        "SELECT event_type, event_sequence, new_workflow_state_version FROM workflow_events WHERE workflow_instance_id = $1 ORDER BY event_sequence",
+    ).bind(result.workflow_instance_id).fetch_one(pool).await.expect("event");
+    assert_eq!(ev.0, "INSTANCE_CREATED");
+    assert_eq!(ev.1, 1);
+    assert_eq!(ev.2, 1);
+
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1")
+            .bind(result.workflow_instance_id)
+            .fetch_one(pool)
+            .await
+            .expect("count");
+    assert_eq!(count.0, 1);
+}
+
+// Sub-modules
+#[path = "17_workflow_instance_create/atomicity.rs"]
+mod atomicity;
+#[path = "17_workflow_instance_create/authorization.rs"]
+mod authorization;
+#[path = "17_workflow_instance_create/context_validation.rs"]
+mod context_validation;
+#[path = "17_workflow_instance_create/definition_gates.rs"]
+mod definition_gates;
+#[path = "17_workflow_instance_create/idempotency.rs"]
+mod idempotency;
+#[path = "17_workflow_instance_create/normal_create.rs"]
+mod normal_create;

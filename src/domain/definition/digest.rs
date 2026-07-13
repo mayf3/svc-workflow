@@ -157,3 +157,22 @@ pub fn compute_digest(
 
     Ok(digest)
 }
+
+/// Compute the JCS + SHA-256 digest of an arbitrary JSON value.
+///
+/// Used for computing digests of context payloads, event data, response bodies, etc.
+/// Returns a 64-character lowercase hex SHA-256 string.
+pub fn compute_json_digest(value: &serde_json::Value) -> Result<String, String> {
+    jcs_canonicalize::sha256_jcs_hex(value)
+        .map_err(|e| format!("JCS canonicalization failed: {}", e))
+}
+
+/// Compute SHA-256 hex digest of raw bytes.
+///
+/// Used for deterministic digest of simple byte content.
+pub fn compute_sha256(data: &[u8]) -> String {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}

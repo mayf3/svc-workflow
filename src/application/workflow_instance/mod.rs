@@ -1,0 +1,7 @@
+//! Workflow Instance application service.
+//!
+//! Provides the CreateWorkflowInstance use case with full idempotency,
+//! authorization, and atomic consistency guarantees.
+
+pub mod create;
+pub mod idempotency;
