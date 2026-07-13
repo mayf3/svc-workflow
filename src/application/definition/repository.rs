@@ -3,6 +3,8 @@
 //! The service depends on this trait; concrete implementations
 //! (currently PostgreSQL) are injected at construction time.
 
+use sqlx::Postgres;
+use sqlx::Transaction;
 use uuid::Uuid;
 
 use crate::domain::definition::error::DefinitionError;
@@ -143,18 +145,20 @@ pub trait DefinitionRepository {
         version_id: Uuid,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
-    /// Update version status and digest.
+    /// Update version status and digest, recording the actor.
     async fn publish_version(
         &self,
         version_id: Uuid,
         digest: &str,
+        actor_principal_id: Uuid,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
-    /// Transition version status.
+    /// Transition version status, recording the actor.
     async fn update_version_status(
         &self,
         version_id: Uuid,
         new_status: DefinitionVersionStatus,
+        actor_principal_id: Uuid,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
     /// Get nodes and transitions that reference specific principals (for validity checks).
@@ -169,4 +173,47 @@ pub trait DefinitionRepository {
 
     /// Check if a principal exists and is enabled (by ID).
     async fn check_principal_exists(&self, principal_id: Uuid) -> Result<bool, DefinitionError>;
+
+    // -----------------------------------------------------------------------
+    // B-1: Atomic lifecycle operations (single transaction with row lock)
+    // -----------------------------------------------------------------------
+
+    /// Open a new database transaction.
+    async fn begin_tx(&self) -> Result<Transaction<'_, Postgres>, DefinitionError>;
+
+    /// Execute a complete publish inside a single transaction.
+    ///
+    /// Within the transaction:
+    /// 1. Lock the version row (FOR UPDATE)
+    /// 2. Verify DRAFT status
+    /// 3. Verify domain enabled + domain owner
+    /// 4. Re-read the complete graph inside the tx
+    /// 5. Re-compute digest and verify it matches `precomputed_digest`
+    /// 6. Update status to PUBLISHED, set digest + actor
+    /// 7. Commit
+    ///
+    /// If a concurrent ReplaceDraftGraph changed the graph between when
+    /// the service computed `precomputed_digest` and when this method
+    /// re-reads the graph inside the transaction, the digest mismatch
+    /// causes a `ConcurrentModification` error (caller retries).
+    async fn atomic_publish(
+        &self,
+        version_id: Uuid,
+        actor_principal_id: Uuid,
+        precomputed_digest: &str,
+    ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
+
+    /// Execute a complete deprecation inside a single transaction.
+    async fn atomic_deprecate(
+        &self,
+        version_id: Uuid,
+        actor_principal_id: Uuid,
+    ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
+
+    /// Execute a complete revocation inside a single transaction.
+    async fn atomic_revoke(
+        &self,
+        version_id: Uuid,
+        actor_principal_id: Uuid,
+    ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 }

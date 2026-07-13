@@ -35,6 +35,15 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             return Err(DefinitionError::VersionNotDraft);
         }
 
+        // H-5 + M-4: Domain authorization and enabled check
+        let domain_id = self
+            .repo
+            .get_definition_domain(version.workflow_definition_id.into_uuid())
+            .await?;
+        self.ensure_domain_enabled(domain_id).await?;
+        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
+            .await?;
+
         let (nodes, transitions) = self
             .repo
             .get_complete_graph(cmd.definition_version_id)
@@ -61,6 +70,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     // -----------------------------------------------------------------------
 
     /// Publish a DRAFT version -> PUBLISHED.
+    ///
+    /// B-1: The actual DB write happens inside `atomic_publish` which
+    /// holds the version row lock across digest consistency check and
+    /// status update in a single transaction, serializing against any
+    /// concurrent ReplaceDraftGraph.
     pub async fn publish_version(
         &self,
         cmd: PublishVersion,
@@ -68,23 +82,20 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
 
-        // Lock version and verify DRAFT
+        // Lock version (autocommit — gives us a consistent snapshot for validation)
+        // B-1: atomic_publish will re-read inside a transaction and verify consistency
         let version = self.repo.lock_version(cmd.definition_version_id).await?;
         if version.version_status != DefinitionVersionStatus::DRAFT {
             return Err(DefinitionError::VersionNotDraft);
         }
 
-        // Get definition for domain ownership check and definition_key
+        // Get definition for definition_key
         let def = self
             .repo
             .get_definition(version.workflow_definition_id.into_uuid())
             .await?;
 
-        let domain_id = def.domain_id.into_uuid();
-        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
-            .await?;
-
-        // Get complete graph
+        // Get complete graph for validation
         let (nodes, transitions) = self
             .repo
             .get_complete_graph(cmd.definition_version_id)
@@ -135,10 +146,14 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             &transition_key_map,
         )?;
 
-        // Publish
+        // B-1: Atomic publish inside a single transaction.
+        // Locks the version row, re-reads graph, re-computes digest,
+        // and writes status atomically.  If a concurrent ReplaceDraftGraph
+        // changed the graph since we read it, the digest inside the tx
+        // won't match `digest` and we get ConcurrentModification (retry).
         let published = self
             .repo
-            .publish_version(cmd.definition_version_id, &digest)
+            .atomic_publish(cmd.definition_version_id, cmd.actor_principal_id, &digest)
             .await?;
 
         Ok(published)
@@ -149,6 +164,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     // -----------------------------------------------------------------------
 
     /// Deprecate a PUBLISHED version -> DEPRECATED.
+    ///
+    /// B-1: Uses atomic_deprecate which locks the version row across
+    /// all checks and writes in a single transaction.
     pub async fn deprecate_version(
         &self,
         cmd: DeprecateVersion,
@@ -156,24 +174,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
 
-        let version = self.repo.lock_version(cmd.definition_version_id).await?;
-        if version.version_status != DefinitionVersionStatus::PUBLISHED {
-            return Err(DefinitionError::InvalidLifecycleTransition);
-        }
-
-        let domain_id = self
-            .repo
-            .get_definition_domain(version.workflow_definition_id.into_uuid())
-            .await?;
-        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
-            .await?;
-
         let updated = self
             .repo
-            .update_version_status(
-                cmd.definition_version_id,
-                DefinitionVersionStatus::DEPRECATED,
-            )
+            .atomic_deprecate(cmd.definition_version_id, cmd.actor_principal_id)
             .await?;
 
         Ok(updated)
@@ -184,6 +187,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     // -----------------------------------------------------------------------
 
     /// Revoke a PUBLISHED or DEPRECATED version -> REVOKED.
+    ///
+    /// B-1: Uses atomic_revoke which locks the version row across
+    /// all checks and writes in a single transaction.
     pub async fn revoke_version(
         &self,
         cmd: RevokeVersion,
@@ -191,25 +197,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
 
-        let version = self.repo.lock_version(cmd.definition_version_id).await?;
-
-        match version.version_status {
-            DefinitionVersionStatus::PUBLISHED | DefinitionVersionStatus::DEPRECATED => {}
-            _ => {
-                return Err(DefinitionError::InvalidLifecycleTransition);
-            }
-        }
-
-        let domain_id = self
-            .repo
-            .get_definition_domain(version.workflow_definition_id.into_uuid())
-            .await?;
-        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
-            .await?;
-
         let updated = self
             .repo
-            .update_version_status(cmd.definition_version_id, DefinitionVersionStatus::REVOKED)
+            .atomic_revoke(cmd.definition_version_id, cmd.actor_principal_id)
             .await?;
 
         Ok(updated)
@@ -304,6 +294,10 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .get_definition(query.workflow_definition_id)
             .await?;
 
+        // H-5: Domain authorization — caller must be domain owner or member
+        self.ensure_domain_owner(query.actor_principal_id, definition.domain_id.into_uuid())
+            .await?;
+
         Ok(DefinitionQueryResult {
             definition: DefinitionData {
                 definition,
@@ -327,6 +321,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .repo
             .get_definition(version.workflow_definition_id.into_uuid())
             .await?;
+
+        // H-5: Domain authorization
+        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+            .await?;
+
         let (nodes, transitions) = self
             .repo
             .get_complete_graph(query.definition_version_id)
@@ -355,13 +354,18 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_principal_enabled(query.actor_principal_id)
             .await?;
 
-        let versions = self
-            .repo
-            .list_versions(query.workflow_definition_id)
-            .await?;
         let def = self
             .repo
             .get_definition(query.workflow_definition_id)
+            .await?;
+
+        // H-5: Domain authorization — check before listing versions
+        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+            .await?;
+
+        let versions = self
+            .repo
+            .list_versions(query.workflow_definition_id)
             .await?;
 
         let results = versions
@@ -386,6 +390,15 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         let version = self.repo.get_version(query.definition_version_id).await?;
+        let def = self
+            .repo
+            .get_definition(version.workflow_definition_id.into_uuid())
+            .await?;
+
+        // H-5: Domain authorization
+        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+            .await?;
+
         let (nodes, transitions) = self
             .repo
             .get_complete_graph(query.definition_version_id)
@@ -403,29 +416,65 @@ impl<R: DefinitionRepository> DefinitionService<R> {
 
 /// Validate that a JSON value is a valid JSON Schema.
 ///
-/// Checks that the schema can be successfully compiled by the jsonschema
-/// validator. This catches structural issues like invalid $ref, bad types,
-/// etc.
+/// Performs two checks:
+/// 1. Recursively inspects all `$ref`, `$dynamicRef`, and `$recursiveRef` values
+///    to reject external references (http://, https://, file://, relative paths).
+///    Only local fragment references starting with `#` are allowed.
+/// 2. Compiles the schema with `jsonschema::validator_for`, propagating any
+///    compilation error (invalid keywords, unresolved local refs, etc.).
+///
+/// Compilation failure is returned as a typed error with the schema location.
 fn validate_json_schema(schema: &serde_json::Value) -> Result<(), String> {
-    // The jsonschema crate 0.47 uses a different API
-    // Let's use a basic structural check
     if !schema.is_object() {
         return Err("schema must be a JSON object".to_string());
     }
 
-    // Basic structural validation
-    let obj = schema.as_object().unwrap();
-    if let Some(schema_field) = obj.get("$schema") {
-        if !schema_field.is_string() {
-            return Err("$schema must be a string".to_string());
-        }
-    }
+    // Recursively check for external references
+    check_external_refs(schema)?;
 
-    // Try to compile with jsonschema
-    let compiled = jsonschema::validator_for(schema);
-    // If it compiles without panic, it's syntactically valid
-    let _ = compiled;
+    // Actually compile the schema to verify it's structurally valid
+    jsonschema::validator_for(schema).map_err(|e| format!("schema failed to compile: {}", e))?;
+
     Ok(())
+}
+
+/// Recursively check a schema for external `$ref`, `$dynamicRef`, `$recursiveRef` values.
+///
+/// Only local fragment references starting with `#/` or bare `#` are allowed.
+/// Rejects:
+/// - `http://` / `https://`
+/// - `file://`
+/// - Relative paths (not starting with `#`)
+fn check_external_refs(value: &serde_json::Value) -> Result<(), String> {
+    match value {
+        serde_json::Value::Object(map) => {
+            // Check ref-like keys
+            for ref_key in ["$ref", "$dynamicRef", "$recursiveRef"] {
+                if let Some(ref_val) = map.get(ref_key) {
+                    if let Some(ref_str) = ref_val.as_str() {
+                        if !ref_str.starts_with('#') {
+                            return Err(format!(
+                                "external {} '{}' is not allowed; only local fragment refs (#/...) are permitted",
+                                ref_key, ref_str
+                            ));
+                        }
+                    }
+                }
+            }
+            // Recurse into all properties
+            for val in map.values() {
+                check_external_refs(val)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(arr) => {
+            for val in arr {
+                check_external_refs(val)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -457,5 +506,107 @@ mod tests {
             "type": "object"
         });
         assert!(validate_json_schema(&schema).is_ok());
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_https_ref() {
+        let schema = serde_json::json!({
+            "$ref": "https://example.com/schema.json"
+        });
+        let err = validate_json_schema(&schema).unwrap_err();
+        assert!(err.contains("https://"), "got: {}", err);
+        assert!(err.contains("external"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_file_ref() {
+        let schema = serde_json::json!({
+            "$ref": "file:///etc/passwd"
+        });
+        let err = validate_json_schema(&schema).unwrap_err();
+        assert!(err.contains("file://"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_relative_ref() {
+        let schema = serde_json::json!({
+            "$ref": "../other/schema.json"
+        });
+        let err = validate_json_schema(&schema).unwrap_err();
+        assert!(err.contains("../other"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_json_schema_allows_local_fragment() {
+        let schema = serde_json::json!({
+            "$defs": {
+                "User": {"type": "object"}
+            },
+            "$ref": "#/$defs/User"
+        });
+        assert!(
+            validate_json_schema(&schema).is_ok(),
+            "local fragment should pass"
+        );
+    }
+
+    #[test]
+    fn validate_json_schema_allows_bare_hash() {
+        let schema = serde_json::json!({
+            "$ref": "#"
+        });
+        assert!(validate_json_schema(&schema).is_ok(), "bare # should pass");
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_nested_external_ref() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "user": {"$ref": "https://example.com/user.json"}
+            }
+        });
+        let err = validate_json_schema(&schema).unwrap_err();
+        assert!(err.contains("https://"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_dynamic_ref_external() {
+        let schema = serde_json::json!({
+            "$dynamicRef": "https://example.com/dynamic"
+        });
+        let err = validate_json_schema(&schema).unwrap_err();
+        assert!(err.contains("https://"), "got: {}", err);
+    }
+
+    #[test]
+    fn validate_json_schema_rejects_invalid_keyword_structure() {
+        // type: "object" but properties contains a non-object entry — some schemas
+        // with genuinely invalid keyword values will fail compilation
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": "not-an-object"
+        });
+        let err = validate_json_schema(&schema);
+        assert!(err.is_err(), "invalid keyword structure should fail");
+    }
+
+    #[test]
+    fn check_external_refs_empty_object() {
+        let val = serde_json::json!({});
+        assert!(check_external_refs(&val).is_ok());
+    }
+
+    #[test]
+    fn check_external_refs_nested_local_ref() {
+        let val = serde_json::json!({
+            "properties": {
+                "user": {"$ref": "#/$defs/User"}
+            },
+            "$defs": {
+                "User": {"type": "object"}
+            }
+        });
+        assert!(check_external_refs(&val).is_ok());
     }
 }

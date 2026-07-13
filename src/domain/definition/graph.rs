@@ -4,7 +4,7 @@
 //! Rules are specified in the architecture document section 14.
 #![allow(clippy::needless_borrow)]
 use super::error::GraphValidationError;
-use super::graph_helpers::compute_weakly_reachable;
+use super::graph_helpers::compute_directed_reachable;
 use super::model::{
     AssigneeRef, NodeDefinition, TransitionDefinition, ValidationResult, WorkflowGraph,
 };
@@ -90,13 +90,102 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
         }
     }
     // 6. node_key unique within version (checked via hashmap construction)
-    // 7. Terminal nodes have no assignee (assignee_ref for terminals is unset)
-    //    (Terminal nodes can have WORKFLOW_CREATOR as per seed but logically no one assigned)
-    // 8. Non-terminal nodes must have a valid assignee reference
+    // ---
+    // H-2: Assignee rules — strict contract enforcement
+    // ---
+    // Contract §3.1.7: Terminal Node has no assignee
+    // Contract §3.1.8: Non-terminal Node must have a legal assignee reference
     for node in &graph.nodes {
-        if node.node_type != NodeType::TERMINAL && node.node_type != NodeType::DRAFT {
-            // Non-terminal, non-draft nodes must have valid assignee ref
-            // Which means WORKFLOW_CREATOR, DOMAIN_OWNER, or FIXED_PRINCIPAL
+        match node.node_type {
+            NodeType::TERMINAL => {
+                // Terminal nodes must have no assignee
+                if node.assignee_ref.fixed_principal_id.is_some() {
+                    errors.push(GraphValidationError::new(
+                        "TERMINAL_HAS_ASSIGNEE",
+                        format!(
+                            "terminal node '{}' must not have a fixed_principal_id",
+                            node.node_key
+                        ),
+                    ));
+                }
+                // The assignee_ref_type should be empty/null-like for terminals.
+                // Since the enum always has a value, we check that the ref_type
+                // doesn't carry meaningful assignment semantics.
+                // Terminal nodes are allowed WORKFLOW_CREATOR as a no-op default
+                // but must not have FIXED_PRINCIPAL (already checked above).
+                if node.assignee_ref.ref_type == AssigneeRefType::FixedPrincipal {
+                    errors.push(GraphValidationError::new(
+                        "TERMINAL_HAS_ASSIGNEE",
+                        format!(
+                            "terminal node '{}' must not have assignee type FIXED_PRINCIPAL",
+                            node.node_key
+                        ),
+                    ));
+                }
+            }
+            NodeType::DRAFT => {
+                // DRAFT node must be WORKFLOW_CREATOR (contract §8.1)
+                if node.assignee_ref.ref_type != AssigneeRefType::WorkflowCreator {
+                    errors.push(GraphValidationError::new(
+                        "DRAFT_NOT_WORKFLOW_CREATOR",
+                        format!(
+                            "DRAFT node '{}' has assignee {:?}, expected WORKFLOW_CREATOR",
+                            node.node_key, node.assignee_ref.ref_type
+                        ),
+                    ));
+                }
+                // WORKFLOW_CREATOR must not have a fixed_principal_id
+                if node.assignee_ref.fixed_principal_id.is_some() {
+                    errors.push(GraphValidationError::new(
+                        "UNEXPECTED_FIXED_PRINCIPAL",
+                        format!(
+                            "DRAFT node '{}' has fixed_principal_id but assignee type is {:?}",
+                            node.node_key, node.assignee_ref.ref_type
+                        ),
+                    ));
+                }
+            }
+            NodeType::NORMAL => {
+                // Non-terminal nodes must have a legal assignee reference
+                match node.assignee_ref.ref_type {
+                    AssigneeRefType::WorkflowCreator => {
+                        // Must NOT have a fixed_principal_id
+                        if node.assignee_ref.fixed_principal_id.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_FIXED_PRINCIPAL",
+                                format!(
+                                    "NORMAL node '{}' is WORKFLOW_CREATOR but has fixed_principal_id",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                    }
+                    AssigneeRefType::DomainOwner => {
+                        // Must NOT have a fixed_principal_id
+                        if node.assignee_ref.fixed_principal_id.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_FIXED_PRINCIPAL",
+                                format!(
+                                    "NORMAL node '{}' is DOMAIN_OWNER but has fixed_principal_id",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                    }
+                    AssigneeRefType::FixedPrincipal => {
+                        // MUST have a fixed_principal_id
+                        if node.assignee_ref.fixed_principal_id.is_none() {
+                            errors.push(GraphValidationError::new(
+                                "FIXED_PRINCIPAL_MISSING_ID",
+                                format!(
+                                    "NORMAL node '{}' is FIXED_PRINCIPAL but no principal_id provided",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
     // ---
@@ -162,6 +251,16 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
                         format!(
                             "primary transition '{}' for node '{}' does not originate from this node",
                             trans.transition_key, node.node_key
+                        ),
+                    ));
+                }
+                // H-3: Primary transition effect must be ADVANCE
+                if trans.transition_effect != crate::domain::enums::TransitionEffect::Advance {
+                    errors.push(GraphValidationError::new(
+                        "PRIMARY_NOT_ADVANCE",
+                        format!(
+                            "primary transition '{}' for node '{}' has effect {:?}, expected ADVANCE",
+                            trans.transition_key, node.node_key, trans.transition_effect
                         ),
                     ));
                 }
@@ -301,10 +400,10 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
     }
     // 7. All nodes must be reachable from DRAFT (via any transition, not just primary)
     if let Some(draft) = draft_nodes.first() {
-        let weakly_reachable =
-            compute_weakly_reachable(&graph.nodes, &graph.transitions, draft.node_id);
+        let directed_reachable =
+            compute_directed_reachable(&graph.nodes, &graph.transitions, draft.node_id);
         for node in &graph.nodes {
-            if !weakly_reachable.contains(&node.node_id) {
+            if !directed_reachable.contains(&node.node_id) {
                 errors.push(GraphValidationError::new(
                     "NODE_NOT_REACHABLE",
                     format!(
@@ -418,63 +517,6 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
     // ---
     // 4. Each transition's submission_schema is valid (checked separately in service)
     // 5. Primary transition ID must actually exist (checked above)
-    // ---
-    // 14.6 Assignee rules
-    // ---
-    for node in &graph.nodes {
-        match node.node_type {
-            NodeType::DRAFT => {
-                // Draft node must be WORKFLOW_CREATOR
-                if node.assignee_ref.ref_type != AssigneeRefType::WorkflowCreator {
-                    errors.push(GraphValidationError::new(
-                        "DRAFT_NOT_WORKFLOW_CREATOR",
-                        format!(
-                            "DRAFT node '{}' has assignee {:?}, expected WORKFLOW_CREATOR",
-                            node.node_key, node.assignee_ref.ref_type
-                        ),
-                    ));
-                }
-                // Also check no fixed_principal_id for non-FIXED_PRINCIPAL types
-                if node.assignee_ref.ref_type != AssigneeRefType::FixedPrincipal
-                    && node.assignee_ref.fixed_principal_id.is_some()
-                {
-                    errors.push(GraphValidationError::new(
-                        "UNEXPECTED_FIXED_PRINCIPAL",
-                        format!(
-                            "DRAFT node '{}' has fixed_principal_id but assignee type is {:?}",
-                            node.node_key, node.assignee_ref.ref_type
-                        ),
-                    ));
-                }
-            }
-            NodeType::TERMINAL => {
-                // Terminal node has no assignee
-                // (the assignee_ref can be WORKFLOW_CREATOR as default but no one is assigned)
-            }
-            NodeType::NORMAL => {
-                // Fixed principal checks
-                if node.assignee_ref.ref_type == AssigneeRefType::FixedPrincipal {
-                    if node.assignee_ref.fixed_principal_id.is_none() {
-                        errors.push(GraphValidationError::new(
-                            "FIXED_PRINCIPAL_MISSING_ID",
-                            format!(
-                                "Normal node '{}' is FIXED_PRINCIPAL but no principal_id provided",
-                                node.node_key
-                            ),
-                        ));
-                    }
-                } else if node.assignee_ref.fixed_principal_id.is_some() {
-                    errors.push(GraphValidationError::new(
-                        "UNEXPECTED_FIXED_PRINCIPAL",
-                        format!(
-                            "Node '{}' has fixed_principal_id but assignee type is {:?}",
-                            node.node_key, node.assignee_ref.ref_type
-                        ),
-                    ));
-                }
-            }
-        }
-    }
     let valid = errors.is_empty();
     ValidationResult {
         valid,
