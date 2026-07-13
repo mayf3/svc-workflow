@@ -24,7 +24,7 @@ use super::repository::DefinitionRepository;
 /// 3. Delegates to the repository for storage
 /// 4. Returns a result or error
 pub struct DefinitionService<R: DefinitionRepository> {
-    pub(crate) repo: R,
+    pub repo: R,
 }
 
 impl<R: DefinitionRepository> DefinitionService<R> {
@@ -49,23 +49,18 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_domain_owner(cmd.actor_principal_id, cmd.owner_domain_id)
             .await?;
 
-        // Validate key uniqueness
-        if self
-            .repo
-            .definition_key_exists(cmd.owner_domain_id, &cmd.definition_key)
-            .await?
-        {
-            return Err(DefinitionError::DefinitionKeyConflict);
-        }
-
-        // Validate fields
+        // M-6: No pre-check — we rely on the DB unique constraint to detect
+        // duplicate keys atomically.  The repository maps 23505 to
+        // DefinitionKeyConflict.
+        //
+        // Validate field length
         if cmd.definition_key.is_empty() || cmd.definition_key.len() > 128 {
-            return Err(DefinitionError::StorageError(
+            return Err(DefinitionError::SchemaValidationFailed(
                 "definition_key must be 1-128 characters".to_string(),
             ));
         }
         if cmd.display_name.is_empty() || cmd.display_name.len() > 256 {
-            return Err(DefinitionError::StorageError(
+            return Err(DefinitionError::SchemaValidationFailed(
                 "display_name must be 1-256 characters".to_string(),
             ));
         }
@@ -105,6 +100,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .repo
             .get_definition_domain(cmd.workflow_definition_id)
             .await?;
+
+        // M-4: Domain must be enabled
+        self.ensure_domain_enabled(domain_id).await?;
 
         // Actor must have manage permission for the domain
         self.ensure_domain_owner(cmd.actor_principal_id, domain_id)

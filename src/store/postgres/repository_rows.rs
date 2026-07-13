@@ -59,6 +59,9 @@ pub(super) struct WorkflowDefinitionVersionRow {
     published_at: Option<chrono::DateTime<chrono::Utc>>,
     deprecated_at: Option<chrono::DateTime<chrono::Utc>>,
     revoked_at: Option<chrono::DateTime<chrono::Utc>>,
+    published_by_principal_id: Option<Uuid>,
+    deprecated_by_principal_id: Option<Uuid>,
+    revoked_by_principal_id: Option<Uuid>,
 }
 
 impl WorkflowDefinitionVersionRow {
@@ -83,9 +86,9 @@ impl WorkflowDefinitionVersionRow {
             published_at: self.published_at,
             deprecated_at: self.deprecated_at,
             revoked_at: self.revoked_at,
-            published_by_principal_id: None,
-            deprecated_by_principal_id: None,
-            revoked_by_principal_id: None,
+            published_by_principal_id: self.published_by_principal_id.map(PrincipalId::from_uuid),
+            deprecated_by_principal_id: self.deprecated_by_principal_id.map(PrincipalId::from_uuid),
+            revoked_by_principal_id: self.revoked_by_principal_id.map(PrincipalId::from_uuid),
         }
     }
 }

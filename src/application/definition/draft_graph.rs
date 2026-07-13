@@ -16,28 +16,37 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     // -----------------------------------------------------------------------
 
     /// Atomically replace the graph of a DRAFT version.
+    ///
+    /// B-1: The repository's replace_draft_graph method handles locking
+    /// and DRAFT verification inside its own transaction, serializing
+    /// with atomic_publish.  We do NOT call lock_version here; the
+    /// repository method does that inside its BEGIN/COMMIT.
     pub async fn replace_draft_graph(&self, cmd: ReplaceDraftGraph) -> Result<(), DefinitionError> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
 
-        // Verify version exists and is DRAFT by locking it
-        let version = self.repo.lock_version(cmd.definition_version_id).await?;
+        // Get definition and version info for domain / version check
+        let version = self.repo.get_version(cmd.definition_version_id).await?;
         if version.version_status != DefinitionVersionStatus::DRAFT {
             return Err(DefinitionError::VersionNotDraft);
         }
 
-        // Get the definition for domain ownership
+        // Domain checks (these run before the tx; in practice the
+        // domain owner is a rare-change entity, so the race window
+        // is negligible.  The version lock inside the tx serializes
+        // the critical path with publish.)
         let domain_id = self
             .repo
             .get_definition_domain(version.workflow_definition_id.into_uuid())
             .await?;
+        self.ensure_domain_enabled(domain_id).await?;
         self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
             .await?;
 
         // Resolve node keys -> IDs
         let mut node_id_by_key: HashMap<String, NodeId> = HashMap::new();
         let mut node_defs: Vec<NodeDefinition> = Vec::new();
-        let version_id = version.id.into_uuid();
+        let version_id = cmd.definition_version_id;
 
         for raw_node in &cmd.nodes {
             let node_id = NodeId::new();
