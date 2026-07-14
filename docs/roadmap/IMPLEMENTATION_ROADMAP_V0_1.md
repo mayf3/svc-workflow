@@ -3,7 +3,7 @@
 ```text
 Status: ACTIVE_EXECUTION_PLAN
 Architecture Baseline: v0.3.1
-Current Main Baseline: f5fb0b48d548537809cc107e55752131cdea917a
+Current Main Baseline: 11758f9f4fc99e521541a08abdd96cd4ac5b330c
 ```
 
 本文只记录实施顺序和交付状态。领域语义以冻结架构为准，具体运行时行为以
@@ -18,8 +18,8 @@ Current Main Baseline: f5fb0b48d548537809cc107e55752131cdea917a
 | PR 3A | `CreateWorkflowInstance` | MERGED |
 | PR 3B | `ReviseWorkflowContext` | MERGED |
 | PR 3C | `ExecuteWorkflowTransition` | MERGED |
-| PR 3D | `ReviseContextAndTransition` | IN_PROGRESS |
-| PR 4 | Read Model / Query Service | PLANNED |
+| PR 3D | `ReviseContextAndTransition` | MERGED (`11758f9`) |
+| PR 4 | Read Model / Query Service | IN_PROGRESS |
 | PR 5 | Admin Emergency Commands 与 projection repair | PLANNED |
 | PR 6 | Legacy ADC Migration / Shadow Relay | BLOCKED_BY_LEGACY_GAPS |
 
