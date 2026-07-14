@@ -235,15 +235,35 @@ async fn corrupt_historical_facts_neither_grant_visibility_nor_escape_global_gua
     let service = query_service(&pool);
 
     let visit_instance = create_query_instance(&pool, &seed).await;
+    let corrupt_current_visit = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
          VALUES ($1, $2, $3, 1, $4)",
     )
-    .bind(Uuid::new_v4())
+    .bind(corrupt_current_visit)
     .bind(visit_instance.workflow_instance_id)
     .bind(other.draft)
     .bind(seed.outsider)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+                actor_principal_id: seed.outsider,
+                workflow_instance_id: visit_instance.workflow_instance_id,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible
+    );
+    sqlx::query(
+        "UPDATE workflow_instances SET current_node_visit_id = $1
+         WHERE workflow_instance_id = $2",
+    )
+    .bind(corrupt_current_visit)
+    .bind(visit_instance.workflow_instance_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -302,6 +322,28 @@ async fn corrupt_historical_facts_neither_grant_visibility_nor_escape_global_gua
                 workflow_instance_id: submission_instance.workflow_instance_id,
                 after: None,
                 limit: Some(1),
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+    assert!(matches!(
+        service
+            .list_assigned_to_me(ListAssignedToMe {
+                actor_principal_id: seed.creator,
+                before: None,
+                limit: None,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+    assert!(matches!(
+        service
+            .list_creator_owned_drafts(ListCreatorOwnedDrafts {
+                actor_principal_id: seed.creator,
+                before: None,
+                limit: None,
             })
             .await
             .unwrap_err(),
