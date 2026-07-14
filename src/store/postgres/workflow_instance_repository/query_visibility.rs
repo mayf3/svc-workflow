@@ -202,6 +202,8 @@ async fn classify_visibility(
     }
     if base.current_assignee_principal_id == Some(actor)
         && base.current_node_type.as_deref() != Some("TERMINAL")
+        && base.visit_instance_id == Some(base.workflow_instance_id)
+        && base.node_definition_version_id == Some(base.definition_version_id)
     {
         return Ok(Some(QueryVisibility::CurrentAssigneeFull));
     }
@@ -280,7 +282,7 @@ pub(crate) fn validate_base(base: &QueryBaseRow) -> Result<(), WorkflowQueryErro
     Ok(())
 }
 
-async fn validate_all_facts(
+pub(crate) async fn validate_all_facts(
     tx: &mut Transaction<'_, Postgres>,
     base: &QueryBaseRow,
 ) -> Result<(), WorkflowQueryError> {
@@ -307,7 +309,7 @@ async fn validate_all_facts(
     .map_err(storage)?;
 
     let visits_consistent: bool = sqlx::query_scalar(
-        "SELECT COALESCE(BOOL_AND(n.definition_version_id = $2), TRUE)
+        "SELECT COALESCE(BOOL_AND(COALESCE(n.definition_version_id = $2, FALSE)), TRUE)
          FROM workflow_node_visits v
          LEFT JOIN workflow_node_definitions n ON n.node_id = v.node_id
          WHERE v.workflow_instance_id = $1",
@@ -319,12 +321,12 @@ async fn validate_all_facts(
     .map_err(storage)?;
 
     let submissions_consistent: bool = sqlx::query_scalar(
-        "SELECT COALESCE(BOOL_AND(
+        "SELECT COALESCE(BOOL_AND(COALESCE(
            v.workflow_instance_id = s.workflow_instance_id
            AND n.definition_version_id = $2
            AND c.workflow_instance_id = s.workflow_instance_id
            AND t.definition_version_id = $2
-           AND t.source_node_id = v.node_id), TRUE)
+           AND t.source_node_id = v.node_id, FALSE)), TRUE)
          FROM workflow_submissions s
          LEFT JOIN workflow_node_visits v ON v.node_visit_id = s.source_node_visit_id
          LEFT JOIN workflow_node_definitions n ON n.node_id = v.node_id

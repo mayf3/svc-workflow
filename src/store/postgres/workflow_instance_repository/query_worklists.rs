@@ -4,7 +4,9 @@ use crate::application::workflow_instance::query_types::*;
 
 use super::query_detail::{build_full, fetch_submissions, validate_submission_rows};
 use super::query_rows::{EventRow, InstanceCursorRow, SubmissionRow};
-use super::query_visibility::{actor_snapshot, load_base, map_storage, validate_base};
+use super::query_visibility::{
+    actor_snapshot, load_base, map_storage, validate_all_facts, validate_base,
+};
 
 fn worklist_limit(limit: Option<u32>, default: u32, max: u32) -> Result<usize, WorkflowQueryError> {
     let limit = limit.unwrap_or(default);
@@ -76,6 +78,7 @@ pub async fn list_assigned_to_me(
                 )
             })?;
         validate_base(&base)?;
+        validate_all_facts(&mut tx, &base).await?;
         if base.current_assignee_principal_id != Some(query.actor_principal_id)
             || base.current_node_type.as_deref() == Some("TERMINAL")
         {
@@ -166,6 +169,7 @@ pub async fn list_creator_owned_drafts(
                 )
             })?;
         validate_base(&base)?;
+        validate_all_facts(&mut tx, &base).await?;
         if base.created_by_principal_id != query.actor_principal_id
             || base.current_node_type.as_deref() != Some("DRAFT")
         {
