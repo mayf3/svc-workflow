@@ -157,7 +157,8 @@ RETURN Submission，且 relatedSubmissionIds 精确引用同实例中 actor 自�
 `ListAssignedToMe` 只匹配 instance 的 current Visit pointer，要求其 assignee 为 actor 且
 current Node 非 TERMINAL。旧 Visit 和 TERMINAL Visit 不命中。每项包含 Full detail、当前
 instructions/outgoing schema/state，以及最近 50 条 upstream Submissions 和最近 50 条 RETURN
-Events；任一集合还有更多记录时 `upstreamTruncated = true`。REVOKED/DRAFT 实例仍列出但 blocked。
+Events；还有更多记录时分别设置 `submissionsTruncated` 或 `returnEventsTruncated`，调用方据此
+选择对应的独立 history 查询继续翻页。REVOKED/DRAFT 实例仍列出但 blocked。
 
 `ListCreatorOwnedDrafts` 的 DRAFT 指 current Node `node_type = DRAFT`，不是 Definition Version
 状态。它只匹配 `createdByPrincipalId = actor`，包含最新 current Context 和 Full detail：

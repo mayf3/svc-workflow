@@ -1,6 +1,73 @@
 use super::*;
 
+use sqlx::Connection;
 use svc_workflow::application::workflow_instance::query_service::WorkflowQueryService;
+
+const QUERY_TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
+
+pub(crate) struct QueryAuditTriggerGuard {
+    function_name: String,
+    trigger_name: String,
+}
+
+impl QueryAuditTriggerGuard {
+    pub(crate) async fn install(pool: &PgPool, principal_id: Uuid) -> Self {
+        let suffix = Uuid::new_v4().simple().to_string();
+        let function_name = format!("query_audit_fail_{suffix}");
+        let trigger_name = format!("query_audit_fail_trg_{suffix}");
+        sqlx::query(&format!(
+            "CREATE FUNCTION {function_name}() RETURNS trigger AS $$ BEGIN
+               IF NEW.principal_id = '{principal_id}'::uuid THEN
+                 RAISE EXCEPTION 'forced query audit failure';
+               END IF;
+               RETURN NEW;
+             END; $$ LANGUAGE plpgsql"
+        ))
+        .execute(pool)
+        .await
+        .expect("create query audit failure function");
+        sqlx::query(&format!(
+            "CREATE TRIGGER {trigger_name} BEFORE INSERT ON workflow_security_audits
+             FOR EACH ROW EXECUTE FUNCTION {function_name}()"
+        ))
+        .execute(pool)
+        .await
+        .expect("create query audit failure trigger");
+        Self {
+            function_name,
+            trigger_name,
+        }
+    }
+}
+
+impl Drop for QueryAuditTriggerGuard {
+    fn drop(&mut self) {
+        let function_name = self.function_name.clone();
+        let trigger_name = self.trigger_name.clone();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build query audit cleanup runtime");
+            runtime.block_on(async move {
+                let Ok(mut connection) = sqlx::PgConnection::connect(QUERY_TEST_DATABASE_URL).await
+                else {
+                    return;
+                };
+                let _ = sqlx::query(&format!(
+                    "DROP TRIGGER IF EXISTS {trigger_name} ON workflow_security_audits"
+                ))
+                .execute(&mut connection)
+                .await;
+                let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {function_name}()"))
+                    .execute(&mut connection)
+                    .await;
+            });
+        })
+        .join()
+        .ok();
+    }
+}
 
 pub(crate) struct QueryFixture {
     pub owner: Uuid,
