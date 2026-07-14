@@ -195,7 +195,7 @@ async fn test_transition_submission_insert_failure_rolls_back() {
         setup_transition_instance(&pool).await;
 
     let payload = serde_json::json!({"test": "data"});
-    let condition = format!("NEW.created_by_principal_id = '{}'", principal_id);
+    let condition = format!("NEW.author_principal_id = '{}'", principal_id);
     let _guard = TriggerGuard::install_table(&pool, "workflow_submissions", &condition).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, av_id, Some(payload));
