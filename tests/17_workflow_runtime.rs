@@ -13,12 +13,15 @@ use uuid::Uuid;
 
 use svc_workflow::application::workflow_instance::create::create_workflow_instance;
 use svc_workflow::application::workflow_instance::create::CreateWorkflowInstanceResult;
+use svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition;
 use svc_workflow::application::workflow_instance::revise::revise_workflow_context;
 use svc_workflow::application::workflow_instance::revise::ReviseWorkflowContextResult;
 use svc_workflow::domain::ids::*;
 use svc_workflow::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
+use svc_workflow::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use svc_workflow::domain::workflow_instance::commands::ReviseWorkflowContextCommand;
 use svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+use svc_workflow::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
 use svc_workflow::domain::workflow_instance::errors::ReviseWorkflowContextError;
 
 // ---------------------------------------------------------------------------
@@ -342,6 +345,11 @@ pub(crate) async fn verify_revision(
     assert_eq!(count, 1);
 }
 
+// Transition helpers (in separate file to keep under 500 lines)
+#[path = "17_workflow_runtime/transition_helpers.rs"]
+mod _transition_helpers;
+pub(crate) use _transition_helpers::*;
+
 // Sub-modules — Instance Create
 #[path = "17_workflow_runtime/instance_create/atomicity.rs"]
 mod atomicity;
@@ -373,3 +381,21 @@ mod context_revision_idempotency;
 mod context_revision_request_hash_contract;
 #[path = "17_workflow_runtime/context_revision/success.rs"]
 mod context_revision_success;
+
+// Sub-modules — Transition
+#[path = "17_workflow_runtime/transition/atomicity.rs"]
+mod transition_atomicity;
+#[path = "17_workflow_runtime/transition/authorization.rs"]
+mod transition_authorization;
+#[path = "17_workflow_runtime/transition/concurrency.rs"]
+mod transition_concurrency;
+#[path = "17_workflow_runtime/transition/definition_gates.rs"]
+mod transition_definition_gates;
+#[path = "17_workflow_runtime/transition/idempotency.rs"]
+mod transition_idempotency;
+#[path = "17_workflow_runtime/transition/request_hash_contract.rs"]
+mod transition_request_hash_contract;
+#[path = "17_workflow_runtime/transition/submission_validation.rs"]
+mod transition_submission_validation;
+#[path = "17_workflow_runtime/transition/success.rs"]
+mod transition_success;

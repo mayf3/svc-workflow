@@ -24,10 +24,14 @@
 
 use serde::Serialize;
 
-use crate::domain::ids::{DefinitionVersionId, DomainId, PrincipalId, WorkflowInstanceId};
+use crate::domain::ids::{
+    DefinitionVersionId, DomainId, PrincipalId, TransitionId, WorkflowInstanceId,
+};
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
 use crate::domain::workflow_instance::errors::ReviseWorkflowContextError;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_CREATE_INSTANCE;
+use crate::domain::workflow_instance::events::COMMAND_TYPE_EXECUTE_TRANSITION;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_REVISE_CONTEXT;
 
 /// The canonical request envelope used for hash computation.
@@ -129,5 +133,55 @@ pub fn compute_revise_request_hash(
 
     jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
         ReviseWorkflowContextError::StorageError(format!("request hash computation failed: {}", e))
+    })
+}
+
+/// The canonical request envelope for ExecuteWorkflowTransition.
+#[derive(Debug, Clone, Serialize)]
+struct TransitionRequestEnvelope {
+    command_schema_version: String,
+    command_type: String,
+    route_parameters: serde_json::Value,
+    request_body: TransitionRequestBody,
+}
+
+/// The body of the ExecuteWorkflowTransition request without the idempotency key.
+#[derive(Debug, Clone, Serialize)]
+struct TransitionRequestBody {
+    principal_id: String,
+    workflow_instance_id: String,
+    expected_workflow_state_version: i32,
+    transition_definition_id: String,
+    submission_payload: Option<serde_json::Value>,
+}
+
+/// Compute the canonical request hash for ExecuteWorkflowTransition idempotency.
+pub fn compute_transition_request_hash(
+    command_schema_version: &str,
+    _idempotency_key: &str,
+    principal_id: &PrincipalId,
+    workflow_instance_id: &WorkflowInstanceId,
+    expected_workflow_state_version: i32,
+    transition_definition_id: &TransitionId,
+    submission_payload: &Option<serde_json::Value>,
+) -> Result<String, ExecuteWorkflowTransitionError> {
+    let envelope = TransitionRequestEnvelope {
+        command_schema_version: command_schema_version.to_string(),
+        command_type: COMMAND_TYPE_EXECUTE_TRANSITION.to_string(),
+        route_parameters: serde_json::json!({}),
+        request_body: TransitionRequestBody {
+            principal_id: principal_id.to_string(),
+            workflow_instance_id: workflow_instance_id.to_string(),
+            expected_workflow_state_version,
+            transition_definition_id: transition_definition_id.to_string(),
+            submission_payload: submission_payload.clone(),
+        },
+    };
+
+    jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
+        ExecuteWorkflowTransitionError::StorageError(format!(
+            "request hash computation failed: {}",
+            e
+        ))
     })
 }

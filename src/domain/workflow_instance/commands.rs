@@ -1,6 +1,8 @@
 //! Command input types for the Workflow Instance domain.
 
-use crate::domain::ids::{DefinitionVersionId, DomainId, PrincipalId, WorkflowInstanceId};
+use crate::domain::ids::{
+    DefinitionVersionId, DomainId, PrincipalId, TransitionId, WorkflowInstanceId,
+};
 
 /// Command to create a new workflow instance from a published definition version.
 ///
@@ -60,4 +62,37 @@ pub struct ReviseWorkflowContextCommand {
 
     /// The new context payload to store.
     pub context_payload: serde_json::Value,
+}
+
+/// Command to execute a workflow transition (ADVANCE, RETURN, or TERMINATE).
+///
+/// This is the sole command for PR 3C. The caller must be the current assignee
+/// of the instance's current node visit. The transition is selected by
+/// `transition_definition_id`, not by effect or target node.
+///
+/// PR 3C does NOT modify context — it only transitions the workflow state.
+/// PR 3D will combine context revision + transition in a single command.
+#[derive(Debug, Clone)]
+pub struct ExecuteWorkflowTransitionCommand {
+    /// The principal initiating the command (must be current node visit assignee).
+    pub principal_id: PrincipalId,
+
+    /// Client-supplied idempotency key, unique per principal.
+    pub idempotency_key: String,
+
+    /// Schema version of this command structure.
+    pub command_schema_version: String,
+
+    /// The target workflow instance.
+    pub workflow_instance_id: WorkflowInstanceId,
+
+    /// The caller's expected current workflow state version (optimistic concurrency).
+    pub expected_workflow_state_version: i32,
+
+    /// The transition definition to execute (UUID primary key).
+    pub transition_definition_id: TransitionId,
+
+    /// Optional submission payload. `None` means no submission is provided.
+    /// `Some(Value::Null)` means an explicitly null payload is provided.
+    pub submission_payload: Option<serde_json::Value>,
 }
