@@ -41,6 +41,41 @@ pub(super) struct DraftNodeRow {
     pub(super) fixed_principal_id: Option<uuid::Uuid>,
 }
 
+/// Row type for locking and reading a workflow instance.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct InstanceLockRow {
+    pub(super) workflow_instance_id: uuid::Uuid,
+    pub(super) created_by_principal_id: uuid::Uuid,
+    pub(super) definition_version_id: uuid::Uuid,
+    pub(super) current_context_revision_id: uuid::Uuid,
+    pub(super) current_node_visit_id: uuid::Uuid,
+    pub(super) workflow_state_version: i32,
+}
+
+/// Row type for reading a node visit with its node definition.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct CurrentVisitRow {
+    pub(super) node_visit_id: uuid::Uuid,
+    pub(super) node_id: uuid::Uuid,
+    pub(super) node_type: String,
+}
+
+impl CurrentVisitRow {
+    pub(super) fn node_type_enum(&self) -> NodeType {
+        self.node_type
+            .parse::<NodeType>()
+            .unwrap_or(NodeType::NORMAL)
+    }
+}
+
+/// Row type for reading current context revision metadata.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct CurrentContextRow {
+    pub(super) context_revision_id: uuid::Uuid,
+    pub(super) revision_number: i32,
+    pub(super) payload_digest: String,
+}
+
 impl DraftNodeRow {
     pub(super) fn node_type_enum(&self) -> NodeType {
         self.node_type
