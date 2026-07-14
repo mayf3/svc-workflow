@@ -38,7 +38,7 @@ pub struct CanonicalNode {
     pub display_name: String,
     pub order_index: i32,
     pub node_type: String,
-    pub assignee_ref_type: String,
+    pub assignee_ref_type: Option<String>,
     pub fixed_principal_id: Option<String>,
     pub instructions: Option<String>,
     pub primary_advance_transition_key: Option<String>,
@@ -91,14 +91,21 @@ pub fn compute_digest(
                 .primary_advance_transition_id
                 .and_then(|tid| transition_key_by_id.get(&tid).cloned());
 
-            let fixed_id = n.assignee_ref.fixed_principal_id.map(|pid| pid.to_string());
+            let fixed_id = n
+                .assignee_ref
+                .as_ref()
+                .and_then(|reference| reference.fixed_principal_id)
+                .map(|pid| pid.to_string());
 
             CanonicalNode {
                 node_key: n.node_key.clone(),
                 display_name: n.display_name.clone(),
                 order_index: n.order_index,
                 node_type: n.node_type.to_string(),
-                assignee_ref_type: n.assignee_ref.ref_type.to_string(),
+                assignee_ref_type: n
+                    .assignee_ref
+                    .as_ref()
+                    .map(|reference| reference.ref_type.to_string()),
                 fixed_principal_id: fixed_id,
                 instructions: n.instructions.clone(),
                 primary_advance_transition_key: primary_key,

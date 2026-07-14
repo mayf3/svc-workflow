@@ -70,8 +70,17 @@ impl PgDefinitionRepository {
             .bind(&node.display_name)
             .bind(node.order_index)
             .bind(node.node_type.to_string())
-            .bind(node.assignee_ref.ref_type.to_string())
-            .bind(node.assignee_ref.fixed_principal_id.map(|id| id.into_uuid()))
+            .bind(
+                node.assignee_ref
+                    .as_ref()
+                    .map(|reference| reference.ref_type.to_string()),
+            )
+            .bind(
+                node.assignee_ref
+                    .as_ref()
+                    .and_then(|reference| reference.fixed_principal_id)
+                    .map(|id| id.into_uuid()),
+            )
             .bind(&node.instructions)
             .bind(node.primary_advance_transition_id.map(|id| id.into_uuid()))
             .bind(&node.metadata)

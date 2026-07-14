@@ -53,7 +53,10 @@ async fn detail_visibility_priority_and_full_dto_are_authoritative() {
         );
         assert_eq!(detail.current_context.payload_digest.len(), 64);
         assert_eq!(detail.current_visit.node.node_id, seed.draft);
-        assert_eq!(detail.current_visit.assignee_principal_id, seed.creator);
+        assert_eq!(
+            detail.current_visit.assignee_principal_id,
+            Some(seed.creator)
+        );
         assert_eq!(
             detail.current_visit.instructions.as_deref(),
             Some("Draft instructions")

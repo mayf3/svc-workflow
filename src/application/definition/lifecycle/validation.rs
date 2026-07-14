@@ -64,28 +64,30 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         nodes: &[NodeDefinition],
     ) -> Result<(), DefinitionError> {
         for node in nodes {
-            if node.assignee_ref.ref_type == AssigneeRefType::FixedPrincipal {
-                if let Some(fixed_id) = node.assignee_ref.fixed_principal_id {
-                    let exists = self
-                        .repo
-                        .check_principal_exists(fixed_id.into_uuid())
-                        .await?;
-                    if !exists {
-                        return Err(DefinitionError::FixedPrincipalInvalid(format!(
-                            "fixed principal {} for node '{}' not found",
-                            fixed_id, node.node_key
-                        )));
-                    }
+            if let Some(assignee_ref) = &node.assignee_ref {
+                if assignee_ref.ref_type == AssigneeRefType::FixedPrincipal {
+                    if let Some(fixed_id) = assignee_ref.fixed_principal_id {
+                        let exists = self
+                            .repo
+                            .check_principal_exists(fixed_id.into_uuid())
+                            .await?;
+                        if !exists {
+                            return Err(DefinitionError::FixedPrincipalInvalid(format!(
+                                "fixed principal {} for node '{}' not found",
+                                fixed_id, node.node_key
+                            )));
+                        }
 
-                    let enabled = self
-                        .repo
-                        .check_principal_enabled(fixed_id.into_uuid())
-                        .await?;
-                    if !enabled {
-                        return Err(DefinitionError::FixedPrincipalInvalid(format!(
-                            "fixed principal {} for node '{}' is disabled",
-                            fixed_id, node.node_key
-                        )));
+                        let enabled = self
+                            .repo
+                            .check_principal_enabled(fixed_id.into_uuid())
+                            .await?;
+                        if !enabled {
+                            return Err(DefinitionError::FixedPrincipalInvalid(format!(
+                                "fixed principal {} for node '{}' is disabled",
+                                fixed_id, node.node_key
+                            )));
+                        }
                     }
                 }
             }

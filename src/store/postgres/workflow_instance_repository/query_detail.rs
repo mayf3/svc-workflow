@@ -59,9 +59,10 @@ async fn load_outgoing(
         {
             return Err(internal("outgoing transition escapes definition version"));
         }
-        let target_assignee = match row.target_assignee_ref_type.as_str() {
-            "WORKFLOW_CREATOR" => Some(base.created_by_principal_id),
-            "DOMAIN_OWNER" => sqlx::query_scalar(
+        let target_assignee = match row.target_assignee_ref_type.as_deref() {
+            None if row.target_node_type == "TERMINAL" => None,
+            Some("WORKFLOW_CREATOR") => Some(base.created_by_principal_id),
+            Some("DOMAIN_OWNER") => sqlx::query_scalar(
                 "SELECT p.principal_id FROM domain_role_bindings b
                      JOIN principals p ON p.principal_id = b.principal_id AND p.enabled = TRUE
                      WHERE b.domain_id = $1 AND b.role_key = 'DOMAIN_OWNER' AND b.enabled = TRUE",
@@ -70,10 +71,12 @@ async fn load_outgoing(
             .fetch_optional(&mut **tx)
             .await
             .map_err(map_storage)?,
-            "FIXED_PRINCIPAL" => row.target_fixed_principal_id,
+            Some("FIXED_PRINCIPAL") => row.target_fixed_principal_id,
             _ => return Err(internal("unknown target assignee reference type")),
         };
-        let target_available = if let Some(target) = target_assignee {
+        let target_available = if row.target_node_type == "TERMINAL" {
+            true
+        } else if let Some(target) = target_assignee {
             sqlx::query_scalar::<_, bool>(
                 "SELECT COALESCE((SELECT enabled FROM principals WHERE principal_id = $1), FALSE)",
             )

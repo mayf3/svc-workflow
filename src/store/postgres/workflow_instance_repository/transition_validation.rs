@@ -184,10 +184,15 @@ pub(super) async fn resolve_assignee(
     target_node: &TargetNodeRow,
     instance: &InstanceLockRow,
     domain_uuid: Uuid,
-) -> Result<Uuid, ExecuteWorkflowTransitionError> {
+) -> Result<Option<Uuid>, ExecuteWorkflowTransitionError> {
+    if target_node.node_type_enum() == NodeType::TERMINAL {
+        // Published legacy Terminal definitions can still carry an obsolete
+        // reference. It never grants authority and every new Terminal visit is unassigned.
+        return Ok(None);
+    }
     match target_node.assignee_ref_type_enum() {
-        AssigneeRefType::WorkflowCreator => Ok(instance.created_by_principal_id),
-        AssigneeRefType::DomainOwner => {
+        Some(AssigneeRefType::WorkflowCreator) => Ok(Some(instance.created_by_principal_id)),
+        Some(AssigneeRefType::DomainOwner) => {
             let owner: Option<(Uuid, bool)> = sqlx::query_as(
                 "SELECT principal_id, enabled FROM domain_role_bindings \
                  WHERE domain_id = $1 AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE \
@@ -220,10 +225,10 @@ pub(super) async fn resolve_assignee(
                         "DOMAIN_OWNER principal is disabled".to_string(),
                     ))
                 }
-                _ => Ok(owner_id),
+                _ => Ok(Some(owner_id)),
             }
         }
-        AssigneeRefType::FixedPrincipal => {
+        Some(AssigneeRefType::FixedPrincipal) => {
             let fixed_id = target_node.fixed_principal_id.ok_or_else(|| {
                 ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
                     "FIXED_PRINCIPAL node has no principal_id configured".to_string(),
@@ -246,9 +251,12 @@ pub(super) async fn resolve_assignee(
                         "FIXED_PRINCIPAL is disabled".to_string(),
                     ))
                 }
-                _ => Ok(fixed_id),
+                _ => Ok(Some(fixed_id)),
             }
         }
+        None => Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+            "non-terminal node has no valid assignee reference".to_string(),
+        )),
     }
 }
 

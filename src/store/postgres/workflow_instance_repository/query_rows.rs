@@ -115,7 +115,7 @@ impl QueryBaseRow {
                 node_type: self.current_node_type.clone()?,
             },
             visit_number: self.visit_number?,
-            assignee_principal_id: self.current_assignee_principal_id?,
+            assignee_principal_id: self.current_assignee_principal_id,
             entered_by_transition_id: self.entered_by_transition_id,
             instructions: include_instructions
                 .then(|| self.current_node_instructions.clone())
@@ -139,7 +139,7 @@ pub(crate) struct OutgoingRow {
     pub target_node_key: String,
     pub target_display_name: String,
     pub target_node_type: String,
-    pub target_assignee_ref_type: String,
+    pub target_assignee_ref_type: Option<String>,
     pub target_fixed_principal_id: Option<Uuid>,
 }
 
@@ -234,7 +234,7 @@ pub(crate) struct VisitRow {
     pub display_name: String,
     pub node_type: String,
     pub visit_number: i32,
-    pub assignee_principal_id: Uuid,
+    pub assignee_principal_id: Option<Uuid>,
     pub entered_by_transition_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub created_at: DateTime<Utc>,

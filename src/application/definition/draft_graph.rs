@@ -52,12 +52,39 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             let node_id = NodeId::new();
             node_id_by_key.insert(raw_node.node_key.clone(), node_id);
 
-            let assignee_ref =
-                Self::parse_assignee_ref(&raw_node.assignee_ref_type, raw_node.fixed_principal_id)?;
-
             let node_type = raw_node.node_type.parse::<NodeType>().map_err(|_| {
                 DefinitionError::StorageError(format!("invalid node_type: {}", raw_node.node_type))
             })?;
+
+            let assignee_ref = match (&raw_node.assignee_ref_type, node_type) {
+                (None, NodeType::TERMINAL) if raw_node.fixed_principal_id.is_none() => None,
+                (Some(_), NodeType::TERMINAL) | (None, NodeType::TERMINAL) => {
+                    return Err(DefinitionError::GraphValidationFailed(vec![
+                        GraphValidationError::new(
+                            "TERMINAL_HAS_ASSIGNEE",
+                            format!(
+                                "terminal node '{}' must not define an assignee",
+                                raw_node.node_key
+                            ),
+                        ),
+                    ]));
+                }
+                (Some(ref_type), _) => Some(Self::parse_assignee_ref(
+                    ref_type,
+                    raw_node.fixed_principal_id,
+                )?),
+                (None, _) => {
+                    return Err(DefinitionError::GraphValidationFailed(vec![
+                        GraphValidationError::new(
+                            "ASSIGNEE_REQUIRED",
+                            format!(
+                                "non-terminal node '{}' requires an assignee",
+                                raw_node.node_key
+                            ),
+                        ),
+                    ]));
+                }
+            };
 
             node_defs.push(NodeDefinition {
                 node_id,

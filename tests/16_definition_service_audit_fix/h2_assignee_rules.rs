@@ -16,32 +16,18 @@ async fn test_terminal_node_with_fixed_principal_rejected() {
     let (_def_id, version_id) =
         create_draft_version_with_graph(&pool, &service, owner, domain_id, assignee).await;
 
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE workflow_node_definitions SET assignee_ref_type = 'FIXED_PRINCIPAL', fixed_principal_id = $1 WHERE definition_version_id = $2 AND node_type = 'TERMINAL'",
     )
     .bind(assignee)
     .bind(version_id)
     .execute(&pool)
     .await
-    .expect("update terminal node");
-
-    let result = service
-        .publish_version(PublishVersion {
-            actor_principal_id: owner,
-            definition_version_id: version_id,
-        })
-        .await;
-    assert!(result.is_err(), "terminal with assignee should be rejected");
-    match result.unwrap_err() {
-        DefinitionError::GraphValidationFailed(errors) => {
-            assert!(
-                errors.iter().any(|e| e.code == "TERMINAL_HAS_ASSIGNEE"),
-                "expected TERMINAL_HAS_ASSIGNEE, got: {:?}",
-                errors
-            );
-        }
-        other => panic!("expected GraphValidationFailed, got: {:?}", other),
-    }
+    ;
+    assert!(
+        result.is_err(),
+        "database must reject a new Terminal assignee"
+    );
 }
 
 #[tokio::test]
@@ -80,7 +66,7 @@ async fn test_non_terminal_without_assignee_rejected() {
     };
 
     let (mut raw_nodes, raw_transitions) = valid_raw_graph();
-    raw_nodes[2].assignee_ref_type = "FIXED_PRINCIPAL".to_string();
+    raw_nodes[2].assignee_ref_type = Some("FIXED_PRINCIPAL".to_string());
     raw_nodes[2].fixed_principal_id = Some(assignee);
     raw_nodes[2].primary_advance_transition_key = None;
 
@@ -215,7 +201,7 @@ async fn test_fixed_principal_missing_id_rejected() {
     };
 
     let (mut raw_nodes, raw_transitions) = valid_raw_graph();
-    raw_nodes[1].assignee_ref_type = "FIXED_PRINCIPAL".to_string();
+    raw_nodes[1].assignee_ref_type = Some("FIXED_PRINCIPAL".to_string());
     raw_nodes[1].fixed_principal_id = None;
 
     let replace_cmd = ReplaceDraftGraph {

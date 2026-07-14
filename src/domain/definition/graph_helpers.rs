@@ -67,10 +67,10 @@ mod tests {
             display_name: key.to_string(),
             order_index: order,
             node_type: crate::domain::enums::NodeType::NORMAL,
-            assignee_ref: crate::domain::definition::model::AssigneeRef {
+            assignee_ref: Some(crate::domain::definition::model::AssigneeRef {
                 ref_type: crate::domain::enums::AssigneeRefType::WorkflowCreator,
                 fixed_principal_id: None,
-            },
+            }),
             instructions: None,
             primary_advance_transition_id: None,
             metadata: None,

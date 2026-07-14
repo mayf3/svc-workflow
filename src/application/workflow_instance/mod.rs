@@ -3,6 +3,7 @@
 //! Provides the CreateWorkflowInstance use case with full idempotency,
 //! authorization, and atomic consistency guarantees.
 
+pub mod admin_recovery;
 pub mod create;
 pub mod execute_transition;
 pub mod idempotency;

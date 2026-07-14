@@ -321,7 +321,7 @@ async fn visit_history_masks_instructions_for_historical_participants_and_uses_u
     assert!(restricted
         .items
         .iter()
-        .all(|item| item.assignee_principal_id == completed.seed.creator));
+        .all(|item| item.assignee_principal_id == Some(completed.seed.creator)));
     assert!(restricted
         .items
         .iter()

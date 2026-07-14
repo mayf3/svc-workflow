@@ -166,7 +166,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
     if instance.created_by_principal_id != principal_id {
         deterministic_failure!(ReviseContextAndTransitionError::PrincipalNotCreator);
     }
-    if current_visit.assignee_principal_id != principal_id {
+    if current_visit.assignee_principal_id != Some(principal_id) {
         deterministic_failure!(ReviseContextAndTransitionError::PrincipalNotAssignee);
     }
     if current_visit.node_type_enum() != NodeType::DRAFT {

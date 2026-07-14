@@ -30,6 +30,10 @@ pub const TRANSITION_COMMITTED_EVENT_TYPE: &str = "WORKFLOW_TRANSITION_COMMITTED
 pub const CONTEXT_REVISED_AND_TRANSITION_COMMITTED_EVENT_TYPE: &str =
     "WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED";
 
+/// Canonical writer event type for PR5 emergency override.
+pub const ADMIN_EMERGENCY_OVERRIDE_COMMITTED_EVENT_TYPE: &str =
+    "ADMIN_EMERGENCY_OVERRIDE_COMMITTED";
+
 /// Non-sensitive event data embedded in the INSTANCE_CREATED event.
 ///
 /// This is the stable, serialized content of `event_data`. It must

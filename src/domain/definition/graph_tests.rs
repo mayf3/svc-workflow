@@ -23,10 +23,10 @@ fn valid_graph() -> WorkflowGraph {
                 display_name: "DRAFT".to_string(),
                 order_index: 0,
                 node_type: NodeType::DRAFT,
-                assignee_ref: AssigneeRef {
+                assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::WorkflowCreator,
                     fixed_principal_id: None,
-                },
+                }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_to_normal),
                 metadata: None,
@@ -39,10 +39,10 @@ fn valid_graph() -> WorkflowGraph {
                 display_name: "Dev Self Check".to_string(),
                 order_index: 1,
                 node_type: NodeType::NORMAL,
-                assignee_ref: AssigneeRef {
+                assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::FixedPrincipal,
                     fixed_principal_id: Some(PrincipalId::new()),
-                },
+                }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_to_terminal),
                 metadata: None,
@@ -55,10 +55,7 @@ fn valid_graph() -> WorkflowGraph {
                 display_name: "Done".to_string(),
                 order_index: 2,
                 node_type: NodeType::TERMINAL,
-                assignee_ref: AssigneeRef {
-                    ref_type: AssigneeRefType::WorkflowCreator,
-                    fixed_principal_id: None,
-                },
+                assignee_ref: None,
                 instructions: None,
                 primary_advance_transition_id: None,
                 metadata: None,
@@ -126,10 +123,10 @@ fn multiple_draft_nodes() {
         display_name: "Draft 2".to_string(),
         order_index: 3,
         node_type: NodeType::DRAFT,
-        assignee_ref: AssigneeRef {
+        assignee_ref: Some(AssigneeRef {
             ref_type: AssigneeRefType::WorkflowCreator,
             fixed_principal_id: None,
-        },
+        }),
         instructions: None,
         primary_advance_transition_id: None,
         metadata: None,
@@ -197,10 +194,10 @@ fn node_not_reachable_from_draft() {
         display_name: "Isolated".to_string(),
         order_index: 10,
         node_type: NodeType::NORMAL,
-        assignee_ref: AssigneeRef {
+        assignee_ref: Some(AssigneeRef {
             ref_type: AssigneeRefType::WorkflowCreator,
             fixed_principal_id: None,
-        },
+        }),
         instructions: None,
         primary_advance_transition_id: None,
         metadata: None,
@@ -322,8 +319,12 @@ fn terminal_has_outgoing_transition() {
 #[test]
 fn draft_assignee_not_workflow_creator() {
     let mut graph = valid_graph();
-    graph.nodes[0].assignee_ref.ref_type = AssigneeRefType::FixedPrincipal;
-    graph.nodes[0].assignee_ref.fixed_principal_id = Some(PrincipalId::new());
+    graph.nodes[0].assignee_ref.as_mut().unwrap().ref_type = AssigneeRefType::FixedPrincipal;
+    graph.nodes[0]
+        .assignee_ref
+        .as_mut()
+        .unwrap()
+        .fixed_principal_id = Some(PrincipalId::new());
     let result = validate_graph(&graph);
     assert!(!result.valid);
     assert!(result
@@ -335,7 +336,11 @@ fn draft_assignee_not_workflow_creator() {
 #[test]
 fn fixed_principal_missing_id() {
     let mut graph = valid_graph();
-    graph.nodes[1].assignee_ref.fixed_principal_id = None;
+    graph.nodes[1]
+        .assignee_ref
+        .as_mut()
+        .unwrap()
+        .fixed_principal_id = None;
     let result = validate_graph(&graph);
     assert!(!result.valid);
     assert!(result
@@ -426,7 +431,11 @@ fn terminate_to_non_terminal_rejected() {
 #[test]
 fn unexpected_fixed_principal_on_non_fixed_type() {
     let mut graph = valid_graph();
-    graph.nodes[0].assignee_ref.fixed_principal_id = Some(PrincipalId::new());
+    graph.nodes[0]
+        .assignee_ref
+        .as_mut()
+        .unwrap()
+        .fixed_principal_id = Some(PrincipalId::new());
     let result = validate_graph(&graph);
     assert!(!result.valid);
     assert!(result
