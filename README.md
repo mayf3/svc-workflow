@@ -15,9 +15,10 @@ Instance 仅保存可重建的当前投影。
 - `CreateWorkflowInstance`；
 - `ReviseWorkflowContext`；
 - `ExecuteWorkflowTransition`；
-- `ReviseContextAndTransition`。
+- `ReviseContextAndTransition`；
+- Read Model / Query Service。
 
-当前实施：Read Model / Query Service（PR 4）。后续范围见实施路线图。
+当前实施：Admin Emergency Commands 与 projection repair（PR 5）。后续范围见实施路线图。
 
 当前尚未提供 HTTP/gRPC 服务；可用入口是 Rust application service。
 
