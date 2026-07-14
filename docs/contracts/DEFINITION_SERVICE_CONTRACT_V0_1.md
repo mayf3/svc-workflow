@@ -43,6 +43,16 @@ DRAFT ──→ PUBLISHED ──→ DEPRECATED ──→ REVOKED
 - `DEPRECATED → REVOKED`：允许
 - 其他状态转换：拒绝
 
+### 生命周期操作者
+
+| 操作 | 写入字段 |
+|------|----------|
+| Publish | `published_by_principal_id` |
+| Deprecate | `deprecated_by_principal_id` |
+| Revoke | `revoked_by_principal_id` |
+
+字段值取自命令的 `actor_principal_id`，后续生命周期转换不得覆盖已有操作者。`get_version`、`lock_version` 和 `list_versions` 的读模型必须完整返回以上三个字段。
+
 ---
 
 ## 2. Draft Graph 替换语义
@@ -60,6 +70,14 @@ ReplaceDraftGraph 是一个原子命令，在同一事务中完成：
 - 只允许替换 DRAFT 版本的图
 - PUBLISHED/DEPRECATED/REVOKED 版本的图不可修改
 - 发布后子表记录通过数据库 Trigger 保护（见第 7 节）
+
+`context_schema: Option<Value>` 使用三态 Patch 语义：
+
+| 输入 | 语义 |
+|------|------|
+| `None` | 不更新，保留当前值 |
+| `Some(Value::Null)` | 显式清空，数据库列写为 SQL `NULL` |
+| `Some(object)` | 用新 Schema 替换当前值 |
 
 ---
 
@@ -119,6 +137,8 @@ RETURN Transition 必须：
 - `contextSchema` 和每条 Transition 的 `submissionSchema` 必须是合法 JSON Schema
 - 使用冻结的 dialect（当前为 Draft 2020-12）
 - 编译器和 validator 能成功加载
+- 发布校验必须递归检查 `$ref`、`$dynamicRef` 和 `$recursiveRef`；只允许以 `#` 开头的本地 Fragment 引用
+- 禁止 HTTP(S)、`file://` 和相对路径等外部引用，避免网络或本地文件解析
 
 ---
 
@@ -219,6 +239,17 @@ DeprecateVersion
 RevokeVersion
 ```
 
+以下四个读操作也必须校验调用者是目标 Definition 所属 Domain 的 `DOMAIN_OWNER`，未授权时不得返回 Schema、Instructions 或固定负责人等内容：
+
+```text
+GetDefinition
+GetDefinitionVersion
+ListDefinitionVersions
+GetCompleteVersionGraph
+```
+
+`ValidateDraftVersion` 同样受 `DOMAIN_OWNER` 写权限约束。除 `CreateDefinition` 已有门禁外，`CreateDraftVersion`、`ReplaceDraftGraph`、`ValidateDraftVersion`、`PublishVersion`、`DeprecateVersion` 和 `RevokeVersion` 都必须拒绝已禁用 Domain。
+
 权限校验流程：
 1. Principal 必须存在且启用
 2. Domain 必须存在且启用
@@ -269,6 +300,16 @@ StorageError(String)
 ```
 
 GraphValidationError 包含 `code`（机器可读）和 `message`（人类可读）。
+
+PostgreSQL 错误必须映射为稳定的领域错误：
+
+| 数据库条件 | 领域错误 |
+|------------|----------|
+| `23505` 且约束/消息含 `definition_key` | `DefinitionKeyConflict` |
+| `23505` 且约束/消息含 `version_number` | `ConcurrentModification` |
+| Trigger 消息含 `graph_immutable:` | `VersionNotDraft` |
+| Trigger 消息含 `status_transition:` | `InvalidLifecycleTransition` |
+| 其他数据库错误 | `StorageError(raw)` |
 
 ---
 

@@ -102,16 +102,28 @@ impl PgDefinitionRepository {
             .map_err(map_db_error)?;
         }
 
-        // M-1: Update context schema with patch semantics
+        // M-1: Update context schema with three-state patch semantics:
+        // None keeps the current value, JSON null clears the SQL column, and
+        // any other JSON value replaces the current schema.
         if let Some(schema) = context_schema {
-            sqlx::query(
-                "UPDATE workflow_definition_versions SET context_schema = $1, updated_at = now() WHERE definition_version_id = $2",
-            )
-            .bind(schema)
-            .bind(version_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_db_error)?;
+            if schema.is_null() {
+                sqlx::query(
+                    "UPDATE workflow_definition_versions SET context_schema = NULL, updated_at = now() WHERE definition_version_id = $1",
+                )
+                .bind(version_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error)?;
+            } else {
+                sqlx::query(
+                    "UPDATE workflow_definition_versions SET context_schema = $1, updated_at = now() WHERE definition_version_id = $2",
+                )
+                .bind(schema)
+                .bind(version_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(map_db_error)?;
+            }
         }
 
         tx.commit().await.map_err(map_db_error)?;

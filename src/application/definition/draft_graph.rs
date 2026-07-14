@@ -142,11 +142,20 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             }
         }
 
+        // Validate the graph against the effective schema after applying the
+        // three-state patch: None keeps the stored value, JSON null clears it,
+        // and any other JSON value replaces it.
+        let effective_context_schema = match cmd.context_schema.as_ref() {
+            None => version.context_schema.clone(),
+            Some(schema) if schema.is_null() => None,
+            Some(schema) => Some(schema.clone()),
+        };
+
         // Build graph model for validation
         let graph = WorkflowGraph {
             nodes: node_defs.clone(),
             transitions: transition_defs.clone(),
-            context_schema: cmd.context_schema.clone(),
+            context_schema: effective_context_schema,
         };
 
         // Validate the graph
