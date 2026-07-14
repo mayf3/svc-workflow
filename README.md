@@ -35,6 +35,7 @@ Instance 仅保存可重建的当前投影。
 | Definition Service 合同 | [DEFINITION_SERVICE_CONTRACT_V0_1.md](docs/contracts/DEFINITION_SERVICE_CONTRACT_V0_1.md) |
 | Runtime 创建合同 | [WORKFLOW_INSTANCE_CREATE_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_INSTANCE_CREATE_CONTRACT_V0_1.md) |
 | Runtime 流转合同（含 PR 3D） | [WORKFLOW_TRANSITION_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_TRANSITION_CONTRACT_V0_1.md) |
+| Runtime 查询合同 | [WORKFLOW_QUERY_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_QUERY_CONTRACT_V0_1.md) |
 | Legacy ADC 迁移 | [LEGACY_ADC_MIGRATION_V0_1.md](docs/migration/LEGACY_ADC_MIGRATION_V0_1.md) |
 
 ## 本地验证

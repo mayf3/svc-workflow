@@ -420,3 +420,22 @@ mod combined_request_hash_contract;
 mod combined_success;
 #[path = "17_workflow_runtime/combined/validation.rs"]
 mod combined_validation;
+
+// Sub-modules — Query Service
+#[path = "17_workflow_runtime/query/helpers.rs"]
+mod _query_helpers;
+pub(crate) use _query_helpers::*;
+#[path = "17_workflow_runtime/query/defensive.rs"]
+mod query_defensive;
+#[path = "17_workflow_runtime/query/detail_visibility.rs"]
+mod query_detail_visibility;
+#[path = "17_workflow_runtime/query/guards.rs"]
+mod query_guards;
+#[path = "17_workflow_runtime/query/histories.rs"]
+mod query_histories;
+#[path = "17_workflow_runtime/query/pagination_security.rs"]
+mod query_pagination_security;
+#[path = "17_workflow_runtime/query/snapshot.rs"]
+mod query_snapshot;
+#[path = "17_workflow_runtime/query/worklists.rs"]
+mod query_worklists;
