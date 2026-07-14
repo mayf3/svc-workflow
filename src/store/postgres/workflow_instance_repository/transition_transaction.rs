@@ -18,7 +18,8 @@ use crate::domain::enums::NodeType;
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
 
-use super::transition_helpers;
+use super::transition_helpers::{self};
+pub(crate) use super::transition_helpers::{TransitionOutcome, TransitionResult};
 use super::transition_receipt::{
     self, complete_transition_receipt, try_insert_transition_receipt,
     write_transition_attempt_audit, TransitionReplayResult,
@@ -29,32 +30,6 @@ use super::transition_validation::{
     resolve_assignee, validate_definition_version_status, validate_principal_enabled,
     validate_return_references, validate_submission_schema, validate_submission_size,
 };
-
-/// Outcome of an atomic transition attempt.
-pub(crate) enum TransitionOutcome {
-    /// Fresh successful transition.
-    Executed(TransitionResult),
-    /// Idempotent replay of a successful request.
-    Replayed(TransitionResult),
-    /// Idempotent replay of a failed request.
-    ReplayedFailure(i32, serde_json::Value),
-}
-
-/// Result of a successful atomic transition.
-pub(crate) struct TransitionResult {
-    pub workflow_instance_id: Uuid,
-    pub workflow_state_version: i32,
-    pub current_context_revision_id: Uuid,
-    pub source_node_visit_id: Uuid,
-    pub current_node_visit_id: Uuid,
-    pub submission_id: Option<Uuid>,
-    pub event_sequence: i32,
-}
-
-/// The domain of the instance (extracted during transaction).
-struct InstanceDomain {
-    domain_id: Uuid,
-}
 
 /// Execute the full atomic transition workflow inside a single transaction.
 ///
@@ -70,17 +45,15 @@ pub(crate) async fn execute_workflow_transition_atomically(
         .await
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
-    // Pre-generate all IDs
+    let principal_uuid = cmd.principal_id.into_uuid();
+    let instance_uuid = cmd.workflow_instance_id.into_uuid();
+    let transition_uuid = cmd.transition_definition_id.into_uuid();
+
     let command_id = Uuid::new_v4();
     let new_node_visit_id = Uuid::new_v4();
     let event_id = Uuid::new_v4();
     let submission_id = Uuid::new_v4();
     let audit_id = Uuid::new_v4();
-    let _should_create_submission = cmd.submission_payload.is_some();
-
-    let principal_uuid = cmd.principal_id.into_uuid();
-    let instance_uuid = cmd.workflow_instance_id.into_uuid();
-    let transition_uuid = cmd.transition_definition_id.into_uuid();
 
     // ---------------------------------------------------------------
     // Step 1: Insert command receipt (idempotency gate)
@@ -94,123 +67,47 @@ pub(crate) async fn execute_workflow_transition_atomically(
     )
     .await?;
 
-    let actual_command_id: Uuid = match receipt_owned {
+    let _actual_command_id: Uuid = match receipt_owned {
         Some(cmd_id) => cmd_id,
         None => {
-            let replay = transition_receipt::replay_transition_receipt(
+            // Must use explicit match (not ?) to commit tx on both Ok and Err
+            let replay_result = transition_helpers::handle_receipt_replay(
                 &mut tx,
                 principal_uuid,
                 &cmd.idempotency_key,
                 request_hash,
+                audit_id,
+                command_id,
             )
-            .await?;
+            .await;
 
-            match replay {
-                TransitionReplayResult::CompletedMatch {
-                    command_id: _,
-                    response_status,
-                    response_body,
-                } => {
-                    if response_status != 200 {
-                        tx.commit().await.map_err(|e| {
-                            ExecuteWorkflowTransitionError::StorageError(e.to_string())
-                        })?;
-                        return Ok(TransitionOutcome::ReplayedFailure(
-                            response_status,
-                            response_body,
-                        ));
-                    }
-
-                    // Idempotent replay of a SUCCESSFUL request
-                    let wf_id = response_body["workflowInstanceId"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| {
-                            ExecuteWorkflowTransitionError::StorageError(
-                                "stored response missing workflowInstanceId".to_string(),
-                            )
-                        })?;
-                    let ctx_rev_id = response_body["currentContextRevisionId"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| {
-                            ExecuteWorkflowTransitionError::StorageError(
-                                "stored response missing currentContextRevisionId".to_string(),
-                            )
-                        })?;
-                    let source_visit_id = response_body["sourceNodeVisitId"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| {
-                            ExecuteWorkflowTransitionError::StorageError(
-                                "stored response missing sourceNodeVisitId".to_string(),
-                            )
-                        })?;
-                    let target_visit_id = response_body["currentNodeVisitId"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .ok_or_else(|| {
-                            ExecuteWorkflowTransitionError::StorageError(
-                                "stored response missing currentNodeVisitId".to_string(),
-                            )
-                        })?;
-                    let state_ver =
-                        response_body["workflowStateVersion"].as_i64().unwrap_or(1) as i32;
-                    let ev_seq = response_body["eventSequence"].as_i64().unwrap_or(1) as i32;
-                    let sub_id = response_body["submissionId"]
-                        .as_str()
-                        .and_then(|s| Uuid::parse_str(s).ok());
-
+            match replay_result {
+                Ok(Some(TransitionOutcome::Replayed(result))) => {
                     tx.commit()
                         .await
                         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-
-                    return Ok(TransitionOutcome::Replayed(TransitionResult {
-                        workflow_instance_id: wf_id,
-                        workflow_state_version: state_ver,
-                        current_context_revision_id: ctx_rev_id,
-                        source_node_visit_id: source_visit_id,
-                        current_node_visit_id: target_visit_id,
-                        submission_id: sub_id,
-                        event_sequence: ev_seq,
-                    }));
+                    return Ok(TransitionOutcome::Replayed(result));
                 }
-                TransitionReplayResult::CompletedConflict {
-                    command_id: cid,
-                    original_request_hash: orig_hash,
-                } => {
-                    let details = serde_json::json!({
-                        "conflictType": "IDEMPOTENCY_KEY_MISMATCH",
-                        "originalRequestHash": orig_hash,
-                        "newRequestHash": request_hash,
-                    });
-                    write_transition_attempt_audit(
-                        &mut tx,
-                        audit_id,
-                        cid,
-                        principal_uuid,
-                        &cmd.idempotency_key,
-                        "IDEMPOTENCY_CONFLICT",
-                        Some("request hash mismatch"),
-                        request_hash,
-                        Some(&details),
-                    )
-                    .await?;
-
+                Ok(Some(TransitionOutcome::ReplayedFailure(status, body))) => {
                     tx.commit()
                         .await
                         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-
-                    return Err(ExecuteWorkflowTransitionError::IdempotencyConflict {
-                        original_command_id: cid,
-                        original_request_hash: orig_hash,
-                    });
+                    return Ok(TransitionOutcome::ReplayedFailure(status, body));
                 }
-                TransitionReplayResult::StillProcessing => {
+                Ok(_) => {
                     tx.commit()
                         .await
                         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-                    return Err(ExecuteWorkflowTransitionError::CommandStillProcessing);
+                    return Err(ExecuteWorkflowTransitionError::InternalConsistency(
+                        "unexpected replay state".to_string(),
+                    ));
+                }
+                Err(e) => {
+                    // IdempotencyConflict or StillProcessing — commit so audit persists
+                    tx.commit().await.map_err(|e2| {
+                        ExecuteWorkflowTransitionError::StorageError(e2.to_string())
+                    })?;
+                    return Err(e);
                 }
             }
         }
@@ -227,7 +124,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
             );
             complete_transition_receipt(
                 &mut tx,
-                actual_command_id,
+                _actual_command_id,
                 status_code,
                 &response_body,
                 &response_digest,
@@ -536,7 +433,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
         event_id,
         instance_uuid,
         event_sequence,
-        actual_command_id,
+        _actual_command_id,
         &effect,
         instance.current_node_visit_id,
         new_node_visit_id,
@@ -570,7 +467,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
 
     complete_transition_receipt(
         &mut tx,
-        actual_command_id,
+        _actual_command_id,
         200,
         &response_body,
         &response_digest,

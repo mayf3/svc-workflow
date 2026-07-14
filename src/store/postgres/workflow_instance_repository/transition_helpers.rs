@@ -12,7 +12,146 @@ use crate::domain::workflow_instance::events::{
     TransitionCommittedEventData, EVENT_SCHEMA_VERSION, TRANSITION_COMMITTED_EVENT_TYPE,
 };
 
+use super::transition_receipt::{self, TransitionReplayResult};
 use super::transition_rows::*;
+
+/// Outcome of an atomic transition attempt.
+pub(crate) enum TransitionOutcome {
+    /// Fresh successful transition.
+    Executed(TransitionResult),
+    /// Idempotent replay of a successful request.
+    Replayed(TransitionResult),
+    /// Idempotent replay of a failed request.
+    ReplayedFailure(i32, serde_json::Value),
+}
+
+/// Result of a successful atomic transition.
+pub(crate) struct TransitionResult {
+    pub workflow_instance_id: Uuid,
+    pub workflow_state_version: i32,
+    pub current_context_revision_id: Uuid,
+    pub source_node_visit_id: Uuid,
+    pub current_node_visit_id: Uuid,
+    pub submission_id: Option<Uuid>,
+    pub event_sequence: i32,
+}
+
+/// Parse the replayed response body into a TransitionResult.
+fn parse_replayed_response(
+    body: &serde_json::Value,
+) -> Result<TransitionResult, ExecuteWorkflowTransitionError> {
+    let wf_id = body["workflowInstanceId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            ExecuteWorkflowTransitionError::StorageError("missing workflowInstanceId".to_string())
+        })?;
+    let ctx_rev_id = body["currentContextRevisionId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            ExecuteWorkflowTransitionError::StorageError(
+                "missing currentContextRevisionId".to_string(),
+            )
+        })?;
+    let sv_id = body["sourceNodeVisitId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            ExecuteWorkflowTransitionError::StorageError("missing sourceNodeVisitId".to_string())
+        })?;
+    let tv_id = body["currentNodeVisitId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            ExecuteWorkflowTransitionError::StorageError("missing currentNodeVisitId".to_string())
+        })?;
+    let state_ver = body["workflowStateVersion"].as_i64().unwrap_or(1) as i32;
+    let ev_seq = body["eventSequence"].as_i64().unwrap_or(1) as i32;
+    let sub_id = body["submissionId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    Ok(TransitionResult {
+        workflow_instance_id: wf_id,
+        workflow_state_version: state_ver,
+        current_context_revision_id: ctx_rev_id,
+        source_node_visit_id: sv_id,
+        current_node_visit_id: tv_id,
+        submission_id: sub_id,
+        event_sequence: ev_seq,
+    })
+}
+
+/// Handle the replay case when an existing receipt is found.
+///
+/// Returns:
+/// - `Ok(Some(Handled(outcome)))` — replay handled, caller should commit and return outcome
+/// - `Ok(None)` — should continue with the original command_id
+/// - `Err(...)` — conflict/processing error, caller should commit and return err
+pub(super) async fn handle_receipt_replay(
+    tx: &mut Transaction<'_, Postgres>,
+    principal_uuid: Uuid,
+    idempotency_key: &str,
+    request_hash: &str,
+    audit_id: Uuid,
+    _actual_command_id: Uuid,
+) -> Result<Option<TransitionOutcome>, ExecuteWorkflowTransitionError> {
+    let replay = transition_receipt::replay_transition_receipt(
+        tx,
+        principal_uuid,
+        idempotency_key,
+        request_hash,
+    )
+    .await?;
+
+    match replay {
+        TransitionReplayResult::CompletedMatch {
+            response_status,
+            response_body,
+            ..
+        } => {
+            if response_status != 200 {
+                // Deterministic failure replay — caller must commit
+                return Ok(Some(TransitionOutcome::ReplayedFailure(
+                    response_status,
+                    response_body,
+                )));
+            }
+            let result = parse_replayed_response(&response_body)?;
+            Ok(Some(TransitionOutcome::Replayed(result)))
+        }
+        TransitionReplayResult::CompletedConflict {
+            command_id: cid,
+            original_request_hash: orig_hash,
+        } => {
+            let details = serde_json::json!({
+                "conflictType": "IDEMPOTENCY_KEY_MISMATCH",
+                "originalRequestHash": orig_hash,
+                "newRequestHash": request_hash,
+            });
+            transition_receipt::write_transition_attempt_audit(
+                tx,
+                audit_id,
+                cid,
+                principal_uuid,
+                idempotency_key,
+                "IDEMPOTENCY_CONFLICT",
+                Some("request hash mismatch"),
+                request_hash,
+                Some(&details),
+            )
+            .await?;
+            Err(ExecuteWorkflowTransitionError::IdempotencyConflict {
+                original_command_id: cid,
+                original_request_hash: orig_hash,
+            })
+        }
+        TransitionReplayResult::StillProcessing => {
+            Err(ExecuteWorkflowTransitionError::CommandStillProcessing)
+        }
+    }
+}
 
 /// Insert a submission record.
 pub(super) async fn insert_submission(
