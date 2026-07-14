@@ -11,11 +11,17 @@ pub const COMMAND_TYPE_CREATE_INSTANCE: &str = "CREATE_WORKFLOW_INSTANCE";
 /// Stable command type string for ReviseWorkflowContext.
 pub const COMMAND_TYPE_REVISE_CONTEXT: &str = "REVISE_WORKFLOW_CONTEXT";
 
+/// Stable command type string for ExecuteWorkflowTransition.
+pub const COMMAND_TYPE_EXECUTE_TRANSITION: &str = "EXECUTE_WORKFLOW_TRANSITION";
+
 /// Event type for instance creation events.
 pub const INSTANCE_CREATED_EVENT_TYPE: &str = "INSTANCE_CREATED";
 
 /// Event type for context revision events.
 pub const CONTEXT_REVISED_EVENT_TYPE: &str = "CONTEXT_REVISED";
+
+/// Event type for transition execution events.
+pub const TRANSITION_COMMITTED_EVENT_TYPE: &str = "WORKFLOW_TRANSITION_COMMITTED";
 
 /// Non-sensitive event data embedded in the INSTANCE_CREATED event.
 ///
@@ -48,4 +54,29 @@ pub struct ContextRevisedEventData {
     pub new_payload_digest: String,
     /// The node ID of the current node visit (unchanged by this command).
     pub current_node_id: String,
+}
+
+/// Non-sensitive event data embedded in the WORKFLOW_TRANSITION_COMMITTED event.
+///
+/// Contains only stable identifiers and digests — never the full submission payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransitionCommittedEventData {
+    /// The transition definition ID that was executed.
+    pub transition_definition_id: String,
+    /// The transition key (human-readable identifier).
+    pub transition_key: String,
+    /// The transition effect (ADVANCE, RETURN, TERMINATE).
+    pub transition_effect: String,
+    /// The node ID of the source (pre-transition) node.
+    pub source_node_id: String,
+    /// The node ID of the target (post-transition) node.
+    pub target_node_id: String,
+    /// The node visit ID of the source visit.
+    pub source_node_visit_id: String,
+    /// The node visit ID of the target visit.
+    pub target_node_visit_id: String,
+    /// The context revision ID used for this transition.
+    pub context_revision_id: String,
+    /// SHA-256 digest of the submission payload, or null if no submission.
+    pub submission_payload_digest: Option<String>,
 }

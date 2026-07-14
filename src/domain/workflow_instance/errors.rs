@@ -188,6 +188,168 @@ pub fn revise_error_code(err: &ReviseWorkflowContextError) -> i32 {
     }
 }
 
+/// Error type for workflow transition execution operations.
+#[derive(Debug, Clone)]
+pub enum ExecuteWorkflowTransitionError {
+    /// Principal does not exist.
+    PrincipalNotFound,
+    /// Principal exists but is disabled.
+    PrincipalDisabled,
+    /// Workflow instance not found.
+    InstanceNotFound,
+    /// Current node visit not found for the instance.
+    CurrentVisitNotFound,
+    /// Caller is not the current node visit's assignee.
+    PrincipalNotAssignee,
+    /// Current source node is TERMINAL (cannot transition from a terminal node).
+    SourceNodeTerminal,
+    /// Definition version is REVOKED (blocks normal commands).
+    DefinitionVersionRevoked,
+    /// Definition version is DRAFT (defensive — instance should not reference it).
+    DefinitionVersionDraft,
+    /// Definition version is DEPRECATED (allowed for existing instances).
+    DefinitionVersionDeprecated,
+    /// Expected workflow state version does not match current.
+    WorkflowStateVersionConflict { expected: i32, actual: i32 },
+    /// The requested transition definition was not found or is not applicable.
+    TransitionNotApplicable(String),
+    /// Submission is required but none was provided.
+    SubmissionRequired,
+    /// Submission payload failed schema validation.
+    SubmissionValidationFailed(String),
+    /// Submission payload exceeds size limits.
+    SizeLimitExceeded(String),
+    /// RETURN submission references are invalid (cross-instance or not found).
+    InvalidReturnReferences(String),
+    /// Assignee could not be resolved for target node.
+    AssigneeResolutionFailed(String),
+    /// Internal consistency error (defensive check failed).
+    InternalConsistency(String),
+    /// Idempotency key conflict: same key, different request hash.
+    IdempotencyConflict {
+        original_command_id: uuid::Uuid,
+        original_request_hash: String,
+    },
+    /// A previous request with this idempotency key is still processing.
+    CommandStillProcessing,
+    /// Generic storage or infrastructure error.
+    StorageError(String),
+}
+
+impl fmt::Display for ExecuteWorkflowTransitionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PrincipalNotFound => write!(f, "principal not found"),
+            Self::PrincipalDisabled => write!(f, "principal is disabled"),
+            Self::InstanceNotFound => write!(f, "workflow instance not found"),
+            Self::CurrentVisitNotFound => write!(f, "current node visit not found"),
+            Self::PrincipalNotAssignee => write!(f, "caller is not the current assignee"),
+            Self::SourceNodeTerminal => write!(f, "cannot transition from a terminal node"),
+            Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
+            Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
+            Self::DefinitionVersionDeprecated => write!(f, "definition version is DEPRECATED"),
+            Self::WorkflowStateVersionConflict { expected, actual } => {
+                write!(
+                    f,
+                    "workflow state version conflict: expected={}, actual={}",
+                    expected, actual
+                )
+            }
+            Self::TransitionNotApplicable(detail) => {
+                write!(f, "transition not applicable: {}", detail)
+            }
+            Self::SubmissionRequired => write!(f, "submission is required for this transition"),
+            Self::SubmissionValidationFailed(detail) => {
+                write!(f, "submission validation failed: {}", detail)
+            }
+            Self::SizeLimitExceeded(detail) => write!(f, "size limit exceeded: {}", detail),
+            Self::InvalidReturnReferences(detail) => {
+                write!(f, "invalid RETURN references: {}", detail)
+            }
+            Self::AssigneeResolutionFailed(detail) => {
+                write!(f, "assignee resolution failed: {}", detail)
+            }
+            Self::InternalConsistency(detail) => {
+                write!(f, "internal consistency error: {}", detail)
+            }
+            Self::IdempotencyConflict {
+                original_command_id,
+                original_request_hash,
+            } => {
+                write!(
+                    f,
+                    "idempotency conflict: original command_id={}, request_hash={}",
+                    original_command_id, original_request_hash
+                )
+            }
+            Self::CommandStillProcessing => {
+                write!(f, "command with this idempotency key is still processing")
+            }
+            Self::StorageError(detail) => write!(f, "storage error: {}", detail),
+        }
+    }
+}
+
+impl std::error::Error for ExecuteWorkflowTransitionError {}
+
+/// Map an ExecuteWorkflowTransitionError to an HTTP-style status code.
+pub fn transition_error_code(err: &ExecuteWorkflowTransitionError) -> i32 {
+    match err {
+        ExecuteWorkflowTransitionError::PrincipalNotFound => 404,
+        ExecuteWorkflowTransitionError::PrincipalDisabled => 403,
+        ExecuteWorkflowTransitionError::InstanceNotFound => 404,
+        ExecuteWorkflowTransitionError::CurrentVisitNotFound => 404,
+        ExecuteWorkflowTransitionError::PrincipalNotAssignee => 403,
+        ExecuteWorkflowTransitionError::SourceNodeTerminal => 409,
+        ExecuteWorkflowTransitionError::DefinitionVersionRevoked => 409,
+        ExecuteWorkflowTransitionError::DefinitionVersionDraft => 500,
+        ExecuteWorkflowTransitionError::DefinitionVersionDeprecated => 200, // allowed
+        ExecuteWorkflowTransitionError::WorkflowStateVersionConflict { .. } => 409,
+        ExecuteWorkflowTransitionError::TransitionNotApplicable(_) => 409,
+        ExecuteWorkflowTransitionError::SubmissionRequired => 422,
+        ExecuteWorkflowTransitionError::SubmissionValidationFailed(_) => 422,
+        ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => 413,
+        ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => 422,
+        ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => 422,
+        ExecuteWorkflowTransitionError::InternalConsistency(_) => 500,
+        ExecuteWorkflowTransitionError::IdempotencyConflict { .. } => 409,
+        ExecuteWorkflowTransitionError::CommandStillProcessing => 425,
+        ExecuteWorkflowTransitionError::StorageError(_) => 500,
+    }
+}
+
+/// Map an ExecuteWorkflowTransitionError to a stable string label.
+pub fn transition_error_label(err: &ExecuteWorkflowTransitionError) -> &'static str {
+    match err {
+        ExecuteWorkflowTransitionError::PrincipalNotFound => "principal_not_found",
+        ExecuteWorkflowTransitionError::PrincipalDisabled => "principal_disabled",
+        ExecuteWorkflowTransitionError::InstanceNotFound => "instance_not_found",
+        ExecuteWorkflowTransitionError::CurrentVisitNotFound => "current_visit_not_found",
+        ExecuteWorkflowTransitionError::PrincipalNotAssignee => "principal_not_assignee",
+        ExecuteWorkflowTransitionError::SourceNodeTerminal => "source_node_terminal",
+        ExecuteWorkflowTransitionError::DefinitionVersionRevoked => "definition_version_revoked",
+        ExecuteWorkflowTransitionError::DefinitionVersionDraft => "definition_version_draft",
+        ExecuteWorkflowTransitionError::DefinitionVersionDeprecated => {
+            "definition_version_deprecated"
+        }
+        ExecuteWorkflowTransitionError::WorkflowStateVersionConflict { .. } => {
+            "workflow_state_version_conflict"
+        }
+        ExecuteWorkflowTransitionError::TransitionNotApplicable(_) => "transition_not_applicable",
+        ExecuteWorkflowTransitionError::SubmissionRequired => "submission_required",
+        ExecuteWorkflowTransitionError::SubmissionValidationFailed(_) => {
+            "submission_validation_failed"
+        }
+        ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => "size_limit_exceeded",
+        ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => "invalid_return_references",
+        ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
+        ExecuteWorkflowTransitionError::InternalConsistency(_) => "internal_consistency_error",
+        ExecuteWorkflowTransitionError::IdempotencyConflict { .. } => "idempotency_conflict",
+        ExecuteWorkflowTransitionError::CommandStillProcessing => "command_still_processing",
+        ExecuteWorkflowTransitionError::StorageError(_) => "storage_error",
+    }
+}
+
 /// Map a ReviseWorkflowContextError to a stable string label.
 pub fn revise_error_label(err: &ReviseWorkflowContextError) -> &'static str {
     match err {

@@ -4,5 +4,6 @@
 //! authorization, and atomic consistency guarantees.
 
 pub mod create;
+pub mod execute_transition;
 pub mod idempotency;
 pub mod revise;

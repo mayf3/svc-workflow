@@ -1,0 +1,596 @@
+//! Atomic workflow transition execution transaction.
+//!
+//! Implements the core atomic transaction that:
+//! 1. Handles idempotency (CommandReceipt)
+//! 2. Locks the WorkflowInstance
+//! 3. Validates assignee, state version, definition version, transition validity
+//! 4. Handles optional/required submission (schema validation, size limits, RETURN refs)
+//! 5. Creates target NodeVisit with resolved assignee
+//! 6. Updates instance projection (current_node_visit_id, state_version)
+//! 7. Creates WORKFLOW_TRANSITION_COMMITTED WorkflowEvent
+//! 8. Completes the CommandReceipt
+
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::domain::definition::digest;
+use crate::domain::enums::NodeType;
+use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
+use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
+
+use super::transition_helpers;
+use super::transition_receipt::{
+    self, complete_transition_receipt, try_insert_transition_receipt,
+    write_transition_attempt_audit, TransitionReplayResult,
+};
+use super::transition_validation;
+use super::transition_validation::{
+    lock_instance, read_current_visit, read_source_node, read_target_node, read_transition,
+    resolve_assignee, validate_definition_version_status, validate_principal_enabled,
+    validate_return_references, validate_submission_schema, validate_submission_size,
+};
+
+/// Outcome of an atomic transition attempt.
+pub(crate) enum TransitionOutcome {
+    /// Fresh successful transition.
+    Executed(TransitionResult),
+    /// Idempotent replay of a successful request.
+    Replayed(TransitionResult),
+    /// Idempotent replay of a failed request.
+    ReplayedFailure(i32, serde_json::Value),
+}
+
+/// Result of a successful atomic transition.
+pub(crate) struct TransitionResult {
+    pub workflow_instance_id: Uuid,
+    pub workflow_state_version: i32,
+    pub current_context_revision_id: Uuid,
+    pub source_node_visit_id: Uuid,
+    pub current_node_visit_id: Uuid,
+    pub submission_id: Option<Uuid>,
+    pub event_sequence: i32,
+}
+
+/// The domain of the instance (extracted during transaction).
+struct InstanceDomain {
+    domain_id: Uuid,
+}
+
+/// Execute the full atomic transition workflow inside a single transaction.
+///
+/// This implements the complete workflow transition per PR 3C:
+/// ADVANCE, RETURN, or TERMINATE with optional submission handling.
+pub(crate) async fn execute_workflow_transition_atomically(
+    pool: &PgPool,
+    cmd: ExecuteWorkflowTransitionCommand,
+    request_hash: &str,
+) -> Result<TransitionOutcome, ExecuteWorkflowTransitionError> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    // Pre-generate all IDs
+    let command_id = Uuid::new_v4();
+    let new_node_visit_id = Uuid::new_v4();
+    let event_id = Uuid::new_v4();
+    let submission_id = Uuid::new_v4();
+    let audit_id = Uuid::new_v4();
+    let _should_create_submission = cmd.submission_payload.is_some();
+
+    let principal_uuid = cmd.principal_id.into_uuid();
+    let instance_uuid = cmd.workflow_instance_id.into_uuid();
+    let transition_uuid = cmd.transition_definition_id.into_uuid();
+
+    // ---------------------------------------------------------------
+    // Step 1: Insert command receipt (idempotency gate)
+    // ---------------------------------------------------------------
+    let receipt_owned = try_insert_transition_receipt(
+        &mut tx,
+        command_id,
+        principal_uuid,
+        &cmd.idempotency_key,
+        request_hash,
+    )
+    .await?;
+
+    let actual_command_id: Uuid = match receipt_owned {
+        Some(cmd_id) => cmd_id,
+        None => {
+            let replay = transition_receipt::replay_transition_receipt(
+                &mut tx,
+                principal_uuid,
+                &cmd.idempotency_key,
+                request_hash,
+            )
+            .await?;
+
+            match replay {
+                TransitionReplayResult::CompletedMatch {
+                    command_id: _,
+                    response_status,
+                    response_body,
+                } => {
+                    if response_status != 200 {
+                        tx.commit().await.map_err(|e| {
+                            ExecuteWorkflowTransitionError::StorageError(e.to_string())
+                        })?;
+                        return Ok(TransitionOutcome::ReplayedFailure(
+                            response_status,
+                            response_body,
+                        ));
+                    }
+
+                    // Idempotent replay of a SUCCESSFUL request
+                    let wf_id = response_body["workflowInstanceId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .ok_or_else(|| {
+                            ExecuteWorkflowTransitionError::StorageError(
+                                "stored response missing workflowInstanceId".to_string(),
+                            )
+                        })?;
+                    let ctx_rev_id = response_body["currentContextRevisionId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .ok_or_else(|| {
+                            ExecuteWorkflowTransitionError::StorageError(
+                                "stored response missing currentContextRevisionId".to_string(),
+                            )
+                        })?;
+                    let source_visit_id = response_body["sourceNodeVisitId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .ok_or_else(|| {
+                            ExecuteWorkflowTransitionError::StorageError(
+                                "stored response missing sourceNodeVisitId".to_string(),
+                            )
+                        })?;
+                    let target_visit_id = response_body["currentNodeVisitId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .ok_or_else(|| {
+                            ExecuteWorkflowTransitionError::StorageError(
+                                "stored response missing currentNodeVisitId".to_string(),
+                            )
+                        })?;
+                    let state_ver =
+                        response_body["workflowStateVersion"].as_i64().unwrap_or(1) as i32;
+                    let ev_seq = response_body["eventSequence"].as_i64().unwrap_or(1) as i32;
+                    let sub_id = response_body["submissionId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok());
+
+                    tx.commit()
+                        .await
+                        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+                    return Ok(TransitionOutcome::Replayed(TransitionResult {
+                        workflow_instance_id: wf_id,
+                        workflow_state_version: state_ver,
+                        current_context_revision_id: ctx_rev_id,
+                        source_node_visit_id: source_visit_id,
+                        current_node_visit_id: target_visit_id,
+                        submission_id: sub_id,
+                        event_sequence: ev_seq,
+                    }));
+                }
+                TransitionReplayResult::CompletedConflict {
+                    command_id: cid,
+                    original_request_hash: orig_hash,
+                } => {
+                    let details = serde_json::json!({
+                        "conflictType": "IDEMPOTENCY_KEY_MISMATCH",
+                        "originalRequestHash": orig_hash,
+                        "newRequestHash": request_hash,
+                    });
+                    write_transition_attempt_audit(
+                        &mut tx,
+                        audit_id,
+                        cid,
+                        principal_uuid,
+                        &cmd.idempotency_key,
+                        "IDEMPOTENCY_CONFLICT",
+                        Some("request hash mismatch"),
+                        request_hash,
+                        Some(&details),
+                    )
+                    .await?;
+
+                    tx.commit()
+                        .await
+                        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+                    return Err(ExecuteWorkflowTransitionError::IdempotencyConflict {
+                        original_command_id: cid,
+                        original_request_hash: orig_hash,
+                    });
+                }
+                TransitionReplayResult::StillProcessing => {
+                    tx.commit()
+                        .await
+                        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                    return Err(ExecuteWorkflowTransitionError::CommandStillProcessing);
+                }
+            }
+        }
+    };
+
+    // Helper for deterministic failure: complete receipt with error, commit, return err
+    macro_rules! deterministic_failure {
+        ($err:expr) => {{
+            let err = $err;
+            let status_code = crate::domain::workflow_instance::errors::transition_error_code(&err);
+            let response_body = transition_validation::error_response_body(&err);
+            let response_digest = digest::compute_sha256(
+                crate::domain::workflow_instance::errors::transition_error_label(&err).as_bytes(),
+            );
+            complete_transition_receipt(
+                &mut tx,
+                actual_command_id,
+                status_code,
+                &response_body,
+                &response_digest,
+            )
+            .await?;
+            tx.commit()
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            return Err(err);
+        }};
+    }
+
+    // ---------------------------------------------------------------
+    // Step 2: Lock WorkflowInstance FOR UPDATE
+    // ---------------------------------------------------------------
+    let instance = lock_instance(&mut tx, instance_uuid).await?;
+
+    // Read domain_id for assignee resolution
+    let domain_row: Option<(Uuid,)> =
+        sqlx::query_as("SELECT domain_id FROM workflow_instances WHERE workflow_instance_id = $1")
+            .bind(instance_uuid)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    let domain_uuid = domain_row
+        .ok_or_else(|| {
+            ExecuteWorkflowTransitionError::InternalConsistency(
+                "instance has no domain".to_string(),
+            )
+        })?
+        .0;
+
+    // ---------------------------------------------------------------
+    // Step 3: Validate expectedWorkflowStateVersion
+    // ---------------------------------------------------------------
+    if cmd.expected_workflow_state_version != instance.workflow_state_version {
+        deterministic_failure!(
+            ExecuteWorkflowTransitionError::WorkflowStateVersionConflict {
+                expected: cmd.expected_workflow_state_version,
+                actual: instance.workflow_state_version,
+            }
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Step 4: Read and validate current NodeVisit
+    // ---------------------------------------------------------------
+    let current_visit =
+        read_current_visit(&mut tx, instance_uuid, instance.current_node_visit_id).await?;
+
+    // ---------------------------------------------------------------
+    // Step 5: Validate caller is current visit assignee
+    // ---------------------------------------------------------------
+    if current_visit.assignee_principal_id != principal_uuid {
+        deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
+    }
+
+    // ---------------------------------------------------------------
+    // Step 6: Validate caller principal enabled
+    // ---------------------------------------------------------------
+    if let Some(err) = validate_principal_enabled(&mut tx, principal_uuid).await? {
+        deterministic_failure!(err);
+    }
+
+    // ---------------------------------------------------------------
+    // Step 7: Validate source node is not TERMINAL
+    // ---------------------------------------------------------------
+    if current_visit.node_type_enum() == NodeType::TERMINAL {
+        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
+    }
+
+    // ---------------------------------------------------------------
+    // Step 8: Validate Definition Version status (with FOR UPDATE lock)
+    // ---------------------------------------------------------------
+    validate_definition_version_status(&mut tx, instance.definition_version_id).await?;
+
+    // ---------------------------------------------------------------
+    // Step 9: Read source node definition (for primary check)
+    // ---------------------------------------------------------------
+    let source_node = read_source_node(
+        &mut tx,
+        current_visit.node_id,
+        instance.definition_version_id,
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // Step 10: Read and validate TransitionDefinition
+    // ---------------------------------------------------------------
+    let transition =
+        read_transition(&mut tx, transition_uuid, instance.definition_version_id).await?;
+
+    // Validate transition source matches current node
+    if transition.source_node_id != current_visit.node_id {
+        deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+            "transition source node does not match current visit node".to_string(),
+        ));
+    }
+
+    // Validate transition effect and primary constraint
+    let effect = transition.transition_effect.clone();
+    match effect.as_str() {
+        "ADVANCE" => {
+            // Verify this is the primary ADVANCE transition
+            let primary_id = source_node.primary_advance_transition_id.ok_or_else(|| {
+                ExecuteWorkflowTransitionError::InternalConsistency(
+                    "source node has no primary advance transition".to_string(),
+                )
+            })?;
+            if transition.transition_id != primary_id {
+                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                    "ADVANCE must use the primary advance transition".to_string(),
+                ));
+            }
+        }
+        "RETURN" => {
+            // Verify it's NOT the primary ADVANCE transition
+            if let Some(primary_id) = source_node.primary_advance_transition_id {
+                if transition.transition_id == primary_id {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                            "RETURN transition must not be the primary advance".to_string(),
+                        )
+                    );
+                }
+            }
+        }
+        "TERMINATE" => {
+            // Verify it's NOT the primary ADVANCE transition
+            if let Some(primary_id) = source_node.primary_advance_transition_id {
+                if transition.transition_id == primary_id {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                            "TERMINATE transition must not be the primary advance".to_string(),
+                        )
+                    );
+                }
+            }
+        }
+        _ => {
+            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                format!("unknown transition effect: {}", effect)
+            ));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Step 11: Read target node and validate node type vs effect
+    // ---------------------------------------------------------------
+    let target_node = read_target_node(
+        &mut tx,
+        transition.target_node_id,
+        instance.definition_version_id,
+    )
+    .await?;
+
+    match effect.as_str() {
+        "ADVANCE" => {
+            // ADVANCE allows any non-TERMINAL target (including normal completion)
+            // If target is TERMINAL, it's a normal completion via primary ADVANCE
+            // Always allowed for ADVANCE
+        }
+        "RETURN" => {
+            // Target must be non-TERMINAL and have order_index < source
+            if target_node.node_type_enum() == NodeType::TERMINAL {
+                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                    "RETURN target must not be a TERMINAL node".to_string(),
+                ));
+            }
+            if target_node.order_index >= source_node.order_index {
+                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                    "RETURN target must have lower order_index than source".to_string(),
+                ));
+            }
+        }
+        "TERMINATE" => {
+            // Target must be TERMINAL
+            if target_node.node_type_enum() != NodeType::TERMINAL {
+                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                    "TERMINATE target must be a TERMINAL node".to_string(),
+                ));
+            }
+        }
+        _ => {
+            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                format!("unknown transition effect: {}", effect)
+            ));
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Step 12: Handle Submission
+    // ---------------------------------------------------------------
+    let has_submission_schema = transition.submission_schema.is_some();
+    let final_submission_id: Option<Uuid>;
+
+    match (&cmd.submission_payload, has_submission_schema) {
+        (None, true) => {
+            // Schema exists but no payload — submission required
+            deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionRequired);
+        }
+        (None, false) => {
+            // No schema, no payload — no submission
+            final_submission_id = None;
+        }
+        (Some(payload), _) => {
+            // Payload provided — validate and create submission
+
+            // Size check
+            validate_submission_size(payload)?;
+
+            // Schema validation
+            validate_submission_schema(&transition.submission_schema, payload)?;
+
+            // RETURN-specific reference validation
+            if effect == "RETURN" {
+                validate_return_references(&mut tx, payload, instance_uuid).await?;
+            }
+
+            // Compute payload digest
+            // Payload digest is computed inside transition_helpers::insert_submission
+
+            // Insert Submission via helper
+            transition_helpers::insert_submission(
+                &mut tx,
+                submission_id,
+                instance_uuid,
+                instance.current_node_visit_id,
+                instance.current_context_revision_id,
+                principal_uuid,
+                transition.transition_id,
+                payload,
+            )
+            .await?;
+
+            final_submission_id = Some(submission_id);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Step 13: Resolve target assignee
+    // ---------------------------------------------------------------
+    let target_assignee_id =
+        resolve_assignee(&mut tx, &target_node, &instance, domain_uuid).await?;
+
+    // ---------------------------------------------------------------
+    // Step 14: Compute target visit_number
+    // ---------------------------------------------------------------
+    let visit_number: (Option<i32>,) = sqlx::query_as(
+        "SELECT COALESCE(MAX(visit_number), 0) + 1 \
+         FROM workflow_node_visits \
+         WHERE workflow_instance_id = $1 AND node_id = $2",
+    )
+    .bind(instance_uuid)
+    .bind(target_node.node_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    let target_visit_number = visit_number.0.unwrap_or(1);
+
+    transition_helpers::insert_node_visit(
+        &mut tx,
+        new_node_visit_id,
+        instance_uuid,
+        target_node.node_id,
+        target_visit_number,
+        target_assignee_id,
+        transition.transition_id,
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // Step 16: Update WorkflowInstance projection
+    // ---------------------------------------------------------------
+    let old_state_version = instance.workflow_state_version;
+    let new_state_version = old_state_version + 1;
+
+    transition_helpers::update_instance(
+        &mut tx,
+        instance_uuid,
+        new_node_visit_id,
+        new_state_version,
+        old_state_version,
+        instance.current_node_visit_id,
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // Step 17: Insert WORKFLOW_TRANSITION_COMMITTED Event
+    // ---------------------------------------------------------------
+    let event_sequence = new_state_version;
+
+    let submission_payload_digest = match &cmd.submission_payload {
+        Some(payload) => {
+            let dig = digest::compute_json_digest(payload)
+                .map_err(ExecuteWorkflowTransitionError::StorageError)?;
+            Some(dig)
+        }
+        None => None,
+    };
+
+    transition_helpers::insert_event(
+        &mut tx,
+        event_id,
+        instance_uuid,
+        event_sequence,
+        actual_command_id,
+        &effect,
+        instance.current_node_visit_id,
+        new_node_visit_id,
+        instance.current_context_revision_id,
+        final_submission_id,
+        principal_uuid,
+        source_node.node_id,
+        target_node.node_id,
+        old_state_version,
+        new_state_version,
+        &transition,
+        submission_payload_digest,
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // Step 18: Complete the command receipt
+    // ---------------------------------------------------------------
+    let response_body = serde_json::json!({
+        "workflowInstanceId": instance_uuid,
+        "workflowStateVersion": new_state_version,
+        "currentContextRevisionId": instance.current_context_revision_id,
+        "sourceNodeVisitId": instance.current_node_visit_id,
+        "currentNodeVisitId": new_node_visit_id,
+        "submissionId": final_submission_id,
+        "eventSequence": event_sequence,
+    });
+
+    let response_digest = digest::compute_json_digest(&response_body)
+        .map_err(ExecuteWorkflowTransitionError::StorageError)?;
+
+    complete_transition_receipt(
+        &mut tx,
+        actual_command_id,
+        200,
+        &response_body,
+        &response_digest,
+    )
+    .await?;
+
+    // ---------------------------------------------------------------
+    // Step 19: Commit
+    // ---------------------------------------------------------------
+    tx.commit()
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    Ok(TransitionOutcome::Executed(TransitionResult {
+        workflow_instance_id: instance_uuid,
+        workflow_state_version: new_state_version,
+        current_context_revision_id: instance.current_context_revision_id,
+        source_node_visit_id: instance.current_node_visit_id,
+        current_node_visit_id: new_node_visit_id,
+        submission_id: final_submission_id,
+        event_sequence,
+    }))
+}
