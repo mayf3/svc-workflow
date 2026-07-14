@@ -1,7 +1,6 @@
-//! Integration tests for CreateWorkflowInstance.
+//! Integration tests for Workflow Runtime commands.
 //!
-//! Covers 34+ scenarios across: normal creation, definition gates,
-//! authorization, context validation, idempotency, concurrency, and atomicity.
+//! Covers WorkflowInstance creation (PR 3A) and WorkflowContext revision (PR 3B).
 
 #![allow(clippy::needless_borrow)]
 
@@ -19,7 +18,7 @@ use svc_workflow::domain::workflow_instance::commands::CreateWorkflowInstanceCom
 use svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 
 // ---------------------------------------------------------------------------
-// Seed helpers
+// Seed helpers — Instance Create
 // ---------------------------------------------------------------------------
 
 /// Seed a published definition with a DRAFT node (WORKFLOW_CREATOR assignee).
@@ -111,6 +110,98 @@ async fn seed_published_def_inner(
     (domain_id, ver_id)
 }
 
+/// Seed a published definition with a NORMAL (non-DRAFT) node.
+/// Returns (domain_id, definition_version_id, node_id).
+pub(crate) async fn seed_published_definition_normal_node(
+    pool: &PgPool,
+    domain_id: Uuid,
+) -> (Uuid, Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("test-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'Test Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
+        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let normal_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR')")
+        .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'review', 'Review', 1, 'NORMAL', 'WORKFLOW_CREATOR')")
+        .bind(normal_id).bind(ver_id).execute(pool).await.expect("insert normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', 'WORKFLOW_CREATOR')")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    // DRAFT → NORMAL
+    let trans1_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-draft', 'To Review', $3, $4, 'ADVANCE')")
+        .bind(trans1_id).bind(ver_id).bind(draft_id).bind(normal_id)
+        .execute(pool).await.expect("insert transition 1");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(trans1_id).bind(draft_id).execute(pool).await.expect("set primary on draft");
+
+    // NORMAL → DONE
+    let trans2_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-review', 'To Done', $3, $4, 'ADVANCE')")
+        .bind(trans2_id).bind(ver_id).bind(normal_id).bind(term_id)
+        .execute(pool).await.expect("insert transition 2");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(trans2_id).bind(normal_id).execute(pool).await.expect("set primary on normal");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id, normal_id)
+}
+
+/// Seed a published definition with a TERMINAL node that directly follows DRAFT.
+/// Returns (domain_id, definition_version_id, terminal_node_id).
+pub(crate) async fn seed_published_definition_terminal_only(
+    pool: &PgPool,
+    domain_id: Uuid,
+) -> (Uuid, Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("test-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'Test Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
+        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR')")
+        .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    let trans_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance', 'Advance', $3, $4, 'ADVANCE')")
+        .bind(trans_id).bind(ver_id).bind(draft_id).bind(term_id)
+        .execute(pool).await.expect("insert transition");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(trans_id).bind(draft_id).execute(pool).await.expect("set primary");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id, term_id)
+}
+
+// ---------------------------------------------------------------------------
+// CreateWorkflowInstance helpers
+// ---------------------------------------------------------------------------
+
 /// Create a basic CreateWorkflowInstanceCommand.
 pub(crate) fn make_command(
     principal_id: Uuid,
@@ -176,18 +267,34 @@ pub(crate) async fn verify_creation(
     assert_eq!(count.0, 1);
 }
 
-// Sub-modules
-#[path = "17_workflow_instance_create/atomicity.rs"]
+// Sub-modules — Instance Create
+#[path = "17_workflow_runtime/instance_create/atomicity.rs"]
 mod atomicity;
-#[path = "17_workflow_instance_create/authorization.rs"]
+#[path = "17_workflow_runtime/instance_create/authorization.rs"]
 mod authorization;
-#[path = "17_workflow_instance_create/context_validation.rs"]
+#[path = "17_workflow_runtime/instance_create/context_validation.rs"]
 mod context_validation;
-#[path = "17_workflow_instance_create/definition_gates.rs"]
+#[path = "17_workflow_runtime/instance_create/definition_gates.rs"]
 mod definition_gates;
-#[path = "17_workflow_instance_create/idempotency.rs"]
+#[path = "17_workflow_runtime/instance_create/idempotency.rs"]
 mod idempotency;
-#[path = "17_workflow_instance_create/normal_create.rs"]
+#[path = "17_workflow_runtime/instance_create/normal_create.rs"]
 mod normal_create;
-#[path = "17_workflow_instance_create/request_hash_contract.rs"]
+#[path = "17_workflow_runtime/instance_create/request_hash_contract.rs"]
 mod request_hash_contract;
+
+// Sub-modules — Context Revision (enabled when domain types exist)
+// #[path = "17_workflow_runtime/context_revision/success.rs"]
+// mod context_revision_success;
+// #[path = "17_workflow_runtime/context_revision/authorization.rs"]
+// mod context_revision_authorization;
+// #[path = "17_workflow_runtime/context_revision/concurrency.rs"]
+// mod context_revision_concurrency;
+// #[path = "17_workflow_runtime/context_revision/context_validation.rs"]
+// mod context_revision_context_validation;
+// #[path = "17_workflow_runtime/context_revision/idempotency.rs"]
+// mod context_revision_idempotency;
+// #[path = "17_workflow_runtime/context_revision/atomicity.rs"]
+// mod context_revision_atomicity;
+// #[path = "17_workflow_runtime/context_revision/request_hash_contract.rs"]
+// mod context_revision_request_hash_contract;
