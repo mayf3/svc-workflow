@@ -14,6 +14,9 @@ pub const COMMAND_TYPE_REVISE_CONTEXT: &str = "REVISE_WORKFLOW_CONTEXT";
 /// Stable command type string for ExecuteWorkflowTransition.
 pub const COMMAND_TYPE_EXECUTE_TRANSITION: &str = "EXECUTE_WORKFLOW_TRANSITION";
 
+/// Stable command type string for ReviseContextAndTransition.
+pub const COMMAND_TYPE_REVISE_CONTEXT_AND_TRANSITION: &str = "REVISE_CONTEXT_AND_TRANSITION";
+
 /// Event type for instance creation events.
 pub const INSTANCE_CREATED_EVENT_TYPE: &str = "INSTANCE_CREATED";
 
@@ -22,6 +25,10 @@ pub const CONTEXT_REVISED_EVENT_TYPE: &str = "CONTEXT_REVISED";
 
 /// Event type for transition execution events.
 pub const TRANSITION_COMMITTED_EVENT_TYPE: &str = "WORKFLOW_TRANSITION_COMMITTED";
+
+/// Event type for the atomic context revision + transition command.
+pub const CONTEXT_REVISED_AND_TRANSITION_COMMITTED_EVENT_TYPE: &str =
+    "WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED";
 
 /// Non-sensitive event data embedded in the INSTANCE_CREATED event.
 ///
@@ -79,4 +86,21 @@ pub struct TransitionCommittedEventData {
     pub context_revision_id: String,
     /// SHA-256 digest of the submission payload, or null if no submission.
     pub submission_payload_digest: Option<String>,
+}
+
+/// Non-sensitive event data for an atomic context revision + transition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextRevisedAndTransitionCommittedEventData {
+    pub previous_context_revision_id: String,
+    pub new_context_revision_id: String,
+    pub previous_context_payload_digest: String,
+    pub new_context_payload_digest: String,
+    pub transition_definition_id: String,
+    pub transition_key: String,
+    pub transition_effect: String,
+    pub source_node_id: String,
+    pub target_node_id: String,
+    pub source_node_visit_id: String,
+    pub target_node_visit_id: String,
+    pub submission_payload_digest: String,
 }

@@ -7,3 +7,4 @@ pub mod create;
 pub mod execute_transition;
 pub mod idempotency;
 pub mod revise;
+pub mod revise_and_transition;

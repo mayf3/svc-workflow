@@ -4,7 +4,7 @@
 Status: IMPLEMENTATION_CONTRACT
 Version: v0.1
 Architecture: SVC_WORKFLOW_ARCHITECTURE_V0_3_1 (ARCHITECTURE_FROZEN)
-PR: 3C
+PR: 3C / 3D
 ```
 
 ## 1. Command Input
@@ -311,24 +311,90 @@ Pattern (same as PR 3A/3B):
 3. **Same key, different hash**: One succeeds, one gets `IdempotencyConflict`
 4. **Context Revision + Transition**: Instance `FOR UPDATE` row lock serializes both. One succeeds, the other gets stale version conflict.
 
-## 18. PR 3D Boundary
+## 18. PR 3D — ReviseContextAndTransition
 
-PR 3C implements `ExecuteWorkflowTransition` — transition-only, NO context modification.
+PR 3D 是单独的原子命令，不是客户端依次调用 revise-only 和 transition-only。
 
-PR 3D will implement `ReviseContextAndTransition` — atomic context revision + transition.
+```rust
+pub struct ReviseContextAndTransitionCommand {
+    pub principal_id: PrincipalId,
+    pub idempotency_key: String,
+    pub command_schema_version: String,
+    pub workflow_instance_id: WorkflowInstanceId,
+    pub expected_workflow_state_version: i32,
+    pub transition_definition_id: TransitionId,
+    pub context_payload: serde_json::Value,
+    pub submission_payload: serde_json::Value,
+}
+```
 
-Differences:
-| Aspect | PR 3C | PR 3D |
-|---|---|---|
-| Context Revision | Not modified | New revision created |
-| Submission binding | Current context revision | New context revision |
-| Event type | `WORKFLOW_TRANSITION_COMMITTED` | `WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED` |
-| Transaction order | Submit → Visit → Instance → Event | Revise → Submit → Visit → Instance → Event |
+冻结门禁：
+
+1. 调用者必须同时等于 `created_by_principal_id` 和 current Visit assignee；
+2. current source node 必须是 `DRAFT`；
+3. 只允许执行该 DRAFT 的 `primary_advance_transition_id`，effect 必须为 `ADVANCE`；
+4. Context 与 Submission payload 均必填，并分别通过大小和 Schema 校验；
+5. PUBLISHED / DEPRECATED 可继续，REVOKED / DRAFT 拒绝。
+
+固定事务顺序：
+
+```text
+CommandReceipt
+→ WorkflowInstance FOR UPDATE
+→ DefinitionVersion FOR UPDATE
+→ validate version / permissions / DRAFT primary ADVANCE / schemas
+→ insert new ContextRevision
+→ insert Submission bound to the new ContextRevision
+→ insert target NodeVisit
+→ update both Instance pointers and workflowStateVersion +1
+→ insert exactly one combined Event
+→ complete Receipt
+→ commit
+```
+
+新 Revision 与 Submission 必须满足：
+
+```text
+newRevision.previousRevisionId = pre-command currentContextRevisionId
+submission.contextRevisionId = newRevision.contextRevisionId
+```
+
+Event 字段：
+
+| Field | Value |
+|---|---|
+| `event_type` | `WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED` |
+| `transition_effect` | `ADVANCE` |
+| `source_node_visit_id` | 命令前 DRAFT Visit |
+| `target_node_visit_id` | 新目标 Visit |
+| `context_revision_id` | 新 Revision |
+| `submission_id` | 新 Submission |
+| `old_workflow_state_version` | N |
+| `new_workflow_state_version` / `event_sequence` | N + 1 |
+
+requestHash 使用与本合同第 13 节相同的 JCS 信封，command type 为
+`REVISE_CONTEXT_AND_TRANSITION`，request body 同时包含
+`context_payload` 与 `submission_payload`。成功响应为：
+
+```json
+{
+  "workflowInstanceId": "uuid",
+  "workflowStateVersion": 2,
+  "currentContextRevisionId": "uuid",
+  "sourceNodeVisitId": "uuid",
+  "currentNodeVisitId": "uuid",
+  "submissionId": "uuid",
+  "eventSequence": 2
+}
+```
+
+同 key/hash 重放同一响应；不同 key/same expectedVersion 只能一个成功。
+revise-only、transition-only 与组合命令都锁同一 Instance，因此只能线性化成功一个。
+本命令使用现有表和约束，不新增 Migration。
 
 ## 19. Not Implemented (not in scope)
 
 - HTTP / gRPC / CLI routes
-- Context modification (PR 3D)
 - Admin emergency override (separate PR)
 - Reassign / Handoff
 - Parallel nodes / conditional branching

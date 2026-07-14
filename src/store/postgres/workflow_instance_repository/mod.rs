@@ -3,6 +3,9 @@
 //! Implements atomic creation of workflow instances with full
 //! idempotency, authorization, and consistency guarantees.
 
+pub mod combined_helpers;
+pub mod combined_receipt;
+pub mod combined_transaction;
 pub mod command_receipt;
 pub mod create_transaction;
 pub mod definition_lookup;

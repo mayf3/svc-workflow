@@ -11,8 +11,6 @@ use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
-use crate::domain::workflow_instance::events::COMMAND_TYPE_CREATE_INSTANCE;
-
 /// Attempt to insert a new command receipt as the current owner.
 ///
 /// Returns `Ok(Some(command_id))` if the insert succeeded (we own this request).
@@ -22,6 +20,7 @@ pub(super) async fn try_insert_receipt(
     command_id: Uuid,
     principal_id: Uuid,
     idempotency_key: &str,
+    command_type: &str,
     request_hash: &str,
 ) -> Result<Option<Uuid>, CreateWorkflowInstanceError> {
     let result: Option<(Uuid,)> = sqlx::query_as(
@@ -36,7 +35,7 @@ pub(super) async fn try_insert_receipt(
     .bind(command_id)
     .bind(principal_id)
     .bind(idempotency_key)
-    .bind(COMMAND_TYPE_CREATE_INSTANCE)
+    .bind(command_type)
     .bind(request_hash)
     .fetch_optional(&mut **tx)
     .await

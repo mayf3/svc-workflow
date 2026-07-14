@@ -96,3 +96,20 @@ pub struct ExecuteWorkflowTransitionCommand {
     /// `Some(Value::Null)` means an explicitly null payload is provided.
     pub submission_payload: Option<serde_json::Value>,
 }
+
+/// Atomically revise the DRAFT context and execute its primary ADVANCE transition.
+///
+/// The caller must be both the workflow creator and the current visit assignee.
+/// Both payloads are required: the submission is always bound to the context
+/// revision created by this command.
+#[derive(Debug, Clone)]
+pub struct ReviseContextAndTransitionCommand {
+    pub principal_id: PrincipalId,
+    pub idempotency_key: String,
+    pub command_schema_version: String,
+    pub workflow_instance_id: WorkflowInstanceId,
+    pub expected_workflow_state_version: i32,
+    pub transition_definition_id: TransitionId,
+    pub context_payload: serde_json::Value,
+    pub submission_payload: serde_json::Value,
+}
