@@ -17,7 +17,8 @@ use crate::domain::workflow_instance::commands::ReviseWorkflowContextCommand;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 use crate::domain::workflow_instance::errors::ReviseWorkflowContextError;
 use crate::domain::workflow_instance::events::{
-    ContextRevisedEventData, CONTEXT_REVISED_EVENT_TYPE, EVENT_SCHEMA_VERSION,
+    ContextRevisedEventData, COMMAND_TYPE_REVISE_CONTEXT, CONTEXT_REVISED_EVENT_TYPE,
+    EVENT_SCHEMA_VERSION,
 };
 
 use super::command_receipt::{
@@ -81,6 +82,7 @@ pub(crate) async fn revise_workflow_context_atomically(
         command_id,
         principal_uuid,
         &cmd.idempotency_key,
+        COMMAND_TYPE_REVISE_CONTEXT,
         request_hash,
     )
     .await

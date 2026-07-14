@@ -15,7 +15,8 @@ use crate::domain::definition::digest;
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 use crate::domain::workflow_instance::events::{
-    InstanceCreatedEventData, EVENT_SCHEMA_VERSION, INSTANCE_CREATED_EVENT_TYPE,
+    InstanceCreatedEventData, COMMAND_TYPE_CREATE_INSTANCE, EVENT_SCHEMA_VERSION,
+    INSTANCE_CREATED_EVENT_TYPE,
 };
 
 use super::command_receipt::{
@@ -75,6 +76,7 @@ pub(crate) async fn create_workflow_instance_atomically(
         command_id,
         principal_uuid,
         &cmd.idempotency_key,
+        COMMAND_TYPE_CREATE_INSTANCE,
         request_hash,
     )
     .await?;

@@ -1,6 +1,6 @@
 //! Integration tests for Workflow Runtime commands.
 //!
-//! Covers WorkflowInstance creation (PR 3A) and WorkflowContext revision (PR 3B).
+//! Covers WorkflowInstance state commands through PR 3D.
 
 #![allow(clippy::needless_borrow)]
 
@@ -16,9 +16,12 @@ use svc_workflow::application::workflow_instance::create::CreateWorkflowInstance
 use svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition;
 use svc_workflow::application::workflow_instance::revise::revise_workflow_context;
 use svc_workflow::application::workflow_instance::revise::ReviseWorkflowContextResult;
+use svc_workflow::application::workflow_instance::revise_and_transition::revise_context_and_transition;
 use svc_workflow::domain::ids::*;
+use svc_workflow::domain::workflow_instance::combined_errors::ReviseContextAndTransitionError;
 use svc_workflow::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use svc_workflow::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
+use svc_workflow::domain::workflow_instance::commands::ReviseContextAndTransitionCommand;
 use svc_workflow::domain::workflow_instance::commands::ReviseWorkflowContextCommand;
 use svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 use svc_workflow::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
@@ -350,6 +353,10 @@ pub(crate) async fn verify_revision(
 mod _transition_helpers;
 pub(crate) use _transition_helpers::*;
 
+#[path = "17_workflow_runtime/combined/helpers.rs"]
+mod _combined_helpers;
+pub(crate) use _combined_helpers::*;
+
 // Sub-modules — Instance Create
 #[path = "17_workflow_runtime/instance_create/atomicity.rs"]
 mod atomicity;
@@ -399,3 +406,17 @@ mod transition_request_hash_contract;
 mod transition_submission_validation;
 #[path = "17_workflow_runtime/transition/success.rs"]
 mod transition_success;
+
+// Sub-modules — Atomic Context Revision + Transition
+#[path = "17_workflow_runtime/combined/atomicity.rs"]
+mod combined_atomicity;
+#[path = "17_workflow_runtime/combined/concurrency.rs"]
+mod combined_concurrency;
+#[path = "17_workflow_runtime/combined/idempotency.rs"]
+mod combined_idempotency;
+#[path = "17_workflow_runtime/combined/request_hash_contract.rs"]
+mod combined_request_hash_contract;
+#[path = "17_workflow_runtime/combined/success.rs"]
+mod combined_success;
+#[path = "17_workflow_runtime/combined/validation.rs"]
+mod combined_validation;
