@@ -14,9 +14,10 @@ Instance 仅保存可重建的当前投影。
 - Definition Version Service；
 - `CreateWorkflowInstance`；
 - `ReviseWorkflowContext`；
-- `ExecuteWorkflowTransition`。
+- `ExecuteWorkflowTransition`；
+- `ReviseContextAndTransition`。
 
-当前实施：`ReviseContextAndTransition`（PR 3D）。后续范围见实施路线图。
+当前实施：Read Model / Query Service（PR 4）。后续范围见实施路线图。
 
 当前尚未提供 HTTP/gRPC 服务；可用入口是 Rust application service。
 
