@@ -40,6 +40,7 @@ pub(crate) struct QueryBaseRow {
     pub current_node_display_name: Option<String>,
     pub current_node_type: Option<String>,
     pub current_node_instructions: Option<String>,
+    pub current_primary_advance_transition_id: Option<Uuid>,
     pub event_count: i64,
     pub min_event_sequence: Option<i32>,
     pub max_event_sequence: Option<i32>,

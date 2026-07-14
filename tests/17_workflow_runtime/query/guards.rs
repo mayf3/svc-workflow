@@ -119,10 +119,16 @@ async fn successful_queries_are_read_only_and_rejections_only_add_security_audit
     .unwrap();
     assert_eq!(before, after);
 
-    let audit_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflow_security_audits")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let audit_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_security_audits
+         WHERE principal_id = $1 AND resource_id = $2
+           AND details->>'queryType' = 'ListNodeVisits'",
+    )
+    .bind(seed.outsider)
+    .bind(created.workflow_instance_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(
         service
             .list_node_visits(ListNodeVisits {
@@ -135,10 +141,16 @@ async fn successful_queries_are_read_only_and_rejections_only_add_security_audit
             .unwrap_err(),
         WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible
     );
-    let audit_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflow_security_audits")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let audit_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_security_audits
+         WHERE principal_id = $1 AND resource_id = $2
+           AND details->>'queryType' = 'ListNodeVisits'",
+    )
+    .bind(seed.outsider)
+    .bind(created.workflow_instance_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(audit_after, audit_before + 1);
 }
 

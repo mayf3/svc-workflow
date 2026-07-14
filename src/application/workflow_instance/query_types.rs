@@ -155,6 +155,7 @@ pub enum TransitionBlockedReason {
     CurrentNodeTerminal,
     DefinitionVersionRevoked,
     DefinitionVersionDraft,
+    AdvanceNotPrimary,
     TargetAssigneeUnavailable,
 }
 

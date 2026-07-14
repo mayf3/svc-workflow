@@ -58,14 +58,45 @@ async fn detail_visibility_priority_and_full_dto_are_authoritative() {
             detail.current_visit.instructions.as_deref(),
             Some("Draft instructions")
         );
-        assert_eq!(detail.outgoing_transitions.len(), 1);
-        let outgoing = &detail.outgoing_transitions[0];
+        assert_eq!(detail.outgoing_transitions.len(), 2);
+        let outgoing = detail
+            .outgoing_transitions
+            .iter()
+            .find(|transition| transition.transition_id == seed.draft_advance)
+            .unwrap();
         assert_eq!(outgoing.transition_id, seed.draft_advance);
         assert_eq!(outgoing.target_node.node_id, seed.normal);
         assert_eq!(outgoing.transition_effect, "ADVANCE");
         assert!(outgoing.submission_schema.is_some());
         assert_eq!(outgoing.executable_for_actor, actor == seed.creator);
+        let extra = detail
+            .outgoing_transitions
+            .iter()
+            .find(|transition| transition.transition_id == seed.extra_advance)
+            .unwrap();
+        assert!(!extra.executable_for_actor);
+        assert_eq!(
+            extra.blocked_reason,
+            Some(TransitionBlockedReason::AdvanceNotPrimary)
+        );
     }
+
+    let non_primary_error = execute_workflow_transition(
+        &pool,
+        make_transition_command(
+            seed.creator,
+            created.workflow_instance_id,
+            1,
+            seed.extra_advance,
+            Some(serde_json::json!({})),
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        non_primary_error,
+        ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
+    ));
 
     execute_workflow_transition(
         &pool,
@@ -274,8 +305,13 @@ async fn stable_transition_blocking_covers_status_actor_and_target_availability(
     else {
         panic!()
     };
+    let owner_primary = owner
+        .outgoing_transitions
+        .iter()
+        .find(|transition| transition.transition_id == seed.draft_advance)
+        .unwrap();
     assert_eq!(
-        owner.outgoing_transitions[0].blocked_reason,
+        owner_primary.blocked_reason,
         Some(TransitionBlockedReason::ActorNotCurrentAssignee)
     );
 
@@ -291,8 +327,13 @@ async fn stable_transition_blocking_covers_status_actor_and_target_availability(
     else {
         panic!()
     };
+    let creator_primary = creator
+        .outgoing_transitions
+        .iter()
+        .find(|transition| transition.transition_id == seed.draft_advance)
+        .unwrap();
     assert_eq!(
-        creator.outgoing_transitions[0].blocked_reason,
+        creator_primary.blocked_reason,
         Some(TransitionBlockedReason::TargetAssigneeUnavailable)
     );
 
@@ -311,8 +352,13 @@ async fn stable_transition_blocking_covers_status_actor_and_target_availability(
     else {
         panic!()
     };
+    let revoked_primary = revoked
+        .outgoing_transitions
+        .iter()
+        .find(|transition| transition.transition_id == seed.draft_advance)
+        .unwrap();
     assert_eq!(
-        revoked.outgoing_transitions[0].blocked_reason,
+        revoked_primary.blocked_reason,
         Some(TransitionBlockedReason::DefinitionVersionRevoked)
     );
 }

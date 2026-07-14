@@ -180,10 +180,11 @@ pub async fn list_creator_owned_drafts(
         );
         let combined_executable = context_editable
             && base.current_assignee_principal_id == Some(query.actor_principal_id)
-            && detail
-                .outgoing_transitions
-                .iter()
-                .any(|transition| transition.executable_for_actor);
+            && detail.outgoing_transitions.iter().any(|transition| {
+                transition.transition_effect == "ADVANCE"
+                    && Some(transition.transition_id) == base.current_primary_advance_transition_id
+                    && transition.executable_for_actor
+            });
         items.push(CreatorDraftItem {
             detail,
             context_editable,
