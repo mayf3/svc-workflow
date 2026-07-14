@@ -180,7 +180,7 @@ pub async fn seed_workflow_definition(
     sqlx::query(
         r#"
         INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type)
-        VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')
+        VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', NULL)
         "#,
     )
     .bind(terminal_node_id)

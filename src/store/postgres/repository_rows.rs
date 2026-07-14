@@ -101,7 +101,7 @@ pub(super) struct NodeDefinitionRow {
     display_name: String,
     order_index: i32,
     node_type: String,
-    assignee_ref_type: String,
+    assignee_ref_type: Option<String>,
     fixed_principal_id: Option<Uuid>,
     instructions: Option<String>,
     primary_advance_transition_id: Option<Uuid>,
@@ -115,10 +115,12 @@ impl NodeDefinitionRow {
             .node_type
             .parse::<NodeType>()
             .unwrap_or(NodeType::NORMAL);
-        let ref_type = self
-            .assignee_ref_type
-            .parse::<AssigneeRefType>()
-            .unwrap_or(AssigneeRefType::WorkflowCreator);
+        let assignee_ref = self.assignee_ref_type.map(|value| AssigneeRef {
+            ref_type: value
+                .parse::<AssigneeRefType>()
+                .unwrap_or(AssigneeRefType::WorkflowCreator),
+            fixed_principal_id: self.fixed_principal_id.map(PrincipalId::from_uuid),
+        });
 
         NodeDefinition {
             node_id: NodeId::from_uuid(self.node_id),
@@ -127,10 +129,7 @@ impl NodeDefinitionRow {
             display_name: self.display_name,
             order_index: self.order_index,
             node_type,
-            assignee_ref: AssigneeRef {
-                ref_type,
-                fixed_principal_id: self.fixed_principal_id.map(PrincipalId::from_uuid),
-            },
+            assignee_ref,
             instructions: self.instructions,
             primary_advance_transition_id: self
                 .primary_advance_transition_id

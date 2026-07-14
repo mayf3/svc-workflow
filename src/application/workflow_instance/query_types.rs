@@ -142,7 +142,8 @@ pub struct NodeVisitItem {
     pub workflow_instance_id: Uuid,
     pub node: PublicNodeSummary,
     pub visit_number: i32,
-    pub assignee_principal_id: Uuid,
+    /// `None` is the canonical representation for a Terminal visit.
+    pub assignee_principal_id: Option<Uuid>,
     pub entered_by_transition_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub created_at: DateTime<Utc>,

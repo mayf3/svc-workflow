@@ -201,7 +201,7 @@ pub(super) async fn insert_node_visit(
     instance_uuid: Uuid,
     node_id: Uuid,
     visit_number: i32,
-    assignee_id: Uuid,
+    assignee_id: Option<Uuid>,
     transition_id: Uuid,
 ) -> Result<(), ExecuteWorkflowTransitionError> {
     sqlx::query(

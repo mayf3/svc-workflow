@@ -70,7 +70,8 @@ pub struct NodeDefinition {
     pub display_name: String,
     pub order_index: i32,
     pub node_type: NodeType,
-    pub assignee_ref: AssigneeRef,
+    /// Terminal nodes have no assignee reference. Non-terminal nodes must have one.
+    pub assignee_ref: Option<AssigneeRef>,
     pub instructions: Option<String>,
     pub primary_advance_transition_id: Option<TransitionId>,
     pub metadata: Option<serde_json::Value>,

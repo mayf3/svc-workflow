@@ -101,7 +101,7 @@ async fn test_no_draft_node_defensive_failure() {
     sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status) VALUES ($1, $2, 1, 'DRAFT')")
         .bind(ver_id).bind(def_id).execute(&pool).await.expect("ver");
     let term_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 0, 'TERMINAL', 'WORKFLOW_CREATOR')")
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 0, 'TERMINAL', NULL)")
         .bind(term_id).bind(ver_id).execute(&pool).await.expect("terminal");
     // Only one node, non-DRAFT — no DRAFT node exists
     sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")

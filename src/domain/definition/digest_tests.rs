@@ -30,10 +30,10 @@ mod tests {
                 display_name: "Draft".to_string(),
                 order_index: 0,
                 node_type: NodeType::DRAFT,
-                assignee_ref: AssigneeRef {
+                assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::WorkflowCreator,
                     fixed_principal_id: None,
-                },
+                }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_trans_id),
                 metadata: None,
@@ -46,10 +46,10 @@ mod tests {
                 display_name: "Dev Self Check".to_string(),
                 order_index: 1,
                 node_type: NodeType::NORMAL,
-                assignee_ref: AssigneeRef {
+                assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::FixedPrincipal,
                     fixed_principal_id: Some(PrincipalId::new()),
-                },
+                }),
                 instructions: Some("Run tests".to_string()),
                 primary_advance_transition_id: Some(complete_trans_id),
                 metadata: None,
@@ -62,10 +62,7 @@ mod tests {
                 display_name: "Done".to_string(),
                 order_index: 2,
                 node_type: NodeType::TERMINAL,
-                assignee_ref: AssigneeRef {
-                    ref_type: AssigneeRefType::WorkflowCreator,
-                    fixed_principal_id: None,
-                },
+                assignee_ref: None,
                 instructions: None,
                 primary_advance_transition_id: None,
                 metadata: None,

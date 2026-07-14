@@ -177,10 +177,10 @@ pub(crate) async fn execute_workflow_transition_atomically(
         read_current_visit(&mut tx, instance_uuid, instance.current_node_visit_id).await?;
 
     // ---------------------------------------------------------------
-    // Step 5: Validate caller is current visit assignee
+    // Step 5: A Terminal visit is canonically unassigned and cannot transition.
     // ---------------------------------------------------------------
-    if current_visit.assignee_principal_id != principal_uuid {
-        deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
+    if current_visit.node_type_enum() == NodeType::TERMINAL {
+        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
     }
 
     // ---------------------------------------------------------------
@@ -191,10 +191,10 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // ---------------------------------------------------------------
-    // Step 7: Validate source node is not TERMINAL
+    // Step 7: Validate caller is current visit assignee
     // ---------------------------------------------------------------
-    if current_visit.node_type_enum() == NodeType::TERMINAL {
-        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
+    if current_visit.assignee_principal_id != Some(principal_uuid) {
+        deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
     }
 
     // ---------------------------------------------------------------

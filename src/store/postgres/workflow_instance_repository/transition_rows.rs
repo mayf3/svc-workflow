@@ -21,7 +21,7 @@ pub(super) struct TransitionDefinitionRow {
 pub(super) struct TargetNodeRow {
     pub(super) node_id: uuid::Uuid,
     pub(super) node_type: String,
-    pub(super) assignee_ref_type: String,
+    pub(super) assignee_ref_type: Option<String>,
     pub(super) fixed_principal_id: Option<uuid::Uuid>,
     pub(super) order_index: i32,
 }
@@ -33,10 +33,10 @@ impl TargetNodeRow {
             .unwrap_or(NodeType::NORMAL)
     }
 
-    pub(super) fn assignee_ref_type_enum(&self) -> AssigneeRefType {
+    pub(super) fn assignee_ref_type_enum(&self) -> Option<AssigneeRefType> {
         self.assignee_ref_type
-            .parse::<AssigneeRefType>()
-            .unwrap_or(AssigneeRefType::WorkflowCreator)
+            .as_deref()
+            .and_then(|value| value.parse::<AssigneeRefType>().ok())
     }
 }
 
@@ -45,7 +45,7 @@ impl TargetNodeRow {
 pub(super) struct CurrentVisitFullRow {
     pub(super) node_visit_id: uuid::Uuid,
     pub(super) node_id: uuid::Uuid,
-    pub(super) assignee_principal_id: uuid::Uuid,
+    pub(super) assignee_principal_id: Option<uuid::Uuid>,
     pub(super) node_type: String,
     pub(super) primary_advance_transition_id: Option<uuid::Uuid>,
     pub(super) order_index: i32,

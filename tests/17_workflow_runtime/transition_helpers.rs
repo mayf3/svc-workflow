@@ -46,7 +46,7 @@ pub(crate) async fn seed_transition_graph(
     sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) VALUES ($1, $2, 'review', 'Review', 1, 'NORMAL', $3::assignee_ref_type, $4)")
         .bind(normal_id).bind(ver_id).bind(normal_assignee).bind(normal_fixed)
         .execute(pool).await.expect("insert normal node");
-    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', 'WORKFLOW_CREATOR')")
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)")
         .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
 
     let adv_id = Uuid::new_v4();

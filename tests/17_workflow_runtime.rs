@@ -104,7 +104,7 @@ async fn seed_published_def_inner(
     sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', $3::assignee_ref_type, $4)")
         .bind(draft_id).bind(ver_id).bind(assignee_type).bind(fixed_principal_id)
         .execute(pool).await.expect("insert draft node");
-    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')")
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', NULL)")
         .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
 
     let trans_id = Uuid::new_v4();
@@ -145,7 +145,7 @@ pub(crate) async fn seed_published_definition_normal_node(
         .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
     sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'review', 'Review', 1, 'NORMAL', 'WORKFLOW_CREATOR')")
         .bind(normal_id).bind(ver_id).execute(pool).await.expect("insert normal node");
-    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', 'WORKFLOW_CREATOR')")
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)")
         .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
 
     // DRAFT → NORMAL
@@ -193,7 +193,7 @@ pub(crate) async fn seed_published_definition_terminal_only(
 
     sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR')")
         .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
-    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')")
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', NULL)")
         .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
 
     let trans_id = Uuid::new_v4();
@@ -439,3 +439,20 @@ mod query_pagination_security;
 mod query_snapshot;
 #[path = "17_workflow_runtime/query/worklists.rs"]
 mod query_worklists;
+
+// Sub-modules — Administrative Emergency Recovery
+#[path = "17_workflow_runtime/admin_recovery/helpers.rs"]
+mod _admin_recovery_helpers;
+pub(crate) use _admin_recovery_helpers::*;
+#[path = "17_workflow_runtime/admin_recovery/authorization.rs"]
+mod admin_recovery_authorization;
+#[path = "17_workflow_runtime/admin_recovery/defensive.rs"]
+mod admin_recovery_defensive;
+#[path = "17_workflow_runtime/admin_recovery/digest_migration.rs"]
+mod admin_recovery_digest_migration;
+#[path = "17_workflow_runtime/admin_recovery/idempotency_atomicity.rs"]
+mod admin_recovery_idempotency_atomicity;
+#[path = "17_workflow_runtime/admin_recovery/override_success.rs"]
+mod admin_recovery_override_success;
+#[path = "17_workflow_runtime/admin_recovery/rebuild.rs"]
+mod admin_recovery_rebuild;

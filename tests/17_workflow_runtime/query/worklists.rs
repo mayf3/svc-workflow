@@ -40,7 +40,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
     );
     assert_eq!(
         item.detail.current_visit.assignee_principal_id,
-        seed.assignee
+        Some(seed.assignee)
     );
     assert_eq!(
         item.detail.current_visit.instructions.as_deref(),

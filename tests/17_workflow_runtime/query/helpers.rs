@@ -168,7 +168,7 @@ pub(crate) async fn seed_query_fixture(pool: &PgPool) -> QueryFixture {
         "INSERT INTO workflow_node_definitions
          (node_id, definition_version_id, node_key, display_name, order_index,
           node_type, assignee_ref_type)
-         VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', 'WORKFLOW_CREATOR')",
+         VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)",
     )
     .bind(terminal)
     .bind(version)

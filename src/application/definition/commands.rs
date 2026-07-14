@@ -43,7 +43,8 @@ pub struct RawNodeDefinition {
     pub display_name: String,
     pub order_index: i32,
     pub node_type: String,
-    pub assignee_ref_type: String,
+    /// Must be `None` for TERMINAL and `Some` for every non-terminal node.
+    pub assignee_ref_type: Option<String>,
     pub fixed_principal_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub primary_advance_transition_key: Option<String>,

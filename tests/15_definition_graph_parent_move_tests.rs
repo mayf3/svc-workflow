@@ -313,7 +313,7 @@ async fn publish_version_simple(
     ).bind(n1).bind(ver_id).execute(pool).await.expect("insert draft node");
 
     sqlx::query(
-        "INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', 'WORKFLOW_CREATOR')",
+        "INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 1, 'TERMINAL', NULL)",
     ).bind(n2).bind(ver_id).execute(pool).await.expect("insert terminal node");
 
     sqlx::query(
