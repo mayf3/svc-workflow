@@ -3,7 +3,7 @@
 ```text
 Status: ACTIVE_EXECUTION_PLAN
 Architecture Baseline: v0.3.1
-Current Main Baseline: 11758f9f4fc99e521541a08abdd96cd4ac5b330c
+Last Merged Slice Head: 11758f9f4fc99e521541a08abdd96cd4ac5b330c
 ```
 
 本文只记录实施顺序和交付状态。领域语义以冻结架构为准，具体运行时行为以
