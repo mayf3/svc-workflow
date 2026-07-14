@@ -6,5 +6,7 @@
 pub mod command_receipt;
 pub mod create_transaction;
 pub mod definition_lookup;
+pub mod revise_transaction;
+pub mod revise_validation;
 pub mod row_types;
 pub mod validation_helpers;

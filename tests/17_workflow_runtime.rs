@@ -13,9 +13,13 @@ use uuid::Uuid;
 
 use svc_workflow::application::workflow_instance::create::create_workflow_instance;
 use svc_workflow::application::workflow_instance::create::CreateWorkflowInstanceResult;
+use svc_workflow::application::workflow_instance::revise::revise_workflow_context;
+use svc_workflow::application::workflow_instance::revise::ReviseWorkflowContextResult;
 use svc_workflow::domain::ids::*;
 use svc_workflow::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
+use svc_workflow::domain::workflow_instance::commands::ReviseWorkflowContextCommand;
 use svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+use svc_workflow::domain::workflow_instance::errors::ReviseWorkflowContextError;
 
 // ---------------------------------------------------------------------------
 // Seed helpers — Instance Create
@@ -162,6 +166,7 @@ pub(crate) async fn seed_published_definition_normal_node(
 
 /// Seed a published definition with a TERMINAL node that directly follows DRAFT.
 /// Returns (domain_id, definition_version_id, terminal_node_id).
+#[allow(dead_code)]
 pub(crate) async fn seed_published_definition_terminal_only(
     pool: &PgPool,
     domain_id: Uuid,
@@ -267,6 +272,76 @@ pub(crate) async fn verify_creation(
     assert_eq!(count.0, 1);
 }
 
+// ---------------------------------------------------------------------------
+// ReviseWorkflowContext helpers
+// ---------------------------------------------------------------------------
+
+/// Create a ReviseWorkflowContextCommand for testing.
+pub(crate) fn make_revise_command(
+    principal_id: Uuid,
+    workflow_instance_id: Uuid,
+    expected_state_version: i32,
+    context_payload: serde_json::Value,
+) -> ReviseWorkflowContextCommand {
+    ReviseWorkflowContextCommand {
+        principal_id: PrincipalId::from_uuid(principal_id),
+        idempotency_key: Uuid::new_v4().to_string(),
+        command_schema_version: "v1".to_string(),
+        workflow_instance_id: WorkflowInstanceId::from_uuid(workflow_instance_id),
+        expected_workflow_state_version: expected_state_version,
+        context_payload,
+    }
+}
+
+/// Verify a successful revise result structure.
+pub(crate) async fn verify_revision(
+    pool: &PgPool,
+    result: &ReviseWorkflowContextResult,
+    instance_id: Uuid,
+    expected_old_state_version: i32,
+    expected_new_state_version: i32,
+    expected_previous_revision_id: Uuid,
+    expected_current_node_visit_id: Uuid,
+) {
+    assert_eq!(result.workflow_state_version, expected_new_state_version);
+    assert_eq!(result.event_sequence, expected_new_state_version);
+    assert_eq!(result.current_node_visit_id, expected_current_node_visit_id);
+
+    // Instance projection
+    let inst: (i32, Uuid, Uuid) = sqlx::query_as(
+        "SELECT workflow_state_version, current_context_revision_id, current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",
+    ).bind(instance_id).fetch_one(pool).await.expect("instance");
+    assert_eq!(inst.0, expected_new_state_version);
+    assert_eq!(inst.1, result.current_context_revision_id);
+    assert_eq!(inst.2, expected_current_node_visit_id);
+
+    // New context revision
+    let ctx: (i32, Option<Uuid>) = sqlx::query_as(
+        "SELECT revision_number, previous_revision_id FROM workflow_context_revisions WHERE context_revision_id = $1 AND workflow_instance_id = $2",
+    ).bind(result.current_context_revision_id).bind(instance_id)
+        .fetch_one(pool).await.expect("context");
+    assert_eq!(ctx.0, expected_new_state_version);
+    assert_eq!(ctx.1, Some(expected_previous_revision_id));
+
+    // CONTEXT_REVISED event
+    let ev: (String, i32, Option<Uuid>, Uuid, i32, i32, Uuid) = sqlx::query_as(
+        "SELECT event_type, event_sequence, source_node_visit_id, target_node_visit_id, old_workflow_state_version, new_workflow_state_version, context_revision_id FROM workflow_events WHERE workflow_instance_id = $1 AND event_type = 'CONTEXT_REVISED' ORDER BY event_sequence",
+    ).bind(instance_id).fetch_one(pool).await.expect("event");
+    assert_eq!(ev.0, "CONTEXT_REVISED");
+    assert_eq!(ev.1, expected_new_state_version);
+    assert_eq!(ev.2, Some(expected_current_node_visit_id));
+    assert_eq!(ev.3, expected_current_node_visit_id);
+    assert_eq!(ev.4, expected_old_state_version);
+    assert_eq!(ev.5, expected_new_state_version);
+    assert_eq!(ev.6, result.current_context_revision_id);
+
+    // Exactly one CONTEXT_REVISED event
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1 AND event_type = 'CONTEXT_REVISED'",
+    ).bind(instance_id).fetch_one(pool).await.expect("count");
+    assert_eq!(count, 1);
+}
+
 // Sub-modules — Instance Create
 #[path = "17_workflow_runtime/instance_create/atomicity.rs"]
 mod atomicity;
@@ -283,18 +358,18 @@ mod normal_create;
 #[path = "17_workflow_runtime/instance_create/request_hash_contract.rs"]
 mod request_hash_contract;
 
-// Sub-modules — Context Revision (enabled when domain types exist)
-// #[path = "17_workflow_runtime/context_revision/success.rs"]
-// mod context_revision_success;
-// #[path = "17_workflow_runtime/context_revision/authorization.rs"]
-// mod context_revision_authorization;
-// #[path = "17_workflow_runtime/context_revision/concurrency.rs"]
-// mod context_revision_concurrency;
-// #[path = "17_workflow_runtime/context_revision/context_validation.rs"]
-// mod context_revision_context_validation;
-// #[path = "17_workflow_runtime/context_revision/idempotency.rs"]
-// mod context_revision_idempotency;
-// #[path = "17_workflow_runtime/context_revision/atomicity.rs"]
-// mod context_revision_atomicity;
-// #[path = "17_workflow_runtime/context_revision/request_hash_contract.rs"]
-// mod context_revision_request_hash_contract;
+// Sub-modules — Context Revision
+#[path = "17_workflow_runtime/context_revision/atomicity.rs"]
+mod context_revision_atomicity;
+#[path = "17_workflow_runtime/context_revision/authorization.rs"]
+mod context_revision_authorization;
+#[path = "17_workflow_runtime/context_revision/concurrency.rs"]
+mod context_revision_concurrency;
+#[path = "17_workflow_runtime/context_revision/context_validation.rs"]
+mod context_revision_context_validation;
+#[path = "17_workflow_runtime/context_revision/idempotency.rs"]
+mod context_revision_idempotency;
+#[path = "17_workflow_runtime/context_revision/request_hash_contract.rs"]
+mod context_revision_request_hash_contract;
+#[path = "17_workflow_runtime/context_revision/success.rs"]
+mod context_revision_success;

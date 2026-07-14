@@ -24,9 +24,11 @@
 
 use serde::Serialize;
 
-use crate::domain::ids::{DefinitionVersionId, DomainId, PrincipalId};
+use crate::domain::ids::{DefinitionVersionId, DomainId, PrincipalId, WorkflowInstanceId};
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+use crate::domain::workflow_instance::errors::ReviseWorkflowContextError;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_CREATE_INSTANCE;
+use crate::domain::workflow_instance::events::COMMAND_TYPE_REVISE_CONTEXT;
 
 /// The canonical request envelope used for hash computation.
 ///
@@ -83,5 +85,49 @@ pub fn compute_request_hash(
 
     jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
         CreateWorkflowInstanceError::StorageError(format!("request hash computation failed: {}", e))
+    })
+}
+
+/// The canonical request envelope for ReviseWorkflowContext.
+#[derive(Debug, Clone, Serialize)]
+struct ReviseRequestEnvelope {
+    command_schema_version: String,
+    command_type: String,
+    route_parameters: serde_json::Value,
+    request_body: ReviseRequestBody,
+}
+
+/// The body of the ReviseWorkflowContext request without the idempotency key.
+#[derive(Debug, Clone, Serialize)]
+struct ReviseRequestBody {
+    principal_id: String,
+    workflow_instance_id: String,
+    expected_workflow_state_version: i32,
+    context_payload: serde_json::Value,
+}
+
+/// Compute the canonical request hash for ReviseWorkflowContext idempotency.
+pub fn compute_revise_request_hash(
+    command_schema_version: &str,
+    _idempotency_key: &str,
+    principal_id: &PrincipalId,
+    workflow_instance_id: &WorkflowInstanceId,
+    expected_workflow_state_version: i32,
+    context_payload: &serde_json::Value,
+) -> Result<String, ReviseWorkflowContextError> {
+    let envelope = ReviseRequestEnvelope {
+        command_schema_version: command_schema_version.to_string(),
+        command_type: COMMAND_TYPE_REVISE_CONTEXT.to_string(),
+        route_parameters: serde_json::json!({}),
+        request_body: ReviseRequestBody {
+            principal_id: principal_id.to_string(),
+            workflow_instance_id: workflow_instance_id.to_string(),
+            expected_workflow_state_version,
+            context_payload: context_payload.clone(),
+        },
+    };
+
+    jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
+        ReviseWorkflowContextError::StorageError(format!("request hash computation failed: {}", e))
     })
 }
