@@ -80,6 +80,7 @@ pub(crate) struct QueryFixture {
     pub normal: Uuid,
     pub terminal: Uuid,
     pub draft_advance: Uuid,
+    pub extra_advance: Uuid,
     pub normal_advance: Uuid,
     pub return_transition: Uuid,
     pub terminate_transition: Uuid,
@@ -176,6 +177,7 @@ pub(crate) async fn seed_query_fixture(pool: &PgPool) -> QueryFixture {
     .unwrap();
 
     let draft_advance = Uuid::new_v4();
+    let extra_advance = Uuid::new_v4();
     let normal_advance = Uuid::new_v4();
     let return_transition = Uuid::new_v4();
     let terminate_transition = Uuid::new_v4();
@@ -194,6 +196,15 @@ pub(crate) async fn seed_query_fixture(pool: &PgPool) -> QueryFixture {
             "advance-done",
             "Complete",
             normal,
+            terminal,
+            "ADVANCE",
+            serde_json::json!({"type": "object"}),
+        ),
+        (
+            extra_advance,
+            "advance-extra",
+            "Extra Advance",
+            draft,
             terminal,
             "ADVANCE",
             serde_json::json!({"type": "object"}),
@@ -281,6 +292,7 @@ pub(crate) async fn seed_query_fixture(pool: &PgPool) -> QueryFixture {
         normal,
         terminal,
         draft_advance,
+        extra_advance,
         normal_advance,
         return_transition,
         terminate_transition,

@@ -226,3 +226,155 @@ async fn defensive_draft_versions_remain_visible_but_block_execution_and_editing
         Some(TransitionBlockedReason::TargetAssigneeUnavailable)
     );
 }
+
+#[tokio::test]
+async fn corrupt_historical_facts_neither_grant_visibility_nor_escape_global_guards() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    let other = seed_query_fixture(&pool).await;
+    let service = query_service(&pool);
+
+    let visit_instance = create_query_instance(&pool, &seed).await;
+    sqlx::query(
+        "INSERT INTO workflow_node_visits
+         (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
+         VALUES ($1, $2, $3, 1, $4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(visit_instance.workflow_instance_id)
+    .bind(other.draft)
+    .bind(seed.outsider)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+                actor_principal_id: seed.outsider,
+                workflow_instance_id: visit_instance.workflow_instance_id,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible
+    );
+    assert!(matches!(
+        service
+            .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+                actor_principal_id: seed.owner,
+                workflow_instance_id: visit_instance.workflow_instance_id,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+
+    let submission_instance = create_query_instance(&pool, &seed).await;
+    sqlx::query(
+        "INSERT INTO workflow_submissions
+         (submission_id, workflow_instance_id, source_node_visit_id, context_revision_id,
+          author_principal_id, transition_id, payload, payload_digest, schema_version)
+         VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, 'v1')",
+    )
+    .bind(Uuid::new_v4())
+    .bind(submission_instance.workflow_instance_id)
+    .bind(submission_instance.current_node_visit_id)
+    .bind(submission_instance.current_context_revision_id)
+    .bind(seed.outsider)
+    .bind(other.draft_advance)
+    .bind("c".repeat(64))
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+                actor_principal_id: seed.outsider,
+                workflow_instance_id: submission_instance.workflow_instance_id,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible
+    );
+    assert!(matches!(
+        service
+            .list_submission_history(ListSubmissionHistory {
+                actor_principal_id: seed.owner,
+                workflow_instance_id: submission_instance.workflow_instance_id,
+                after: None,
+                limit: Some(1),
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+}
+
+#[tokio::test]
+async fn context_chain_gaps_and_stale_heads_fail_before_the_first_page() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    let service = query_service(&pool);
+
+    let broken = create_query_instance(&pool, &seed).await;
+    let broken_revision = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_context_revisions
+         (context_revision_id, workflow_instance_id, revision_number, previous_revision_id,
+          payload, payload_digest, created_by_principal_id)
+         VALUES ($1, $2, 2, NULL, '{}'::jsonb, $3, $4)",
+    )
+    .bind(broken_revision)
+    .bind(broken.workflow_instance_id)
+    .bind("d".repeat(64))
+    .bind(seed.creator)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE workflow_instances SET current_context_revision_id = $1
+         WHERE workflow_instance_id = $2",
+    )
+    .bind(broken_revision)
+    .bind(broken.workflow_instance_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        service
+            .list_context_revisions(ListContextRevisions {
+                actor_principal_id: seed.owner,
+                workflow_instance_id: broken.workflow_instance_id,
+                after_revision_number: None,
+                limit: Some(1),
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+
+    let stale = create_query_instance(&pool, &seed).await;
+    sqlx::query(
+        "INSERT INTO workflow_context_revisions
+         (context_revision_id, workflow_instance_id, revision_number, previous_revision_id,
+          payload, payload_digest, created_by_principal_id)
+         VALUES ($1, $2, 2, $3, '{}'::jsonb, $4, $5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(stale.workflow_instance_id)
+    .bind(stale.current_context_revision_id)
+    .bind("e".repeat(64))
+    .bind(seed.creator)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        service
+            .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+                actor_principal_id: seed.owner,
+                workflow_instance_id: stale.workflow_instance_id,
+            })
+            .await
+            .unwrap_err(),
+        WorkflowQueryError::InternalConsistency(_)
+    ));
+}

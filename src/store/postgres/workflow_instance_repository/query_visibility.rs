@@ -135,6 +135,7 @@ pub(crate) async fn load_base(
                 nd.node_key AS current_node_key, nd.display_name AS current_node_display_name,
                 nd.node_type::text AS current_node_type,
                 nd.instructions AS current_node_instructions,
+                nd.primary_advance_transition_id AS current_primary_advance_transition_id,
                 COALESCE(es.event_count, 0) AS event_count,
                 es.min_event_sequence, es.max_event_sequence,
                 es.event_references_consistent
@@ -209,14 +210,28 @@ async fn classify_visibility(
     }
     let historical: bool = sqlx::query_scalar(
         "SELECT $2 = created_by_principal_id
-             OR EXISTS (SELECT 1 FROM workflow_node_visits
-                        WHERE workflow_instance_id = $1 AND assignee_principal_id = $2)
-             OR EXISTS (SELECT 1 FROM workflow_submissions
-                        WHERE workflow_instance_id = $1 AND author_principal_id = $2)
+             OR EXISTS (
+               SELECT 1 FROM workflow_node_visits v
+               JOIN workflow_node_definitions n ON n.node_id = v.node_id
+               WHERE v.workflow_instance_id = $1 AND v.assignee_principal_id = $2
+                 AND n.definition_version_id = $3)
+             OR EXISTS (
+               SELECT 1 FROM workflow_submissions s
+               JOIN workflow_node_visits v ON v.node_visit_id = s.source_node_visit_id
+                 AND v.workflow_instance_id = s.workflow_instance_id
+               JOIN workflow_node_definitions n ON n.node_id = v.node_id
+               JOIN workflow_context_revisions c ON c.context_revision_id = s.context_revision_id
+                 AND c.workflow_instance_id = s.workflow_instance_id
+               JOIN workflow_transition_definitions t ON t.transition_id = s.transition_id
+               WHERE s.workflow_instance_id = $1 AND s.author_principal_id = $2
+                 AND n.definition_version_id = $3
+                 AND t.definition_version_id = $3
+                 AND t.source_node_id = v.node_id)
          FROM workflow_instances WHERE workflow_instance_id = $1",
     )
     .bind(base.workflow_instance_id)
     .bind(actor)
+    .bind(base.definition_version_id)
     .fetch_one(&mut **tx)
     .await
     .map_err(storage)?;
@@ -265,6 +280,82 @@ pub(crate) fn validate_base(base: &QueryBaseRow) -> Result<(), WorkflowQueryErro
     Ok(())
 }
 
+async fn validate_all_facts(
+    tx: &mut Transaction<'_, Postgres>,
+    base: &QueryBaseRow,
+) -> Result<(), WorkflowQueryError> {
+    let context_consistent: bool = sqlx::query_scalar(
+        "SELECT COALESCE((
+           SELECT MIN(revision_number) = 1
+              AND COUNT(*) = MAX(revision_number)::bigint
+              AND MAX(revision_number) = $2
+              AND BOOL_AND(
+                (revision_number = 1 AND previous_revision_id IS NULL AND prior_id IS NULL)
+                OR (revision_number > 1
+                    AND previous_revision_id IS NOT DISTINCT FROM prior_id))
+           FROM (
+             SELECT revision_number, previous_revision_id,
+                    LAG(context_revision_id) OVER (ORDER BY revision_number) AS prior_id
+             FROM workflow_context_revisions WHERE workflow_instance_id = $1
+           ) revisions
+         ), FALSE)",
+    )
+    .bind(base.workflow_instance_id)
+    .bind(base.context_revision_number)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    let visits_consistent: bool = sqlx::query_scalar(
+        "SELECT COALESCE(BOOL_AND(n.definition_version_id = $2), TRUE)
+         FROM workflow_node_visits v
+         LEFT JOIN workflow_node_definitions n ON n.node_id = v.node_id
+         WHERE v.workflow_instance_id = $1",
+    )
+    .bind(base.workflow_instance_id)
+    .bind(base.definition_version_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    let submissions_consistent: bool = sqlx::query_scalar(
+        "SELECT COALESCE(BOOL_AND(
+           v.workflow_instance_id = s.workflow_instance_id
+           AND n.definition_version_id = $2
+           AND c.workflow_instance_id = s.workflow_instance_id
+           AND t.definition_version_id = $2
+           AND t.source_node_id = v.node_id), TRUE)
+         FROM workflow_submissions s
+         LEFT JOIN workflow_node_visits v ON v.node_visit_id = s.source_node_visit_id
+         LEFT JOIN workflow_node_definitions n ON n.node_id = v.node_id
+         LEFT JOIN workflow_context_revisions c ON c.context_revision_id = s.context_revision_id
+         LEFT JOIN workflow_transition_definitions t ON t.transition_id = s.transition_id
+         WHERE s.workflow_instance_id = $1",
+    )
+    .bind(base.workflow_instance_id)
+    .bind(base.definition_version_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    if !context_consistent {
+        return Err(WorkflowQueryError::InternalConsistency(
+            "context revision chain is not contiguous or current pointer is stale".to_string(),
+        ));
+    }
+    if !visits_consistent {
+        return Err(WorkflowQueryError::InternalConsistency(
+            "historical node visit escapes definition version".to_string(),
+        ));
+    }
+    if !submissions_consistent {
+        return Err(WorkflowQueryError::InternalConsistency(
+            "historical submission relationship escapes instance or definition version".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn authorized_snapshot<'a>(
     pool: &'a PgPool,
     actor: Uuid,
@@ -290,6 +381,7 @@ pub(crate) async fn authorized_snapshot<'a>(
         return Err(WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible);
     };
     validate_base(&base)?;
+    validate_all_facts(&mut tx, &base).await?;
     Ok(AuthorizedSnapshot {
         tx,
         base,

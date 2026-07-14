@@ -90,6 +90,10 @@ async fn load_outgoing(
             Some(TransitionBlockedReason::DefinitionVersionRevoked)
         } else if base.definition_version_status == "DRAFT" {
             Some(TransitionBlockedReason::DefinitionVersionDraft)
+        } else if row.transition_effect == "ADVANCE"
+            && Some(row.transition_id) != base.current_primary_advance_transition_id
+        {
+            Some(TransitionBlockedReason::AdvanceNotPrimary)
         } else if base.current_assignee_principal_id != Some(actor) {
             Some(TransitionBlockedReason::ActorNotCurrentAssignee)
         } else if !target_available {

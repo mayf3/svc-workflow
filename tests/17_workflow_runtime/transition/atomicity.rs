@@ -27,6 +27,15 @@ impl TriggerGuard {
         on_table: &str,
         col_check_expression: &str,
     ) -> Self {
+        Self::install_table_operation(pool, on_table, "INSERT", col_check_expression).await
+    }
+
+    async fn install_table_operation(
+        pool: &sqlx::PgPool,
+        on_table: &str,
+        operation: &str,
+        col_check_expression: &str,
+    ) -> Self {
         let suffix = Uuid::new_v4().to_string().replace('-', "");
         let fn_name = format!("fn_test_fail_{}", suffix);
         let trg_name = format!("trg_test_fail_{}", suffix);
@@ -58,8 +67,8 @@ impl TriggerGuard {
         .expect("create function");
 
         sqlx::query(&format!(
-            "CREATE TRIGGER {} BEFORE INSERT ON {} FOR EACH ROW EXECUTE FUNCTION {}()",
-            trg_name, on_table, fn_name
+            "CREATE TRIGGER {} BEFORE {} ON {} FOR EACH ROW EXECUTE FUNCTION {}()",
+            trg_name, operation, on_table, fn_name
         ))
         .execute(pool)
         .await
@@ -248,58 +257,13 @@ async fn test_transition_instance_update_failure_rolls_back() {
         setup_transition_instance(&pool).await;
 
     let condition = format!("OLD.workflow_instance_id = '{}'", instance_id);
-    let suffix = Uuid::new_v4().to_string().replace('-', "");
-    let fn_name = format!("fn_test_fail_{}", suffix);
-    let trg_name = format!("trg_test_fail_{}", suffix);
-
-    // Create BEFORE UPDATE trigger on instances
-    let _ = sqlx::query(&format!(
-        "DROP TRIGGER IF EXISTS {} ON workflow_instances",
-        trg_name
-    ))
-    .execute(&pool)
-    .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {}()", fn_name))
-        .execute(&pool)
-        .await;
-
-    sqlx::query(&format!(
-        "CREATE FUNCTION {}() RETURNS TRIGGER AS $$
-         BEGIN
-           IF {} THEN
-             RAISE EXCEPTION 'test_injected_failure: instance update blocked';
-           END IF;
-           RETURN NEW;
-         END;
-         $$ LANGUAGE plpgsql",
-        fn_name, condition
-    ))
-    .execute(&pool)
-    .await
-    .expect("create function");
-
-    sqlx::query(&format!(
-        "CREATE TRIGGER {} BEFORE UPDATE ON workflow_instances FOR EACH ROW EXECUTE FUNCTION {}()",
-        trg_name, fn_name
-    ))
-    .execute(&pool)
-    .await
-    .expect("create trigger");
+    let _guard =
+        TriggerGuard::install_table_operation(&pool, "workflow_instances", "UPDATE", &condition)
+            .await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
     let err = execute_workflow_transition(&pool, cmd).await;
     assert!(err.is_err());
-
-    // Cleanup
-    let _ = sqlx::query(&format!(
-        "DROP TRIGGER IF EXISTS {} ON workflow_instances",
-        trg_name
-    ))
-    .execute(&pool)
-    .await;
-    let _ = sqlx::query(&format!("DROP FUNCTION IF EXISTS {}()", fn_name))
-        .execute(&pool)
-        .await;
 
     let inst: (i32, Uuid) = sqlx::query_as(
         "SELECT workflow_state_version, current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",

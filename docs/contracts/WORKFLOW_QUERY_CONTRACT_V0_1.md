@@ -105,12 +105,16 @@ ACTOR_NOT_CURRENT_ASSIGNEE
 CURRENT_NODE_TERMINAL
 DEFINITION_VERSION_REVOKED
 DEFINITION_VERSION_DRAFT
+ADVANCE_NOT_PRIMARY
 TARGET_ASSIGNEE_UNAVAILABLE
 ```
 
 `PUBLISHED` 与 `DEPRECATED` 可执行；`REVOKED` 与防御性 `DRAFT` 可读但阻断。target 的
 `WORKFLOW_CREATOR`、`DOMAIN_OWNER` 或 `FIXED_PRINCIPAL` 无法解析为 enabled Principal 时，
 返回 `TARGET_ASSIGNEE_UNAVAILABLE`。
+
+`ADVANCE` 只有等于 source Node 的 `primaryAdvanceTransitionId` 时才可执行；额外的非-primary
+`ADVANCE` 必须返回 `ADVANCE_NOT_PRIMARY`，与写命令的 Transition 选择规则保持一致。
 
 HistoricalParticipant 只含实例公开摘要和 current Node 公开摘要。它不含 creator、current
 pointers、external reference/URL、metadata、Context payload、current assignee、instructions
@@ -203,6 +207,8 @@ event sequence 从 1 连续到 workflowStateVersion
 event count/max sequence 与 workflowStateVersion 一致
 Event 引用的 Context/Visit/Submission 属于同一实例
 Submission 的 Context、source Visit、Node 和 Transition 属于同一实例/版本
+全部历史 Visit 的 Node 属于实例 Definition Version
+Context revisionNumber 从 1 连续，previousRevisionId 紧邻前一 Revision，current pointer 指向链头
 ```
 
 破坏任一条件返回 `InternalConsistency`，不得返回部分 DTO。
