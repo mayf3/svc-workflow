@@ -109,7 +109,8 @@ pub async fn list_assigned_to_me(
             detail,
             upstream_submissions,
             return_feedback_events,
-            upstream_truncated: submissions_truncated || events_truncated,
+            submissions_truncated,
+            return_events_truncated: events_truncated,
         });
     }
     let next_cursor = has_more.then(|| {

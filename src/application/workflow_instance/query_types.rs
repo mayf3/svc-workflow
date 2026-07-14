@@ -251,7 +251,8 @@ pub struct AssignedWorkItem {
     pub detail: FullWorkflowInstanceDetail,
     pub upstream_submissions: Vec<SubmissionHistoryItem>,
     pub return_feedback_events: Vec<WorkflowEventItem>,
-    pub upstream_truncated: bool,
+    pub submissions_truncated: bool,
+    pub return_events_truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

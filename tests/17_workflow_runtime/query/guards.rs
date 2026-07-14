@@ -7,24 +7,7 @@ async fn audit_write_failure_is_storage_error_and_never_allows_the_read() {
     let pool = create_pool().await;
     let seed = seed_query_fixture(&pool).await;
     let created = create_query_instance(&pool, &seed).await;
-    let function = format!("query_audit_fail_{}", Uuid::new_v4().simple());
-    let trigger = format!("query_audit_fail_trg_{}", Uuid::new_v4().simple());
-    sqlx::query(&format!(
-        "CREATE FUNCTION {function}() RETURNS trigger AS $$ BEGIN
-           IF NEW.principal_id = '{}'::uuid THEN RAISE EXCEPTION 'forced query audit failure'; END IF;
-           RETURN NEW; END; $$ LANGUAGE plpgsql",
-        seed.outsider
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(&format!(
-        "CREATE TRIGGER {trigger} BEFORE INSERT ON workflow_security_audits
-         FOR EACH ROW EXECUTE FUNCTION {function}()"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
+    let _guard = QueryAuditTriggerGuard::install(&pool, seed.outsider).await;
 
     let error = query_service(&pool)
         .get_workflow_instance_detail(GetWorkflowInstanceDetail {
@@ -41,17 +24,6 @@ async fn audit_write_failure_is_storage_error_and_never_allows_the_read() {
             .await
             .unwrap();
     assert_eq!(audit_count, 0);
-
-    sqlx::query(&format!(
-        "DROP TRIGGER {trigger} ON workflow_security_audits"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query(&format!("DROP FUNCTION {function}()"))
-        .execute(&pool)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]

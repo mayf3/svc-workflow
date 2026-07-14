@@ -460,5 +460,6 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].upstream_submissions.len(), 50);
     assert_eq!(page.items[0].return_feedback_events.len(), 26);
-    assert!(page.items[0].upstream_truncated);
+    assert!(page.items[0].submissions_truncated);
+    assert!(!page.items[0].return_events_truncated);
 }
