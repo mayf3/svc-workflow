@@ -11,5 +11,7 @@
 #![allow(clippy::too_many_arguments, clippy::needless_borrow)]
 
 pub mod application;
+pub mod auth;
 pub mod domain;
+pub mod http;
 pub mod store;

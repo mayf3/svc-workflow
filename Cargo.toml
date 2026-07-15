@@ -53,6 +53,16 @@ jcs-canonicalize = "0.2"
 # Config
 dotenvy = "0.15"
 
+# Internal HTTP API
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["timeout", "util"] }
+tower-http = { version = "0.6", features = [
+    "limit",
+    "request-id",
+    "trace",
+] }
+jsonwebtoken = "9"
+
 [dev-dependencies]
 sqlx = { version = "0.8", features = [
     "runtime-tokio",
