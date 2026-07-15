@@ -43,8 +43,7 @@ pub(super) struct VisitFact {
     pub entered_by_transition_id: Option<Uuid>,
     pub definition_version_id: Uuid,
     pub node_type: String,
-    pub entered_transition_definition_version_id: Option<Uuid>,
-    pub entered_transition_target_node_id: Option<Uuid>,
+    pub assignee_ref_type: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -56,14 +55,23 @@ pub(super) struct SubmissionFact {
     pub transition_id: Uuid,
     pub payload: serde_json::Value,
     pub payload_digest: String,
-    pub transition_definition_version_id: Option<Uuid>,
-    pub transition_source_node_id: Option<Uuid>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct TransitionFact {
+    pub transition_id: Uuid,
+    pub definition_version_id: Uuid,
+    pub transition_key: String,
+    pub source_node_id: Uuid,
+    pub target_node_id: Uuid,
+    pub transition_effect: String,
 }
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct EventFact {
     pub workflow_instance_id: Uuid,
     pub event_sequence: i32,
+    pub event_schema_version: String,
     pub event_type: String,
     pub transition_effect: Option<String>,
     pub source_node_visit_id: Option<Uuid>,

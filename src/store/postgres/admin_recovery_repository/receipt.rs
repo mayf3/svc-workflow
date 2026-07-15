@@ -13,8 +13,27 @@ pub(super) enum AcquireReceipt {
         response_status: i32,
         response_body: serde_json::Value,
     },
-    Conflict(RecoveryError),
-    Processing,
+    Conflict {
+        command_id: Uuid,
+    },
+    Processing {
+        command_id: Uuid,
+    },
+}
+
+impl AcquireReceipt {
+    pub(super) fn command_id(&self) -> Uuid {
+        match self {
+            Self::Owned(command_id)
+            | Self::Replay { command_id, .. }
+            | Self::Conflict { command_id }
+            | Self::Processing { command_id } => *command_id,
+        }
+    }
+
+    pub(super) fn is_owned(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
 }
 
 fn storage(error: sqlx::Error) -> RecoveryError {
@@ -64,37 +83,10 @@ pub(super) async fn acquire(
         .ok_or_else(|| RecoveryError::InternalConsistency("receipt disappeared".to_string()))?;
 
     if original_hash != request_hash {
-        write_attempt(
-            tx,
-            command_id,
-            principal_id,
-            idempotency_key,
-            "IDEMPOTENCY_CONFLICT",
-            Some("request hash mismatch"),
-            request_hash,
-            &serde_json::json!({"error": "idempotency_conflict"}),
-        )
-        .await?;
-        return Ok(AcquireReceipt::Conflict(
-            RecoveryError::IdempotencyConflict {
-                original_command_id: command_id,
-                original_request_hash: original_hash,
-            },
-        ));
+        return Ok(AcquireReceipt::Conflict { command_id });
     }
     if status == "PROCESSING" {
-        write_attempt(
-            tx,
-            command_id,
-            principal_id,
-            idempotency_key,
-            "STILL_PROCESSING",
-            Some("existing receipt is still processing"),
-            request_hash,
-            &serde_json::json!({"error": "command_still_processing"}),
-        )
-        .await?;
-        return Ok(AcquireReceipt::Processing);
+        return Ok(AcquireReceipt::Processing { command_id });
     }
     let response_status = response_status.ok_or_else(|| {
         RecoveryError::InternalConsistency("completed receipt has no status".to_string())
@@ -190,6 +182,74 @@ pub(super) async fn write_security(
     .await
     .map_err(storage)?;
     Ok(())
+}
+
+pub(super) async fn record_existing_denial(
+    tx: &mut Transaction<'_, Postgres>,
+    acquired: &AcquireReceipt,
+    principal_id: Uuid,
+    idempotency_key: &str,
+    request_hash: &str,
+    instance_id: Uuid,
+    action: &str,
+) -> Result<(), RecoveryError> {
+    write_attempt(
+        tx,
+        acquired.command_id(),
+        principal_id,
+        idempotency_key,
+        "PERMISSION_DENIED",
+        Some("current authorization denied"),
+        request_hash,
+        &serde_json::json!({"error": "permission_denied"}),
+    )
+    .await?;
+    write_security(
+        tx,
+        principal_id,
+        action,
+        instance_id,
+        &serde_json::json!({"reason": "permission_denied"}),
+    )
+    .await
+}
+
+pub(super) async fn record_conflict_or_processing(
+    tx: &mut Transaction<'_, Postgres>,
+    acquired: &AcquireReceipt,
+    principal_id: Uuid,
+    idempotency_key: &str,
+    request_hash: &str,
+) -> Result<RecoveryError, RecoveryError> {
+    let (attempt_type, reason, error) = match acquired {
+        AcquireReceipt::Conflict { .. } => (
+            "IDEMPOTENCY_CONFLICT",
+            "request hash mismatch",
+            RecoveryError::IdempotencyConflict,
+        ),
+        AcquireReceipt::Processing { .. } => (
+            "STILL_PROCESSING",
+            "existing receipt is still processing",
+            RecoveryError::CommandStillProcessing,
+        ),
+        _ => {
+            return Err(RecoveryError::InternalConsistency(
+                "receipt is neither conflict nor processing".to_string(),
+            ))
+        }
+    };
+    write_attempt(
+        tx,
+        acquired.command_id(),
+        principal_id,
+        idempotency_key,
+        attempt_type,
+        Some(reason),
+        request_hash,
+        &serde_json::json!({"error": error.label()}),
+    )
+    .await?;
+    Ok(error)
 }
 
 pub(super) fn error_body(error: &RecoveryError) -> serde_json::Value {

@@ -8,7 +8,8 @@ use crate::domain::workflow_instance::recovery::{
     BeforeSnapshotV1, RecoveryError, WorkflowProjection,
 };
 
-use super::rows::{ContextFact, EventFact, InstanceRow, SubmissionFact, VisitFact};
+use super::event_replay;
+use super::rows::{ContextFact, EventFact, InstanceRow, SubmissionFact, TransitionFact, VisitFact};
 
 fn storage(error: sqlx::Error) -> RecoveryError {
     RecoveryError::StorageError(error.to_string())
@@ -72,11 +73,29 @@ pub(super) async fn reconstruct_projection(
     let contexts = load_contexts(tx, instance.workflow_instance_id).await?;
     let visits = load_visits(tx, instance.workflow_instance_id).await?;
     let submissions = load_submissions(tx, instance.workflow_instance_id).await?;
+    let transitions = load_transitions(tx, instance.definition_version_id).await?;
     let events = load_events(tx, instance.workflow_instance_id).await?;
+    let definition_digest: Option<String> = sqlx::query_scalar(
+        "SELECT definition_digest FROM workflow_definition_versions
+         WHERE definition_version_id = $1",
+    )
+    .bind(instance.definition_version_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?
+    .flatten();
     validate_contexts(instance, &contexts)?;
-    validate_visits(instance, &visits)?;
-    validate_submissions(instance, &contexts, &visits, &submissions)?;
-    validate_events(instance, &contexts, &visits, &submissions, &events)
+    validate_visits(instance, &visits, &transitions)?;
+    validate_submissions(instance, &contexts, &visits, &submissions, &transitions)?;
+    event_replay::replay(
+        instance,
+        definition_digest.as_deref(),
+        &contexts,
+        &visits,
+        &submissions,
+        &transitions,
+        &events,
+    )
 }
 
 async fn load_contexts(
@@ -103,12 +122,9 @@ async fn load_visits(
         "SELECT v.node_visit_id, v.workflow_instance_id, v.node_id, v.visit_number,
                 v.assignee_principal_id, v.entered_by_transition_id,
                 n.definition_version_id, n.node_type::text,
-                t.definition_version_id AS entered_transition_definition_version_id,
-                t.target_node_id AS entered_transition_target_node_id
+                n.assignee_ref_type::text
          FROM workflow_node_visits v
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
-         LEFT JOIN workflow_transition_definitions t
-           ON t.transition_id = v.entered_by_transition_id
          WHERE v.workflow_instance_id = $1
          ORDER BY v.created_at, v.node_visit_id",
     )
@@ -124,14 +140,26 @@ async fn load_submissions(
 ) -> Result<Vec<SubmissionFact>, RecoveryError> {
     sqlx::query_as(
         "SELECT s.submission_id, s.workflow_instance_id, s.source_node_visit_id,
-                s.context_revision_id, s.transition_id, s.payload, s.payload_digest,
-                t.definition_version_id AS transition_definition_version_id,
-                t.source_node_id AS transition_source_node_id
+                s.context_revision_id, s.transition_id, s.payload, s.payload_digest
          FROM workflow_submissions s
-         LEFT JOIN workflow_transition_definitions t ON t.transition_id = s.transition_id
          WHERE s.workflow_instance_id = $1 ORDER BY s.created_at, s.submission_id",
     )
     .bind(instance_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(storage)
+}
+
+async fn load_transitions(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: Uuid,
+) -> Result<Vec<TransitionFact>, RecoveryError> {
+    sqlx::query_as(
+        "SELECT transition_id, definition_version_id, transition_key,
+                source_node_id, target_node_id, transition_effect::text
+         FROM workflow_transition_definitions WHERE definition_version_id = $1",
+    )
+    .bind(definition_version_id)
     .fetch_all(&mut **tx)
     .await
     .map_err(storage)
@@ -142,7 +170,7 @@ async fn load_events(
     instance_id: Uuid,
 ) -> Result<Vec<EventFact>, RecoveryError> {
     sqlx::query_as(
-        "SELECT workflow_instance_id, event_sequence, event_type,
+        "SELECT workflow_instance_id, event_sequence, event_schema_version, event_type,
                 transition_effect::text, source_node_visit_id, target_node_visit_id,
                 context_revision_id, submission_id, event_data, event_data_digest,
                 from_node_id, to_node_id, old_workflow_state_version,
@@ -182,7 +210,11 @@ fn validate_contexts(instance: &InstanceRow, facts: &[ContextFact]) -> Result<()
     Ok(())
 }
 
-fn validate_visits(instance: &InstanceRow, facts: &[VisitFact]) -> Result<(), RecoveryError> {
+fn validate_visits(
+    instance: &InstanceRow,
+    facts: &[VisitFact],
+    transitions: &[TransitionFact],
+) -> Result<(), RecoveryError> {
     if facts.is_empty() {
         return Err(invalid("node visit fact set is empty"));
     }
@@ -196,14 +228,17 @@ fn validate_visits(instance: &InstanceRow, facts: &[VisitFact]) -> Result<(), Re
         if visit.node_type != "TERMINAL" && visit.assignee_principal_id.is_none() {
             return Err(invalid("non-terminal node visit has no assignee"));
         }
-        if visit.entered_by_transition_id.is_some()
-            && (visit.entered_transition_definition_version_id
-                != Some(instance.definition_version_id)
-                || visit.entered_transition_target_node_id != Some(visit.node_id))
-        {
-            return Err(invalid(
-                "node visit entered transition relationship is invalid",
-            ));
+        if let Some(transition_id) = visit.entered_by_transition_id {
+            let valid = transitions.iter().any(|transition| {
+                transition.transition_id == transition_id
+                    && transition.definition_version_id == instance.definition_version_id
+                    && transition.target_node_id == visit.node_id
+            });
+            if !valid {
+                return Err(invalid(
+                    "node visit entered transition relationship is invalid",
+                ));
+            }
         }
     }
     Ok(())
@@ -214,6 +249,7 @@ fn validate_submissions(
     contexts: &[ContextFact],
     visits: &[VisitFact],
     facts: &[SubmissionFact],
+    transitions: &[TransitionFact],
 ) -> Result<(), RecoveryError> {
     let context_ids: HashSet<_> = contexts
         .iter()
@@ -225,10 +261,14 @@ fn validate_submissions(
         .collect();
     for fact in facts {
         let source = visit_by_id.get(&fact.source_node_visit_id);
+        let transition = transitions
+            .iter()
+            .find(|transition| transition.transition_id == fact.transition_id);
         if fact.workflow_instance_id != instance.workflow_instance_id
             || !context_ids.contains(&fact.context_revision_id)
-            || fact.transition_definition_version_id != Some(instance.definition_version_id)
-            || source.map(|visit| visit.node_id) != fact.transition_source_node_id
+            || transition.map(|value| value.definition_version_id)
+                != Some(instance.definition_version_id)
+            || source.map(|visit| visit.node_id) != transition.map(|value| value.source_node_id)
         {
             return Err(invalid("submission relationship is invalid"));
         }
@@ -239,197 +279,4 @@ fn validate_submissions(
         }
     }
     Ok(())
-}
-
-fn require_keys(data: &serde_json::Value, keys: &[&str]) -> bool {
-    keys.iter().all(|key| !data[*key].is_null())
-}
-
-fn validate_event_matrix(event: &EventFact) -> bool {
-    let data = event.event_data.as_ref();
-    match event.event_type.as_str() {
-        "INSTANCE_CREATED" | "WORKFLOW_INSTANCE_CREATED" | "WORKFLOW_INSTANCE_IMPORTED" => {
-            event.event_sequence == 1
-                && event.old_workflow_state_version == 0
-                && event.source_node_visit_id.is_none()
-                && event.target_node_visit_id.is_some()
-                && event.context_revision_id.is_some()
-                && event.submission_id.is_none()
-                && event.transition_effect.is_none()
-                && event.from_node_id.is_none()
-                && event.to_node_id.is_none()
-                && data.is_some_and(|value| match event.event_type.as_str() {
-                    "WORKFLOW_INSTANCE_IMPORTED" => require_keys(
-                        value,
-                        &[
-                            "legacySystem",
-                            "legacyRecordId",
-                            "legacySnapshotDigest",
-                            "importedNodeId",
-                            "importedAt",
-                            "creatorResolution",
-                        ],
-                    ),
-                    _ => require_keys(value, &["definition_version_id", "initial_node_id"]),
-                })
-        }
-        "CONTEXT_REVISED" | "WORKFLOW_CONTEXT_REVISED" => {
-            event.source_node_visit_id.is_some()
-                && event.source_node_visit_id == event.target_node_visit_id
-                && event.context_revision_id.is_some()
-                && event.submission_id.is_none()
-                && event.transition_effect.is_none()
-                && event.from_node_id.is_none()
-                && event.to_node_id.is_none()
-                && data.is_some_and(|value| {
-                    require_keys(
-                        value,
-                        &["previous_context_revision_id", "new_context_revision_id"],
-                    )
-                })
-        }
-        "WORKFLOW_TRANSITION_COMMITTED" => {
-            transition_shape(event, false)
-                && data.is_some_and(|value| {
-                    require_keys(
-                        value,
-                        &[
-                            "transition_definition_id",
-                            "source_node_id",
-                            "target_node_id",
-                        ],
-                    )
-                })
-        }
-        "WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED" => {
-            transition_shape(event, true)
-                && event.transition_effect.as_deref() == Some("ADVANCE")
-                && data.is_some_and(|value| {
-                    require_keys(
-                        value,
-                        &["new_context_revision_id", "transition_definition_id"],
-                    )
-                })
-        }
-        "ADMIN_EMERGENCY_OVERRIDE_COMMITTED" => {
-            transition_shape(event, false)
-                && event.submission_id.is_none()
-                && matches!(
-                    event.transition_effect.as_deref(),
-                    Some("ADVANCE" | "TERMINATE")
-                )
-                && data.is_some_and(|value| {
-                    require_keys(value, &["operation", "reason", "beforeSnapshotDigest"])
-                })
-        }
-        _ => false,
-    }
-}
-
-fn transition_shape(event: &EventFact, submission_required: bool) -> bool {
-    event.source_node_visit_id.is_some()
-        && event.target_node_visit_id.is_some()
-        && event.context_revision_id.is_some()
-        && (!submission_required || event.submission_id.is_some())
-        && event.transition_effect.is_some()
-        && event.from_node_id.is_some()
-        && event.to_node_id.is_some()
-}
-
-fn validate_events(
-    instance: &InstanceRow,
-    contexts: &[ContextFact],
-    visits: &[VisitFact],
-    submissions: &[SubmissionFact],
-    events: &[EventFact],
-) -> Result<WorkflowProjection, RecoveryError> {
-    if events.is_empty() {
-        return Err(invalid("event fact sequence is empty"));
-    }
-    let context_ids: HashSet<_> = contexts
-        .iter()
-        .map(|fact| fact.context_revision_id)
-        .collect();
-    let visit_by_id: HashMap<_, _> = visits
-        .iter()
-        .map(|fact| (fact.node_visit_id, fact))
-        .collect();
-    let submission_by_id: HashMap<_, _> = submissions
-        .iter()
-        .map(|fact| (fact.submission_id, fact))
-        .collect();
-    let mut referenced_contexts = HashSet::new();
-    let mut referenced_visits = HashSet::new();
-    let mut referenced_submissions = HashSet::new();
-
-    for (index, event) in events.iter().enumerate() {
-        let expected = index as i32 + 1;
-        if event.workflow_instance_id != instance.workflow_instance_id
-            || event.event_sequence != expected
-            || event.old_workflow_state_version != expected - 1
-            || event.new_workflow_state_version != expected
-            || !validate_event_matrix(event)
-        {
-            return Err(invalid("event sequence or type/field matrix is invalid"));
-        }
-        if let Some(data) = &event.event_data {
-            let actual = digest::compute_json_digest(data).map_err(RecoveryError::StorageError)?;
-            if event.event_data_digest.as_deref() != Some(actual.as_str()) {
-                return Err(invalid("event data digest mismatch"));
-            }
-        } else if event.event_data_digest.is_some() {
-            return Err(invalid("event digest exists without event data"));
-        }
-        if let Some(context) = event.context_revision_id {
-            if !context_ids.contains(&context) {
-                return Err(invalid("event references an invalid context revision"));
-            }
-            referenced_contexts.insert(context);
-        }
-        for visit_id in [event.source_node_visit_id, event.target_node_visit_id]
-            .into_iter()
-            .flatten()
-        {
-            if !visit_by_id.contains_key(&visit_id) {
-                return Err(invalid("event references an invalid node visit"));
-            }
-            referenced_visits.insert(visit_id);
-        }
-        if let Some(submission_id) = event.submission_id {
-            let submission = submission_by_id
-                .get(&submission_id)
-                .ok_or_else(|| invalid("event references an invalid submission"))?;
-            if Some(submission.source_node_visit_id) != event.source_node_visit_id
-                || Some(submission.context_revision_id) != event.context_revision_id
-            {
-                return Err(invalid("event submission relationship is invalid"));
-            }
-            referenced_submissions.insert(submission_id);
-        }
-        if event.from_node_id.is_some()
-            && event.from_node_id
-                != event
-                    .source_node_visit_id
-                    .and_then(|id| visit_by_id.get(&id).map(|visit| visit.node_id))
-            || event.to_node_id.is_some()
-                && event.to_node_id
-                    != event
-                        .target_node_visit_id
-                        .and_then(|id| visit_by_id.get(&id).map(|visit| visit.node_id))
-        {
-            return Err(invalid("event node fields disagree with visit references"));
-        }
-    }
-    if referenced_contexts.len() != contexts.len()
-        || referenced_visits.len() != visits.len()
-        || referenced_submissions.len() != submissions.len()
-    {
-        return Err(invalid("immutable fact exists outside the event sequence"));
-    }
-    let last = events.last().expect("non-empty events");
-    Ok(WorkflowProjection {
-        current_context_revision_id: last.context_revision_id,
-        current_node_visit_id: last.target_node_visit_id,
-        workflow_state_version: last.new_workflow_state_version,
-    })
 }

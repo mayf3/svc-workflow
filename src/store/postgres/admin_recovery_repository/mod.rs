@@ -1,6 +1,8 @@
 //! PostgreSQL transactions for frozen PR5 administrative recovery commands.
 
 mod authorization;
+mod event_fields;
+mod event_replay;
 mod override_transaction;
 mod rebuild_transaction;
 mod receipt;

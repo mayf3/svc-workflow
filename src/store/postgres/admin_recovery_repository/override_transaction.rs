@@ -71,11 +71,41 @@ async fn commit_failure(
     Err(error)
 }
 
+async fn deny_access(
+    mut tx: Transaction<'_, Postgres>,
+    acquired: &receipt::AcquireReceipt,
+    command: &AdminEmergencyOverrideCommand,
+    request_hash: &str,
+    error: RecoveryError,
+) -> Result<AdminEmergencyOverrideResult, RecoveryError> {
+    if acquired.is_owned() {
+        return commit_failure(tx, acquired.command_id(), command, request_hash, error).await;
+    }
+    receipt::record_existing_denial(
+        &mut tx,
+        acquired,
+        command.principal_id.into_uuid(),
+        &command.idempotency_key,
+        request_hash,
+        command.workflow_instance_id.into_uuid(),
+        "ADMIN_EMERGENCY_OVERRIDE_REJECTED",
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    Err(error)
+}
+
 fn validate_input(command: &AdminEmergencyOverrideCommand) -> Result<(), RecoveryError> {
-    let reason = command.reason.trim();
-    if reason.is_empty() || reason.chars().count() > 2000 || reason.chars().any(char::is_control) {
+    if command.reason != command.reason.trim()
+        || command.reason.is_empty()
+        || command.reason.chars().count() > 2000
+        || command.reason.chars().any(char::is_control)
+    {
         return Err(RecoveryError::InvalidInput(
-            "reason must contain 1..2000 printable characters".to_string(),
+            "reason must contain 1..2000 printable characters without surrounding whitespace"
+                .to_string(),
         ));
     }
     if command.related_references.len() > 20 {
@@ -99,40 +129,19 @@ fn validate_input(command: &AdminEmergencyOverrideCommand) -> Result<(), Recover
     Ok(())
 }
 
-async fn validate_current_projection(
+async fn read_source_node(
     tx: &mut Transaction<'_, Postgres>,
-    instance_id: Uuid,
-    definition_version_id: Uuid,
-    context_id: Uuid,
     visit_id: Uuid,
 ) -> Result<Uuid, RecoveryError> {
-    let context_valid: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM workflow_context_revisions
-         WHERE context_revision_id = $1 AND workflow_instance_id = $2)",
-    )
-    .bind(context_id)
-    .bind(instance_id)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
-    let source_node_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT v.node_id FROM workflow_node_visits v
-         JOIN workflow_node_definitions n ON n.node_id = v.node_id
-         WHERE v.node_visit_id = $1 AND v.workflow_instance_id = $2
-           AND n.definition_version_id = $3",
-    )
-    .bind(visit_id)
-    .bind(instance_id)
-    .bind(definition_version_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
-    if !context_valid || source_node_id.is_none() {
-        return Err(RecoveryError::InternalConsistency(
-            "current projection does not reference valid instance facts".to_string(),
-        ));
-    }
-    Ok(source_node_id.expect("checked"))
+    let source_node_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT node_id FROM workflow_node_visits WHERE node_visit_id = $1")
+            .bind(visit_id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    source_node_id.ok_or_else(|| {
+        RecoveryError::InternalConsistency("replayed source visit disappeared".to_string())
+    })
 }
 
 pub async fn admin_emergency_override(
@@ -146,15 +155,43 @@ pub async fn admin_emergency_override(
         .begin()
         .await
         .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
-    let command_id = match receipt::acquire(
+    let acquired = receipt::acquire(
         &mut tx,
         actor,
         &command.idempotency_key,
         COMMAND_TYPE_ADMIN_EMERGENCY_OVERRIDE,
         request_hash,
     )
-    .await?
-    {
+    .await?;
+
+    let instance = match snapshot::lock_instance(&mut tx, instance_id).await {
+        Ok(instance) => instance,
+        Err(RecoveryError::InstanceNotFound) => {
+            return deny_access(
+                tx,
+                &acquired,
+                &command,
+                request_hash,
+                RecoveryError::PermissionDenied,
+            )
+            .await
+        }
+        Err(error) => return Err(error),
+    };
+    let definition_status =
+        authorization::lock_definition_version_any(&mut tx, instance.definition_version_id).await?;
+    let access = match authorization::validate_actor(&mut tx, actor).await {
+        Ok(()) => authorization::validate_workflow_admin(&mut tx, actor, instance.domain_id).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = access {
+        if matches!(error, RecoveryError::StorageError(_)) {
+            return Err(error);
+        }
+        return deny_access(tx, &acquired, &command, request_hash, error).await;
+    }
+
+    let command_id = match acquired {
         receipt::AcquireReceipt::Owned(value) => value,
         receipt::AcquireReceipt::Replay {
             command_id,
@@ -177,45 +214,47 @@ pub async fn admin_emergency_override(
             result.replayed = true;
             return Ok(result);
         }
-        receipt::AcquireReceipt::Conflict(error) => {
+        acquired @ (receipt::AcquireReceipt::Conflict { .. }
+        | receipt::AcquireReceipt::Processing { .. }) => {
+            let error = receipt::record_conflict_or_processing(
+                &mut tx,
+                &acquired,
+                actor,
+                &command.idempotency_key,
+                request_hash,
+            )
+            .await?;
             tx.commit()
                 .await
                 .map_err(|cause| RecoveryError::StorageError(cause.to_string()))?;
             return Err(error);
         }
-        receipt::AcquireReceipt::Processing => {
-            tx.commit()
-                .await
-                .map_err(|cause| RecoveryError::StorageError(cause.to_string()))?;
-            return Err(RecoveryError::CommandStillProcessing);
-        }
     };
-
-    if let Err(error) = authorization::validate_actor(&mut tx, actor).await {
-        return commit_failure(tx, command_id, &command, request_hash, error).await;
-    }
 
     if let Err(error) = validate_input(&command) {
         return commit_failure(tx, command_id, &command, request_hash, error).await;
     }
-    let instance = match snapshot::lock_instance(&mut tx, instance_id).await {
-        Ok(value) => value,
-        Err(RecoveryError::InstanceNotFound) => {
-            return commit_failure(
-                tx,
-                command_id,
-                &command,
-                request_hash,
-                RecoveryError::PermissionDenied,
-            )
-            .await
+    if let Err(error) = authorization::validate_override_definition_status(&definition_status) {
+        return commit_failure(tx, command_id, &command, request_hash, error).await;
+    }
+    let reconstructed = match snapshot::reconstruct_projection(&mut tx, &instance).await {
+        Ok(projection) => projection,
+        Err(error @ RecoveryError::InvalidImmutableFacts(_)) => {
+            return commit_failure(tx, command_id, &command, request_hash, error).await
         }
         Err(error) => return Err(error),
     };
-    if let Err(error) =
-        authorization::validate_workflow_admin(&mut tx, actor, instance.domain_id).await
-    {
-        return commit_failure(tx, command_id, &command, request_hash, error).await;
+    if reconstructed != instance.projection() {
+        return commit_failure(
+            tx,
+            command_id,
+            &command,
+            request_hash,
+            RecoveryError::InvalidImmutableFacts(
+                "instance projection does not match immutable event replay".to_string(),
+            ),
+        )
+        .await;
     }
     if command.expected_workflow_state_version != instance.workflow_state_version {
         let error = RecoveryError::WorkflowStateVersionConflict {
@@ -231,13 +270,6 @@ pub async fn admin_emergency_override(
     ) {
         return commit_failure(tx, command_id, &command, request_hash, error).await;
     }
-    match authorization::lock_definition_version(&mut tx, instance.definition_version_id).await {
-        Ok(()) => {}
-        Err(error @ RecoveryError::InvalidTarget(_)) => {
-            return commit_failure(tx, command_id, &command, request_hash, error).await
-        }
-        Err(error) => return Err(error),
-    }
     let Some(current_context_id) = instance.current_context_revision_id else {
         let error =
             RecoveryError::InternalConsistency("current context projection is null".to_string());
@@ -248,15 +280,7 @@ pub async fn admin_emergency_override(
             RecoveryError::InternalConsistency("current visit projection is null".to_string());
         return commit_failure(tx, command_id, &command, request_hash, error).await;
     };
-    let source_node_id = match validate_current_projection(
-        &mut tx,
-        instance_id,
-        instance.definition_version_id,
-        current_context_id,
-        source_visit_id,
-    )
-    .await
-    {
+    let source_node_id = match read_source_node(&mut tx, source_visit_id).await {
         Ok(value) => value,
         Err(error @ RecoveryError::InternalConsistency(_)) => {
             return commit_failure(tx, command_id, &command, request_hash, error).await
@@ -305,8 +329,8 @@ pub async fn admin_emergency_override(
             (None, "TERMINATE")
         }
     };
-    let visit_number: i32 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(visit_number), 0) + 1 FROM workflow_node_visits
+    let maximum_visit_number: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(visit_number) FROM workflow_node_visits
          WHERE workflow_instance_id = $1 AND node_id = $2",
     )
     .bind(instance_id)
@@ -314,6 +338,32 @@ pub async fn admin_emergency_override(
     .fetch_one(&mut *tx)
     .await
     .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    let visit_number = match maximum_visit_number.unwrap_or(0).checked_add(1) {
+        Some(value) => value,
+        None => {
+            return commit_failure(
+                tx,
+                command_id,
+                &command,
+                request_hash,
+                RecoveryError::InternalConsistency("node visit number overflow".to_string()),
+            )
+            .await
+        }
+    };
+    let new_state_version = match instance.workflow_state_version.checked_add(1) {
+        Some(value) => value,
+        None => {
+            return commit_failure(
+                tx,
+                command_id,
+                &command,
+                request_hash,
+                RecoveryError::InternalConsistency("workflow state version overflow".to_string()),
+            )
+            .await
+        }
+    };
     let target_visit_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_node_visits
@@ -330,7 +380,6 @@ pub async fn admin_emergency_override(
     .await
     .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
 
-    let new_state_version = instance.workflow_state_version + 1;
     let affected = sqlx::query(
         "UPDATE workflow_instances SET current_node_visit_id = $2,
              workflow_state_version = $3, updated_at = now()

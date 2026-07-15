@@ -238,7 +238,13 @@ pub async fn list_workflow_timeline(
     let items: Vec<_> = rows
         .into_iter()
         .take(limit)
-        .map(EventRow::into_item)
+        .map(|mut row| {
+            if !full && row.event_type == "ADMIN_EMERGENCY_OVERRIDE_COMMITTED" {
+                row.event_data = None;
+                row.event_data_digest = None;
+            }
+            row.into_item()
+        })
         .collect();
     let next_cursor = has_more.then(|| items.last().expect("non-empty page").event_sequence);
     snapshot.tx.commit().await.map_err(map_storage)?;

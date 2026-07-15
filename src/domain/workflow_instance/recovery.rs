@@ -118,21 +118,12 @@ pub enum RecoveryError {
     PermissionDenied,
     InstanceNotFound,
     InvalidInput(String),
-    BeforeSnapshotDigestMismatch {
-        expected: String,
-        actual: String,
-    },
-    WorkflowStateVersionConflict {
-        expected: i32,
-        actual: i32,
-    },
+    BeforeSnapshotDigestMismatch { expected: String, actual: String },
+    WorkflowStateVersionConflict { expected: i32, actual: i32 },
     InvalidImmutableFacts(String),
     InvalidTarget(String),
     AssigneeResolutionFailed(String),
-    IdempotencyConflict {
-        original_command_id: Uuid,
-        original_request_hash: String,
-    },
+    IdempotencyConflict,
     CommandStillProcessing,
     InternalConsistency(String),
     StorageError(String),
@@ -156,7 +147,7 @@ impl RecoveryError {
             }
             Self::BeforeSnapshotDigestMismatch { .. }
             | Self::WorkflowStateVersionConflict { .. }
-            | Self::IdempotencyConflict { .. } => 409,
+            | Self::IdempotencyConflict => 409,
             Self::CommandStillProcessing => 425,
             Self::InvalidImmutableFacts(_)
             | Self::InternalConsistency(_)
@@ -177,7 +168,7 @@ impl RecoveryError {
             Self::InvalidImmutableFacts(_) => "invalid_immutable_facts",
             Self::InvalidTarget(_) => "invalid_target",
             Self::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
-            Self::IdempotencyConflict { .. } => "idempotency_conflict",
+            Self::IdempotencyConflict => "idempotency_conflict",
             Self::CommandStillProcessing => "command_still_processing",
             Self::InternalConsistency(_) => "internal_consistency_error",
             Self::StorageError(_) => "storage_error",

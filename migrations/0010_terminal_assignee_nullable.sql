@@ -38,14 +38,29 @@ CREATE OR REPLACE FUNCTION fn_check_node_visit_assignee()
 RETURNS TRIGGER AS $$
 DECLARE
     target_node_type node_type;
+    target_definition_version_id UUID;
+    instance_definition_version_id UUID;
 BEGIN
-    SELECT node_type INTO target_node_type
+    SELECT node_type, definition_version_id
+      INTO target_node_type, target_definition_version_id
       FROM workflow_node_definitions
      WHERE node_id = NEW.node_id;
+
+    SELECT definition_version_id INTO instance_definition_version_id
+      FROM workflow_instances
+     WHERE workflow_instance_id = NEW.workflow_instance_id;
 
     IF target_node_type IS NULL THEN
         RAISE EXCEPTION 'node visit references a missing node definition'
             USING ERRCODE = '23503';
+    END IF;
+    IF instance_definition_version_id IS NULL THEN
+        RAISE EXCEPTION 'node visit references a missing workflow instance'
+            USING ERRCODE = '23503';
+    END IF;
+    IF target_definition_version_id <> instance_definition_version_id THEN
+        RAISE EXCEPTION 'node visit and workflow instance definition versions differ'
+            USING ERRCODE = '23514';
     END IF;
     IF target_node_type = 'TERMINAL' AND NEW.assignee_principal_id IS NOT NULL THEN
         RAISE EXCEPTION 'terminal node visit must not have an assignee'
@@ -60,6 +75,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_node_visit_assignee
-    BEFORE INSERT OR UPDATE OF node_id, assignee_principal_id
+    BEFORE INSERT OR UPDATE OF workflow_instance_id, node_id, assignee_principal_id
     ON workflow_node_visits
     FOR EACH ROW EXECUTE FUNCTION fn_check_node_visit_assignee();

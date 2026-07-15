@@ -31,6 +31,8 @@ role_key = WORKFLOW_ADMIN
 Principal 不存在时，在 Receipt 边界前返回 `PrincipalNotFound`，不写 Receipt、AttemptAudit
 或 SecurityAudit。这是现有 Principal 外键和上游认证边界的明确例外；存在但 disabled、类型
 不允许或没有 binding 时，创建失败 Receipt，并写 CommandAttemptAudit 与 SecurityAudit。
+disabled 与 SERVICE 分别稳定返回 `PrincipalDisabled`、`PrincipalTypeNotAllowed`；当前管理员
+binding 缺失或实例不存在统一返回 `PermissionDenied`。
 
 ## 2. 通用幂等与事务规则
 
@@ -46,11 +48,16 @@ PROCESSING -> COMPLETED
 已提交的 PROCESSING 不被接管
 ```
 
+Receipt acquire 之后，`Owned`、成功/失败 replay、hash conflict 和 PROCESSING 每个分支都必须
+先锁 requested Instance（override 还锁 DefinitionVersion），再重新检查 actor 与当前
+`WORKFLOW_ADMIN` binding。权限已经撤销时不得返回旧 response、commandId、原 request hash 或
+PROCESSING 状态；既有 Receipt 不修改，只写不含 Receipt 元数据的 AttemptAudit/SecurityAudit。
+`IdempotencyConflict` 对外是无原 commandId/hash 的不透明冲突，避免跨实例复用 key 泄漏。
+
 固定锁序是：
 
 ```text
-Receipt -> WorkflowInstance
-ADMIN_EMERGENCY_OVERRIDE 再锁 DefinitionVersion
+Receipt -> WorkflowInstance -> DefinitionVersion
 ```
 
 确定性失败完成 Receipt，不留下部分事实或投影更新；数据库/审计/Event 等基础设施失败回滚
@@ -108,7 +115,13 @@ EventData digest 正确，event type / nullable field matrix 合法
 所有 Context / Visit / Submission fact 都被 Event sequence 覆盖
 ```
 
-零事实、sequence 缝隙、孤立事实、未知 Event 或字段矩阵错误均拒绝。重建只允许更新 Instance
+重放器是逐 Event 状态机：每一步维护 current Context、current Visit 和 state version；create /
+import 必须引入 revision 1 与 initial Visit，revise 必须从当前 Context 前进一版，transition /
+combined/admin 必须从当时 current Visit 出发并逐字段匹配 Definition、Context、Visit、Submission
+及 payload digest。所有事实必须由唯一且正确的 Event 引入，最后不得指回旧 Context。
+
+零事实、sequence 缝隙、孤立事实、未知 Event 或字段矩阵错误均拒绝。重建在 Instance 后锁住
+其 DefinitionVersion，任何已知 lifecycle 状态都可重建。重建只允许更新 Instance
 三个投影字段和 `updated_at`；不得新增、修改或删除 Context、Visit、Submission、Event，
 不得增加 state version，也不得创建恢复 Event。
 
@@ -154,13 +167,18 @@ actor / workflowInstanceId / idempotencyKey / commandSchemaVersion
 expectedWorkflowStateVersion
 operation = MOVE_TO_NODE | TERMINATE_INSTANCE
 targetNodeId
-reason (trim 后 1..2000 个可打印字符)
+reason (原值 1..2000 个可打印字符，禁止首尾空白)
 optional expectedBeforeSnapshotDigest
 relatedReferences (最多 20 项；type 1..128 bytes，id 1..256 bytes)
 ```
 
 `PUBLISHED`、`DEPRECATED`、`REVOKED` DefinitionVersion 均允许；防御性 DRAFT 拒绝。target
 必须属于实例固定的 DefinitionVersion。
+
+任何写入前必须完整重放不可变事实，并证明 locked Instance 的三个 projection 字段与重放
+结果完全一致；不一致是完成失败 Receipt 并写审计的确定性失败，不得创建 Visit/Event。
+`workflowStateVersion + 1` 与 per-node `visitNumber + 1` 使用 checked arithmetic，溢出 fail-closed。
+creator/fixed assignee Principal、Domain Owner binding 与最终 Principal 都以共享锁读取并检查 enabled。
 
 操作矩阵：
 
@@ -188,6 +206,10 @@ EventData = operation / bounded reason / bounded relatedReferences / beforeSnaps
 Visit、Instance projection、Event、Receipt 和 `ADMIN_EMERGENCY_OVERRIDE_COMMITTED`
 SecurityAudit 在一个事务中提交。
 
+PR 4 timeline 对 Full scope 返回完整 admin EventData；HistoricalParticipant 仍可看到 terminal
+outcome 的公开 Event 骨架，但 `event_data` 与 `event_data_digest` 必须为 `NULL`，不得暴露 reason
+或 relatedReferences。
+
 ## 7. Terminal nullable 与历史兼容
 
 规划阶段称为“0009”的语义迁移因仓库已有不可变
@@ -205,6 +227,7 @@ TERMINAL Definition: assignee_ref_type = NULL, fixed_principal_id = NULL
 non-TERMINAL Definition: assignee_ref_type 非空且 shape 合法
 TERMINAL Visit: assignee_principal_id = NULL
 non-TERMINAL Visit: assignee_principal_id 非空
+Visit.node 的 definitionVersionId = Visit.instance 的固定 definitionVersionId
 ```
 
 Definition check 以 `NOT VALID` 安装，因此既有 published Terminal definition/Visit 不回写、
