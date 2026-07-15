@@ -16,9 +16,11 @@ Instance 仅保存可重建的当前投影。
 - `ReviseWorkflowContext`；
 - `ExecuteWorkflowTransition`；
 - `ReviseContextAndTransition`；
-- Read Model / Query Service。
+- Read Model / Query Service；
+- Admin Emergency Commands 与 projection repair。
 
-当前实施：Admin Emergency Commands 与 projection repair（PR 5）。后续范围见实施路线图。
+当前阶段：Legacy ADC Migration / Shadow Relay readiness 复核（PR 6）；Shadow/Cutover
+仍受 Legacy 写路径与 Owner 一致性问题阻断。后续范围见实施路线图。
 
 当前尚未提供 HTTP/gRPC 服务；可用入口是 Rust application service。
 
