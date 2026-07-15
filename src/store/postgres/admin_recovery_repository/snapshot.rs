@@ -20,10 +20,13 @@ pub(super) async fn lock_instance(
     instance_id: Uuid,
 ) -> Result<InstanceRow, RecoveryError> {
     sqlx::query_as(
-        "SELECT workflow_instance_id, domain_id, definition_version_id,
-                created_by_principal_id, current_context_revision_id,
-                current_node_visit_id, workflow_state_version
-         FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE",
+        "SELECT i.workflow_instance_id, i.domain_id, i.definition_version_id,
+                i.created_by_principal_id, p.principal_type::text AS created_by_principal_type,
+                i.external_reference, i.current_context_revision_id,
+                i.current_node_visit_id, i.workflow_state_version
+         FROM workflow_instances i JOIN principals p
+           ON p.principal_id = i.created_by_principal_id
+         WHERE i.workflow_instance_id = $1 FOR UPDATE OF i",
     )
     .bind(instance_id)
     .fetch_optional(&mut **tx)
@@ -104,7 +107,7 @@ async fn load_contexts(
 ) -> Result<Vec<ContextFact>, RecoveryError> {
     sqlx::query_as(
         "SELECT context_revision_id, workflow_instance_id, revision_number,
-                previous_revision_id, payload, payload_digest
+                previous_revision_id, payload, payload_digest, created_by_principal_id
          FROM workflow_context_revisions WHERE workflow_instance_id = $1
          ORDER BY revision_number",
     )
@@ -170,12 +173,14 @@ async fn load_events(
     instance_id: Uuid,
 ) -> Result<Vec<EventFact>, RecoveryError> {
     sqlx::query_as(
-        "SELECT workflow_instance_id, event_sequence, event_schema_version, event_type,
-                transition_effect::text, source_node_visit_id, target_node_visit_id,
-                context_revision_id, submission_id, event_data, event_data_digest,
-                from_node_id, to_node_id, old_workflow_state_version,
-                new_workflow_state_version
-         FROM workflow_events WHERE workflow_instance_id = $1 ORDER BY event_sequence",
+        "SELECT e.workflow_instance_id, e.event_sequence, e.event_schema_version, e.event_type,
+                e.transition_effect::text, e.source_node_visit_id, e.target_node_visit_id,
+                e.context_revision_id, e.submission_id, e.event_data, e.event_data_digest,
+                e.actor_principal_id, p.principal_type::text AS actor_principal_type,
+                e.from_node_id, e.to_node_id, e.old_workflow_state_version,
+                e.new_workflow_state_version
+         FROM workflow_events e JOIN principals p ON p.principal_id = e.actor_principal_id
+         WHERE e.workflow_instance_id = $1 ORDER BY e.event_sequence",
     )
     .bind(instance_id)
     .fetch_all(&mut **tx)

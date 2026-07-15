@@ -17,6 +17,10 @@ pub const COMMAND_TYPE_EXECUTE_TRANSITION: &str = "EXECUTE_WORKFLOW_TRANSITION";
 /// Stable command type string for ReviseContextAndTransition.
 pub const COMMAND_TYPE_REVISE_CONTEXT_AND_TRANSITION: &str = "REVISE_CONTEXT_AND_TRANSITION";
 
+/// Canonical command and event names for the legacy initial-import primitive.
+pub const COMMAND_TYPE_IMPORT_LEGACY_INSTANCE: &str = "IMPORT_LEGACY_WORKFLOW_INSTANCE";
+pub const WORKFLOW_INSTANCE_IMPORTED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_IMPORTED";
+
 /// Event type for instance creation events.
 pub const INSTANCE_CREATED_EVENT_TYPE: &str = "INSTANCE_CREATED";
 

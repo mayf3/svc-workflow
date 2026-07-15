@@ -7,4 +7,5 @@ pub mod combined_errors;
 pub mod commands;
 pub mod errors;
 pub mod events;
+pub mod import;
 pub mod recovery;

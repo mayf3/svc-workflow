@@ -19,8 +19,10 @@ Instance 仅保存可重建的当前投影。
 - Read Model / Query Service；
 - Admin Emergency Commands 与 projection repair。
 
-当前阶段：Legacy ADC Migration / Shadow Relay readiness 复核（PR 6）；Shadow/Cutover
-仍受 Legacy 写路径与 Owner 一致性问题阻断。后续范围见实施路线图。
+当前功能分支已实现 PR 6A Legacy ADC Initial Import primitive，正在进行独立审计前
+验证。状态为 `LOCAL_IMPORT_READY`、
+`SHADOW_NOT_READY`、`CUTOVER_NOT_READY`；Shadow/Cutover 仍受 Legacy 写路径与 Owner
+一致性问题阻断。后续范围见实施路线图。
 
 当前尚未提供 HTTP/gRPC 服务；可用入口是 Rust application service。
 
@@ -40,6 +42,7 @@ Instance 仅保存可重建的当前投影。
 | Runtime 流转合同（含 PR 3D） | [WORKFLOW_TRANSITION_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_TRANSITION_CONTRACT_V0_1.md) |
 | Runtime 查询合同 | [WORKFLOW_QUERY_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_QUERY_CONTRACT_V0_1.md) |
 | Admin Recovery 合同 | [ADMIN_RECOVERY_CONTRACT_V0_1.md](docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md) |
+| Legacy Initial Import 合同 | [LEGACY_IMPORT_CONTRACT_V0_1.md](docs/contracts/LEGACY_IMPORT_CONTRACT_V0_1.md) |
 | Legacy ADC 迁移 | [LEGACY_ADC_MIGRATION_V0_1.md](docs/migration/LEGACY_ADC_MIGRATION_V0_1.md) |
 
 ## 本地验证

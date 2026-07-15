@@ -8,6 +8,8 @@ pub(super) struct InstanceRow {
     pub domain_id: Uuid,
     pub definition_version_id: Uuid,
     pub created_by_principal_id: Uuid,
+    pub created_by_principal_type: String,
+    pub external_reference: Option<String>,
     pub current_context_revision_id: Option<Uuid>,
     pub current_node_visit_id: Option<Uuid>,
     pub workflow_state_version: i32,
@@ -31,6 +33,7 @@ pub(super) struct ContextFact {
     pub previous_revision_id: Option<Uuid>,
     pub payload: serde_json::Value,
     pub payload_digest: String,
+    pub created_by_principal_id: Uuid,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -80,6 +83,8 @@ pub(super) struct EventFact {
     pub submission_id: Option<Uuid>,
     pub event_data: Option<serde_json::Value>,
     pub event_data_digest: Option<String>,
+    pub actor_principal_id: Uuid,
+    pub actor_principal_type: String,
     pub from_node_id: Option<Uuid>,
     pub to_node_id: Option<Uuid>,
     pub old_workflow_state_version: i32,
