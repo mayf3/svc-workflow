@@ -12,9 +12,6 @@ use crate::store::postgres::import_receipt_validation::{
 struct ReplayFactRow {
     workflow_instance_id: Uuid,
     external_reference: Option<String>,
-    current_context_revision_id: Option<Uuid>,
-    current_node_visit_id: Option<Uuid>,
-    workflow_state_version: i32,
     context_revision_id: Uuid,
     revision_number: i32,
     previous_revision_id: Option<Uuid>,
@@ -39,10 +36,6 @@ struct ReplayFactRow {
     new_workflow_state_version: i32,
     event_data: Option<serde_json::Value>,
     event_data_digest: Option<String>,
-    context_count: i64,
-    visit_count: i64,
-    event_count: i64,
-    submission_count: i64,
 }
 
 fn internal(detail: impl Into<String>) -> LegacyImportError {
@@ -79,8 +72,6 @@ async fn load_facts(
 ) -> Result<ReplayFactRow, LegacyImportError> {
     sqlx::query_as(
         "SELECT i.workflow_instance_id, i.external_reference,
-                i.current_context_revision_id, i.current_node_visit_id,
-                i.workflow_state_version,
                 c.context_revision_id, c.revision_number, c.previous_revision_id,
                 v.node_visit_id, v.node_id, v.visit_number,
                 v.entered_by_transition_id,
@@ -90,15 +81,7 @@ async fn load_facts(
                 e.context_revision_id AS event_context_revision_id, e.submission_id,
                 e.actor_principal_id, e.from_node_id, e.to_node_id,
                 e.old_workflow_state_version, e.new_workflow_state_version,
-                e.event_data, e.event_data_digest,
-                (SELECT COUNT(*) FROM workflow_context_revisions counted
-                  WHERE counted.workflow_instance_id = i.workflow_instance_id) AS context_count,
-                (SELECT COUNT(*) FROM workflow_node_visits counted
-                  WHERE counted.workflow_instance_id = i.workflow_instance_id) AS visit_count,
-                (SELECT COUNT(*) FROM workflow_events counted
-                  WHERE counted.workflow_instance_id = i.workflow_instance_id) AS event_count,
-                (SELECT COUNT(*) FROM workflow_submissions counted
-                  WHERE counted.workflow_instance_id = i.workflow_instance_id) AS submission_count
+                e.event_data, e.event_data_digest
          FROM workflow_instances i
          JOIN workflow_context_revisions c
            ON c.context_revision_id = $2 AND c.workflow_instance_id = i.workflow_instance_id
@@ -169,17 +152,10 @@ pub(super) async fn replay_success(
 ) -> Result<ImportLegacyWorkflowInstanceResult, LegacyImportError> {
     let response = parse_success(receipt).map_err(internal)?;
     let facts = load_facts(tx, &response).await?;
-    if facts.current_context_revision_id != Some(facts.context_revision_id)
-        || facts.current_node_visit_id != Some(facts.node_visit_id)
-        || facts.workflow_state_version != 1
-        || facts.revision_number != 1
+    if facts.revision_number != 1
         || facts.previous_revision_id.is_some()
         || facts.visit_number != 1
         || facts.entered_by_transition_id.is_some()
-        || facts.context_count != 1
-        || facts.visit_count != 1
-        || facts.event_count != 1
-        || facts.submission_count != 0
         || facts.command_id != Some(receipt.command_id)
         || facts.event_type != "WORKFLOW_INSTANCE_IMPORTED"
         || facts.event_sequence != 1

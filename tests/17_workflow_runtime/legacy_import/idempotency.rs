@@ -21,6 +21,63 @@ async fn exact_replay_returns_the_stored_fact_identifiers() {
 }
 
 #[tokio::test]
+async fn exact_replay_survives_valid_post_import_lifecycle_changes() {
+    let fixture = fixture(ImportedNodeKind::Draft).await;
+    let first = run(&fixture).await.unwrap();
+    let revised = revise_workflow_context(
+        &fixture.pool,
+        ReviseWorkflowContextCommand {
+            principal_id: PrincipalId::from_uuid(fixture.owner),
+            idempotency_key: Uuid::new_v4().to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(first.workflow_instance_id),
+            expected_workflow_state_version: 1,
+            context_payload: serde_json::json!({"requirementId": "revised"}),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(revised.workflow_state_version, 2);
+    let transition: Uuid = sqlx::query_scalar(
+        "SELECT primary_advance_transition_id
+         FROM workflow_node_definitions WHERE node_id = $1",
+    )
+    .bind(fixture.node)
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    let transitioned = execute_workflow_transition(
+        &fixture.pool,
+        make_transition_command(
+            fixture.owner,
+            first.workflow_instance_id,
+            2,
+            transition,
+            None,
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(transitioned.workflow_state_version, 3);
+    assert_ne!(
+        transitioned.current_node_visit_id,
+        first.current_node_visit_id
+    );
+    let replay = run(&fixture).await.unwrap();
+    assert!(replay.replayed);
+    assert_eq!(replay.command_id, first.command_id);
+    assert_eq!(replay.workflow_instance_id, first.workflow_instance_id);
+    assert_eq!(
+        replay.current_context_revision_id,
+        first.current_context_revision_id
+    );
+    assert_eq!(replay.current_node_visit_id, first.current_node_visit_id);
+    assert_eq!(replay.event_id, first.event_id);
+    assert_eq!(replay.workflow_state_version, 1);
+    assert_eq!(replay.event_sequence, 1);
+}
+
+#[tokio::test]
 async fn same_fixed_key_with_different_request_conflicts() {
     let fixture = fixture(ImportedNodeKind::Normal).await;
     run(&fixture).await.unwrap();
