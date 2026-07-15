@@ -1,7 +1,7 @@
 # Legacy ADC Initial Import Contract v0.1
 
 ```text
-Status: IMPLEMENTED_PENDING_INDEPENDENT_AUDIT
+Status: CURRENT_MERGED
 Domain Baseline: v0.3.1
 LOCAL_IMPORT_READY
 SHADOW_NOT_READY
@@ -29,6 +29,8 @@ caller 不能覆盖这两个值。request hash 覆盖 route parameters 与完整
 包含 idempotency key。相同 actor/key/request 重放存储的响应；不同 request 冲突；
 `PROCESSING` 返回可重试错误。每次重放都重新校验当前 actor、Domain、Definition 和
 binding。确定性失败完成 Receipt；基础设施失败回滚 Receipt 与全部事实。
+后续合法 revise/transition 不改变本导入命令的存储响应；原请求重放仍返回初始
+context、visit、event 与 `1/1` 版本结果。
 
 request hash envelope 的 key 固定使用 `camelCase`。所有 `Option::None`（包括 creator
 和 URL）必须序列化为显式 `null`；不得省略字段。canonical JSON 与 SHA-256 golden

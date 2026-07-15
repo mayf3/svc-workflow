@@ -1,18 +1,18 @@
 # Legacy ADC 迁移勘误 v0.1
 
 ```text
-Status: INVESTIGATION_COMPLETE
+Status: CURRENT_MIGRATION_BOUNDARY
 Version: v0.1
 Architecture: SVC_WORKFLOW_ARCHITECTURE_V0_3_1 (ARCHITECTURE_FROZEN)
+Last Read-only Check: 2026-07-15
+ADC Evidence: develop@343afa49475e6504b61e0b6510bfae372c65027f
+SHADOW_NOT_READY
+CUTOVER_NOT_READY
 ```
 
-> 本文件基于只读调查完成。详细调查文档见：
-> `docs/migration/LEGACY_ADC_READ_ONLY_INVESTIGATION_REPORT.md`
->
 > 约束：本文件不修改已冻结领域架构，不承诺任何迁移方案。
 > 所有迁移方案必须基于架构基线 `SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md`
 > 与实施契约 `IMPLEMENTATION_CONTRACT_V0_1.md`。
-> 在正式迁移前，本文件保持 `INVESTIGATION_COMPLETE`。
 
 ---
 
@@ -20,19 +20,19 @@ Architecture: SVC_WORKFLOW_ARCHITECTURE_V0_3_1 (ARCHITECTURE_FROZEN)
 
 总体判定：`READY_WITH_BLOCKING_MIGRATION_GAPS`
 
-阻塞缺口（必须在实施前由 agent-dev-center 仓库解决）：
+阻塞缺口（必须在 PR 6B Shadow/Cutover 前由 agent-dev-center 仓库解决）：
 
 ### B1. Startup 模板覆盖（HIGH）
 
-`backend/src/lib/workflow-templates.ts:398-427` 中 `ensureWorkflowTemplates()` 在每次服务启动时执行 `upsert`。模板 `steps` 可以被代码覆盖。需要 ADC 停止启动时 upsert 模板，改为仅首次初始化或仅添加不修改。
+`backend/src/lib/workflow-templates.ts` 中 `ensureWorkflowTemplates()` 仍在服务启动时执行并可更新模板 `steps`。需要 ADC 改为仅首次初始化或仅添加不修改。
 
 ### B2. 非标准 currentStep 写路径（HIGH）
 
-`reports-approval.ts:198`（报告批准自动推进）、`core-patch.ts`（通用 PATCH 直接更新 currentStep）等路径不会写入 Relay，导致 Shadow 期状态不一致。需要 ADC 将这些路径改为走标准 advance/reject 路径。
+报告批准自动推进、通用 PATCH 等路径仍可直接更新 `currentStep`，且没有 Relay/Outbox。需要 ADC 将全部写路径收口到标准命令或同一 Relay 边界。
 
 ### B3. Domain Owner 非唯一（HIGH）
 
-`DomainRoleBinding` 的 `isDomainAdmin` 标记非唯一——同一域可以有多个 `isDomainAdmin=true` 的 binding。svc-workflow 要求"一个 Domain 唯一一个 Owner"。需要 ADC 在迁移前确定每个 Domain 的唯一 DOMAIN_OWNER。
+当前 Legacy schema 仍没有唯一 Domain Owner 约束。svc-workflow 要求一个 Domain 只有一个 enabled Owner；迁移前必须完成规范化。
 
 ---
 
@@ -104,7 +104,7 @@ Migration Service Principal 应创建为固定 auth-service User。
 
 ---
 
-## 6. 推荐第一条垂直闭环
+## 6. 推荐第一条 Shadow 垂直闭环
 
 **推荐：开发 Requirement 流程**（不推荐 llm-todo）
 
@@ -116,21 +116,7 @@ Transition：ADVANCE, RETURN
 
 ---
 
-## 7. 实施 PR 顺序
-
-| PR | 内容 | 验收 |
-|---|---|---|
-| PR 1 | 仓储骨架 + 不可变事实表 | migration + test |
-| PR 2 | Definition + Version 管理 | 创建/发布/校验 |
-| PR 3 | Instance + Context + NodeVisit + Submission | 基本生命周期 |
-| PR 4 | Transition 引擎 (ADVANCE/RETURN/TERMINATE) | 完整流转 + 幂等 |
-| PR 5 | API + 查询 | assigned-to-me, timeline |
-| PR 6 | 管理员修复 | 投影重建 + 紧急覆盖 |
-| PR 7 | Legacy 模板导入 | 8 模板转为 DefinitionVersion |
-
----
-
-## 8. Shadow Relay 设计要点
+## 7. Shadow Relay 设计要点
 
 推荐插入点：`casUpdateRequirement()` 成功后、事务提交前。
 
@@ -142,7 +128,7 @@ Relay 最小字段：`id`, `domain_key`, `requirement_id`, `event_type`, `curren
 
 ---
 
-## 9. 数据库部署
+## 8. 数据库部署
 
 - ADC 使用 PostgreSQL 16，已有运行实例
 - auth-service 共享 ADC 数据库
@@ -151,7 +137,11 @@ Relay 最小字段：`id`, `domain_key`, `requirement_id`, `event_type`, `curren
 
 ---
 
-## 10. 已完成的调查
+## 9. 历史调查证据
 
-详细调查文档（包括所有证据的文件路径、行号、代码引用）：
-`docs/migration/LEGACY_ADC_READ_ONLY_INVESTIGATION_REPORT.md`
+旧版完整只读调查是历史快照，不再放在当前树。需要追溯当时的文件路径、行号和
+实体表格时使用：
+
+```bash
+git show ba005e2:docs/migration/LEGACY_ADC_READ_ONLY_INVESTIGATION_REPORT.md
+```
