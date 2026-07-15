@@ -465,3 +465,6 @@ mod admin_recovery_receipt_reauthorization;
 
 #[path = "17_workflow_runtime/legacy_import/mod.rs"]
 mod legacy_import;
+
+#[path = "17_workflow_runtime/http/smoke.rs"]
+mod http_smoke;
