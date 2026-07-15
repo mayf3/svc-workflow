@@ -190,6 +190,8 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     let pool = create_pool().await;
     let fixture = seed_recovery_fixture(&pool).await;
     let imported_instance = Uuid::new_v4();
+    let legacy_record = Uuid::new_v4();
+    let migration_service = Uuid::new_v4();
     let context = Uuid::new_v4();
     let visit = Uuid::new_v4();
     let payload = serde_json::json!({"legacy": true});
@@ -197,7 +199,7 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
         svc_workflow::domain::definition::digest::compute_json_digest(&payload).unwrap();
     let event_data = serde_json::json!({
         "legacySystem": "adc",
-        "legacyRecordId": "legacy-42",
+        "legacyRecordId": legacy_record,
         "legacySnapshotDigest": "a".repeat(64),
         "importedNodeId": fixture.draft,
         "importedAt": "2026-07-15T00:00:00Z",
@@ -211,15 +213,24 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
         .await
         .unwrap();
     sqlx::query(
+        "INSERT INTO principals (principal_id, principal_type, display_name, enabled)
+         VALUES ($1, 'SERVICE', 'Historical migration service', TRUE)",
+    )
+    .bind(migration_service)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
         "INSERT INTO workflow_instances
          (workflow_instance_id, domain_id, definition_version_id,
-          created_by_principal_id, workflow_state_version)
-         VALUES ($1, $2, $3, $4, 1)",
+          created_by_principal_id, workflow_state_version, external_reference)
+         VALUES ($1, $2, $3, $4, 1, $5)",
     )
     .bind(imported_instance)
     .bind(fixture.domain)
     .bind(fixture.version)
     .bind(fixture.creator)
+    .bind(format!("migration:adc:{legacy_record}:v1"))
     .execute(&mut *tx)
     .await
     .unwrap();
@@ -265,7 +276,7 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     .bind(context)
     .bind(event_data)
     .bind(event_digest)
-    .bind(fixture.admin)
+    .bind(migration_service)
     .execute(&mut *tx)
     .await
     .unwrap();

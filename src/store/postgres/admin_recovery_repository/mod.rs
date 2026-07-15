@@ -3,6 +3,7 @@
 mod authorization;
 mod event_fields;
 mod event_replay;
+mod import_event;
 mod override_transaction;
 mod rebuild_transaction;
 mod receipt;

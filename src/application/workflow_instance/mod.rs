@@ -7,6 +7,7 @@ pub mod admin_recovery;
 pub mod create;
 pub mod execute_transition;
 pub mod idempotency;
+pub mod import;
 pub mod query_service;
 pub mod query_types;
 pub mod revise;

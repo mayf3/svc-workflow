@@ -3,7 +3,7 @@
 ```text
 Status: ACTIVE_EXECUTION_PLAN
 Architecture Baseline: v0.3.1
-Last Merged Slice Head: f19545bd0798d392daffe37a8611dbb02f7aab81
+Last Merged Slice Head: ac8cc80640701286ec6567b1529d8279887dc9a3
 ```
 
 本文只记录实施顺序和交付状态。领域语义以冻结架构为准，具体运行时行为以
@@ -21,7 +21,8 @@ Last Merged Slice Head: f19545bd0798d392daffe37a8611dbb02f7aab81
 | PR 3D | `ReviseContextAndTransition` | MERGED (`11758f9`) |
 | PR 4 | Read Model / Query Service | MERGED (`eb3817b`) |
 | PR 5 | Admin Emergency Commands 与 projection repair | MERGED (`f19545b`) |
-| PR 6 | Legacy ADC Migration / Shadow Relay | READINESS_REVIEW（CUTOVER_BLOCKED） |
+| PR 6A | Legacy ADC Initial Import primitive | IMPLEMENTED_PENDING_AUDIT (`LOCAL_IMPORT_READY`) |
+| PR 6B+ | Relay / Shadow / Cutover | BLOCKED (`SHADOW_NOT_READY`, `CUTOVER_NOT_READY`) |
 
 PR 3D 的验收门：
 

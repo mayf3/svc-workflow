@@ -10,6 +10,7 @@ use super::event_fields::{
     admin_payload_is_bounded, event_data, exact_keys, optional_string_field, string_field,
     uuid_field,
 };
+use super::import_event;
 use super::rows::{ContextFact, EventFact, InstanceRow, SubmissionFact, TransitionFact, VisitFact};
 
 fn invalid(detail: impl Into<String>) -> RecoveryError {
@@ -163,16 +164,7 @@ impl<'a> Replay<'a> {
             ));
         }
         if imported {
-            if uuid_field(data, "importedNodeId") != Some(visit.node_id)
-                || keys
-                    .iter()
-                    .filter(|key| **key != "importedNodeId")
-                    .any(|key| string_field(data, key).is_none_or(str::is_empty))
-            {
-                return Err(invalid(
-                    "import event data does not match the initial facts",
-                ));
-            }
+            import_event::validate(data, event, self.instance, context, visit)?;
         } else if uuid_field(data, "definition_version_id")
             != Some(self.instance.definition_version_id)
             || string_field(data, "definition_digest") != Some(self.definition_digest.unwrap_or(""))

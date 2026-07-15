@@ -462,3 +462,6 @@ mod admin_recovery_override_success;
 mod admin_recovery_rebuild;
 #[path = "17_workflow_runtime/admin_recovery/receipt_reauthorization.rs"]
 mod admin_recovery_receipt_reauthorization;
+
+#[path = "17_workflow_runtime/legacy_import/mod.rs"]
+mod legacy_import;

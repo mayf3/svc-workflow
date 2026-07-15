@@ -2,6 +2,7 @@
 
 pub mod admin_recovery_repository;
 pub mod definition_repository;
+pub mod legacy_import_repository;
 pub mod migrations;
 pub mod pool;
 pub mod repository_rows;
