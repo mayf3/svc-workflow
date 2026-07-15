@@ -48,13 +48,11 @@ pub(crate) async fn execute_workflow_transition_atomically(
     let principal_uuid = cmd.principal_id.into_uuid();
     let instance_uuid = cmd.workflow_instance_id.into_uuid();
     let transition_uuid = cmd.transition_definition_id.into_uuid();
-
     let command_id = Uuid::new_v4();
     let new_node_visit_id = Uuid::new_v4();
     let event_id = Uuid::new_v4();
     let submission_id = Uuid::new_v4();
     let audit_id = Uuid::new_v4();
-
     // ---------------------------------------------------------------
     // Step 1: Insert command receipt (idempotency gate)
     // ---------------------------------------------------------------
@@ -113,34 +111,31 @@ pub(crate) async fn execute_workflow_transition_atomically(
         }
     };
 
-    // Helper for deterministic failure: complete receipt with error, commit, return err
+    // Every deterministic check below runs before the first runtime fact write.
     macro_rules! deterministic_failure {
         ($err:expr) => {{
             let err = $err;
-            let status_code = crate::domain::workflow_instance::errors::transition_error_code(&err);
-            let response_body = transition_validation::error_response_body(&err);
-            let response_digest = digest::compute_sha256(
-                crate::domain::workflow_instance::errors::transition_error_label(&err).as_bytes(),
-            );
-            complete_transition_receipt(
-                &mut tx,
-                _actual_command_id,
-                status_code,
-                &response_body,
-                &response_digest,
-            )
-            .await?;
-            tx.commit()
-                .await
-                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            transition_validation::persist_deterministic_failure(tx, _actual_command_id, &err)
+                .await?;
             return Err(err);
+        }};
+    }
+    macro_rules! validation_result {
+        ($result:expr) => {{
+            match $result {
+                Ok(value) => value,
+                Err(err) if transition_validation::is_deterministic_error(&err) => {
+                    deterministic_failure!(err)
+                }
+                Err(err) => return Err(err),
+            }
         }};
     }
 
     // ---------------------------------------------------------------
     // Step 2: Lock WorkflowInstance FOR UPDATE
     // ---------------------------------------------------------------
-    let instance = lock_instance(&mut tx, instance_uuid).await?;
+    let instance = validation_result!(lock_instance(&mut tx, instance_uuid).await);
 
     // Read domain_id for assignee resolution
     let domain_row: Option<(Uuid,)> =
@@ -173,9 +168,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 4: Read and validate current NodeVisit
     // ---------------------------------------------------------------
-    let current_visit =
-        read_current_visit(&mut tx, instance_uuid, instance.current_node_visit_id).await?;
-
+    let current_visit = validation_result!(
+        read_current_visit(&mut tx, instance_uuid, instance.current_node_visit_id).await
+    );
     // ---------------------------------------------------------------
     // Step 5: A Terminal visit is canonically unassigned and cannot transition.
     // ---------------------------------------------------------------
@@ -186,7 +181,8 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 6: Validate caller principal enabled
     // ---------------------------------------------------------------
-    if let Some(err) = validate_principal_enabled(&mut tx, principal_uuid).await? {
+    if let Some(err) = validation_result!(validate_principal_enabled(&mut tx, principal_uuid).await)
+    {
         deterministic_failure!(err);
     }
 
@@ -200,23 +196,28 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 8: Validate Definition Version status (with FOR UPDATE lock)
     // ---------------------------------------------------------------
-    validate_definition_version_status(&mut tx, instance.definition_version_id).await?;
+    validation_result!(
+        validate_definition_version_status(&mut tx, instance.definition_version_id).await
+    );
 
     // ---------------------------------------------------------------
     // Step 9: Read source node definition (for primary check)
     // ---------------------------------------------------------------
-    let source_node = read_source_node(
-        &mut tx,
-        current_visit.node_id,
-        instance.definition_version_id,
-    )
-    .await?;
+    let source_node = validation_result!(
+        read_source_node(
+            &mut tx,
+            current_visit.node_id,
+            instance.definition_version_id,
+        )
+        .await
+    );
 
     // ---------------------------------------------------------------
     // Step 10: Read and validate TransitionDefinition
     // ---------------------------------------------------------------
-    let transition =
-        read_transition(&mut tx, transition_uuid, instance.definition_version_id).await?;
+    let transition = validation_result!(
+        read_transition(&mut tx, transition_uuid, instance.definition_version_id).await
+    );
 
     // Validate transition source matches current node
     if transition.source_node_id != current_visit.node_id {
@@ -275,12 +276,14 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 11: Read target node and validate node type vs effect
     // ---------------------------------------------------------------
-    let target_node = read_target_node(
-        &mut tx,
-        transition.target_node_id,
-        instance.definition_version_id,
-    )
-    .await?;
+    let target_node = validation_result!(
+        read_target_node(
+            &mut tx,
+            transition.target_node_id,
+            instance.definition_version_id,
+        )
+        .await
+    );
 
     match effect.as_str() {
         "ADVANCE" => {
@@ -335,32 +338,20 @@ pub(crate) async fn execute_workflow_transition_atomically(
             // Payload provided — validate and create submission
 
             // Size check
-            validate_submission_size(payload)?;
+            validation_result!(validate_submission_size(payload));
 
             // Schema validation
-            validate_submission_schema(&transition.submission_schema, payload)?;
+            validation_result!(validate_submission_schema(
+                &transition.submission_schema,
+                payload,
+            ));
 
             // RETURN-specific reference validation
             if effect == "RETURN" {
-                validate_return_references(&mut tx, payload, instance_uuid).await?;
+                validation_result!(
+                    validate_return_references(&mut tx, payload, instance_uuid,).await
+                );
             }
-
-            // Compute payload digest
-            // Payload digest is computed inside transition_helpers::insert_submission
-
-            // Insert Submission via helper
-            transition_helpers::insert_submission(
-                &mut tx,
-                submission_id,
-                instance_uuid,
-                instance.current_node_visit_id,
-                instance.current_context_revision_id,
-                principal_uuid,
-                transition.transition_id,
-                payload,
-            )
-            .await?;
-
             final_submission_id = Some(submission_id);
         }
     }
@@ -369,7 +360,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // Step 13: Resolve target assignee
     // ---------------------------------------------------------------
     let target_assignee_id =
-        resolve_assignee(&mut tx, &target_node, &instance, domain_uuid).await?;
+        validation_result!(resolve_assignee(&mut tx, &target_node, &instance, domain_uuid).await);
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number
@@ -386,6 +377,22 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     let target_visit_number = visit_number.0.unwrap_or(1);
+
+    // All deterministic validation is complete. Runtime fact writes start here;
+    // any following error rolls back the receipt and all partial facts.
+    if let Some(payload) = &cmd.submission_payload {
+        transition_helpers::insert_submission(
+            &mut tx,
+            submission_id,
+            instance_uuid,
+            instance.current_node_visit_id,
+            instance.current_context_revision_id,
+            principal_uuid,
+            transition.transition_id,
+            payload,
+        )
+        .await?;
+    }
 
     transition_helpers::insert_node_visit(
         &mut tx,

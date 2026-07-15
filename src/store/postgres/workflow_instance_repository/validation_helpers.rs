@@ -5,11 +5,34 @@
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
+use crate::domain::definition::digest;
 use crate::domain::enums::AssigneeRefType;
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 
+use super::command_receipt::complete_receipt;
 use super::definition_lookup::DraftNodeInfo;
+
+/// Validate all create payload limits after receipt ownership.
+pub(super) fn validate_request_sizes(
+    cmd: &CreateWorkflowInstanceCommand,
+) -> Result<(), CreateWorkflowInstanceError> {
+    let context_bytes = serde_json::to_vec(&cmd.context_payload)
+        .map_err(|error| CreateWorkflowInstanceError::StorageError(error.to_string()))?;
+    if context_bytes.len() > 1024 * 1024 {
+        return Err(CreateWorkflowInstanceError::SizeLimitExceeded(
+            "context_payload exceeds 1 MiB".to_string(),
+        ));
+    }
+    let metadata_bytes = serde_json::to_vec(&cmd.metadata)
+        .map_err(|error| CreateWorkflowInstanceError::StorageError(error.to_string()))?;
+    if metadata_bytes.len() > 64 * 1024 {
+        return Err(CreateWorkflowInstanceError::SizeLimitExceeded(
+            "metadata exceeds 64 KiB".to_string(),
+        ));
+    }
+    Ok(())
+}
 
 /// Validate domain exists and is enabled.
 pub(super) async fn validate_domain_enabled(
@@ -173,7 +196,7 @@ pub(super) fn validate_context_schema(
 }
 
 /// Map an error to a deterministic HTTP-style status code.
-pub(super) fn deterministic_error_code(err: &CreateWorkflowInstanceError) -> i32 {
+pub(crate) fn deterministic_error_code(err: &CreateWorkflowInstanceError) -> i32 {
     match err {
         CreateWorkflowInstanceError::DomainNotFound => 404,
         CreateWorkflowInstanceError::PrincipalNotFound => 404,
@@ -191,7 +214,7 @@ pub(super) fn deterministic_error_code(err: &CreateWorkflowInstanceError) -> i32
 }
 
 /// Map an error to a deterministic string label for the response body.
-pub(super) fn deterministic_error_label(err: &CreateWorkflowInstanceError) -> &'static str {
+pub(crate) fn deterministic_error_label(err: &CreateWorkflowInstanceError) -> &'static str {
     match err {
         CreateWorkflowInstanceError::DomainNotFound => "domain_not_found",
         CreateWorkflowInstanceError::DomainDisabled => "domain_disabled",
@@ -206,4 +229,49 @@ pub(super) fn deterministic_error_label(err: &CreateWorkflowInstanceError) -> &'
         CreateWorkflowInstanceError::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
         _ => "validation_error",
     }
+}
+
+pub(crate) fn deterministic_error_body(err: &CreateWorkflowInstanceError) -> serde_json::Value {
+    let label = deterministic_error_label(err);
+    match err {
+        CreateWorkflowInstanceError::SizeLimitExceeded(detail)
+        | CreateWorkflowInstanceError::ContextValidationFailed(detail)
+        | CreateWorkflowInstanceError::AssigneeResolutionFailed(detail) => {
+            serde_json::json!({"error": label, "detail": detail})
+        }
+        _ => serde_json::json!({"error": label}),
+    }
+}
+
+pub(super) fn is_deterministic_error(err: &CreateWorkflowInstanceError) -> bool {
+    matches!(
+        err,
+        CreateWorkflowInstanceError::PrincipalNotFound
+            | CreateWorkflowInstanceError::PrincipalDisabled
+            | CreateWorkflowInstanceError::DomainNotFound
+            | CreateWorkflowInstanceError::DomainDisabled
+            | CreateWorkflowInstanceError::DomainMembershipRequired
+            | CreateWorkflowInstanceError::DefinitionVersionNotFound
+            | CreateWorkflowInstanceError::VersionNotPublished
+            | CreateWorkflowInstanceError::CrossDomainViolation
+            | CreateWorkflowInstanceError::ContextValidationFailed(_)
+            | CreateWorkflowInstanceError::SizeLimitExceeded(_)
+            | CreateWorkflowInstanceError::AssigneeResolutionFailed(_)
+    )
+}
+
+/// Persist a deterministic failure receipt. Call only before runtime facts are written.
+pub(super) async fn persist_deterministic_failure(
+    mut tx: Transaction<'_, Postgres>,
+    command_id: Uuid,
+    err: &CreateWorkflowInstanceError,
+) -> Result<(), CreateWorkflowInstanceError> {
+    let status = deterministic_error_code(err);
+    let body = deterministic_error_body(err);
+    let response_digest =
+        digest::compute_json_digest(&body).map_err(CreateWorkflowInstanceError::StorageError)?;
+    complete_receipt(&mut tx, command_id, status, &body, &response_digest).await?;
+    tx.commit()
+        .await
+        .map_err(|error| CreateWorkflowInstanceError::StorageError(error.to_string()))
 }

@@ -76,6 +76,10 @@ impl ApiError {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, code, message)
     }
 
+    pub fn unprocessable(code: &'static str, message: &'static str) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, code, message)
+    }
+
     pub fn code(&self) -> &'static str {
         self.code
     }
@@ -155,7 +159,7 @@ impl ApiError {
             }
             E::StorageError(detail) => {
                 tracing::error!(error = %detail, "workflow create storage failure");
-                internal("storage_error", "storage operation failed")
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
             }
         }
     }
@@ -221,7 +225,7 @@ impl ApiError {
             }
             E::StorageError(detail) => {
                 tracing::error!(error = %detail, "workflow transition storage failure");
-                internal("storage_error", "storage operation failed")
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
             }
         }
     }
@@ -248,7 +252,7 @@ impl ApiError {
             }
             E::StorageError(detail) => {
                 tracing::error!(error = %detail, "workflow query storage failure");
-                internal("storage_error", "storage operation failed")
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
             }
         }
     }
@@ -320,5 +324,17 @@ mod tests {
         assert_eq!(error.status, StatusCode::CONFLICT);
         assert_eq!(error.code, "idempotency_conflict");
         assert!(error.details.is_none());
+    }
+
+    #[test]
+    fn storage_is_retryable_but_consistency_is_not() {
+        let storage = ApiError::from_query(WorkflowQueryError::StorageError("db down".into()));
+        assert_eq!(storage.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(storage.code, "service_unavailable");
+        let consistency = ApiError::from_query(WorkflowQueryError::InternalConsistency(
+            "broken projection".into(),
+        ));
+        assert_eq!(consistency.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(consistency.code, "internal_consistency_error");
     }
 }

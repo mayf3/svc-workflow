@@ -28,6 +28,16 @@ pub(crate) async fn create(
     require_scope(&principal, "workflow.execute")?;
     let key = idempotency_key(&headers)?;
     let Json(payload) = payload.map_err(ApiError::from_json_rejection)?;
+    if payload
+        .external_reference
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > 512)
+    {
+        return Err(ApiError::unprocessable(
+            "invalid_input",
+            "externalReference must not exceed 512 characters",
+        ));
+    }
     let command = CreateWorkflowInstanceCommand {
         principal_id: principal.principal_id,
         idempotency_key: key,

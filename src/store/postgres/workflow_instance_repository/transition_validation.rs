@@ -7,10 +7,12 @@
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
+use crate::domain::definition::digest;
 use crate::domain::enums::{AssigneeRefType, DefinitionVersionStatus, NodeType};
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
 
 use super::row_types::*;
+use super::transition_receipt::complete_transition_receipt;
 use super::transition_rows::*;
 
 /// Lock and read the workflow instance for transition.
@@ -394,7 +396,7 @@ pub(super) async fn validate_return_references(
 }
 
 /// Map an ExecuteWorkflowTransitionError to a response body for deterministic failure receipts.
-pub(super) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde_json::Value {
+pub(crate) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde_json::Value {
     match err {
         ExecuteWorkflowTransitionError::WorkflowStateVersionConflict { expected, actual } => {
             serde_json::json!({
@@ -415,9 +417,52 @@ pub(super) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde
                 "detail": detail,
             })
         }
+        ExecuteWorkflowTransitionError::SizeLimitExceeded(detail)
+        | ExecuteWorkflowTransitionError::InvalidReturnReferences(detail)
+        | ExecuteWorkflowTransitionError::AssigneeResolutionFailed(detail) => {
+            let label = crate::domain::workflow_instance::errors::transition_error_label(err);
+            serde_json::json!({"error": label, "detail": detail})
+        }
         _ => {
             let label = crate::domain::workflow_instance::errors::transition_error_label(err);
             serde_json::json!({"error": label})
         }
     }
+}
+
+pub(super) fn is_deterministic_error(err: &ExecuteWorkflowTransitionError) -> bool {
+    matches!(
+        err,
+        ExecuteWorkflowTransitionError::PrincipalNotFound
+            | ExecuteWorkflowTransitionError::PrincipalDisabled
+            | ExecuteWorkflowTransitionError::InstanceNotFound
+            | ExecuteWorkflowTransitionError::CurrentVisitNotFound
+            | ExecuteWorkflowTransitionError::PrincipalNotAssignee
+            | ExecuteWorkflowTransitionError::SourceNodeTerminal
+            | ExecuteWorkflowTransitionError::DefinitionVersionRevoked
+            | ExecuteWorkflowTransitionError::DefinitionVersionDraft
+            | ExecuteWorkflowTransitionError::WorkflowStateVersionConflict { .. }
+            | ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
+            | ExecuteWorkflowTransitionError::SubmissionRequired
+            | ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
+            | ExecuteWorkflowTransitionError::SizeLimitExceeded(_)
+            | ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
+            | ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_)
+    )
+}
+
+/// Persist a deterministic failure receipt. Call only before runtime facts are written.
+pub(super) async fn persist_deterministic_failure(
+    mut tx: Transaction<'_, Postgres>,
+    command_id: Uuid,
+    err: &ExecuteWorkflowTransitionError,
+) -> Result<(), ExecuteWorkflowTransitionError> {
+    let status = crate::domain::workflow_instance::errors::transition_error_code(err);
+    let body = error_response_body(err);
+    let response_digest =
+        digest::compute_json_digest(&body).map_err(ExecuteWorkflowTransitionError::StorageError)?;
+    complete_transition_receipt(&mut tx, command_id, status, &body, &response_digest).await?;
+    tx.commit()
+        .await
+        .map_err(|error| ExecuteWorkflowTransitionError::StorageError(error.to_string()))
 }

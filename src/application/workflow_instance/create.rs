@@ -1,8 +1,8 @@
 //! CreateWorkflowInstance application service.
 //!
 //! Orchestrates the full creation workflow:
-//! 1. Pre-validate principal existence and enabled status
-//! 2. Compute request hash for idempotency
+//! 1. Compute request hash for idempotency
+//! 2. Validate that the authenticated principal has a database identity
 //! 3. Delegate to the atomic creation transaction
 //! 4. Map result to the public response type
 
@@ -46,12 +46,7 @@ pub async fn create_workflow_instance(
     pool: &PgPool,
     command: CreateWorkflowInstanceCommand,
 ) -> Result<CreateWorkflowInstanceResult, CreateWorkflowInstanceError> {
-    // 1. Pre-validate principal existence and enabled status
-    // (fast-fail before entering the transaction)
-    let principal_uuid = command.principal_id.into_uuid();
-    pre_validate_principal(pool, principal_uuid).await?;
-
-    // 2. Compute request hash for idempotency
+    // 1. Compute the identity-independent request hash before business validation.
     let request_hash = compute_request_hash(
         &command.command_schema_version,
         &command.idempotency_key,
@@ -64,10 +59,13 @@ pub async fn create_workflow_instance(
         &command.external_url,
     )?;
 
-    // 3. Pre-validate size limits (fast-fail before entering the transaction)
-    validate_context_size(&command)?;
+    // 2. A missing principal cannot own a receipt because receipts have a principal FK.
+    // Disabled principals do own stable failure receipts and are checked in-transaction.
+    let principal_uuid = command.principal_id.into_uuid();
+    pre_validate_principal_exists(pool, principal_uuid).await?;
 
-    // 4. Execute atomic creation
+    // 3. Execute atomic creation. All deterministic business and size checks happen
+    // after receipt ownership and before the first runtime fact is written.
     let outcome =
         create_transaction::create_workflow_instance_atomically(pool, command, &request_hash)
             .await?;
@@ -77,53 +75,63 @@ pub async fn create_workflow_instance(
         create_transaction::CreateOutcome::Created(result) => Ok(result.into()),
         create_transaction::CreateOutcome::Replayed(result) => Ok(result.into()),
         create_transaction::CreateOutcome::ReplayedFailure(status, body) => {
-            // Map deterministic failure status back to domain error
-            let error_code = body["error"].as_str().unwrap_or("unknown");
-            Err(match (status, error_code) {
-                (404, "domain_not_found") => CreateWorkflowInstanceError::DomainNotFound,
-                (403, "domain_disabled") => CreateWorkflowInstanceError::DomainDisabled,
-                (404, "principal_not_found") => CreateWorkflowInstanceError::PrincipalNotFound,
-                (403, "principal_disabled") => CreateWorkflowInstanceError::PrincipalDisabled,
-                (403, "domain_membership_required") => {
-                    CreateWorkflowInstanceError::DomainMembershipRequired
-                }
-                (403, "cross_domain_violation") => {
-                    CreateWorkflowInstanceError::CrossDomainViolation
-                }
-                (404, "definition_version_not_found") => {
-                    CreateWorkflowInstanceError::DefinitionVersionNotFound
-                }
-                (409, "version_not_published") => CreateWorkflowInstanceError::VersionNotPublished,
-                (422, "context_validation_failed") => {
-                    CreateWorkflowInstanceError::ContextValidationFailed(
-                        body["error"].as_str().unwrap_or("unknown").to_string(),
-                    )
-                }
-                (413, "size_limit_exceeded") => CreateWorkflowInstanceError::SizeLimitExceeded(
-                    body["error"].as_str().unwrap_or("unknown").to_string(),
-                ),
-                (422, "assignee_resolution_failed") => {
-                    CreateWorkflowInstanceError::AssigneeResolutionFailed(
-                        body["error"].as_str().unwrap_or("unknown").to_string(),
-                    )
-                }
-                _ => CreateWorkflowInstanceError::StorageError(format!(
-                    "replayed deterministic failure: status={}, error={}",
-                    status, error_code
-                )),
-            })
+            Err(replayed_failure_error(status, &body))
         }
     }
 }
 
-/// Fast-fail check that the principal exists and is enabled,
-/// before entering the main transaction.
-async fn pre_validate_principal(
+pub(crate) fn replayed_failure_error(
+    status: i32,
+    body: &serde_json::Value,
+) -> CreateWorkflowInstanceError {
+    let error_code = body["error"].as_str().unwrap_or("unknown");
+    match (status, error_code) {
+        (404, "domain_not_found") => CreateWorkflowInstanceError::DomainNotFound,
+        (403, "domain_disabled") => CreateWorkflowInstanceError::DomainDisabled,
+        (404, "principal_not_found") => CreateWorkflowInstanceError::PrincipalNotFound,
+        (403, "principal_disabled") => CreateWorkflowInstanceError::PrincipalDisabled,
+        (403, "domain_membership_required") => {
+            CreateWorkflowInstanceError::DomainMembershipRequired
+        }
+        (403, "cross_domain_violation") => CreateWorkflowInstanceError::CrossDomainViolation,
+        (404, "definition_version_not_found") => {
+            CreateWorkflowInstanceError::DefinitionVersionNotFound
+        }
+        (409, "version_not_published") => CreateWorkflowInstanceError::VersionNotPublished,
+        (422, "context_validation_failed") => CreateWorkflowInstanceError::ContextValidationFailed(
+            body["detail"]
+                .as_str()
+                .unwrap_or("validation failed")
+                .to_string(),
+        ),
+        (413, "size_limit_exceeded") => CreateWorkflowInstanceError::SizeLimitExceeded(
+            body["detail"]
+                .as_str()
+                .unwrap_or("size limit exceeded")
+                .to_string(),
+        ),
+        (422, "assignee_resolution_failed") => {
+            CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                body["detail"]
+                    .as_str()
+                    .unwrap_or("resolution failed")
+                    .to_string(),
+            )
+        }
+        _ => CreateWorkflowInstanceError::StorageError(format!(
+            "replayed deterministic failure: status={}, error={}",
+            status, error_code
+        )),
+    }
+}
+
+/// Resolve the authenticated principal to a persisted workflow identity.
+async fn pre_validate_principal_exists(
     pool: &PgPool,
     principal_uuid: uuid::Uuid,
 ) -> Result<(), CreateWorkflowInstanceError> {
-    let row: Option<(bool,)> =
-        sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
+    let row: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT principal_id FROM principals WHERE principal_id = $1")
             .bind(principal_uuid)
             .fetch_optional(pool)
             .await
@@ -131,30 +139,56 @@ async fn pre_validate_principal(
 
     match row {
         None => Err(CreateWorkflowInstanceError::PrincipalNotFound),
-        Some((enabled,)) if !enabled => Err(CreateWorkflowInstanceError::PrincipalDisabled),
-        _ => Ok(()),
+        Some(_) => Ok(()),
     }
 }
 
-/// Validate context and metadata size limits at the service layer (pre-transaction).
-fn validate_context_size(
-    cmd: &CreateWorkflowInstanceCommand,
-) -> Result<(), CreateWorkflowInstanceError> {
-    let context_bytes = serde_json::to_vec(&cmd.context_payload)
-        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-    if context_bytes.len() > 1024 * 1024 {
-        return Err(CreateWorkflowInstanceError::SizeLimitExceeded(
-            "context_payload exceeds 1 MiB".to_string(),
-        ));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::postgres::workflow_instance_repository::validation_helpers::{
+        deterministic_error_body, deterministic_error_code,
+    };
+
+    fn same_error(left: &CreateWorkflowInstanceError, right: &CreateWorkflowInstanceError) {
+        assert_eq!(std::mem::discriminant(left), std::mem::discriminant(right));
+        match (left, right) {
+            (
+                CreateWorkflowInstanceError::ContextValidationFailed(left),
+                CreateWorkflowInstanceError::ContextValidationFailed(right),
+            )
+            | (
+                CreateWorkflowInstanceError::SizeLimitExceeded(left),
+                CreateWorkflowInstanceError::SizeLimitExceeded(right),
+            )
+            | (
+                CreateWorkflowInstanceError::AssigneeResolutionFailed(left),
+                CreateWorkflowInstanceError::AssigneeResolutionFailed(right),
+            ) => assert_eq!(left, right),
+            _ => {}
+        }
     }
 
-    let metadata_bytes = serde_json::to_vec(&cmd.metadata)
-        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-    if metadata_bytes.len() > 64 * 1024 {
-        return Err(CreateWorkflowInstanceError::SizeLimitExceeded(
-            "metadata exceeds 64 KiB".to_string(),
-        ));
+    #[test]
+    fn every_deterministic_failure_body_round_trips_through_replay_mapping() {
+        use CreateWorkflowInstanceError as E;
+        let errors = vec![
+            E::PrincipalNotFound,
+            E::PrincipalDisabled,
+            E::DomainNotFound,
+            E::DomainDisabled,
+            E::DomainMembershipRequired,
+            E::DefinitionVersionNotFound,
+            E::VersionNotPublished,
+            E::CrossDomainViolation,
+            E::ContextValidationFailed("context detail".to_string()),
+            E::SizeLimitExceeded("metadata exceeds 64 KiB".to_string()),
+            E::AssigneeResolutionFailed("assignee detail".to_string()),
+        ];
+        for original in errors {
+            let body = deterministic_error_body(&original);
+            let replayed = replayed_failure_error(deterministic_error_code(&original), &body);
+            same_error(&original, &replayed);
+        }
     }
-
-    Ok(())
 }
