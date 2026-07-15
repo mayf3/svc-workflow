@@ -8,8 +8,10 @@ use svc_workflow::domain::workflow_instance::import::{
     COMMAND_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION,
 };
 
+mod authorization_concurrency;
 mod fault_atomicity;
 mod idempotency;
+mod request_hash_contract;
 mod strict_rebuild;
 mod success;
 mod validation;

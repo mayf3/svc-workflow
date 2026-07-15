@@ -184,22 +184,8 @@ async fn validate_actor_and_domain(
     command: &ImportLegacyWorkflowInstanceCommand,
 ) -> Result<(), LegacyImportError> {
     let actor = command.principal_id.into_uuid();
-    let principal: Option<(bool, String)> = sqlx::query_as(
-        "SELECT enabled, principal_type::text FROM principals WHERE principal_id = $1 FOR SHARE",
-    )
-    .bind(actor)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(storage)?;
-    let (enabled, kind) = principal.ok_or(LegacyImportError::PrincipalNotFound)?;
-    if !enabled {
-        return Err(LegacyImportError::PrincipalDisabled);
-    }
-    if kind != "SERVICE" {
-        return Err(LegacyImportError::PrincipalTypeNotAllowed);
-    }
     let domain: Option<(bool, String)> =
-        sqlx::query_as("SELECT enabled, domain_key FROM domains WHERE domain_id = $1 FOR SHARE")
+        sqlx::query_as("SELECT enabled, domain_key FROM domains WHERE domain_id = $1 FOR UPDATE")
             .bind(command.domain_id.into_uuid())
             .fetch_optional(&mut **tx)
             .await
@@ -213,17 +199,42 @@ async fn validate_actor_and_domain(
             "snapshot.domainKey does not match target domain".to_string(),
         ));
     }
-    let bindings: Vec<(Uuid, bool, String)> = sqlx::query_as(
-        "SELECT b.principal_id, p.enabled, p.principal_type::text
-         FROM domain_role_bindings b JOIN principals p ON p.principal_id = b.principal_id
-         WHERE b.domain_id = $1 AND b.role_key = 'WORKFLOW_MIGRATION' AND b.enabled = TRUE
-         FOR SHARE OF b, p",
+    let bindings: Vec<(Uuid, Uuid, String, bool)> = sqlx::query_as(
+        "SELECT binding_id, principal_id, role_key, enabled
+         FROM domain_role_bindings WHERE domain_id = $1
+         ORDER BY binding_id FOR UPDATE",
     )
     .bind(command.domain_id.into_uuid())
     .fetch_all(&mut **tx)
     .await
     .map_err(storage)?;
-    if bindings.len() != 1 || bindings[0] != (actor, true, "SERVICE".to_string()) {
+    let mut principal_ids: Vec<Uuid> = bindings.iter().map(|row| row.1).collect();
+    principal_ids.push(actor);
+    principal_ids.sort_unstable();
+    principal_ids.dedup();
+    let principals: Vec<(Uuid, bool, String)> = sqlx::query_as(
+        "SELECT principal_id, enabled, principal_type::text FROM principals
+         WHERE principal_id = ANY($1) ORDER BY principal_id FOR UPDATE",
+    )
+    .bind(&principal_ids)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(storage)?;
+    let actor_row = principals
+        .iter()
+        .find(|row| row.0 == actor)
+        .ok_or(LegacyImportError::PrincipalNotFound)?;
+    if !actor_row.1 {
+        return Err(LegacyImportError::PrincipalDisabled);
+    }
+    if actor_row.2 != "SERVICE" {
+        return Err(LegacyImportError::PrincipalTypeNotAllowed);
+    }
+    let migration: Vec<_> = bindings
+        .iter()
+        .filter(|row| row.2 == "WORKFLOW_MIGRATION" && row.3)
+        .collect();
+    if migration.len() != 1 || migration[0].1 != actor {
         return Err(LegacyImportError::MigrationBindingInvalid);
     }
     Ok(())

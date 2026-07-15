@@ -194,6 +194,9 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     let migration_service = Uuid::new_v4();
     let context = Uuid::new_v4();
     let visit = Uuid::new_v4();
+    let event = Uuid::new_v4();
+    let command = Uuid::new_v4();
+    let external_reference = format!("migration:adc:{legacy_record}:v1");
     let payload = serde_json::json!({"legacy": true});
     let payload_digest =
         svc_workflow::domain::definition::digest::compute_json_digest(&payload).unwrap();
@@ -207,6 +210,20 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     });
     let event_digest =
         svc_workflow::domain::definition::digest::compute_json_digest(&event_data).unwrap();
+    let response_body = serde_json::json!({
+        "commandId": command,
+        "workflowInstanceId": imported_instance,
+        "currentContextRevisionId": context,
+        "currentNodeVisitId": visit,
+        "eventId": event,
+        "workflowStateVersion": 1,
+        "eventSequence": 1,
+        "legacySnapshotDigest": "a".repeat(64),
+        "creatorResolution": "LEGACY_CREATOR",
+        "replayed": false,
+    });
+    let response_digest =
+        svc_workflow::domain::definition::digest::compute_json_digest(&response_body).unwrap();
     let mut tx = pool.begin().await.unwrap();
     sqlx::query("SET CONSTRAINTS ALL DEFERRED")
         .execute(&mut *tx)
@@ -230,7 +247,7 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     .bind(fixture.domain)
     .bind(fixture.version)
     .bind(fixture.creator)
-    .bind(format!("migration:adc:{legacy_record}:v1"))
+    .bind(&external_reference)
     .execute(&mut *tx)
     .await
     .unwrap();
@@ -262,16 +279,33 @@ async fn imported_alias_initial_shape_is_explicitly_supported() {
     .await
     .unwrap();
     sqlx::query(
+        "INSERT INTO workflow_command_receipts
+         (command_id, principal_id, idempotency_key, command_type, request_hash,
+          receipt_status, response_status, response_body, response_digest)
+         VALUES ($1, $2, $3, 'IMPORT_LEGACY_WORKFLOW_INSTANCE', $4,
+                 'COMPLETED', 200, $5, $6)",
+    )
+    .bind(command)
+    .bind(migration_service)
+    .bind(&external_reference)
+    .bind("b".repeat(64))
+    .bind(response_body)
+    .bind(response_digest)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
         "INSERT INTO workflow_events
          (event_id, workflow_instance_id, event_sequence, event_schema_version,
-          event_type, target_node_visit_id, context_revision_id, event_data,
+          command_id, event_type, target_node_visit_id, context_revision_id, event_data,
           event_data_digest, actor_principal_id, old_workflow_state_version,
           new_workflow_state_version)
-         VALUES ($1, $2, 1, 'v1', 'WORKFLOW_INSTANCE_IMPORTED', $3, $4,
-                 $5, $6, $7, 0, 1)",
+         VALUES ($1, $2, 1, 'v1', $3, 'WORKFLOW_INSTANCE_IMPORTED', $4, $5,
+                 $6, $7, $8, 0, 1)",
     )
-    .bind(Uuid::new_v4())
+    .bind(event)
     .bind(imported_instance)
+    .bind(command)
     .bind(visit)
     .bind(context)
     .bind(event_data)

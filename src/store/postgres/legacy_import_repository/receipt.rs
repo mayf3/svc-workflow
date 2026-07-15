@@ -3,12 +3,13 @@ use uuid::Uuid;
 
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::import::LegacyImportError;
-
-type StoredReceipt = (Uuid, String, String, Option<i32>, Option<serde_json::Value>);
+use crate::store::postgres::import_receipt_validation::{
+    validate_stored_digest, ImportReceiptFact,
+};
 
 pub(super) enum Acquired {
     Owned(Uuid),
-    Replay(Uuid, i32, serde_json::Value),
+    Replay(ImportReceiptFact),
     Conflict(Uuid),
     Processing(Uuid),
 }
@@ -16,9 +17,8 @@ pub(super) enum Acquired {
 impl Acquired {
     pub(super) fn command_id(&self) -> Uuid {
         match self {
-            Self::Owned(id) | Self::Replay(id, ..) | Self::Conflict(id) | Self::Processing(id) => {
-                *id
-            }
+            Self::Owned(id) | Self::Conflict(id) | Self::Processing(id) => *id,
+            Self::Replay(receipt) => receipt.command_id,
         }
     }
 
@@ -56,8 +56,10 @@ pub(super) async fn acquire(
     if let Some(id) = inserted {
         return Ok(Acquired::Owned(id));
     }
-    let stored: StoredReceipt = sqlx::query_as(
-        "SELECT command_id, receipt_status::text, request_hash, response_status, response_body
+    let receipt: ImportReceiptFact = sqlx::query_as(
+        "SELECT command_id, principal_id, idempotency_key, command_type,
+                request_hash, receipt_status::text AS receipt_status,
+                response_status, response_body, response_digest
          FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2
          FOR UPDATE",
     )
@@ -67,20 +69,22 @@ pub(super) async fn acquire(
     .await
     .map_err(storage)?
     .ok_or_else(|| LegacyImportError::InternalConsistency("receipt disappeared".to_string()))?;
-    let (id, status, original_hash, response_status, response_body) = stored;
-    if original_hash != request_hash {
-        return Ok(Acquired::Conflict(id));
+    if receipt.principal_id != actor
+        || receipt.idempotency_key != key
+        || receipt.command_type != command_type
+    {
+        return Err(LegacyImportError::InternalConsistency(
+            "stored receipt identity or command type is invalid".to_string(),
+        ));
     }
-    if status == "PROCESSING" {
-        return Ok(Acquired::Processing(id));
+    if receipt.request_hash != request_hash {
+        return Ok(Acquired::Conflict(receipt.command_id));
     }
-    let status = response_status.ok_or_else(|| {
-        LegacyImportError::InternalConsistency("completed receipt has no status".to_string())
-    })?;
-    let body = response_body.ok_or_else(|| {
-        LegacyImportError::InternalConsistency("completed receipt has no body".to_string())
-    })?;
-    Ok(Acquired::Replay(id, status, body))
+    if receipt.receipt_status == "PROCESSING" {
+        return Ok(Acquired::Processing(receipt.command_id));
+    }
+    validate_stored_digest(&receipt).map_err(LegacyImportError::InternalConsistency)?;
+    Ok(Acquired::Replay(receipt))
 }
 
 pub(super) async fn complete(
@@ -171,29 +175,93 @@ pub(super) fn error_body(error: &LegacyImportError) -> serde_json::Value {
     body
 }
 
-pub(super) fn error_from_body(body: &serde_json::Value) -> LegacyImportError {
-    let detail = "replayed deterministic failure".to_string();
-    match body["error"].as_str().unwrap_or("") {
-        "principal_not_found" => LegacyImportError::PrincipalNotFound,
-        "principal_disabled" => LegacyImportError::PrincipalDisabled,
-        "principal_type_not_allowed" => LegacyImportError::PrincipalTypeNotAllowed,
-        "migration_binding_invalid" => LegacyImportError::MigrationBindingInvalid,
-        "permission_denied" => LegacyImportError::PermissionDenied,
-        "domain_not_found" => LegacyImportError::DomainNotFound,
-        "domain_disabled" => LegacyImportError::DomainDisabled,
-        "definition_version_not_found" => LegacyImportError::DefinitionVersionNotFound,
-        "version_not_published" => LegacyImportError::VersionNotPublished,
-        "imported_node_not_found" => LegacyImportError::ImportedNodeNotFound,
-        "invalid_input" => LegacyImportError::InvalidInput(detail),
-        "snapshot_digest_mismatch" => LegacyImportError::SnapshotDigestMismatch {
-            expected: body["expected"].as_str().unwrap_or("").to_string(),
-            actual: body["actual"].as_str().unwrap_or("").to_string(),
-        },
-        "creator_resolution_failed" => LegacyImportError::CreatorResolutionFailed(detail),
-        "assignee_resolution_failed" => LegacyImportError::AssigneeResolutionFailed(detail),
-        "context_validation_failed" => LegacyImportError::ContextValidationFailed(detail),
-        "size_limit_exceeded" => LegacyImportError::SizeLimitExceeded(detail),
-        "external_reference_conflict" => LegacyImportError::ExternalReferenceConflict,
-        _ => LegacyImportError::InternalConsistency("unknown replayed error".to_string()),
+fn lower_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub(super) fn error_from_receipt(
+    receipt: &ImportReceiptFact,
+) -> Result<LegacyImportError, LegacyImportError> {
+    validate_stored_digest(receipt).map_err(LegacyImportError::InternalConsistency)?;
+    if receipt.receipt_status != "COMPLETED" {
+        return Err(LegacyImportError::InternalConsistency(
+            "failure receipt is not completed".to_string(),
+        ));
     }
+    let status = receipt.response_status.ok_or_else(|| {
+        LegacyImportError::InternalConsistency("completed receipt has no status".to_string())
+    })?;
+    let body = receipt.response_body.as_ref().ok_or_else(|| {
+        LegacyImportError::InternalConsistency("completed receipt has no body".to_string())
+    })?;
+    let object = body.as_object().ok_or_else(|| {
+        LegacyImportError::InternalConsistency("failure response is not an object".to_string())
+    })?;
+    let label = object
+        .get("error")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            LegacyImportError::InternalConsistency(
+                "failure response has no error label".to_string(),
+            )
+        })?;
+    let detail = "replayed deterministic failure".to_string();
+    let error = match label {
+        "principal_not_found" if status == 404 => LegacyImportError::PrincipalNotFound,
+        "principal_disabled" if status == 403 => LegacyImportError::PrincipalDisabled,
+        "principal_type_not_allowed" if status == 403 => LegacyImportError::PrincipalTypeNotAllowed,
+        "migration_binding_invalid" if status == 403 => LegacyImportError::MigrationBindingInvalid,
+        "permission_denied" if status == 403 => LegacyImportError::PermissionDenied,
+        "domain_not_found" if status == 404 => LegacyImportError::DomainNotFound,
+        "domain_disabled" if status == 403 => LegacyImportError::DomainDisabled,
+        "definition_version_not_found" if status == 404 => {
+            LegacyImportError::DefinitionVersionNotFound
+        }
+        "version_not_published" if status == 409 => LegacyImportError::VersionNotPublished,
+        "imported_node_not_found" if status == 404 => LegacyImportError::ImportedNodeNotFound,
+        "invalid_input" if status == 422 => LegacyImportError::InvalidInput(detail),
+        "creator_resolution_failed" if status == 422 => {
+            LegacyImportError::CreatorResolutionFailed(detail)
+        }
+        "assignee_resolution_failed" if status == 422 => {
+            LegacyImportError::AssigneeResolutionFailed(detail)
+        }
+        "context_validation_failed" if status == 422 => {
+            LegacyImportError::ContextValidationFailed(detail)
+        }
+        "size_limit_exceeded" if status == 413 => LegacyImportError::SizeLimitExceeded(detail),
+        "external_reference_conflict" if status == 409 => {
+            LegacyImportError::ExternalReferenceConflict
+        }
+        "snapshot_digest_mismatch" if status == 409 => {
+            let expected = object.get("expected").and_then(serde_json::Value::as_str);
+            let actual = object.get("actual").and_then(serde_json::Value::as_str);
+            if object.len() != 3
+                || expected.is_none_or(|value| !lower_digest(value))
+                || actual.is_none_or(|value| !lower_digest(value))
+            {
+                return Err(LegacyImportError::InternalConsistency(
+                    "snapshot digest failure response is malformed".to_string(),
+                ));
+            }
+            LegacyImportError::SnapshotDigestMismatch {
+                expected: expected.unwrap().to_string(),
+                actual: actual.unwrap().to_string(),
+            }
+        }
+        _ => {
+            return Err(LegacyImportError::InternalConsistency(
+                "failure response status or label is invalid".to_string(),
+            ))
+        }
+    };
+    if label != "snapshot_digest_mismatch" && object.len() != 1 {
+        return Err(LegacyImportError::InternalConsistency(
+            "failure response has unexpected fields".to_string(),
+        ));
+    }
+    Ok(error)
 }

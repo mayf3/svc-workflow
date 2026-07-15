@@ -9,6 +9,7 @@ use crate::domain::workflow_instance::recovery::{
 };
 
 use super::event_replay;
+use super::import_event;
 use super::rows::{ContextFact, EventFact, InstanceRow, SubmissionFact, TransitionFact, VisitFact};
 
 fn storage(error: sqlx::Error) -> RecoveryError {
@@ -90,6 +91,21 @@ pub(super) async fn reconstruct_projection(
     validate_contexts(instance, &contexts)?;
     validate_visits(instance, &visits, &transitions)?;
     validate_submissions(instance, &contexts, &visits, &submissions, &transitions)?;
+    // An imported instance must additionally prove its initial event is anchored
+    // to exactly one completed import receipt before replay (audit High 2).
+    if let Some(initial) = events.first() {
+        if initial.event_type == "WORKFLOW_INSTANCE_IMPORTED" {
+            let context = contexts
+                .iter()
+                .find(|fact| Some(fact.context_revision_id) == initial.context_revision_id)
+                .ok_or_else(|| invalid("imported initial event references a missing context"))?;
+            let visit = visits
+                .iter()
+                .find(|fact| Some(fact.node_visit_id) == initial.target_node_visit_id)
+                .ok_or_else(|| invalid("imported initial event references a missing visit"))?;
+            import_event::validate_receipt_linkage(tx, initial, instance, context, visit).await?;
+        }
+    }
     event_replay::replay(
         instance,
         definition_digest.as_deref(),
@@ -173,10 +189,10 @@ async fn load_events(
     instance_id: Uuid,
 ) -> Result<Vec<EventFact>, RecoveryError> {
     sqlx::query_as(
-        "SELECT e.workflow_instance_id, e.event_sequence, e.event_schema_version, e.event_type,
+        "SELECT e.event_id, e.workflow_instance_id, e.event_sequence, e.event_schema_version, e.event_type,
                 e.transition_effect::text, e.source_node_visit_id, e.target_node_visit_id,
                 e.context_revision_id, e.submission_id, e.event_data, e.event_data_digest,
-                e.actor_principal_id, p.principal_type::text AS actor_principal_type,
+                e.command_id, e.actor_principal_id, p.principal_type::text AS actor_principal_type,
                 e.from_node_id, e.to_node_id, e.old_workflow_state_version,
                 e.new_workflow_state_version
          FROM workflow_events e JOIN principals p ON p.principal_id = e.actor_principal_id
