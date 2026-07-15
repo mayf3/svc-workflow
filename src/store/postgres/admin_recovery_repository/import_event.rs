@@ -1,6 +1,10 @@
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::domain::workflow_instance::recovery::RecoveryError;
+use crate::store::postgres::import_receipt_validation::{
+    validate_success, ImportReceiptFact, ImportedIdentity,
+};
 
 use super::event_fields::{exact_keys, string_field};
 use super::rows::{ContextFact, EventFact, InstanceRow, VisitFact};
@@ -64,5 +68,62 @@ pub(super) fn validate(
     {
         return Err(invalid("import event data or identity facts are invalid"));
     }
+    Ok(())
+}
+
+/// Proves the imported event is anchored to exactly one completed, successful
+/// `IMPORT_LEGACY_WORKFLOW_INSTANCE` receipt whose identity and stored response
+/// match the immutable facts (audit High 2). Projection rebuild is the
+/// corruption-repair gate, so a history that is not anchored to its import
+/// command must be rejected rather than replayed.
+pub(super) async fn validate_receipt_linkage(
+    tx: &mut Transaction<'_, Postgres>,
+    event: &EventFact,
+    instance: &InstanceRow,
+    context: &ContextFact,
+    visit: &VisitFact,
+) -> Result<(), RecoveryError> {
+    let command_id = event
+        .command_id
+        .ok_or_else(|| invalid("imported event is not anchored to an import command receipt"))?;
+    let external_reference = instance
+        .external_reference
+        .as_deref()
+        .ok_or_else(|| invalid("imported instance has no external reference"))?;
+    let receipt: ImportReceiptFact = sqlx::query_as(
+        "SELECT command_id, principal_id, idempotency_key, command_type,
+                request_hash, receipt_status::text AS receipt_status,
+                response_status, response_body, response_digest
+         FROM workflow_command_receipts WHERE command_id = $1",
+    )
+    .bind(command_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|error| RecoveryError::StorageError(error.to_string()))?
+    .ok_or_else(|| invalid("imported event references a missing command receipt"))?;
+    let data = event
+        .event_data
+        .as_ref()
+        .ok_or_else(|| invalid("import event data is missing"))?;
+    let snapshot_digest = string_field(data, "legacySnapshotDigest")
+        .filter(|value| lowercase_digest(value))
+        .ok_or_else(|| invalid("import event snapshot digest is invalid"))?;
+    let resolution = string_field(data, "creatorResolution")
+        .ok_or_else(|| invalid("import event creator resolution is invalid"))?;
+    validate_success(
+        &receipt,
+        &ImportedIdentity {
+            command_id,
+            actor_principal_id: event.actor_principal_id,
+            external_reference,
+            workflow_instance_id: instance.workflow_instance_id,
+            context_revision_id: context.context_revision_id,
+            node_visit_id: visit.node_visit_id,
+            event_id: event.event_id,
+            legacy_snapshot_digest: snapshot_digest,
+            creator_resolution: resolution,
+        },
+    )
+    .map_err(|detail| invalid(format!("import receipt linkage is invalid: {detail}")))?;
     Ok(())
 }

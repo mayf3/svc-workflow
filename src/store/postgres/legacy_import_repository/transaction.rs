@@ -7,7 +7,7 @@ use crate::domain::workflow_instance::import::{
     ImportLegacyWorkflowInstanceCommand, LegacyImportError, COMMAND_TYPE, EVENT_TYPE,
 };
 
-use super::{receipt, validation};
+use super::{receipt, replay, validation};
 
 fn infrastructure(error: &LegacyImportError) -> bool {
     matches!(
@@ -56,25 +56,6 @@ async fn commit_failure(
         .await
         .map_err(|cause| LegacyImportError::StorageError(cause.to_string()))?;
     Err(error)
-}
-
-fn parse_replay(
-    command_id: Uuid,
-    status: i32,
-    body: serde_json::Value,
-) -> Result<ImportLegacyWorkflowInstanceResult, LegacyImportError> {
-    if status != 200 {
-        return Err(receipt::error_from_body(&body));
-    }
-    let mut result: ImportLegacyWorkflowInstanceResult = serde_json::from_value(body)
-        .map_err(|error| LegacyImportError::InternalConsistency(error.to_string()))?;
-    if result.command_id != command_id {
-        return Err(LegacyImportError::InternalConsistency(
-            "receipt response command id mismatch".to_string(),
-        ));
-    }
-    result.replayed = true;
-    Ok(result)
 }
 
 async fn insert_facts(
@@ -210,11 +191,18 @@ pub async fn import(
         Err(error) => return Err(error),
     };
     match acquired {
-        receipt::Acquired::Replay(command_id, status, body) => {
+        receipt::Acquired::Replay(receipt) => {
+            let mut result = if receipt.response_status == Some(200) {
+                replay::replay_success(&mut tx, &receipt, &command.expected_legacy_snapshot_digest)
+                    .await?
+            } else {
+                return Err(receipt::error_from_receipt(&receipt)?);
+            };
             tx.commit()
                 .await
                 .map_err(|error| LegacyImportError::StorageError(error.to_string()))?;
-            parse_replay(command_id, status, body)
+            result.replayed = true;
+            Ok(result)
         }
         acquired @ receipt::Acquired::Conflict(_) => {
             let error = LegacyImportError::IdempotencyConflict;

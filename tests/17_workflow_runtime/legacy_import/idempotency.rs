@@ -186,3 +186,57 @@ async fn request_hash_covers_route_parameters_and_complete_body() {
         );
     }
 }
+
+async fn tamper_success_receipt(
+    fixture: &ImportFixture,
+    result: &ImportLegacyWorkflowInstanceResult,
+    case: &str,
+) {
+    let mut transaction = fixture.pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    let mut body: serde_json::Value = sqlx::query_scalar(
+        "SELECT response_body FROM workflow_command_receipts WHERE command_id=$1",
+    )
+    .bind(result.command_id)
+    .fetch_one(&mut *transaction)
+    .await
+    .unwrap();
+    match case {
+        "response digest" => {}
+        "body fact id" => body["workflowInstanceId"] = Uuid::new_v4().to_string().into(),
+        "extra field" => body["unexpected"] = true.into(),
+        _ => unreachable!("unknown replay tamper case"),
+    }
+    let response_digest = if case == "response digest" {
+        "0".repeat(64)
+    } else {
+        svc_workflow::domain::definition::digest::compute_json_digest(&body).unwrap()
+    };
+    sqlx::query(
+        "UPDATE workflow_command_receipts
+         SET response_body=$2, response_digest=$3 WHERE command_id=$1",
+    )
+    .bind(result.command_id)
+    .bind(body)
+    .bind(response_digest)
+    .execute(&mut *transaction)
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+}
+
+#[tokio::test]
+async fn exact_replay_rejects_corrupted_success_receipt() {
+    for case in ["response digest", "body fact id", "extra field"] {
+        let fixture = fixture(ImportedNodeKind::Normal).await;
+        let result = run(&fixture).await.unwrap();
+        tamper_success_receipt(&fixture, &result, case).await;
+        assert!(matches!(
+            run(&fixture).await.unwrap_err(),
+            LegacyImportError::InternalConsistency(_)
+        ));
+    }
+}

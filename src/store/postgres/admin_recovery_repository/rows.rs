@@ -72,6 +72,7 @@ pub(super) struct TransitionFact {
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct EventFact {
+    pub event_id: Uuid,
     pub workflow_instance_id: Uuid,
     pub event_sequence: i32,
     pub event_schema_version: String,
@@ -83,6 +84,7 @@ pub(super) struct EventFact {
     pub submission_id: Option<Uuid>,
     pub event_data: Option<serde_json::Value>,
     pub event_data_digest: Option<String>,
+    pub command_id: Option<Uuid>,
     pub actor_principal_id: Uuid,
     pub actor_principal_type: String,
     pub from_node_id: Option<Uuid>,

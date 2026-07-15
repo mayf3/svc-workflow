@@ -10,7 +10,7 @@ use crate::domain::workflow_instance::import::{
 use crate::store::postgres::legacy_import_repository;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportLegacyWorkflowInstanceResult {
     pub command_id: Uuid,
     pub workflow_instance_id: Uuid,

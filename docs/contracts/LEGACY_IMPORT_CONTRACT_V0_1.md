@@ -30,6 +30,11 @@ caller 不能覆盖这两个值。request hash 覆盖 route parameters 与完整
 `PROCESSING` 返回可重试错误。每次重放都重新校验当前 actor、Domain、Definition 和
 binding。确定性失败完成 Receipt；基础设施失败回滚 Receipt 与全部事实。
 
+request hash envelope 的 key 固定使用 `camelCase`。所有 `Option::None`（包括 creator
+和 URL）必须序列化为显式 `null`；不得省略字段。canonical JSON 与 SHA-256 golden
+固定在 `legacy_import/request_hash_contract.rs`，派生的 idempotency key 与 external
+reference 不进入 envelope。
+
 ## 2. 快照与摘要
 
 `LegacyAdcImportSnapshotV1` 的精确字段为：
