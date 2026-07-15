@@ -25,6 +25,11 @@ The verified `JWT.sub` must be a UUID and is used directly as the domain `Princi
 JWT.sub = PrincipalId = command principal_id
 ```
 
+The principal must already exist in `principals`. An unknown `JWT.sub` fails at the identity
+mapping boundary with `404 principal_not_found` and does not create a command receipt because
+`workflow_command_receipts.principal_id` has a principal foreign key. This is the only intentional
+pre-receipt identity failure. A known but disabled principal owns a stable completed failure receipt.
+
 Request bodies must not contain `principalId`, `actorPrincipalId`, or
 `createdByPrincipalId`. All DTOs reject unknown fields, so attempted actor injection returns
 `400 unknown_field`.
@@ -83,6 +88,9 @@ Transition (the instance ID comes only from the route):
 The adapter injects the route instance ID into the existing domain command. It does not alter the
 domain request-hash envelope or add route parameters to the hash.
 
+`externalReference`, when present, is limited to 512 Unicode characters. Longer values are
+rejected by the adapter with `422 invalid_input` before the application service is called.
+
 ### Idempotency-Key
 
 `Idempotency-Key` is required on both POST endpoints and is the only idempotency-key source. It
@@ -92,6 +100,14 @@ passed unchanged to the domain receipt logic and is not part of `requestHash`.
 The scope remains `(JWT.sub, Idempotency-Key)`. An exact replay returns the original semantic
 result; reuse with different command content returns opaque `409 idempotency_conflict` without
 the stored command ID or request hash.
+
+After receipt ownership, all deterministic business validations that precede the first runtime
+fact write complete and commit the failure receipt. This includes disabled principals, domain and
+membership gates, definition and assignee gates, optimistic version checks, transition and return
+reference checks, schema validation, and application payload size limits. Exact replay returns the
+same persisted status and semantic error detail even if the underlying business state later changes.
+Infrastructure failures and internal consistency failures roll back instead of becoming stable
+business failure receipts.
 
 ## Responses
 
@@ -126,8 +142,10 @@ All adapter and domain errors are returned as JSON:
 }
 ```
 
-Storage and consistency details are redacted from responses. Query not-found and not-visible states
-share `404 workflow_instance_not_found_or_not_visible`. Idempotency conflicts are opaque.
+Storage and consistency details are redacted from responses. Storage/infrastructure failures return
+`503 service_unavailable`; internal consistency failures remain `500 internal_consistency_error`.
+Query not-found and not-visible states share `404 workflow_instance_not_found_or_not_visible`.
+Idempotency conflicts are opaque.
 
 ## Runtime configuration
 

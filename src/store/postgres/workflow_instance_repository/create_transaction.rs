@@ -46,7 +46,8 @@ pub(crate) struct CreateResult {
 
 /// Execute the full atomic creation workflow inside a single transaction.
 ///
-/// The caller must have already validated principal existence and enabled status.
+/// The caller pre-validates principal existence because the receipt has a principal FK.
+/// Enabled status is validated after receipt ownership for stable deterministic replay.
 pub(crate) async fn create_workflow_instance_atomically(
     pool: &PgPool,
     cmd: CreateWorkflowInstanceCommand,
@@ -193,109 +194,54 @@ pub(crate) async fn create_workflow_instance_atomically(
         }
     };
 
-    // ---------------------------------------------------------------
-    // Steps 2-5: Validation inside the transaction
-    // ---------------------------------------------------------------
-
-    // Step 2: Lock and validate definition version
-    let version_info =
-        lock_and_validate_version(&mut tx, definition_version_uuid, domain_uuid).await?;
-
-    // Step 3: Validate domain enabled
-    if let Some(err) = validation_helpers::validate_domain_enabled(&mut tx, domain_uuid).await? {
-        let status_code = validation_helpers::deterministic_error_code(&err);
-        let error_code = validation_helpers::deterministic_error_label(&err);
-        let response_body = serde_json::json!({"error": error_code});
-        let response_digest = digest::compute_sha256(error_code.as_bytes());
-        complete_receipt(
-            &mut tx,
-            actual_command_id,
-            status_code,
-            &response_body,
-            &response_digest,
-        )
-        .await?;
-        tx.commit()
-            .await
-            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-        return Err(err);
+    // Every deterministic check below runs before the first runtime fact write.
+    macro_rules! deterministic_failure {
+        ($err:expr) => {{
+            let err = $err;
+            validation_helpers::persist_deterministic_failure(tx, actual_command_id, &err).await?;
+            return Err(err);
+        }};
+    }
+    macro_rules! validation_result {
+        ($result:expr) => {{
+            match $result {
+                Ok(value) => value,
+                Err(err) if validation_helpers::is_deterministic_error(&err) => {
+                    deterministic_failure!(err)
+                }
+                Err(err) => return Err(err),
+            }
+        }};
     }
 
-    // Step 4: Verify principal enabled (inside tx for consistency)
+    validation_result!(validation_helpers::validate_request_sizes(&cmd));
+    let version_info = validation_result!(
+        lock_and_validate_version(&mut tx, definition_version_uuid, domain_uuid).await
+    );
     if let Some(err) =
-        validation_helpers::validate_principal_enabled(&mut tx, principal_uuid).await?
+        validation_result!(validation_helpers::validate_domain_enabled(&mut tx, domain_uuid).await)
     {
-        let status_code = validation_helpers::deterministic_error_code(&err);
-        let error_code = validation_helpers::deterministic_error_label(&err);
-        let response_body = serde_json::json!({"error": error_code});
-        let response_digest = digest::compute_sha256(error_code.as_bytes());
-        complete_receipt(
-            &mut tx,
-            actual_command_id,
-            status_code,
-            &response_body,
-            &response_digest,
-        )
-        .await?;
-        tx.commit()
-            .await
-            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-        return Err(err);
+        deterministic_failure!(err);
     }
-
-    // Step 5: Verify domain membership
-    if let Some(err) =
-        validation_helpers::validate_domain_membership(&mut tx, domain_uuid, principal_uuid).await?
-    {
-        let status_code = validation_helpers::deterministic_error_code(&err);
-        let error_code = validation_helpers::deterministic_error_label(&err);
-        let response_body = serde_json::json!({"error": error_code});
-        let response_digest = digest::compute_sha256(error_code.as_bytes());
-        complete_receipt(
-            &mut tx,
-            actual_command_id,
-            status_code,
-            &response_body,
-            &response_digest,
-        )
-        .await?;
-        tx.commit()
-            .await
-            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-        return Err(err);
+    if let Some(err) = validation_result!(
+        validation_helpers::validate_principal_enabled(&mut tx, principal_uuid).await
+    ) {
+        deterministic_failure!(err);
     }
-
-    // Step 6: Read the initial DRAFT node
-    let draft_node = read_draft_node(&mut tx, definition_version_uuid).await?;
-
-    // Step 7: Resolve the initial assignee
-    let resolved_assignee_id =
-        validation_helpers::resolve_assignee(&mut tx, &draft_node, principal_uuid, domain_uuid)
-            .await?;
-
-    // Step 8: Validate context payload against schema
-    // This is a deterministic failure — if validation fails, we complete the
-    // receipt with an error and commit, leaving a record for idempotent replay.
-    if let Err(err) =
-        validation_helpers::validate_context_schema(&version_info.context_schema, &cmd)
-    {
-        let status_code = validation_helpers::deterministic_error_code(&err);
-        let error_code = validation_helpers::deterministic_error_label(&err);
-        let response_body = serde_json::json!({"error": error_code});
-        let response_digest = digest::compute_sha256(error_code.as_bytes());
-        complete_receipt(
-            &mut tx,
-            actual_command_id,
-            status_code,
-            &response_body,
-            &response_digest,
-        )
-        .await?;
-        tx.commit()
-            .await
-            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-        return Err(err);
+    if let Some(err) = validation_result!(
+        validation_helpers::validate_domain_membership(&mut tx, domain_uuid, principal_uuid).await
+    ) {
+        deterministic_failure!(err);
     }
+    let draft_node = validation_result!(read_draft_node(&mut tx, definition_version_uuid).await);
+    let resolved_assignee_id = validation_result!(
+        validation_helpers::resolve_assignee(&mut tx, &draft_node, principal_uuid, domain_uuid,)
+            .await
+    );
+    validation_result!(validation_helpers::validate_context_schema(
+        &version_info.context_schema,
+        &cmd,
+    ));
 
     // ---------------------------------------------------------------
     // Step 9: Insert WorkflowInstance

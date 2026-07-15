@@ -63,7 +63,7 @@ async fn test_metadata_too_large_rejected() {
 }
 
 #[tokio::test]
-async fn test_failure_no_runtime_artifacts_left() {
+async fn test_size_failure_completes_receipt_without_runtime_artifacts() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
@@ -73,10 +73,24 @@ async fn test_failure_no_runtime_artifacts_left() {
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(&pool, cmd).await;
     assert!(err.is_err());
-    let receipt_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2)",
-    ).bind(principal_id).bind(&idem_key).fetch_one(&pool).await.expect("check");
-    assert!(!receipt_exists, "no receipt for pre-transaction failure");
+    let receipt: (String, i32) = sqlx::query_as(
+        "SELECT receipt_status::text, response_status FROM workflow_command_receipts \
+         WHERE principal_id = $1 AND idempotency_key = $2",
+    )
+    .bind(principal_id)
+    .bind(&idem_key)
+    .fetch_one(&pool)
+    .await
+    .expect("size failure receipt");
+    assert_eq!(receipt, ("COMPLETED".to_string(), 413));
+    let runtime_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_instances WHERE created_by_principal_id = $1",
+    )
+    .bind(principal_id)
+    .fetch_one(&pool)
+    .await
+    .expect("runtime count");
+    assert_eq!(runtime_count, 0);
 }
 
 // ---------------------------------------------------------------------------
