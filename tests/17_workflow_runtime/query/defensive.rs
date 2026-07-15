@@ -236,6 +236,11 @@ async fn corrupt_historical_facts_neither_grant_visibility_nor_escape_global_gua
 
     let visit_instance = create_query_instance(&pool, &seed).await;
     let corrupt_current_visit = Uuid::new_v4();
+    let mut corruption = pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *corruption)
+        .await
+        .unwrap();
     sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
@@ -245,9 +250,10 @@ async fn corrupt_historical_facts_neither_grant_visibility_nor_escape_global_gua
     .bind(visit_instance.workflow_instance_id)
     .bind(other.draft)
     .bind(seed.outsider)
-    .execute(&pool)
+    .execute(&mut *corruption)
     .await
     .unwrap();
+    corruption.commit().await.unwrap();
     assert_eq!(
         service
             .get_workflow_instance_detail(GetWorkflowInstanceDetail {

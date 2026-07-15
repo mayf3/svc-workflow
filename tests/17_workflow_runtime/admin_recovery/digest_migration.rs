@@ -118,6 +118,33 @@ async fn migration_enforces_new_terminal_and_non_terminal_shapes() {
     .await;
     assert!(bad_non_terminal.is_err());
 
+    let foreign_node = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_node_definitions
+         (node_id, definition_version_id, node_key, display_name, order_index,
+          node_type, assignee_ref_type)
+         VALUES ($1, $2, $3, 'Foreign Normal', 97, 'NORMAL', 'WORKFLOW_CREATOR')",
+    )
+    .bind(foreign_node)
+    .bind(draft_version)
+    .bind(format!("foreign-normal-{}", Uuid::new_v4().simple()))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let cross_version_visit = sqlx::query(
+        "INSERT INTO workflow_node_visits
+         (node_visit_id, workflow_instance_id, node_id, visit_number,
+          assignee_principal_id)
+         VALUES ($1, $2, $3, 1, $4)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(fixture.instance)
+    .bind(foreign_node)
+    .bind(fixture.creator)
+    .execute(&pool)
+    .await;
+    assert!(cross_version_visit.is_err());
+
     let bad_visit = sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number,

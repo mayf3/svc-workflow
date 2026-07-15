@@ -20,7 +20,7 @@ fn make_large_json(target_bytes: usize) -> serde_json::Value {
 async fn test_context_payload_size_limit() {
     let pool = common::create_pool().await;
     let (creator_id, domain_id) = common::seed_principal_and_domain(&pool).await;
-    let (_, def_ver_id, _node_id, _) = common::seed_workflow_definition(&pool, domain_id).await;
+    let (_, def_ver_id, node_id, _) = common::seed_workflow_definition(&pool, domain_id).await;
 
     let instance_id = uuid::Uuid::new_v4();
     let ctx_id = uuid::Uuid::new_v4();
@@ -32,15 +32,6 @@ async fn test_context_payload_size_limit() {
 
     // Create a payload > 1 MiB
     let large_payload = make_large_json(1_200_000);
-
-    // Get node_id from definition version
-    let (node_id,) = sqlx::query_as::<_, (uuid::Uuid,)>(
-        "SELECT node_id FROM workflow_node_definitions WHERE definition_version_id = $1 LIMIT 1",
-    )
-    .bind(def_ver_id)
-    .fetch_one(&pool)
-    .await
-    .expect("get node_id");
 
     let mut tx = pool.begin().await.expect("begin tx");
 

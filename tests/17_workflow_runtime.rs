@@ -444,15 +444,21 @@ mod query_worklists;
 #[path = "17_workflow_runtime/admin_recovery/helpers.rs"]
 mod _admin_recovery_helpers;
 pub(crate) use _admin_recovery_helpers::*;
+#[path = "17_workflow_runtime/admin_recovery/audit_regressions.rs"]
+mod admin_recovery_audit_regressions;
 #[path = "17_workflow_runtime/admin_recovery/authorization.rs"]
 mod admin_recovery_authorization;
 #[path = "17_workflow_runtime/admin_recovery/defensive.rs"]
 mod admin_recovery_defensive;
 #[path = "17_workflow_runtime/admin_recovery/digest_migration.rs"]
 mod admin_recovery_digest_migration;
+#[path = "17_workflow_runtime/admin_recovery/fault_atomicity.rs"]
+mod admin_recovery_fault_atomicity;
 #[path = "17_workflow_runtime/admin_recovery/idempotency_atomicity.rs"]
 mod admin_recovery_idempotency_atomicity;
 #[path = "17_workflow_runtime/admin_recovery/override_success.rs"]
 mod admin_recovery_override_success;
 #[path = "17_workflow_runtime/admin_recovery/rebuild.rs"]
 mod admin_recovery_rebuild;
+#[path = "17_workflow_runtime/admin_recovery/receipt_reauthorization.rs"]
+mod admin_recovery_receipt_reauthorization;

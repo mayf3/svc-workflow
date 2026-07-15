@@ -14,7 +14,8 @@ pub(super) async fn validate_actor(
     principal_id: Uuid,
 ) -> Result<(), RecoveryError> {
     let principal: Option<(bool, String)> = sqlx::query_as(
-        "SELECT enabled, principal_type::text FROM principals WHERE principal_id = $1",
+        "SELECT enabled, principal_type::text FROM principals
+         WHERE principal_id = $1 FOR SHARE",
     )
     .bind(principal_id)
     .fetch_optional(&mut **tx)
@@ -68,10 +69,10 @@ pub(super) async fn validate_workflow_admin(
     Ok(())
 }
 
-pub(super) async fn lock_definition_version(
+pub(super) async fn lock_definition_version_any(
     tx: &mut Transaction<'_, Postgres>,
     definition_version_id: Uuid,
-) -> Result<(), RecoveryError> {
+) -> Result<String, RecoveryError> {
     let status: Option<String> = sqlx::query_scalar(
         "SELECT version_status::text FROM workflow_definition_versions
          WHERE definition_version_id = $1 FOR UPDATE",
@@ -80,16 +81,18 @@ pub(super) async fn lock_definition_version(
     .fetch_optional(&mut **tx)
     .await
     .map_err(storage)?;
-    match status.as_deref() {
-        Some("PUBLISHED" | "DEPRECATED" | "REVOKED") => Ok(()),
-        Some("DRAFT") => Err(RecoveryError::InvalidTarget(
+    status
+        .ok_or_else(|| RecoveryError::InternalConsistency("definition version missing".to_string()))
+}
+
+pub(super) fn validate_override_definition_status(status: &str) -> Result<(), RecoveryError> {
+    match status {
+        "PUBLISHED" | "DEPRECATED" | "REVOKED" => Ok(()),
+        "DRAFT" => Err(RecoveryError::InvalidTarget(
             "emergency override is not available for a DRAFT definition version".to_string(),
         )),
-        Some(_) => Err(RecoveryError::InternalConsistency(
+        _ => Err(RecoveryError::InternalConsistency(
             "definition version has an unknown status".to_string(),
-        )),
-        None => Err(RecoveryError::InternalConsistency(
-            "definition version missing".to_string(),
         )),
     }
 }
@@ -131,8 +134,11 @@ pub(super) async fn resolve_non_terminal_assignee(
     let candidate = match target.assignee_ref_type.as_deref() {
         Some("WORKFLOW_CREATOR") => creator,
         Some("DOMAIN_OWNER") => sqlx::query_scalar(
-            "SELECT principal_id FROM domain_role_bindings
-             WHERE domain_id = $1 AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE",
+            "SELECT b.principal_id FROM domain_role_bindings b
+             JOIN principals p ON p.principal_id = b.principal_id
+             WHERE b.domain_id = $1 AND b.role_key = 'DOMAIN_OWNER'
+               AND b.enabled = TRUE AND p.enabled = TRUE
+             FOR SHARE OF b, p",
         )
         .bind(domain_id)
         .fetch_optional(&mut **tx)
@@ -150,14 +156,16 @@ pub(super) async fn resolve_non_terminal_assignee(
             ))
         }
     };
-    let enabled: bool = sqlx::query_scalar(
-        "SELECT COALESCE((SELECT enabled FROM principals WHERE principal_id = $1), FALSE)",
-    )
-    .bind(candidate)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(storage)?;
-    enabled.then_some(candidate).ok_or_else(|| {
-        RecoveryError::AssigneeResolutionFailed("target assignee is unavailable".to_string())
-    })
+    let enabled: Option<bool> =
+        sqlx::query_scalar("SELECT enabled FROM principals WHERE principal_id = $1 FOR SHARE")
+            .bind(candidate)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(storage)?;
+    enabled
+        .filter(|value| *value)
+        .map(|_| candidate)
+        .ok_or_else(|| {
+            RecoveryError::AssigneeResolutionFailed("target assignee is unavailable".to_string())
+        })
 }

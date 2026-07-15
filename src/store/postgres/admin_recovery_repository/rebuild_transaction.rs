@@ -63,6 +63,32 @@ async fn commit_failure(
     Err(error)
 }
 
+async fn deny_access(
+    mut tx: Transaction<'_, Postgres>,
+    acquired: &receipt::AcquireReceipt,
+    command: &RebuildProjectionCommand,
+    request_hash: &str,
+    error: RecoveryError,
+) -> Result<RebuildProjectionResult, RecoveryError> {
+    if acquired.is_owned() {
+        return commit_failure(tx, acquired.command_id(), command, request_hash, error).await;
+    }
+    receipt::record_existing_denial(
+        &mut tx,
+        acquired,
+        command.principal_id.into_uuid(),
+        &command.idempotency_key,
+        request_hash,
+        command.workflow_instance_id.into_uuid(),
+        "REBUILD_PROJECTION_REJECTED",
+    )
+    .await?;
+    tx.commit()
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    Err(error)
+}
+
 pub async fn rebuild_projection(
     pool: &PgPool,
     command: RebuildProjectionCommand,
@@ -74,15 +100,42 @@ pub async fn rebuild_projection(
         .begin()
         .await
         .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
-    let command_id = match receipt::acquire(
+    let acquired = receipt::acquire(
         &mut tx,
         actor,
         &command.idempotency_key,
         COMMAND_TYPE_REBUILD_PROJECTION,
         request_hash,
     )
-    .await?
-    {
+    .await?;
+
+    let instance = match snapshot::lock_instance(&mut tx, instance_id).await {
+        Ok(instance) => instance,
+        Err(RecoveryError::InstanceNotFound) => {
+            return deny_access(
+                tx,
+                &acquired,
+                &command,
+                request_hash,
+                RecoveryError::PermissionDenied,
+            )
+            .await
+        }
+        Err(error) => return Err(error),
+    };
+    authorization::lock_definition_version_any(&mut tx, instance.definition_version_id).await?;
+    let access = match authorization::validate_actor(&mut tx, actor).await {
+        Ok(()) => authorization::validate_workflow_admin(&mut tx, actor, instance.domain_id).await,
+        Err(error) => Err(error),
+    };
+    if let Err(error) = access {
+        if matches!(error, RecoveryError::StorageError(_)) {
+            return Err(error);
+        }
+        return deny_access(tx, &acquired, &command, request_hash, error).await;
+    }
+
+    let command_id = match acquired {
         receipt::AcquireReceipt::Owned(command_id) => command_id,
         receipt::AcquireReceipt::Replay {
             command_id,
@@ -105,43 +158,22 @@ pub async fn rebuild_projection(
             result.replayed = true;
             return Ok(result);
         }
-        receipt::AcquireReceipt::Conflict(error) => {
+        acquired @ (receipt::AcquireReceipt::Conflict { .. }
+        | receipt::AcquireReceipt::Processing { .. }) => {
+            let error = receipt::record_conflict_or_processing(
+                &mut tx,
+                &acquired,
+                actor,
+                &command.idempotency_key,
+                request_hash,
+            )
+            .await?;
             tx.commit()
                 .await
                 .map_err(|cause| RecoveryError::StorageError(cause.to_string()))?;
             return Err(error);
         }
-        receipt::AcquireReceipt::Processing => {
-            tx.commit()
-                .await
-                .map_err(|cause| RecoveryError::StorageError(cause.to_string()))?;
-            return Err(RecoveryError::CommandStillProcessing);
-        }
     };
-
-    if let Err(error) = authorization::validate_actor(&mut tx, actor).await {
-        return commit_failure(tx, command_id, &command, request_hash, error).await;
-    }
-
-    let instance = match snapshot::lock_instance(&mut tx, instance_id).await {
-        Ok(instance) => instance,
-        Err(RecoveryError::InstanceNotFound) => {
-            return commit_failure(
-                tx,
-                command_id,
-                &command,
-                request_hash,
-                RecoveryError::PermissionDenied,
-            )
-            .await
-        }
-        Err(error) => return Err(error),
-    };
-    if let Err(error) =
-        authorization::validate_workflow_admin(&mut tx, actor, instance.domain_id).await
-    {
-        return commit_failure(tx, command_id, &command, request_hash, error).await;
-    }
     let before_projection = instance.projection();
     let before_snapshot_digest = snapshot::before_snapshot(&instance).digest()?;
     if let Err(error) = snapshot::verify_expected_digest(

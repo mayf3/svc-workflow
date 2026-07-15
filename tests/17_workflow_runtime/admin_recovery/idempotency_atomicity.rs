@@ -181,7 +181,7 @@ async fn hash_conflict_and_deterministic_failure_are_stable() {
     conflict.reason = "different approved reason".to_string();
     assert!(matches!(
         run_override(&pool, conflict).await.unwrap_err(),
-        RecoveryError::IdempotencyConflict { .. }
+        RecoveryError::IdempotencyConflict
     ));
 
     let failure_fixture = seed_recovery_fixture(&pool).await;
@@ -325,7 +325,7 @@ async fn rebuild_hash_conflict_processing_and_same_key_concurrency_are_stable() 
     conflict.expected_before_snapshot_digest = Some("0".repeat(64));
     assert!(matches!(
         run_rebuild(&pool, conflict).await.unwrap_err(),
-        RecoveryError::IdempotencyConflict { .. }
+        RecoveryError::IdempotencyConflict
     ));
 
     let processing_fixture = seed_recovery_fixture(&pool).await;

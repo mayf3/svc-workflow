@@ -245,6 +245,11 @@ async fn state_and_visit_definition_corruption_fail_before_partial_dto() {
 
     let other = seed_query_fixture(&pool).await;
     let bad_visit = Uuid::new_v4();
+    let mut corruption = pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL session_replication_role = replica")
+        .execute(&mut *corruption)
+        .await
+        .unwrap();
     sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
@@ -254,9 +259,10 @@ async fn state_and_visit_definition_corruption_fail_before_partial_dto() {
     .bind(created.workflow_instance_id)
     .bind(other.draft)
     .bind(seed.creator)
-    .execute(&pool)
+    .execute(&mut *corruption)
     .await
     .unwrap();
+    corruption.commit().await.unwrap();
     sqlx::query(
         "UPDATE workflow_instances SET current_node_visit_id = $1 WHERE workflow_instance_id = $2",
     )
