@@ -84,6 +84,19 @@ impl JwksConfig {
         if jwks_url.is_empty() {
             return Err("WORKFLOW_JWKS_URL must not be empty".to_string());
         }
+        // Validate URL scheme — only http and https are accepted.
+        let scheme = jwks_url.split(':').next().unwrap_or("");
+        if scheme != "http" && scheme != "https" {
+            return Err(format!(
+                "WORKFLOW_JWKS_URL scheme '{scheme}' is not allowed: only http and https are supported"
+            ));
+        }
+        // Reject URL userinfo (embedded credentials).
+        if jwks_url.contains('@') {
+            return Err(
+                "WORKFLOW_JWKS_URL must not contain userinfo (embedded credentials)".to_string(),
+            );
+        }
         let issuer = std::env::var("WORKFLOW_JWT_ISSUER")
             .map_err(|_| "WORKFLOW_JWT_ISSUER is required in jwks mode".to_string())?;
         if issuer.is_empty() {
@@ -163,6 +176,27 @@ pub fn validate_mode_gates(mode: AuthMode, bind_addr: IpAddr) -> Result<(), Stri
 mod tests {
     use super::*;
 
+    fn with_env<F>(vars: &[(&str, &str)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let originals: Vec<_> = vars
+            .iter()
+            .map(|(k, v)| {
+                let original = std::env::var(k).ok();
+                unsafe { std::env::set_var(k, v) };
+                (k, original)
+            })
+            .collect();
+        f();
+        for (k, original) in originals {
+            match original {
+                Some(v) => unsafe { std::env::set_var(k, &v) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+    }
+
     #[test]
     fn test_hs256_from_env() {
         assert!(AuthMode::from_env().is_err());
@@ -235,5 +269,72 @@ mod tests {
             std::env::remove_var("WORKFLOW_JWT_SECRET");
         }
         assert!(validate_mode_gates(AuthMode::Jwks, any_addr).is_ok());
+    }
+
+    #[test]
+    fn jwks_url_scheme_validation() {
+        // Valid http URL
+        unsafe {
+            std::env::set_var("WORKFLOW_JWKS_URL", "http://localhost:8080/keys");
+            std::env::set_var("WORKFLOW_JWT_ISSUER", "issuer");
+            std::env::set_var("WORKFLOW_JWT_AUDIENCE", "audience");
+            std::env::remove_var("WORKFLOW_JWKS_CACHE_TTL");
+            std::env::remove_var("WORKFLOW_JWKS_HTTP_TIMEOUT");
+            std::env::remove_var("WORKFLOW_JWKS_MAX_STALE");
+            std::env::remove_var("WORKFLOW_JWT_CLOCK_SKEW");
+        }
+        assert!(
+            JwksConfig::from_env().is_ok(),
+            "http URL should be accepted"
+        );
+
+        // Valid https URL
+        unsafe {
+            std::env::set_var(
+                "WORKFLOW_JWKS_URL",
+                "https://auth.example.com/.well-known/jwks.json",
+            );
+        }
+        assert!(
+            JwksConfig::from_env().is_ok(),
+            "https URL should be accepted"
+        );
+
+        // Reject file: scheme
+        unsafe {
+            std::env::set_var("WORKFLOW_JWKS_URL", "file:///etc/keys.json");
+        }
+        let err = JwksConfig::from_env().unwrap_err();
+        assert!(
+            err.contains("scheme"),
+            "file: URL should be rejected: {err}"
+        );
+
+        // Reject ftp: scheme
+        unsafe {
+            std::env::set_var("WORKFLOW_JWKS_URL", "ftp://keys.example.com/keys.json");
+        }
+        let err = JwksConfig::from_env().unwrap_err();
+        assert!(err.contains("scheme"), "ftp: URL should be rejected: {err}");
+
+        // Reject userinfo
+        unsafe {
+            std::env::set_var(
+                "WORKFLOW_JWKS_URL",
+                "https://user:pass@auth.example.com/keys.json",
+            );
+        }
+        let err = JwksConfig::from_env().unwrap_err();
+        assert!(
+            err.contains("userinfo"),
+            "URL with userinfo should be rejected: {err}"
+        );
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("WORKFLOW_JWKS_URL");
+            std::env::remove_var("WORKFLOW_JWT_ISSUER");
+            std::env::remove_var("WORKFLOW_JWT_AUDIENCE");
+        }
     }
 }

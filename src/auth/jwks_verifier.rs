@@ -77,6 +77,8 @@ impl JwksVerifier {
             Arc::new(tokio::sync::RwLock::new(None));
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.http_timeout_secs))
+            // Redirect policy: do not follow any redirects (fail closed on 3xx).
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest::Client builder with valid config");
         let verifier = Self {
@@ -114,19 +116,19 @@ impl JwksVerifier {
     pub async fn verify(&self, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
         // 1. Decode and validate the JWT header.
         let header = decode_header(token)
-            .map_err(|_| ApiError::unauthorized("invalid_token", "malformed JWT header"))?;
+            .map_err(|_| ApiError::unauthorized("malformed_token", "malformed JWT header"))?;
 
         // Algorithm must be RS256.
         if header.alg != Algorithm::RS256 {
             return Err(ApiError::unauthorized(
-                "invalid_token",
+                "algorithm_not_allowed",
                 "only RS256 algorithm is accepted",
             ));
         }
 
         // Kid is required.
         let kid = header.kid.as_deref().ok_or_else(|| {
-            ApiError::unauthorized("invalid_token", "JWT must include a kid header")
+            ApiError::unauthorized("malformed_token", "JWT must include a kid header")
         })?;
 
         // 2. Look up the key, optionally refreshing cache.
@@ -152,17 +154,20 @@ impl JwksVerifier {
                         ApiError::unauthorized("token_expired", "access token has expired")
                     }
                     ErrorKind::MissingRequiredClaim(claim) => ApiError::unauthorized_with_details(
-                        "invalid_token",
+                        "malformed_token",
                         "access token is missing a required claim",
                         serde_json::json!({ "claim": claim }),
                     ),
                     ErrorKind::InvalidAlgorithm => {
-                        ApiError::unauthorized("invalid_token", "invalid JWT algorithm")
+                        ApiError::unauthorized("algorithm_not_allowed", "invalid JWT algorithm")
                     }
-                    ErrorKind::InvalidIssuer | ErrorKind::InvalidAudience => {
-                        ApiError::unauthorized("invalid_token", "token issuer or audience mismatch")
+                    ErrorKind::InvalidIssuer => {
+                        ApiError::unauthorized("wrong_issuer", "token issuer mismatch")
                     }
-                    _ => ApiError::unauthorized("invalid_token", "invalid access token"),
+                    ErrorKind::InvalidAudience => {
+                        ApiError::unauthorized("wrong_audience", "token audience mismatch")
+                    }
+                    _ => ApiError::unauthorized("malformed_token", "invalid access token"),
                 }
             })?;
 
@@ -173,20 +178,41 @@ impl JwksVerifier {
 
         // 6. Parse and validate subject.
         let parsed = claims::parse_subject(&claims.sub)
-            .map_err(|_| ApiError::unauthorized("invalid_token", "invalid subject claim"))?;
+            .map_err(|_| ApiError::unauthorized("malformed_token", "invalid subject claim"))?;
 
-        // 7. Validate principal_type (human or agent).
-        claims::validate_principal_type(&claims.principal_type)
-            .map_err(|_| ApiError::unauthorized("invalid_token", "invalid principal type"))?;
+        // 7. Validate principal_type (agent only per V0 contract).
+        claims::validate_principal_type(&claims.principal_type).map_err(|_| {
+            ApiError::unauthorized("invalid_principal_type", "invalid principal type")
+        })?;
 
         // 8. Validate token_use.
         claims::validate_token_use(&claims.token_use)
-            .map_err(|_| ApiError::unauthorized("invalid_token", "invalid token use"))?;
+            .map_err(|_| ApiError::unauthorized("malformed_token", "invalid token use"))?;
 
-        // 9. Validate OBO claims if applicable.
-        if claims.token_use.as_deref() == Some("workflow_obo") || claims.act.is_some() {
-            claims::validate_obo(&claims).map_err(|_| {
-                ApiError::unauthorized("invalid_token", "OBO claims validation failed")
+        // 9. Determine if this is a direct or OBO token and validate profile.
+        // OBO is determined solely by token_use=workflow_obo.
+        // If a direct token carries act/azp, the direct profile check will reject it.
+        let is_obo = claims.token_use.as_deref() == Some("workflow_obo");
+
+        if is_obo {
+            // Validate OBO profile with strict rules.
+            claims::validate_obo(&claims).map_err(|e| {
+                let code = if e.contains("nested act") {
+                    "invalid_actor"
+                } else if e.contains("client_id") {
+                    "invalid_client_claims"
+                } else {
+                    "invalid_obo_profile"
+                };
+                ApiError::unauthorized(code, "OBO claims validation failed")
+            })?;
+        } else {
+            // Validate Direct token profile.
+            claims::validate_direct_profile(&claims).map_err(|_e| {
+                ApiError::unauthorized(
+                    "invalid_direct_profile",
+                    "direct token profile validation failed",
+                )
             })?;
         }
 
@@ -263,10 +289,10 @@ impl JwksVerifier {
                 let guard = self.cache.read().await;
                 match guard.as_ref() {
                     Some(state) if state.fetched_at.elapsed() <= self.max_stale => Err(
-                        ApiError::unauthorized("invalid_token", "unknown key ID after refresh"),
+                        ApiError::unauthorized("unknown_kid", "unknown key ID after refresh"),
                     ),
                     _ => Err(ApiError::service_unavailable(
-                        "auth_verifier_unavailable",
+                        "jwks_unavailable",
                         "authentication verifier is currently unavailable",
                     )),
                 }
@@ -333,6 +359,7 @@ impl JwksVerifier {
         })?;
 
         let mut keys: Vec<JwkKey> = Vec::new();
+        let mut seen_kids = std::collections::HashSet::new();
         for raw in jwks.keys {
             // Only accept RSA keys with sig use.
             if raw.key_type.as_deref() != Some("RSA") {
@@ -349,6 +376,11 @@ impl JwksVerifier {
                 Some(ref k) if !k.is_empty() => k.clone(),
                 _ => continue,
             };
+            // Reject duplicate kid — fail closed for non-deterministic key behavior.
+            if !seen_kids.insert(kid.clone()) {
+                tracing::warn!(url = %self.jwks_url, kid = %kid, "duplicate kid in JWKS response");
+                return Err(());
+            }
             let n = match raw.n {
                 Some(ref n) if !n.is_empty() => n.clone(),
                 _ => continue,
