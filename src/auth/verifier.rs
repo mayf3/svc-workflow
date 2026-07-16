@@ -1,4 +1,6 @@
-//! Strict auth-service machine-token verification.
+//! HS256 shared-secret token verification (test_hs256 mode).
+//!
+//! Also exposes `require_legacy_claims` shared by both verifiers.
 
 use std::collections::HashSet;
 
@@ -10,46 +12,19 @@ use uuid::Uuid;
 use crate::domain::ids::PrincipalId;
 use crate::http::error::ApiError;
 
+use super::auth_context::AuthContext;
+use super::auth_mode::Hs256Config;
+use super::claims::{self, WorkflowClaims};
 use super::AuthenticatedPrincipal;
 
-#[derive(Debug, Clone)]
-pub struct JwtConfig {
-    pub secret: String,
-    pub issuer: String,
-    pub audience: String,
-    pub clock_skew_seconds: u64,
-}
-
-impl JwtConfig {
-    pub fn from_env() -> Result<Self, String> {
-        let secret = std::env::var("WORKFLOW_JWT_SECRET")
-            .map_err(|_| "WORKFLOW_JWT_SECRET is required".to_string())?;
-        if secret.is_empty() {
-            return Err("WORKFLOW_JWT_SECRET must not be empty".to_string());
-        }
-        let clock_skew_seconds = std::env::var("WORKFLOW_JWT_CLOCK_SKEW")
-            .unwrap_or_else(|_| "60".to_string())
-            .parse::<u64>()
-            .map_err(|_| "WORKFLOW_JWT_CLOCK_SKEW must be an unsigned integer".to_string())?;
-        Ok(Self {
-            secret,
-            issuer: std::env::var("WORKFLOW_JWT_ISSUER")
-                .unwrap_or_else(|_| "auth-service".to_string()),
-            audience: std::env::var("WORKFLOW_JWT_AUDIENCE")
-                .unwrap_or_else(|_| "svc-workflow".to_string()),
-            clock_skew_seconds,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct JwtVerifier {
-    key: DecodingKey,
-    validation: Validation,
-}
-
+/// Legacy claims struct for backward-compatible HS256 verification.
+///
+/// Kept as the internal decode target because it's simpler and matches
+/// the existing token shape exactly. New fields like `token_use`, `act`,
+/// and `azp` are silently ignored (no error), which is the desired
+/// backward-compatible behavior.
 #[derive(Debug, Deserialize)]
-struct Claims {
+struct LegacyClaims {
     sub: Option<String>,
     iss: Option<String>,
     aud: Option<String>,
@@ -65,8 +40,38 @@ struct Claims {
     scope: Option<String>,
 }
 
-impl JwtVerifier {
-    pub fn new(config: &JwtConfig) -> Self {
+/// Validate the legacy required claims (`type=access`, `version=v1`) that
+/// both HS256 and JWKS verifiers must enforce for backward compatibility.
+///
+/// This is called after the modern `WorkflowClaims` decode, so we only
+/// check the fields that `WorkflowClaims` doesn't natively enforce.
+pub fn require_legacy_claims(claims: &WorkflowClaims) -> Result<(), ApiError> {
+    if claims.token_type.as_deref() != Some("access") {
+        return Err(ApiError::unauthorized(
+            "invalid_token",
+            "token type must be access",
+        ));
+    }
+    if claims.version.as_deref() != Some("v1") {
+        return Err(ApiError::unauthorized(
+            "invalid_token",
+            "token version must be v1",
+        ));
+    }
+    Ok(())
+}
+
+/// HS256 shared-secret verifier (test_hs256 mode).
+#[derive(Clone)]
+pub struct Hs256Verifier {
+    key: DecodingKey,
+    validation: Validation,
+    issuer: String,
+    audience: String,
+}
+
+impl Hs256Verifier {
+    pub fn new(config: &Hs256Config) -> Self {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.algorithms = vec![Algorithm::HS256];
         validation.set_issuer(&[&config.issuer]);
@@ -80,13 +85,15 @@ impl JwtVerifier {
         Self {
             key: DecodingKey::from_secret(config.secret.as_bytes()),
             validation,
+            issuer: config.issuer.clone(),
+            audience: config.audience.clone(),
         }
     }
 
     pub fn verify(&self, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
         let data =
-            decode::<Claims>(token, &self.key, &self.validation).map_err(|error| {
-                match error.kind() {
+            decode::<LegacyClaims>(token, &self.key, &self.validation).map_err(
+                |error| match error.kind() {
                     ErrorKind::ExpiredSignature => {
                         ApiError::unauthorized("token_expired", "access token has expired")
                     }
@@ -96,8 +103,8 @@ impl JwtVerifier {
                         serde_json::json!({ "claim": claim }),
                     ),
                     _ => ApiError::unauthorized("unauthenticated", "invalid access token"),
-                }
-            })?;
+                },
+            )?;
         let claims = data.claims;
         require_claim(&claims.sub, "sub")?;
         require_claim(&claims.iss, "iss")?;
@@ -129,15 +136,27 @@ impl JwtVerifier {
         let subject = claims.sub.expect("sub checked above");
         let subject = Uuid::parse_str(&subject)
             .map_err(|_| ApiError::unauthorized("unauthenticated", "sub must be a UUID"))?;
-        let scopes = claims
-            .scope
-            .unwrap_or_default()
+        let scope_string = claims.scope.clone().unwrap_or_default();
+        let scopes = scope_string
             .split_whitespace()
             .map(str::to_owned)
             .collect::<HashSet<_>>();
-        Ok(AuthenticatedPrincipal::new(
+
+        let auth_context = AuthContext {
+            subject: PrincipalId::from_uuid(subject),
+            principal_type: "agent".to_string(),
+            token_use: "access".to_string(),
+            delegating_principal_id: None,
+            authorized_party: None,
+            token_id: None,
+            audience: self.audience.clone(),
+            scope: scope_string,
+        };
+
+        Ok(AuthenticatedPrincipal::new_with_context(
             PrincipalId::from_uuid(subject),
             scopes,
+            auth_context,
         ))
     }
 }
@@ -178,8 +197,8 @@ mod tests {
         scope: &'a str,
     }
 
-    fn config() -> JwtConfig {
-        JwtConfig {
+    fn config() -> Hs256Config {
+        Hs256Config {
             secret: "test-secret-at-least-32-bytes-long".to_string(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),
@@ -233,7 +252,7 @@ mod tests {
 
     #[test]
     fn verifies_hs256_machine_token() {
-        let principal = JwtVerifier::new(&config())
+        let principal = Hs256Verifier::new(&config())
             .verify(&token(Algorithm::HS256, "svc-workflow", 300))
             .unwrap();
         assert!(principal.has_scope("workflow.execute"));
@@ -241,7 +260,7 @@ mod tests {
 
     #[test]
     fn rejects_wrong_algorithm_audience_and_expiry() {
-        let verifier = JwtVerifier::new(&config());
+        let verifier = Hs256Verifier::new(&config());
         assert!(verifier
             .verify(&token(Algorithm::HS512, "svc-workflow", 300))
             .is_err());
@@ -256,7 +275,7 @@ mod tests {
 
     #[test]
     fn missing_registered_and_custom_claims_are_stable() {
-        let verifier = JwtVerifier::new(&config());
+        let verifier = Hs256Verifier::new(&config());
         for claim in [
             "iss",
             "aud",

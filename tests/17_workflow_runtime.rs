@@ -468,6 +468,8 @@ mod legacy_import;
 
 #[path = "17_workflow_runtime/http/e2e/mod.rs"]
 mod http_e2e;
+#[path = "17_workflow_runtime/http/jwks_auth.rs"]
+mod http_jwks_auth;
 #[path = "17_workflow_runtime/http/smoke.rs"]
 mod http_smoke;
 

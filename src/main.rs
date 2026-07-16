@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = config.expect("server configuration loaded above");
-    let state = AppState::new(pool, &config.jwt);
+    let state = AppState::new(pool, &config);
     let app = http::router(state, &config);
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     tracing::info!(address = %config.bind_addr, "svc-workflow HTTP server listening");

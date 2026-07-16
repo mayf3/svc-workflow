@@ -45,6 +45,15 @@ pub(crate) async fn readyz(
             "actual": applied
         })));
     }
+
+    // Check auth verifier readiness.
+    if !state.auth_verifier.is_ready().await {
+        return Err(ApiError::service_unavailable(
+            "auth_verifier_unavailable",
+            "authentication verifier is not ready",
+        ));
+    }
+
     Ok(Json(HealthResponse { status: "ready" }))
 }
 
