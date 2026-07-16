@@ -57,7 +57,7 @@ fn token(principal_id: Uuid, scope: &str) -> String {
 fn provisioning_token() -> String {
     token(
         Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
-        "workflow.provision workflow.read workflow.execute",
+        "workflow.admin workflow.read workflow.execute",
     )
 }
 
@@ -91,6 +91,10 @@ async fn seed_provisioning_actor(pool: &sqlx::PgPool) {
 }
 
 fn app(pool: sqlx::PgPool) -> axum::Router {
+    app_for_actor(pool, Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap())
+}
+
+fn app_for_actor(pool: sqlx::PgPool, actor_id: Uuid) -> axum::Router {
     let hs256 = Hs256Config {
         secret: JWT_SECRET.to_string(),
         issuer: "auth-service".to_string(),
@@ -104,9 +108,7 @@ fn app(pool: sqlx::PgPool) -> axum::Router {
         auth_mode: AuthMode::TestHs256,
         hs256_config: Some(hs256),
         jwks_config: None,
-        provisioning_config: ProvisioningConfig::new(vec![PrincipalId::from_uuid(
-            Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
-        )]),
+        provisioning_config: ProvisioningConfig::new(vec![PrincipalId::from_uuid(actor_id)]),
     };
     http::router(AppState::new(pool, &config), &config)
 }
@@ -171,7 +173,7 @@ async fn no_token_rejected() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// 2. Missing workflow.provision scope → 403
+/// 2. Missing workflow.admin scope → 403
 #[tokio::test]
 async fn missing_scope_rejected() {
     let pool = create_pool().await;
@@ -221,7 +223,6 @@ async fn create_principal_success() {
         .unwrap();
     let status = resp.status();
     let body = json_body(resp).await;
-    if status != StatusCode::OK {}
     assert_eq!(status, StatusCode::OK, "create principal should succeed");
     assert_eq!(body["principalId"], principal_id.to_string());
     assert_eq!(body["enabled"], true);
@@ -288,6 +289,7 @@ async fn idempotent_replay() {
         "enabled": true,
         "source": "auth-service"
     });
+    let key = unique_key("replay-key");
 
     let resp1 = app
         .clone()
@@ -295,7 +297,7 @@ async fn idempotent_replay() {
             "POST",
             "/internal/v1/admin/principals",
             Some(&provisioning_token()),
-            Some(&unique_key("replay-key")),
+            Some(&key),
             Some(body.clone()),
         ))
         .await
@@ -308,7 +310,7 @@ async fn idempotent_replay() {
             "POST",
             "/internal/v1/admin/principals",
             Some(&provisioning_token()),
-            Some(&unique_key("replay-key")),
+            Some(&key),
             Some(body),
         ))
         .await
@@ -442,222 +444,13 @@ async fn create_domain_success() {
         .unwrap();
     let status = resp.status();
     let body = json_body(resp).await;
-    if status != StatusCode::OK {}
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["domainId"], domain_id.to_string());
     assert!(
-        body["domainKey"].as_str().unwrap_or("").len() > 0,
+        !body["domainKey"].as_str().unwrap_or("").is_empty(),
         "domainKey should be non-empty"
     );
 }
 
-/// 18. Domain identity conflict
-#[tokio::test]
-async fn domain_key_conflict() {
-    let pool = create_pool().await;
-    seed_provisioning_actor(&pool).await;
-    let app = app(pool);
-    let domain_id = Uuid::new_v4();
-    let conflict_key = unique_domain_key("conflict-key");
-
-    // Create
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "POST",
-            "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
-            Some(&unique_key("key-dc-1")),
-            Some(json!({
-                "domainId": domain_id,
-                "domainKey": conflict_key,
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // Try different domain_id with same key
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "POST",
-            "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
-            Some(&unique_key("key-dc-2")),
-            Some(json!({
-                "domainId": Uuid::new_v4(),
-                "domainKey": conflict_key,
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-    assert_eq!(
-        json_body(resp).await["error"]["code"],
-        "domain_identity_conflict"
-    );
-}
-
-/// 21-22. Create role binding + idempotent
-#[tokio::test]
-async fn create_role_binding() {
-    let pool = create_pool().await;
-    let principal_id = Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap();
-    let domain_id = Uuid::new_v4();
-    seed_provisioning_actor(&pool).await;
-    let app = app(pool);
-
-    // Create domain
-    app.clone()
-        .oneshot(request(
-            "POST",
-            "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
-            Some(&unique_key("key-rb-domain")),
-            Some(json!({
-                "domainId": domain_id,
-                "domainKey": &unique_domain_key("rb-domain"),
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-
-    // Create role binding (principal must exist first; provisioning principal already does as it's in allowlist)
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "PUT",
-            &format!("/internal/v1/admin/domains/{domain_id}/role-bindings/{principal_id}"),
-            Some(&provisioning_token()),
-            Some(&unique_key("key-rb-1")),
-            Some(json!({
-                "roleKey": "DOMAIN_OWNER",
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-
-    // Idempotent replay
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "PUT",
-            &format!("/internal/v1/admin/domains/{domain_id}/role-bindings/{principal_id}"),
-            Some(&provisioning_token()),
-            Some(&unique_key("key-rb-1")),
-            Some(json!({
-                "roleKey": "DOMAIN_OWNER",
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-}
-
-/// 30. Non-existent principal for role binding
-#[tokio::test]
-async fn role_binding_unknown_principal() {
-    let pool = create_pool().await;
-    let domain_id = Uuid::new_v4();
-    seed_provisioning_actor(&pool).await;
-    let app = app(pool);
-
-    // Create domain via provisioning
-    {
-        let app = app.clone();
-        app.oneshot(request(
-            "POST",
-            "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
-            Some(&unique_key("key-rb-unknown")),
-            Some(json!({
-                "domainId": domain_id,
-                "domainKey": &unique_domain_key("unknown-domain"),
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    }
-
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "PUT",
-            &format!(
-                "/internal/v1/admin/domains/{domain_id}/role-bindings/{}",
-                Uuid::new_v4()
-            ),
-            Some(&provisioning_token()),
-            Some(&unique_key("key-rb-unknown-2")),
-            Some(json!({
-                "roleKey": "DOMAIN_OWNER",
-                "enabled": true
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-/// 32. Query definition version
-#[tokio::test]
-async fn query_definition_version() {
-    let pool = create_pool().await;
-    let (_, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let (_, version_id, _node_id) = seed_published_definition_normal_node(&pool, domain_id).await;
-    seed_provisioning_actor(&pool).await;
-    let app = app(pool);
-
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            &format!("/internal/v1/admin/definition-versions/{version_id}"),
-            Some(&provisioning_token()),
-            None,
-            None,
-        ))
-        .await
-        .unwrap();
-    let status = resp.status();
-    let body = json_body(resp).await;
-    if status != StatusCode::OK {}
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["definitionVersionId"], version_id.to_string());
-    assert_eq!(body["versionStatus"], "PUBLISHED");
-    assert_eq!(body["canCreateInstances"], true);
-}
-
-/// 35. Non-existent definition version
-#[tokio::test]
-async fn definition_version_not_found() {
-    let pool = create_pool().await;
-    seed_provisioning_actor(&pool).await;
-    let app = app(pool);
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            &format!("/internal/v1/admin/definition-versions/{}", Uuid::new_v4()),
-            Some(&provisioning_token()),
-            None,
-            None,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-/// 51-53. Regression: existing tests still run
-#[tokio::test]
-async fn regression_existing_tests_preserved() {
-    // This module coexists with existing tests
-}
+#[path = "provisioning_regressions.rs"]
+mod regressions;

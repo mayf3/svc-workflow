@@ -17,7 +17,7 @@ All provisioning endpoints require:
 
 | Requirement | Details |
 |---|---|
-| Scope | `workflow.provision` |
+| Scope | `workflow.admin` |
 | Allow-list | `JWT.sub` must be in `WORKFLOW_PROVISIONING_PRINCIPAL_IDS` |
 | Token type | `token_use=access` only (OBO rejected) |
 | Principal type | `agent` only (human tokens rejected for provisioning) |
@@ -58,9 +58,15 @@ POST body:
 
 Rules:
 - `principalType` cannot change after creation (`409 principal_type_conflict`)
-- `source` required and non-empty
+- `source` is 1-128 printable characters without surrounding whitespace
+- `sourceRevision`, when present, is 1-256 characters without controls
+- `source` and opaque `sourceRevision` are persisted as provisioning provenance;
+  revision ordering remains the caller's responsibility in v0
 - `enabled` can toggle between `true` and `false`
 - Idempotent: same body + same `Idempotency-Key` → same response
+- Bootstrap: an allow-listed direct Agent may first provision its own
+  `principalId=JWT.sub`; the principal insert and command receipt are atomic.
+  Other writes require that bootstrap to have completed.
 
 ---
 
@@ -79,7 +85,9 @@ POST body:
 Rules:
 - `domainKey` must be unique across all domains
 - Changing `domainKey` to a key used by another domain → `409 domain_identity_conflict`
-- `domainKey` required, non-empty
+- `domainKey` is 1-128 non-whitespace characters
+- `displayName`, when present, is 1-256 printable characters without
+  surrounding whitespace
 
 ---
 
@@ -101,6 +109,7 @@ DELETE body:
 ```
 
 Rules:
+- `roleKey` is exactly `DOMAIN_OWNER` or `WORKFLOW_ADMIN`
 - Principal must exist and be enabled
 - Domain must exist and be enabled (for PUT)
 - Second active `DOMAIN_OWNER` → `409 domain_owner_conflict`
@@ -130,17 +139,21 @@ GET response:
 ```json
 {
   "definitionVersionId": "uuid",
+  "workflowDefinitionId": "uuid",
+  "domainId": "uuid",
   "definitionKey": "...",
   "versionNumber": 1,
   "versionStatus": "PUBLISHED",
   "digest": "sha256hex",
   "nodeCount": 3,
   "transitionCount": 2,
+  "domainEnabled": true,
   "canCreateInstances": true
 }
 ```
 
-`canCreateInstances` is `true` only for `PUBLISHED` versions.
+`canCreateInstances` is `true` only for `PUBLISHED` versions in an enabled
+Domain. The canonical Domain and Definition IDs support ADC mapping checks.
 
 ---
 
@@ -162,8 +175,9 @@ Replay behavior:
 |------|------|---------|
 | 400 | `invalid_idempotency_key` | Malformed key |
 | 401 | `missing_token` / `invalid_token` | Auth failure |
-| 403 | `insufficient_scope` | Missing `workflow.provision` |
+| 403 | `insufficient_scope` | Missing `workflow.admin` |
 | 403 | `provisioning_not_allowed` | Not in allow-list / OBO token |
+| 403 | `provisioning_actor_not_provisioned` | Actor must bootstrap itself first |
 | 404 | `principal_not_found` | Principal does not exist |
 | 404 | `domain_not_found` | Domain does not exist |
 | 404 | `definition_version_not_found` | Version does not exist |
@@ -172,6 +186,7 @@ Replay behavior:
 | 409 | `domain_identity_conflict` | Domain key owned by another domain |
 | 409 | `domain_owner_conflict` | Domain already has an active owner |
 | 422 | `invalid_input` | Validation failure |
+| 422 | `role_key_invalid` | Unsupported provisioning role |
 | 500 | `internal_consistency_error` | Unexpected state |
 | 503 | `service_unavailable` | Storage unavailable |
 
@@ -187,7 +202,7 @@ Replay behavior:
 
 ## 11. Not implemented (this version)
 
-- Principal provisioning API for auth-service identities
+- Creating identities inside auth-service (this API only mirrors canonical IDs into svc-workflow)
 - Bulk import / batch operations
 - ADC Mapping Ledger
 - Space/Domain creation
