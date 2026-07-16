@@ -4,7 +4,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use svc_workflow::auth::JwtConfig;
+use svc_workflow::auth::{AuthMode, Hs256Config};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
 const JWT_SECRET: &str = "isolated-e2e-secret-that-is-at-least-32-bytes";
@@ -43,6 +43,22 @@ pub(super) fn token(principal_id: uuid::Uuid, scope: &str) -> String {
     .expect("sign local E2E token")
 }
 
+fn test_config(bind_addr: std::net::SocketAddr, body_limit: usize) -> HttpConfig {
+    HttpConfig {
+        bind_addr,
+        request_body_max_bytes: body_limit,
+        request_timeout_seconds: 30,
+        auth_mode: AuthMode::TestHs256,
+        hs256_config: Some(Hs256Config {
+            secret: JWT_SECRET.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            clock_skew_seconds: 0,
+        }),
+        jwks_config: None,
+    }
+}
+
 pub(super) struct RunningServer {
     pub(super) base_url: String,
     shutdown: oneshot::Sender<()>,
@@ -55,19 +71,9 @@ impl RunningServer {
             .await
             .expect("bind real E2E TCP listener");
         let address = listener.local_addr().expect("listener address");
-        let jwt = JwtConfig {
-            secret: JWT_SECRET.to_string(),
-            issuer: "auth-service".to_string(),
-            audience: "svc-workflow".to_string(),
-            clock_skew_seconds: 0,
-        };
-        let config = HttpConfig {
-            bind_addr: address,
-            request_body_max_bytes: body_limit,
-            request_timeout_seconds: 30,
-            jwt: jwt.clone(),
-        };
-        let app = http::router(AppState::new(pool, &jwt), &config);
+        let config = test_config(address, body_limit);
+        let state = AppState::new(pool, &config);
+        let app = http::router(state, &config);
         let (shutdown, shutdown_rx) = oneshot::channel();
         let task = tokio::spawn(async move {
             axum::serve(listener, app)

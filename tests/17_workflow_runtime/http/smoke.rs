@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use svc_workflow::auth::JwtConfig;
+use svc_workflow::auth::{AuthMode, Hs256Config};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
 use super::*;
@@ -48,7 +48,7 @@ fn token(principal_id: Uuid, scope: &str) -> String {
 }
 
 fn app(pool: sqlx::PgPool) -> axum::Router {
-    let jwt = JwtConfig {
+    let hs256 = Hs256Config {
         secret: JWT_SECRET.to_string(),
         issuer: "auth-service".to_string(),
         audience: "svc-workflow".to_string(),
@@ -58,9 +58,11 @@ fn app(pool: sqlx::PgPool) -> axum::Router {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        jwt: jwt.clone(),
+        auth_mode: AuthMode::TestHs256,
+        hs256_config: Some(hs256),
+        jwks_config: None,
     };
-    http::router(AppState::new(pool, &jwt), &config)
+    http::router(AppState::new(pool, &config), &config)
 }
 
 fn request(
