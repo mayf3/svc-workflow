@@ -54,6 +54,8 @@ struct TestClaims {
     azp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     jti: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -83,6 +85,81 @@ fn rs256_token(
         act,
         azp: azp.map(String::from),
         jti: jti.map(String::from),
+        client_id: azp.map(String::from), // OBO uses azp as client_id
+    };
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(JWKS_KID.to_string());
+    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+    encode(&header, &claims, &key).unwrap()
+}
+
+/// Direct token with explicit client_id (no azp for direct).
+fn rs256_direct_token(
+    subject: Uuid,
+    scope: &str,
+    principal_type: &str,
+    client_id: Option<&str>,
+    exp_offset: i64,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = TestClaims {
+        sub: subject.to_string(),
+        iss: "auth-service".to_string(),
+        aud: "svc-workflow".to_string(),
+        exp: (now as i64 + exp_offset) as usize,
+        iat: now,
+        nbf: None,
+        principal_type: principal_type.to_string(),
+        token_type: "access".to_string(),
+        version: "v1".to_string(),
+        scope: scope.to_string(),
+        token_use: None,
+        act: None,
+        azp: None,
+        jti: None,
+        client_id: client_id.map(String::from),
+    };
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(JWKS_KID.to_string());
+    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+    encode(&header, &claims, &key).unwrap()
+}
+
+/// OBO token with explicit client_id (can differ from azp for testing).
+#[allow(clippy::too_many_arguments)]
+fn rs256_obo_token(
+    subject: Uuid,
+    scope: &str,
+    principal_type: &str,
+    act_sub: Uuid,
+    azp: Option<&str>,
+    client_id: Option<&str>,
+    jti: Option<&str>,
+    nested_act: bool,
+    exp_offset: i64,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let act_value = if nested_act {
+        json!({"sub": act_sub.to_string(), "act": {"sub": Uuid::new_v4().to_string()}})
+    } else {
+        json!({"sub": act_sub.to_string()})
+    };
+    let claims = TestClaims {
+        sub: subject.to_string(),
+        iss: "auth-service".to_string(),
+        aud: "svc-workflow".to_string(),
+        exp: (now as i64 + exp_offset) as usize,
+        iat: now,
+        nbf: None,
+        principal_type: principal_type.to_string(),
+        token_type: "access".to_string(),
+        version: "v1".to_string(),
+        scope: scope.to_string(),
+        token_use: Some("workflow_obo".to_string()),
+        act: Some(act_value),
+        azp: azp.map(String::from),
+        jti: jti.map(String::from),
+        client_id: client_id.map(String::from),
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(JWKS_KID.to_string());
@@ -107,6 +184,7 @@ fn rs256_token_nbf_future(subject: Uuid, scope: &str, principal_type: &str) -> S
         act: None,
         azp: None,
         jti: None,
+        client_id: None,
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(JWKS_KID.to_string());
@@ -244,9 +322,9 @@ async fn valid_rs256_mode_and_direct_agent_token() {
     assert_eq!(json_body(resp).await["status"], "ready");
 }
 
-/// 7. Valid RS256 direct Human token (principal_type=human).
+/// 7. Valid RS256 direct Agent token — principal_type=agent (V0 contract).
 #[tokio::test]
-async fn valid_rs256_direct_human_token() {
+async fn valid_rs256_direct_agent_token() {
     let pool = create_pool().await;
     let mock = MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
@@ -254,22 +332,19 @@ async fn valid_rs256_direct_human_token() {
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let token = rs256_token(
+    let token = rs256_direct_token(
         Uuid::new_v4(),
         "workflow.read",
-        "human",
-        None,
-        None,
-        None,
-        None,
+        "agent",
+        Some("test-client"),
         300,
     );
     let result = verify_token(&state, &token).await;
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().auth_context.principal_type, "human");
+    assert_eq!(result.unwrap().auth_context.principal_type, "agent");
 }
 
-/// 8–9. Valid OBO tokens (Agent + Human).
+/// 8–9. Valid OBO tokens (Agent only per V0 contract).
 #[tokio::test]
 async fn valid_rs256_obo_tokens() {
     let pool = create_pool().await;
@@ -283,34 +358,20 @@ async fn valid_rs256_obo_tokens() {
     let delegator = Uuid::new_v4();
 
     // OBO Agent token
-    let token = rs256_token(
+    let token = rs256_obo_token(
         actor,
         "workflow.execute",
         "agent",
-        Some("workflow_obo"),
-        Some(json!({"sub": delegator.to_string()})),
+        delegator,
+        Some("test-client"),
         Some("test-client"),
         Some("jti-001"),
+        false,
         300,
     );
     let result = verify_token(&state, &token).await;
     assert!(result.is_ok(), "OBO Agent token should be valid");
     assert_eq!(result.unwrap().auth_context.token_use, "workflow_obo");
-
-    // OBO Human token
-    let token = rs256_token(
-        actor,
-        "workflow.execute",
-        "human",
-        Some("workflow_obo"),
-        Some(json!({"sub": delegator.to_string()})),
-        Some("test-client"),
-        Some("jti-002"),
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_ok(), "OBO Human token should be valid");
-    assert_eq!(result.unwrap().auth_context.principal_type, "human");
 }
 
 /// 10. HS256 token rejected in jwks mode.
@@ -733,8 +794,206 @@ async fn cache_hit_multiple_verifications() {
     }
 }
 
-/// 41. Existing HS256 smoke preserved — this test module coexists with http_smoke.
-/// 42. Existing 456 tests preserved — proven by compilation.
+// ---------------------------------------------------------------------------
+// Profile hardening tests
+// ---------------------------------------------------------------------------
+
+/// 41. Direct token with act claim → rejected.
+#[tokio::test]
+async fn direct_token_with_act_rejected() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let token = rs256_token(
+        Uuid::new_v4(),
+        "workflow.read",
+        "agent",
+        None,
+        Some(json!({"sub": Uuid::new_v4().to_string()})),
+        None,
+        None,
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "invalid_direct_profile");
+}
+
+/// 42. Direct token with azp claim → rejected.
+#[tokio::test]
+async fn direct_token_with_azp_rejected() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Use a raw JSON token with azp set (rs256_direct_token omits azp).
+    let now = chrono::Utc::now().timestamp() as usize;
+    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(JWKS_KID.to_string());
+    let claims = json!({
+        "sub": Uuid::new_v4().to_string(),
+        "iss": "auth-service",
+        "aud": "svc-workflow",
+        "exp": now + 300,
+        "iat": now,
+        "principal_type": "agent",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "client_id": "test-client",
+        "azp": "some-azp",
+    });
+    let token = encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "invalid_direct_profile");
+}
+
+/// 43. OBO token with client_id != azp → rejected.
+#[tokio::test]
+async fn obo_token_client_id_not_eq_azp_rejected() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let actor = Uuid::new_v4();
+    let delegator = Uuid::new_v4();
+    let token = rs256_obo_token(
+        actor,
+        "workflow.execute",
+        "agent",
+        delegator,
+        Some("adc-client"),
+        Some("different-client"), // client_id != azp
+        Some("jti-003"),
+        false,
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "invalid_client_claims");
+}
+
+/// 44. OBO token with nested act → rejected.
+#[tokio::test]
+async fn obo_token_nested_act_rejected() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let actor = Uuid::new_v4();
+    let delegator = Uuid::new_v4();
+    let token = rs256_obo_token(
+        actor,
+        "workflow.execute",
+        "agent",
+        delegator,
+        Some("adc-client"),
+        Some("adc-client"),
+        Some("jti-004"),
+        true, // nested act
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "invalid_actor");
+}
+
+/// 45. Human principal_type → rejected (V0 is agent-only).
+#[tokio::test]
+async fn human_principal_type_rejected() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let token = rs256_direct_token(
+        Uuid::new_v4(),
+        "workflow.read",
+        "human",
+        Some("test-client"),
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "invalid_principal_type");
+}
+
+/// 46. Valid RS256 direct agent token still works after hardening.
+#[tokio::test]
+async fn valid_direct_agent_token_hardened() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let token = rs256_direct_token(
+        Uuid::new_v4(),
+        "workflow.execute",
+        "agent",
+        Some("test-client"),
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(
+        result.is_ok(),
+        "valid direct agent token should be accepted after hardening"
+    );
+    let principal = result.unwrap();
+    assert_eq!(principal.auth_context.token_use, "access");
+    assert_eq!(principal.auth_context.principal_type, "agent");
+}
+
+/// 47. Valid OBO agent token still works after hardening.
+#[tokio::test]
+async fn valid_obo_agent_token_hardened() {
+    let pool = create_pool().await;
+    let mock = MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let actor = Uuid::new_v4();
+    let delegator = Uuid::new_v4();
+    let token = rs256_obo_token(
+        actor,
+        "workflow.execute",
+        "agent",
+        delegator,
+        Some("adc-client"),
+        Some("adc-client"),
+        Some("jti-005"),
+        false,
+        300,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(
+        result.is_ok(),
+        "valid OBO agent token should be accepted after hardening"
+    );
+}
+
+/// 48. Existing HS256 smoke preserved — this test module coexists with http_smoke.
+/// 49. Existing 456 tests preserved — proven by compilation.
 #[tokio::test]
 async fn regression_existing_tests_unchanged() {
     // Meta-assertion: the existing test binaries compile and run.

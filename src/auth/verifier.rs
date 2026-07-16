@@ -49,13 +49,13 @@ struct LegacyClaims {
 pub fn require_legacy_claims(claims: &WorkflowClaims) -> Result<(), ApiError> {
     if claims.token_type.as_deref() != Some("access") {
         return Err(ApiError::unauthorized(
-            "invalid_token",
+            "invalid_token_type",
             "token type must be access",
         ));
     }
     if claims.version.as_deref() != Some("v1") {
         return Err(ApiError::unauthorized(
-            "invalid_token",
+            "malformed_token",
             "token version must be v1",
         ));
     }
@@ -118,19 +118,19 @@ impl Hs256Verifier {
         require_claim(&claims.version, "version")?;
         if claims.principal_type.as_deref() != Some("agent") {
             return Err(ApiError::unauthorized(
-                "unauthenticated",
+                "invalid_principal_type",
                 "principal_type must be agent",
             ));
         }
         if claims.token_type.as_deref() != Some("access") {
             return Err(ApiError::unauthorized(
-                "unauthenticated",
+                "invalid_token_type",
                 "token type must be access",
             ));
         }
         if claims.version.as_deref() != Some("v1") {
             return Err(ApiError::unauthorized(
-                "unauthenticated",
+                "malformed_token",
                 "token version must be v1",
             ));
         }
@@ -141,7 +141,7 @@ impl Hs256Verifier {
             || claims.act.is_some()
         {
             return Err(ApiError::unauthorized(
-                "unauthenticated",
+                "invalid_direct_profile",
                 "delegated tokens are not supported in test_hs256 mode",
             ));
         }
@@ -298,9 +298,10 @@ mod tests {
             "type",
             "version",
         ] {
+            let code = verifier.verify(&token_without(claim)).unwrap_err().code();
             assert_eq!(
-                verifier.verify(&token_without(claim)).unwrap_err().code(),
-                "missing_claim"
+                code, "missing_claim",
+                "claim '{claim}' should return 'missing_claim', got '{code}'"
             );
         }
     }
