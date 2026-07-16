@@ -6,6 +6,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use sqlx::PgPool;
 
+use crate::application::provisioning::ProvisioningConfig;
 use crate::application::workflow_instance::query_service::WorkflowQueryService;
 use crate::auth::{
     AuthMode, AuthenticatedPrincipal, Hs256Config, Hs256Verifier, JwksConfig, JwksVerifier,
@@ -13,8 +14,6 @@ use crate::auth::{
 use crate::http::error::ApiError;
 
 /// Enum over the two supported auth verifiers.
-///
-/// Used in `AppState` to dispatch verification to the active mode.
 #[derive(Clone)]
 pub enum AuthVerifier {
     TestHs256(Hs256Verifier),
@@ -22,7 +21,6 @@ pub enum AuthVerifier {
 }
 
 impl AuthVerifier {
-    /// Verify a JWT using the active verifier.
     pub async fn verify(&self, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
         match self {
             AuthVerifier::TestHs256(v) => v.verify(token),
@@ -30,7 +28,6 @@ impl AuthVerifier {
         }
     }
 
-    /// Check whether the verifier is ready to handle requests.
     pub async fn is_ready(&self) -> bool {
         match self {
             AuthVerifier::TestHs256(_) => true,
@@ -47,6 +44,7 @@ pub struct HttpConfig {
     pub auth_mode: AuthMode,
     pub hs256_config: Option<Hs256Config>,
     pub jwks_config: Option<JwksConfig>,
+    pub provisioning_config: ProvisioningConfig,
 }
 
 impl HttpConfig {
@@ -57,7 +55,6 @@ impl HttpConfig {
             .parse::<IpAddr>()
             .map_err(|_| "WORKFLOW_BIND_ADDR must be an IP address".to_string())?;
 
-        // Validate mode-specific gates (bind addr etc.).
         crate::auth::validate_mode_gates(auth_mode, ip)?;
 
         let port = parse_env("WORKFLOW_PORT", 8989u16)?;
@@ -75,6 +72,8 @@ impl HttpConfig {
             AuthMode::Jwks => (None, Some(JwksConfig::from_env()?)),
         };
 
+        let provisioning_config = ProvisioningConfig::from_env()?;
+
         Ok(Self {
             bind_addr: SocketAddr::new(ip, port),
             request_body_max_bytes,
@@ -82,6 +81,7 @@ impl HttpConfig {
             auth_mode,
             hs256_config,
             jwks_config,
+            provisioning_config,
         })
     }
 }
@@ -101,6 +101,7 @@ pub struct AppState {
     pub(crate) pool: PgPool,
     pub(crate) query_service: WorkflowQueryService,
     pub auth_verifier: AuthVerifier,
+    pub provisioning_config: ProvisioningConfig,
 }
 
 impl AppState {
@@ -118,6 +119,7 @@ impl AppState {
         Self {
             query_service: WorkflowQueryService::new(pool.clone()),
             auth_verifier,
+            provisioning_config: config.provisioning_config.clone(),
             pool,
         }
     }

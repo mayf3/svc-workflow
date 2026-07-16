@@ -1,5 +1,6 @@
 pub(crate) mod health;
 pub(crate) mod instances;
+pub(crate) mod provisioning;
 pub(crate) mod timeline;
 pub(crate) mod transitions;
 

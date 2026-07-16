@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use svc_workflow::application::provisioning::ProvisioningConfig;
 use svc_workflow::auth::{AuthMode, Hs256Config};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
@@ -61,6 +62,7 @@ fn app(pool: sqlx::PgPool) -> axum::Router {
         auth_mode: AuthMode::TestHs256,
         hs256_config: Some(hs256),
         jwks_config: None,
+        provisioning_config: ProvisioningConfig::new(Vec::new()),
     };
     http::router(AppState::new(pool, &config), &config)
 }

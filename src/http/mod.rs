@@ -10,7 +10,7 @@ use std::time::Duration;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, StatusCode};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{BoxError, Router};
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -44,6 +44,39 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/timeline",
             get(handlers::timeline::list),
+        )
+        // Provisioning endpoints
+        .route(
+            "/internal/v1/admin/principals",
+            post(handlers::provisioning::principals::create),
+        )
+        .route(
+            "/internal/v1/admin/principals/{principalId}",
+            get(handlers::provisioning::principals::get),
+        )
+        .route(
+            "/internal/v1/admin/domains",
+            post(handlers::provisioning::domains::create),
+        )
+        .route(
+            "/internal/v1/admin/domains/{domainId}",
+            get(handlers::provisioning::domains::get),
+        )
+        .route(
+            "/internal/v1/admin/domains/{domainId}/role-bindings/{principalId}",
+            put(handlers::provisioning::role_bindings::create),
+        )
+        .route(
+            "/internal/v1/admin/domains/{domainId}/role-bindings/{principalId}",
+            delete(handlers::provisioning::role_bindings::delete),
+        )
+        .route(
+            "/internal/v1/admin/domains/{domainId}/owner",
+            put(handlers::provisioning::role_bindings::replace_domain_owner),
+        )
+        .route(
+            "/internal/v1/admin/definition-versions/{definitionVersionId}",
+            get(handlers::provisioning::definitions::get),
         )
         .fallback(|| async {
             error::ApiError::new(StatusCode::NOT_FOUND, "route_not_found", "route not found")

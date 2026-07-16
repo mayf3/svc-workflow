@@ -8,6 +8,7 @@ use axum::Json;
 use serde::Serialize;
 
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
+use crate::domain::provisioning::ProvisioningError as PError;
 use crate::domain::workflow_instance::errors::{
     CreateWorkflowInstanceError, ExecuteWorkflowTransitionError,
 };
@@ -228,6 +229,60 @@ impl ApiError {
                 Self::service_unavailable("service_unavailable", "storage is unavailable")
             }
         }
+    }
+
+    pub fn from_provisioning(error: PError) -> Self {
+        use PError as E;
+        let status_code = error.status_code();
+        let (code, message) = match &error {
+            E::PrincipalNotFound => ("principal_not_found", "principal not found"),
+            E::PrincipalDisabled => ("principal_disabled", "principal is disabled"),
+            E::PrincipalTypeConflict => (
+                "principal_type_conflict",
+                "principal type cannot be changed",
+            ),
+            E::PrincipalTypeInvalid => ("principal_type_invalid", "invalid principal type"),
+            E::DomainNotFound => ("domain_not_found", "domain not found"),
+            E::DomainDisabled => ("domain_disabled", "domain is disabled"),
+            E::DomainIdentityConflict => (
+                "domain_identity_conflict",
+                "domain key belongs to another domain",
+            ),
+            E::DomainOwnerConflict => (
+                "domain_owner_conflict",
+                "domain already has an active owner",
+            ),
+            E::BindingAlreadyExists => ("binding_already_exists", "role binding already exists"),
+            E::BindingNotFound => ("binding_not_found", "role binding not found"),
+            E::RoleKeyInvalid => ("role_key_invalid", "invalid role key"),
+            E::DefinitionVersionNotFound => (
+                "definition_version_not_found",
+                "definition version not found",
+            ),
+            E::PermissionDenied => ("permission_denied", "provisioning not allowed"),
+            E::PrincipalTypeNotAllowed => (
+                "principal_type_not_allowed",
+                "principal type is not allowed for this operation",
+            ),
+            E::InvalidInput(_) => ("invalid_input", "invalid request input"),
+            E::IdempotencyConflict => ("idempotency_conflict", "idempotency key was reused"),
+            E::CommandStillProcessing => {
+                ("command_still_processing", "command is still processing")
+            }
+            E::InternalConsistency(_) => {
+                ("internal_consistency_error", "internal consistency error")
+            }
+            E::StorageError(_) => ("service_unavailable", "storage is unavailable"),
+        };
+        let mut api_error = Self::new(
+            StatusCode::from_u16(status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            code,
+            message,
+        );
+        if let Some(detail) = error.detail() {
+            api_error = api_error.with_details(serde_json::json!({ "detail": detail }));
+        }
+        api_error
     }
 
     pub fn from_query(error: WorkflowQueryError) -> Self {

@@ -7,4 +7,5 @@
 pub mod definition;
 pub mod enums;
 pub mod ids;
+pub mod provisioning;
 pub mod workflow_instance;
