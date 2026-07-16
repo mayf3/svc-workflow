@@ -13,6 +13,7 @@ use tokio::net::TcpListener;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use svc_workflow::application::provisioning::ProvisioningConfig;
 use svc_workflow::auth::{AuthMode, AuthenticatedPrincipal, JwksConfig};
 use svc_workflow::http::{self, error::ApiError, AppState, HttpConfig};
 
@@ -187,6 +188,7 @@ fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
             max_stale_secs: 60,
             clock_skew_seconds: 0,
         }),
+        provisioning_config: ProvisioningConfig::new(Vec::new()),
     }
 }
 

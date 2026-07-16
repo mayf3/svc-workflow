@@ -4,6 +4,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+use svc_workflow::application::provisioning::ProvisioningConfig;
 use svc_workflow::auth::{AuthMode, Hs256Config};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
@@ -56,6 +57,7 @@ fn test_config(bind_addr: std::net::SocketAddr, body_limit: usize) -> HttpConfig
             clock_skew_seconds: 0,
         }),
         jwks_config: None,
+        provisioning_config: ProvisioningConfig::new(Vec::new()),
     }
 }
 

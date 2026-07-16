@@ -6,6 +6,7 @@ pub(crate) mod import_receipt_validation;
 pub mod legacy_import_repository;
 pub mod migrations;
 pub mod pool;
+pub mod provisioning_repository;
 pub mod repository_rows;
 pub mod workflow_instance_repository;
 

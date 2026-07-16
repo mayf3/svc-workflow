@@ -133,3 +133,60 @@ mod tests {
         assert!(serde_json::from_value::<CreateWorkflowInstanceRequest>(value).is_err());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Provisioning DTOs
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionPrincipalRequest {
+    pub principal_id: Uuid,
+    pub principal_type: String,
+    pub enabled: bool,
+    pub source: String,
+    pub source_revision: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionPrincipalResponse {
+    pub principal_id: Uuid,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionDomainRequest {
+    pub domain_id: Uuid,
+    pub domain_key: String,
+    pub display_name: Option<String>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionDomainResponse {
+    pub domain_id: Uuid,
+    pub domain_key: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionRoleBindingRequest {
+    pub role_key: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceOwnerRequest {
+    pub new_owner_principal_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokeRoleBindingRequest {
+    pub role_key: String,
+}
