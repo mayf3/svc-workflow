@@ -1,5 +1,6 @@
 //! Domain provisioning handlers.
 
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::Json;
 use uuid::Uuid;
@@ -17,18 +18,29 @@ pub(crate) async fn create(
     State(state): State<AppState>,
     auth: ProvisioningAuth,
     headers: axum::http::HeaderMap,
-    Json(req): Json<ProvisionDomainRequest>,
+    payload: Result<Json<ProvisionDomainRequest>, JsonRejection>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
     let key = super::idempotency_key(&headers)?;
     let request_id = headers
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-");
 
-    if req.domain_key.is_empty() {
-        return Err(ApiError::bad_request(
+    if req.domain_key.is_empty()
+        || req.domain_key.len() > 128
+        || req.domain_key.chars().any(char::is_whitespace)
+        || req.domain_key.chars().any(char::is_control)
+        || req.display_name.as_ref().is_some_and(|name| {
+            name.is_empty()
+                || name != name.trim()
+                || name.len() > 256
+                || name.chars().any(char::is_control)
+        })
+    {
+        return Err(ApiError::unprocessable(
             "invalid_input",
-            "domain_key is required",
+            "domainKey or displayName is invalid",
         ));
     }
 
@@ -39,7 +51,15 @@ pub(crate) async fn create(
         enabled: req.enabled,
     };
 
-    match provision_domain(&state.pool, &cmd, &key, request_id, &auth.0.principal_id).await {
+    match provision_domain(
+        &state.pool,
+        &cmd,
+        &key,
+        request_id,
+        &auth.principal.principal_id,
+    )
+    .await
+    {
         Ok(body) => Ok(Json(body)),
         Err(e) => Err(ApiError::from_provisioning(e)),
     }

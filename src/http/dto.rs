@@ -139,7 +139,7 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProvisionPrincipalRequest {
     pub principal_id: Uuid,
     pub principal_type: String,
@@ -156,7 +156,7 @@ pub struct ProvisionPrincipalResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProvisionDomainRequest {
     pub domain_id: Uuid,
     pub domain_key: String,
@@ -173,20 +173,20 @@ pub struct ProvisionDomainResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProvisionRoleBindingRequest {
     pub role_key: String,
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplaceOwnerRequest {
     pub new_owner_principal_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeRoleBindingRequest {
     pub role_key: String,
 }

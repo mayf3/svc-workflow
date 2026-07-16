@@ -19,10 +19,9 @@ use super::AuthenticatedPrincipal;
 
 /// Legacy claims struct for backward-compatible HS256 verification.
 ///
-/// Kept as the internal decode target because it's simpler and matches
-/// the existing token shape exactly. New fields like `token_use`, `act`,
-/// and `azp` are silently ignored (no error), which is the desired
-/// backward-compatible behavior.
+/// Kept as the internal decode target because it matches the existing token
+/// shape. Delegation markers are decoded so test mode cannot silently turn an
+/// OBO-shaped token into a direct access token.
 #[derive(Debug, Deserialize)]
 struct LegacyClaims {
     sub: Option<String>,
@@ -38,6 +37,8 @@ struct LegacyClaims {
     token_type: Option<String>,
     version: Option<String>,
     scope: Option<String>,
+    token_use: Option<String>,
+    act: Option<serde_json::Value>,
 }
 
 /// Validate the legacy required claims (`type=access`, `version=v1`) that
@@ -131,6 +132,17 @@ impl Hs256Verifier {
             return Err(ApiError::unauthorized(
                 "unauthenticated",
                 "token version must be v1",
+            ));
+        }
+        if claims
+            .token_use
+            .as_deref()
+            .is_some_and(|use_| use_ != "access")
+            || claims.act.is_some()
+        {
+            return Err(ApiError::unauthorized(
+                "unauthenticated",
+                "delegated tokens are not supported in test_hs256 mode",
             ));
         }
         let subject = claims.sub.expect("sub checked above");
@@ -291,5 +303,30 @@ mod tests {
                 "missing_claim"
             );
         }
+    }
+
+    #[test]
+    fn rejects_obo_markers_in_test_mode() {
+        let now = chrono::Utc::now().timestamp() as usize;
+        let claims = serde_json::json!({
+            "sub": Uuid::new_v4(),
+            "iss": "auth-service",
+            "aud": "svc-workflow",
+            "exp": now + 300,
+            "iat": now,
+            "principal_type": "agent",
+            "type": "access",
+            "version": "v1",
+            "scope": "workflow.admin",
+            "token_use": "workflow_obo",
+            "act": { "sub": Uuid::new_v4() },
+        });
+        let encoded = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(config().secret.as_bytes()),
+        )
+        .unwrap();
+        assert!(Hs256Verifier::new(&config()).verify(&encoded).is_err());
     }
 }

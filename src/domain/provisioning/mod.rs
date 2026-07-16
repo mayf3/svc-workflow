@@ -70,7 +70,6 @@ pub struct RevokeRoleBindingCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplaceOwnerCommand {
     pub domain_id: DomainId,
-    pub current_owner_id: Option<PrincipalId>,
     pub new_owner_id: PrincipalId,
 }
 
@@ -164,7 +163,8 @@ impl ProvisioningError {
             | IdempotencyConflict => 409,
             PrincipalTypeInvalid | RoleKeyInvalid | InvalidInput(_) => 422,
             CommandStillProcessing => 425,
-            InternalConsistency(_) | StorageError(_) => 500,
+            InternalConsistency(_) => 500,
+            StorageError(_) => 503,
             BindingNotFound => 404,
         }
     }

@@ -1,5 +1,6 @@
 //! Principal provisioning handlers.
 
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::Json;
 use uuid::Uuid;
@@ -17,8 +18,9 @@ pub(crate) async fn create(
     State(state): State<AppState>,
     auth: ProvisioningAuth,
     headers: axum::http::HeaderMap,
-    Json(req): Json<ProvisionPrincipalRequest>,
+    payload: Result<Json<ProvisionPrincipalRequest>, JsonRejection>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
     let key = super::idempotency_key(&headers)?;
     let request_id = headers
         .get("x-request-id")
@@ -30,8 +32,28 @@ pub(crate) async fn create(
             ProvisioningError::PrincipalTypeInvalid,
         ));
     }
-    if req.source.is_empty() {
-        return Err(ApiError::bad_request("invalid_input", "source is required"));
+    if req.source.is_empty()
+        || req.source != req.source.trim()
+        || req.source.len() > 128
+        || req.source.chars().any(char::is_control)
+        || req.source_revision.as_ref().is_some_and(|revision| {
+            revision.is_empty() || revision.len() > 256 || revision.chars().any(char::is_control)
+        })
+    {
+        return Err(ApiError::unprocessable(
+            "invalid_input",
+            "source or sourceRevision is invalid",
+        ));
+    }
+    if !auth.actor_provisioned
+        && (req.principal_id != auth.principal.principal_id.into_uuid()
+            || req.principal_type != "agent")
+    {
+        return Err(ApiError::new(
+            axum::http::StatusCode::FORBIDDEN,
+            "provisioning_bootstrap_target_mismatch",
+            "an unprovisioned actor may only provision its own agent principal",
+        ));
     }
 
     let cmd = ProvisionPrincipalCommand {
@@ -42,7 +64,15 @@ pub(crate) async fn create(
         source_revision: req.source_revision,
     };
 
-    match provision_principal(&state.pool, &cmd, &key, request_id, &auth.0.principal_id).await {
+    match provision_principal(
+        &state.pool,
+        &cmd,
+        &key,
+        request_id,
+        &auth.principal.principal_id,
+    )
+    .await
+    {
         Ok(body) => Ok(Json(body)),
         Err(e) => Err(ApiError::from_provisioning(e)),
     }
