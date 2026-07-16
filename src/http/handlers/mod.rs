@@ -3,6 +3,7 @@ pub(crate) mod instances;
 pub(crate) mod provisioning;
 pub(crate) mod timeline;
 pub(crate) mod transitions;
+pub(crate) mod worklists;
 
 use axum::http::HeaderMap;
 use uuid::Uuid;

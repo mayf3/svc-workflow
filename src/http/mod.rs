@@ -45,6 +45,14 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/workflow-instances/{workflowInstanceId}/timeline",
             get(handlers::timeline::list),
         )
+        .route(
+            "/internal/v1/worklists/assigned-to-me",
+            get(handlers::worklists::assigned_to_me),
+        )
+        .route(
+            "/internal/v1/worklists/creator-owned-drafts",
+            get(handlers::worklists::creator_owned_drafts),
+        )
         // Provisioning endpoints
         .route(
             "/internal/v1/admin/principals",

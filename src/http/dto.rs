@@ -83,6 +83,14 @@ pub struct TimelineQuery {
     pub limit: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorklistQuery {
+    pub before_created_at: Option<String>,
+    pub before_id: Option<String>,
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineResponse {

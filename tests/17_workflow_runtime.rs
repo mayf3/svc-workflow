@@ -474,6 +474,8 @@ mod http_jwks_auth;
 mod http_provisioning;
 #[path = "17_workflow_runtime/http/smoke.rs"]
 mod http_smoke;
+#[path = "17_workflow_runtime/http/worklists.rs"]
+mod http_worklists;
 
 #[path = "17_workflow_runtime/receipt_stability/mod.rs"]
 mod receipt_stability;
