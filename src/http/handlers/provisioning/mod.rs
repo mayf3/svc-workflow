@@ -194,8 +194,8 @@ mod tests {
         (principal, AppState::new(pool, &config))
     }
 
-    #[test]
-    fn only_direct_agents_pass_claim_authorization() {
+    #[tokio::test]
+    async fn only_direct_agents_pass_claim_authorization() {
         let (agent, state) = fixture("agent", false);
         assert!(authorize_provisioning(&agent, &state).is_ok());
 
