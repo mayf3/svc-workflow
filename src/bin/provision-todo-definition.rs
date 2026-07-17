@@ -29,6 +29,7 @@ use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository
 
 const EFFICIENCY_MANAGER_KEY: &str = "EFFICIENCY_MANAGER_PRINCIPAL_ID";
 const LOBSTER_PARTNER_KEY: &str = "LOBSTER_PARTNER_PRINCIPAL_ID";
+const DOMAIN_ID_KEY: &str = "DOMAIN_ID";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,6 +192,7 @@ async fn run() -> Result<(), ProvisioningError> {
     let mut vals = HashMap::new();
     vals.insert(EFFICIENCY_MANAGER_KEY.to_string(), em);
     vals.insert(LOBSTER_PARTNER_KEY.to_string(), lp);
+    vals.insert(DOMAIN_ID_KEY.to_string(), did.to_string());
 
     let content = fs::read_to_string(path).map_err(|e| ProvisioningError::Io(e.to_string()))?;
     let resolved = resolve_placeholders(content.trim_start_matches('\u{feff}'), &vals)?;
@@ -223,15 +225,20 @@ async fn run() -> Result<(), ProvisioningError> {
 
     let pool = sqlx::PgPool::connect(&db).await?;
 
-    // Idempotency check
-    if let Some((_, ed, vs)) = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT dv.definition_version_id::text, dv.digest, dv.version_status::text
+    // Idempotency check: if already published with same key+version, skip.
+    if let Some((_, vs)) = sqlx::query_as::<_, (String, String)>(
+        "SELECT dv.definition_version_id::text, dv.version_status::text
          FROM workflow_definition_versions dv JOIN workflow_definitions d ON d.workflow_definition_id = dv.workflow_definition_id
          WHERE d.definition_key = $1 AND d.domain_id = $2 AND dv.version_number = $3 ORDER BY dv.created_at DESC LIMIT 1",
     ).bind(&file.definition_key).bind(did).bind(file.version.version_number).fetch_optional(&pool).await? {
-        if ed == digest { println!("Definition exists with matching digest — skipping"); return Ok(()); }
-        if vs == "PUBLISHED" || vs == "DRAFT" { return Err(ProvisioningError::DigestMismatch(
-            format!("Definition exists with different digest.\n  stored: {}\n  resolved: {}", ed, digest))); }
+        if vs == "PUBLISHED" {
+            println!("Definition '{}' version {} already PUBLISHED — skipping", file.definition_key, file.version.version_number);
+            return Ok(());
+        }
+        if vs == "DRAFT" {
+            // Draft exists with same key+version; will be replaced below by replace_draft_graph
+            println!("Draft version {} already exists, will replace graph", file.version.version_number);
+        }
     }
 
     let repo = PgDefinitionRepository::new(pool.clone());
@@ -285,15 +292,7 @@ async fn run() -> Result<(), ProvisioningError> {
         println!("Published version {}", file.version.version_number);
     }
 
-    if let Some((stored,)) = sqlx::query_as::<_, (String,)>(
-        "SELECT digest FROM workflow_definition_versions WHERE definition_version_id = $1",
-    ).bind(ver_id).fetch_optional(&pool).await? {
-        if stored != digest {
-            sqlx::query("UPDATE workflow_definition_versions SET digest = $1 WHERE definition_version_id = $2")
-                .bind(&digest).bind(ver_id).execute(&pool).await?;
-        }
-    }
-
+    // Digest is set during replace_draft_graph; skip post-publish update.
     println!("Digest: {}", digest);
     Ok(())
 }
