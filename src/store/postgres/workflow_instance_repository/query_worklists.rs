@@ -56,9 +56,13 @@ pub async fn list_assigned_to_me(
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
-         JOIN domain_role_bindings drb
-           ON drb.domain_id = wi.domain_id AND drb.principal_id = $1 AND drb.enabled = TRUE
          WHERE v.assignee_principal_id = $1 AND n.node_type <> 'TERMINAL'
+           AND EXISTS (
+             SELECT 1 FROM domain_role_bindings drb
+             WHERE drb.domain_id = wi.domain_id
+               AND drb.principal_id = $1
+               AND drb.enabled = TRUE
+           )
            AND ($2::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($2, $3))
          ORDER BY wi.created_at DESC, wi.workflow_instance_id DESC LIMIT $4",
     )
@@ -150,9 +154,13 @@ pub async fn list_creator_owned_drafts(
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
-         JOIN domain_role_bindings drb
-           ON drb.domain_id = wi.domain_id AND drb.principal_id = $1 AND drb.enabled = TRUE
          WHERE wi.created_by_principal_id = $1 AND n.node_type = 'DRAFT'
+           AND EXISTS (
+             SELECT 1 FROM domain_role_bindings drb
+             WHERE drb.domain_id = wi.domain_id
+               AND drb.principal_id = $1
+               AND drb.enabled = TRUE
+           )
            AND ($2::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($2, $3))
          ORDER BY wi.created_at DESC, wi.workflow_instance_id DESC LIMIT $4",
     )

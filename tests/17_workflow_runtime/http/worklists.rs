@@ -996,3 +996,67 @@ async fn pagination_respects_domain_isolation() {
         "should have no next_cursor after exhausting authorized items"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Multi-role dedup tests
+// ---------------------------------------------------------------------------
+
+async fn add_second_role(pool: &sqlx::PgPool, domain_id: Uuid, principal_id: Uuid) {
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+         VALUES ($1, $2, $3, 'CONTRIBUTOR', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(principal_id)
+    .execute(pool)
+    .await
+    .expect("add CONTRIBUTOR role");
+}
+
+#[tokio::test]
+async fn assigned_to_me_multi_role_no_duplicates() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let actor = seed_second_principal(&pool).await;
+    let (version_id, draft_advance, _, _) = seed_worklist_definition(&pool, domain_id, actor).await;
+
+    domain_membership(&pool, domain_id, actor).await;
+    add_second_role(&pool, domain_id, actor).await;
+    domain_membership(&pool, domain_id, creator).await;
+
+    let app = app(pool.clone());
+    let actor_token = token(actor, "workflow.read");
+
+    for _ in 0..3 {
+        create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&actor_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let items = json_body(resp).await["items"].as_array().unwrap().clone();
+    assert_eq!(items.len(), 3);
+    let mut ids: Vec<String> = items
+        .iter()
+        .map(|i| {
+            i["detail"]["instance"]["workflow_instance_id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    ids.sort();
+    let mut deduped = ids.clone();
+    deduped.dedup();
+    assert_eq!(ids, deduped);
+}
