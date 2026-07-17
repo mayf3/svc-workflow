@@ -217,32 +217,6 @@ async fn create_and_advance(
     created.workflow_instance_id
 }
 
-/// Create an instance but leave it in DRAFT (do not advance).
-async fn create_draft_only(
-    pool: &sqlx::PgPool,
-    creator_id: Uuid,
-    domain_id: Uuid,
-    version_id: Uuid,
-) -> Uuid {
-    let command = CreateWorkflowInstanceCommand {
-        principal_id: PrincipalId::from_uuid(creator_id),
-        idempotency_key: Uuid::new_v4().to_string(),
-        command_schema_version: "v1".to_string(),
-        domain_id: DomainId::from_uuid(domain_id),
-        definition_version_id: DefinitionVersionId::from_uuid(version_id),
-        external_reference: None,
-        external_url: None,
-        metadata: json!({"source": "worklist-test"}),
-        context_payload: json!({"title": "draft"}),
-    };
-    let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
-        pool, command,
-    )
-    .await
-    .expect("create draft instance");
-    created.workflow_instance_id
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -262,17 +236,6 @@ async fn no_token_returns_401() {
         .await
         .unwrap();
     assert_eq!(assigned.status(), StatusCode::UNAUTHORIZED);
-
-    let drafts = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
-            None,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(drafts.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -292,17 +255,6 @@ async fn missing_workflow_read_scope_returns_403() {
         .await
         .unwrap();
     assert_eq!(assigned.status(), StatusCode::FORBIDDEN);
-
-    let drafts = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
-            Some(&no_read_token),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(drafts.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -379,86 +331,6 @@ async fn historical_assignee_not_returned() {
             "GET",
             "/internal/v1/worklists/assigned-to-me",
             Some(&other_token),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = json_body(resp).await;
-    assert_eq!(body["items"].as_array().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn creator_owned_drafts_returns_only_own_drafts() {
-    let pool = create_pool().await;
-    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let creator = seed_second_principal(&pool).await;
-    let assignee = seed_second_principal(&pool).await;
-    let outsider = seed_second_principal(&pool).await;
-    let (version_id, _draft_advance, _, _) =
-        seed_worklist_definition(&pool, domain_id, assignee).await;
-
-    let app = app(pool.clone());
-    let creator_token = token(creator, "workflow.read");
-
-    domain_membership(&pool, domain_id, creator).await;
-
-    // Create a draft instance (remains in DRAFT)
-    create_draft_only(&pool, creator, domain_id, version_id).await;
-
-    // Creator should see it in drafts
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
-            Some(&creator_token),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = json_body(resp).await;
-    assert_eq!(body["items"].as_array().unwrap().len(), 1);
-
-    // Outsider should not see it
-    let outsider_token = token(outsider, "workflow.read");
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
-            Some(&outsider_token),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = json_body(resp).await;
-    assert_eq!(body["items"].as_array().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn non_draft_not_returned_in_creator_drafts() {
-    let pool = create_pool().await;
-    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let creator = seed_second_principal(&pool).await;
-    let assignee = seed_second_principal(&pool).await;
-    let (version_id, draft_advance, _, _) =
-        seed_worklist_definition(&pool, domain_id, assignee).await;
-
-    let app = app(pool.clone());
-    let creator_token = token(creator, "workflow.read");
-
-    domain_membership(&pool, domain_id, creator).await;
-
-    // Create and advance - instance is now in NORMAL, not DRAFT
-    create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
-
-    // Creator should NOT see it in drafts (it's in NORMAL/REVIEW, not DRAFT)
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
-            Some(&creator_token),
         ))
         .await
         .unwrap();
@@ -697,20 +569,6 @@ async fn empty_results_return_empty_page() {
         .oneshot(request(
             "GET",
             "/internal/v1/worklists/assigned-to-me",
-            Some(&actor_token),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = json_body(resp).await;
-    assert_eq!(body["items"].as_array().unwrap().len(), 0);
-    assert!(body["next_cursor"].is_null());
-
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "GET",
-            "/internal/v1/worklists/creator-owned-drafts",
             Some(&actor_token),
         ))
         .await
