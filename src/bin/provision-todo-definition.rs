@@ -22,9 +22,6 @@ use svc_workflow::application::definition::commands::{
     RawTransitionDefinition, ReplaceDraftGraph,
 };
 use svc_workflow::application::definition::DefinitionService;
-use svc_workflow::domain::definition::digest::{
-    CanonicalDefinitionDocument, CanonicalNode, CanonicalTransition,
-};
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 const EFFICIENCY_MANAGER_KEY: &str = "EFFICIENCY_MANAGER_PRINCIPAL_ID";
@@ -111,7 +108,6 @@ enum ProvisioningError {
     IoError(std::io::Error),
     SqlxError(sqlx::Error),
     ServiceError(String),
-    DigestMismatch(String),
     ConfigConflict(String),
 }
 impl From<std::io::Error> for ProvisioningError {
@@ -136,7 +132,6 @@ impl std::fmt::Display for ProvisioningError {
             Self::IoError(e) => write!(f, "I/O error: {}", e),
             Self::SqlxError(e) => write!(f, "DB error: {}", e),
             Self::ServiceError(m) => write!(f, "service error: {}", m),
-            Self::DigestMismatch(m) => write!(f, "digest mismatch: {}", m),
             Self::ConfigConflict(m) => write!(f, "config conflict: {}", m),
         }
     }
@@ -183,7 +178,11 @@ fn compute_digest(
     nodes: &[ResolvedNode],
     trans: &[TransitionConfig],
 ) -> Result<String, ProvisioningError> {
-    let cn: Vec<CanonicalNode> = nodes
+    use svc_workflow::domain::definition::digest::{
+        CanonicalDefinitionDocument, CanonicalNode, CanonicalTransition,
+    };
+
+    let mut cn: Vec<CanonicalNode> = nodes
         .iter()
         .map(|n| CanonicalNode {
             node_key: n.node_key.clone(),
@@ -197,7 +196,9 @@ fn compute_digest(
             metadata: n.metadata.clone(),
         })
         .collect();
-    let ct: Vec<CanonicalTransition> = trans
+    cn.sort_by(|a, b| a.node_key.cmp(&b.node_key));
+
+    let mut ct: Vec<CanonicalTransition> = trans
         .iter()
         .map(|t| CanonicalTransition {
             transition_key: t.transition_key.clone(),
@@ -209,6 +210,8 @@ fn compute_digest(
             metadata: t.metadata.clone(),
         })
         .collect();
+    ct.sort_by(|a, b| a.transition_key.cmp(&b.transition_key));
+
     let doc = CanonicalDefinitionDocument {
         definition_key: key.to_string(),
         version_number: ver,
@@ -218,10 +221,10 @@ fn compute_digest(
         nodes: cn,
         transitions: ct,
     };
-    let bytes =
-        serde_json::to_vec(&doc).map_err(|e| ProvisioningError::JsonParse(e.to_string()))?;
-    use sha2::{Digest, Sha256};
-    Ok(format!("{:x}", Sha256::digest(&bytes)))
+
+    // Use JCS canonicalization (RFC 8785) — same as the repository
+    jcs_canonicalize::sha256_jcs_hex(&doc)
+        .map_err(|e| ProvisioningError::JsonParse(format!("JCS digest failed: {}", e)))
 }
 
 #[tokio::main]
@@ -309,6 +312,7 @@ async fn run() -> Result<(), ProvisioningError> {
     let pool = sqlx::PgPool::connect(&db).await?;
 
     // Idempotency check: compare against existing version with same key/version.
+    // Uses JCS (RFC 8785) digest — same algorithm as the repository.
     if let Some((_, stored_digest, vs)) = sqlx::query_as::<_, (String, Option<String>, String)>(
         "SELECT dv.definition_version_id::text, dv.definition_digest, dv.version_status::text
          FROM workflow_definition_versions dv JOIN workflow_definitions d ON d.workflow_definition_id = dv.workflow_definition_id
@@ -317,24 +321,17 @@ async fn run() -> Result<(), ProvisioningError> {
         match vs.as_str() {
             "PUBLISHED" | "DEPRECATED" => {
                 if stored_digest.as_deref() == Some(&digest) {
-                    println!("ALREADY_PROVISIONED: definition '{}' version {} already exists with matching digest", file.definition_key, file.version.version_number);
+                    println!("ALREADY_PROVISIONED: definition '{}' version {} (digest matches)", file.definition_key, file.version.version_number);
                     return Ok(());
                 }
                 // Different content for same key/version — fail closed
-                eprintln!("DEFINITION_VERSION_DIGEST_MISMATCH: definition '{}' version {} exists with different content.\n  stored digest: {}\n  requested digest: {}\n  Refusing to overwrite.",
+                eprintln!("DEFINITION_VERSION_DIGEST_MISMATCH: definition '{}' version {} exists with different digest (stored={}, requested={}). Refusing to overwrite published version.",
                     file.definition_key, file.version.version_number,
                     stored_digest.as_deref().unwrap_or("(null)"), &digest);
-                return Err(ProvisioningError::DigestMismatch(format!(
-                    "DEFINITION_VERSION_DIGEST_MISMATCH: version {} of '{}' already published with different content",
-                    file.version.version_number, file.definition_key)));
+                std::process::exit(1);
             }
             "DRAFT" => {
-                if stored_digest.as_deref() == Some(&digest) {
-                    println!("Draft version {} already exists with matching digest, will replace graph", file.version.version_number);
-                } else {
-                    println!("Draft version {} exists with different digest, will replace graph", file.version.version_number);
-                }
-                // Proceed — draft replacement is allowed
+                println!("Draft version {} already exists, will replace graph", file.version.version_number);
             }
             _ => {
                 // REVOKED — fall through to recreate
