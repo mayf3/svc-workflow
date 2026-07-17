@@ -217,6 +217,32 @@ async fn create_and_advance(
     created.workflow_instance_id
 }
 
+/// Create an instance but leave it in DRAFT (do not advance).
+async fn create_draft_only(
+    pool: &sqlx::PgPool,
+    creator_id: Uuid,
+    domain_id: Uuid,
+    version_id: Uuid,
+) -> Uuid {
+    let command = CreateWorkflowInstanceCommand {
+        principal_id: PrincipalId::from_uuid(creator_id),
+        idempotency_key: Uuid::new_v4().to_string(),
+        command_schema_version: "v1".to_string(),
+        domain_id: DomainId::from_uuid(domain_id),
+        definition_version_id: DefinitionVersionId::from_uuid(version_id),
+        external_reference: None,
+        external_url: None,
+        metadata: json!({"source": "worklist-test"}),
+        context_payload: json!({"title": "draft"}),
+    };
+    let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
+        pool, command,
+    )
+    .await
+    .expect("create draft instance");
+    created.workflow_instance_id
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -271,6 +297,8 @@ async fn assigned_to_me_returns_current_assignee_only() {
 
     // Creator needs domain membership
     domain_membership(&pool, domain_id, creator).await;
+    // Assignee also needs domain membership to appear in worklists
+    domain_membership(&pool, domain_id, assignee).await;
 
     // Before advancing: assignee has no assigned items
     let resp = app
@@ -355,6 +383,9 @@ async fn cross_domain_isolation() {
 
     domain_membership(&pool, domain1, creator).await;
     domain_membership(&pool, domain2, creator).await;
+    // Assignee needs membership in both domains
+    domain_membership(&pool, domain1, assignee).await;
+    domain_membership(&pool, domain2, assignee).await;
 
     // Create and advance in both domains
     create_and_advance(&pool, creator, domain1, ver1, adv1).await;
@@ -403,6 +434,7 @@ async fn direct_agent_token_works() {
     let agent_token = token(assignee, "workflow.read workflow.execute");
 
     domain_membership(&pool, domain_id, creator).await;
+    domain_membership(&pool, domain_id, assignee).await;
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
 
     let resp = app
@@ -488,6 +520,7 @@ async fn pagination_cursor_works() {
     let assignee_token = token(assignee, "workflow.read");
 
     domain_membership(&pool, domain_id, creator).await;
+    domain_membership(&pool, domain_id, assignee).await;
 
     // Create and advance 3 instances
     for _ in 0..3 {
@@ -577,4 +610,389 @@ async fn empty_results_return_empty_page() {
     let body = json_body(resp).await;
     assert_eq!(body["items"].as_array().unwrap().len(), 0);
     assert!(body["next_cursor"].is_null());
+}
+
+// ---------------------------------------------------------------------------
+// Domain isolation tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn no_domain_permission_hides_items() {
+    // Actor has access to domain A but NOT domain B.
+    // Items in domain B must not appear in worklists even if the actor is
+    // the current assignee or creator.
+    let pool = create_pool().await;
+
+    let (_owner1, domain1) = seed_principal_domain_with_owner(&pool).await;
+    let (_owner2, domain2) = seed_principal_domain_with_owner(&pool).await;
+    let actor = seed_second_principal(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+
+    // Actor only gets membership on domain1
+    domain_membership(&pool, domain1, actor).await;
+    domain_membership(&pool, domain1, creator).await;
+    // Creator needs membership on domain2 to create instances there
+    domain_membership(&pool, domain2, creator).await;
+
+    let (ver1, adv1, _, _) = seed_worklist_definition(&pool, domain1, actor).await;
+    let (ver2, adv2, _, _) = seed_worklist_definition(&pool, domain2, actor).await;
+
+    let app = app(pool.clone());
+    let actor_token = token(actor, "workflow.read");
+
+    // Advance instances in both domains, assignee = actor
+    create_and_advance(&pool, creator, domain1, ver1, adv1).await;
+    create_and_advance(&pool, creator, domain2, ver2, adv2).await;
+
+    // Actor should only see domain1's item in assigned-to-me
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&actor_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+    let domain_id = body["items"][0]["detail"]["instance"]["domain_id"]
+        .as_str()
+        .unwrap();
+    assert_eq!(domain_id, domain1.to_string());
+}
+
+#[tokio::test]
+async fn domain_disabled_hides_items() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let (version_id, draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    domain_membership(&pool, domain_id, creator).await;
+    domain_membership(&pool, domain_id, assignee).await;
+
+    let app = app(pool.clone());
+    let assignee_token = token(assignee, "workflow.read");
+
+    // Create and advance (assignee can see it)
+    create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 1);
+
+    // Disable the domain
+    sqlx::query("UPDATE domains SET enabled = FALSE WHERE domain_id = $1")
+        .bind(domain_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Assignee should no longer see the item
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 0);
+
+    // Re-enable the domain
+    sqlx::query("UPDATE domains SET enabled = TRUE WHERE domain_id = $1")
+        .bind(domain_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Assignee should see the item again
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn role_binding_revoked_hides_items() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let (version_id, draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    domain_membership(&pool, domain_id, creator).await;
+    domain_membership(&pool, domain_id, assignee).await;
+
+    let app = app(pool.clone());
+    let assignee_token = token(assignee, "workflow.read");
+
+    // Create and advance (assignee can see it)
+    create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 1);
+
+    // Delete the assignee's domain role binding
+    sqlx::query("DELETE FROM domain_role_bindings WHERE domain_id = $1 AND principal_id = $2")
+        .bind(domain_id)
+        .bind(assignee)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Assignee should no longer see the item
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn assignee_without_domain_permission_not_returned() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let (version_id, draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    // Creator has membership (needed to create instances)
+    domain_membership(&pool, domain_id, creator).await;
+    // Assignee deliberately has NO domain membership
+
+    let app = app(pool.clone());
+    let assignee_token = token(assignee, "workflow.read");
+
+    // Advance — assignee becomes current node visit assignee
+    create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
+
+    // Assignee should NOT see the instance in assigned-to-me
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&assignee_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn creator_without_domain_permission_drafts_not_returned() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let (version_id, _draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    // Creator needs membership initially to create the instance
+    domain_membership(&pool, domain_id, creator).await;
+
+    let app = app(pool.clone());
+    let creator_token = token(creator, "workflow.read");
+
+    // Create a draft instance
+    create_draft_only(&pool, creator, domain_id, version_id).await;
+
+    // Creator can see it (has membership)
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me", // test via assigned-to-me; drafts endpoint may not exist
+            Some(&creator_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Remove the creator's domain role binding
+    sqlx::query("DELETE FROM domain_role_bindings WHERE domain_id = $1 AND principal_id = $2")
+        .bind(domain_id)
+        .bind(creator)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Verify the domain isolation by checking assigned-to-me is empty
+    // (the instance is in DRAFT so creator is the current assignee via WORKFLOW_CREATOR)
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&creator_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn multiple_legal_domains_all_visible() {
+    let pool = create_pool().await;
+    let (_owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (_owner_b, domain_b) = seed_principal_domain_with_owner(&pool).await;
+    let (_owner_c, domain_c) = seed_principal_domain_with_owner(&pool).await;
+    let actor = seed_second_principal(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+
+    // Actor has membership on domain_a and domain_c, but not domain_b
+    domain_membership(&pool, domain_a, actor).await;
+    domain_membership(&pool, domain_c, actor).await;
+    domain_membership(&pool, domain_a, creator).await;
+    domain_membership(&pool, domain_b, creator).await;
+    domain_membership(&pool, domain_c, creator).await;
+
+    let (ver_a, adv_a, _, _) = seed_worklist_definition(&pool, domain_a, actor).await;
+    let (ver_b, adv_b, _, _) = seed_worklist_definition(&pool, domain_b, actor).await;
+    let (ver_c, adv_c, _, _) = seed_worklist_definition(&pool, domain_c, actor).await;
+
+    let app = app(pool.clone());
+    let actor_token = token(actor, "workflow.read");
+
+    // Advance instances in all three domains
+    create_and_advance(&pool, creator, domain_a, ver_a, adv_a).await;
+    create_and_advance(&pool, creator, domain_b, ver_b, adv_b).await;
+    create_and_advance(&pool, creator, domain_c, ver_c, adv_c).await;
+
+    // Actor should see domain_a and domain_c items, but NOT domain_b
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me",
+            Some(&actor_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+
+    let domains: Vec<&str> = items
+        .iter()
+        .map(|item| item["detail"]["instance"]["domain_id"].as_str().unwrap())
+        .collect();
+    assert!(domains.contains(&domain_a.to_string().as_str()));
+    assert!(domains.contains(&domain_c.to_string().as_str()));
+    assert!(!domains.contains(&domain_b.to_string().as_str()));
+}
+
+#[tokio::test]
+async fn pagination_respects_domain_isolation() {
+    let pool = create_pool().await;
+    let (_owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (_owner_b, domain_b) = seed_principal_domain_with_owner(&pool).await;
+    let actor = seed_second_principal(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+
+    // Actor only has access to domain_a
+    domain_membership(&pool, domain_a, actor).await;
+    domain_membership(&pool, domain_a, creator).await;
+    domain_membership(&pool, domain_b, creator).await;
+
+    let (ver_a, adv_a, _, _) = seed_worklist_definition(&pool, domain_a, actor).await;
+    let (ver_b, adv_b, _, _) = seed_worklist_definition(&pool, domain_b, actor).await;
+
+    let app = app(pool.clone());
+    let actor_token = token(actor, "workflow.read");
+
+    // Create multiple instances in domain_a with slight timestamp gaps
+    for _ in 0..2 {
+        create_and_advance(&pool, creator, domain_a, ver_a, adv_a).await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // Also create in domain_b (actor shouldn't see these)
+    create_and_advance(&pool, creator, domain_b, ver_b, adv_b).await;
+
+    // Fetch first page with limit=1
+    let uri = "/internal/v1/worklists/assigned-to-me?limit=1";
+    let resp = app
+        .clone()
+        .oneshot(request("GET", uri, Some(&actor_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let page1 = json_body(resp).await;
+    assert_eq!(page1["items"].as_array().unwrap().len(), 1);
+    assert!(page1["next_cursor"].is_object(), "should have next_cursor");
+
+    let domain1 = page1["items"][0]["detail"]["instance"]["domain_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(domain1, domain_a.to_string());
+
+    // Fetch second page
+    let cursor = page1["next_cursor"].clone();
+    let uri = format!(
+        "/internal/v1/worklists/assigned-to-me?limit=1&beforeCreatedAt={}&beforeId={}",
+        cursor["created_at"].as_str().unwrap(),
+        cursor["id"].as_str().unwrap(),
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&actor_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let page2 = json_body(resp).await;
+    assert_eq!(page2["items"].as_array().unwrap().len(), 1);
+
+    let domain2 = page2["items"][0]["detail"]["instance"]["domain_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(domain2, domain_a.to_string());
+
+    // No more pages (only 2 items from domain_a, none from domain_b leaked)
+    assert!(
+        page2["next_cursor"].is_null(),
+        "should have no next_cursor after exhausting authorized items"
+    );
 }

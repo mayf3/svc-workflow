@@ -98,17 +98,19 @@ pub(crate) async fn seed_query_fixture(pool: &PgPool) -> QueryFixture {
     let creator = seed_second_principal(pool).await;
     let assignee = seed_second_principal(pool).await;
     let outsider = seed_second_principal(pool).await;
-    sqlx::query(
-        "INSERT INTO domain_role_bindings
-         (binding_id, domain_id, principal_id, role_key, enabled)
-         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
-    )
-    .bind(Uuid::new_v4())
-    .bind(domain)
-    .bind(creator)
-    .execute(pool)
-    .await
-    .unwrap();
+    for principal in [creator, assignee] {
+        sqlx::query(
+            "INSERT INTO domain_role_bindings
+             (binding_id, domain_id, principal_id, role_key, enabled)
+             VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(domain)
+        .bind(principal)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
 
     let definition = Uuid::new_v4();
     let version = Uuid::new_v4();

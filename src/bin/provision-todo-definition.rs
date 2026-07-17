@@ -18,8 +18,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use svc_workflow::application::definition::commands::{
-    CreateDefinition, CreateDraftVersion, RawNodeDefinition, RawTransitionDefinition,
-    ReplaceDraftGraph, PublishVersion,
+    CreateDefinition, CreateDraftVersion, PublishVersion, RawNodeDefinition,
+    RawTransitionDefinition, ReplaceDraftGraph,
 };
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::domain::definition::digest::{
@@ -102,12 +102,28 @@ struct ResolvedNode {
 
 #[derive(Debug)]
 enum ProvisioningError {
-    MissingEnv(String), InvalidUuid(String, String), UnknownPlaceholder(String),
-    EmptyPlaceholder(String), Io(String), JsonParse(String), IoError(std::io::Error),
-    SqlxError(sqlx::Error), ServiceError(String), DigestMismatch(String), ConfigConflict(String),
+    MissingEnv(String),
+    InvalidUuid(String, String),
+    UnknownPlaceholder(String),
+    EmptyPlaceholder(String),
+    Io(String),
+    JsonParse(String),
+    IoError(std::io::Error),
+    SqlxError(sqlx::Error),
+    ServiceError(String),
+    DigestMismatch(String),
+    ConfigConflict(String),
 }
-impl From<std::io::Error> for ProvisioningError { fn from(e: std::io::Error) -> Self { ProvisioningError::IoError(e) } }
-impl From<sqlx::Error> for ProvisioningError { fn from(e: sqlx::Error) -> Self { ProvisioningError::SqlxError(e) } }
+impl From<std::io::Error> for ProvisioningError {
+    fn from(e: std::io::Error) -> Self {
+        ProvisioningError::IoError(e)
+    }
+}
+impl From<sqlx::Error> for ProvisioningError {
+    fn from(e: sqlx::Error) -> Self {
+        ProvisioningError::SqlxError(e)
+    }
+}
 impl std::fmt::Display for ProvisioningError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -130,59 +146,106 @@ fn read_env(name: &str) -> Result<String, ProvisioningError> {
     env::var(name).map_err(|_| ProvisioningError::MissingEnv(name.to_string()))
 }
 fn parse_uuid(name: &str, value: &str) -> Result<Uuid, ProvisioningError> {
-    Uuid::parse_str(value).map_err(|_| ProvisioningError::InvalidUuid(name.to_string(), value.to_string()))
+    Uuid::parse_str(value)
+        .map_err(|_| ProvisioningError::InvalidUuid(name.to_string(), value.to_string()))
 }
-fn resolve_placeholders(input: &str, values: &HashMap<String, String>) -> Result<String, ProvisioningError> {
+fn resolve_placeholders(
+    input: &str,
+    values: &HashMap<String, String>,
+) -> Result<String, ProvisioningError> {
     let mut result = input.to_string();
     loop {
-        let pos = match result.find("${") { Some(p) => p, None => break Ok(result) };
-        let end = match result[pos + 2..].find('}') { Some(e) => pos + 2 + e, None => break Ok(result) };
+        let pos = match result.find("${") {
+            Some(p) => p,
+            None => break Ok(result),
+        };
+        let end = match result[pos + 2..].find('}') {
+            Some(e) => pos + 2 + e,
+            None => break Ok(result),
+        };
         let var = &result[pos + 2..end];
-        let val = values.get(var).ok_or_else(|| ProvisioningError::UnknownPlaceholder(var.to_string()))?;
-        if val.is_empty() { return Err(ProvisioningError::EmptyPlaceholder(var.to_string())); }
+        let val = values
+            .get(var)
+            .ok_or_else(|| ProvisioningError::UnknownPlaceholder(var.to_string()))?;
+        if val.is_empty() {
+            return Err(ProvisioningError::EmptyPlaceholder(var.to_string()));
+        }
         result = result.replace(&format!("${{{}}}", var), val);
     }
 }
 
-fn compute_digest(key: &str, ver: i32, ctx: &Option<serde_json::Value>, dialect: &Option<String>,
-    validator: &Option<String>, nodes: &[ResolvedNode], trans: &[TransitionConfig],
+fn compute_digest(
+    key: &str,
+    ver: i32,
+    ctx: &Option<serde_json::Value>,
+    dialect: &Option<String>,
+    validator: &Option<String>,
+    nodes: &[ResolvedNode],
+    trans: &[TransitionConfig],
 ) -> Result<String, ProvisioningError> {
-    let cn: Vec<CanonicalNode> = nodes.iter().map(|n| CanonicalNode {
-        node_key: n.node_key.clone(), display_name: n.display_name.clone(), order_index: n.order_index,
-        node_type: n.node_type.clone(), assignee_ref_type: n.assignee_ref_type.clone(),
-        fixed_principal_id: n.fixed_principal_id.map(|id| id.to_string()),
-        instructions: n.instructions.clone(), primary_advance_transition_key: n.primary_advance_transition_key.clone(),
-        metadata: n.metadata.clone(),
-    }).collect();
-    let ct: Vec<CanonicalTransition> = trans.iter().map(|t| CanonicalTransition {
-        transition_key: t.transition_key.clone(), display_name: t.display_name.clone(),
-        source_node_key: t.source_node_key.clone(), target_node_key: t.target_node_key.clone(),
-        transition_effect: t.transition_effect.clone(), submission_schema: t.submission_schema.clone(),
-        metadata: t.metadata.clone(),
-    }).collect();
+    let cn: Vec<CanonicalNode> = nodes
+        .iter()
+        .map(|n| CanonicalNode {
+            node_key: n.node_key.clone(),
+            display_name: n.display_name.clone(),
+            order_index: n.order_index,
+            node_type: n.node_type.clone(),
+            assignee_ref_type: n.assignee_ref_type.clone(),
+            fixed_principal_id: n.fixed_principal_id.map(|id| id.to_string()),
+            instructions: n.instructions.clone(),
+            primary_advance_transition_key: n.primary_advance_transition_key.clone(),
+            metadata: n.metadata.clone(),
+        })
+        .collect();
+    let ct: Vec<CanonicalTransition> = trans
+        .iter()
+        .map(|t| CanonicalTransition {
+            transition_key: t.transition_key.clone(),
+            display_name: t.display_name.clone(),
+            source_node_key: t.source_node_key.clone(),
+            target_node_key: t.target_node_key.clone(),
+            transition_effect: t.transition_effect.clone(),
+            submission_schema: t.submission_schema.clone(),
+            metadata: t.metadata.clone(),
+        })
+        .collect();
     let doc = CanonicalDefinitionDocument {
-        definition_key: key.to_string(), version_number: ver,
-        json_schema_dialect: dialect.clone(), validator_version: validator.clone(),
-        context_schema: ctx.clone(), nodes: cn, transitions: ct,
+        definition_key: key.to_string(),
+        version_number: ver,
+        json_schema_dialect: dialect.clone(),
+        validator_version: validator.clone(),
+        context_schema: ctx.clone(),
+        nodes: cn,
+        transitions: ct,
     };
-    let bytes = serde_json::to_vec(&doc).map_err(|e| ProvisioningError::JsonParse(e.to_string()))?;
+    let bytes =
+        serde_json::to_vec(&doc).map_err(|e| ProvisioningError::JsonParse(e.to_string()))?;
     use sha2::{Digest, Sha256};
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
 #[tokio::main]
 async fn main() {
-    if let Err(e) = run().await { eprintln!("ERROR: {}", e); process::exit(1); }
+    if let Err(e) = run().await {
+        eprintln!("ERROR: {}", e);
+        process::exit(1);
+    }
     println!("OK: agent_self_task_v1 provisioned successfully");
 }
 
 async fn run() -> Result<(), ProvisioningError> {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 { eprintln!("Usage: {} <definition.json>", args[0]); process::exit(1); }
+    if args.len() != 2 {
+        eprintln!("Usage: {} <definition.json>", args[0]);
+        process::exit(1);
+    }
     let path = &args[1];
 
     let db = read_env("DATABASE_URL")?;
-    let actor = parse_uuid("PROVISIONING_PRINCIPAL_ID", &read_env("PROVISIONING_PRINCIPAL_ID")?)?;
+    let actor = parse_uuid(
+        "PROVISIONING_PRINCIPAL_ID",
+        &read_env("PROVISIONING_PRINCIPAL_ID")?,
+    )?;
     let did = parse_uuid("DOMAIN_ID", &read_env("DOMAIN_ID")?)?;
     let em = read_env(EFFICIENCY_MANAGER_KEY)?;
     let lp = read_env(LOBSTER_PARTNER_KEY)?;
@@ -196,48 +259,86 @@ async fn run() -> Result<(), ProvisioningError> {
 
     let content = fs::read_to_string(path).map_err(|e| ProvisioningError::Io(e.to_string()))?;
     let resolved = resolve_placeholders(content.trim_start_matches('\u{feff}'), &vals)?;
-    let file: DefinitionFile = serde_json::from_str(&resolved).map_err(|e| ProvisioningError::JsonParse(e.to_string()))?;
+    let file: DefinitionFile =
+        serde_json::from_str(&resolved).map_err(|e| ProvisioningError::JsonParse(e.to_string()))?;
 
     let fdid = parse_uuid("domainId", &file.domain.domain_id)?;
-    if fdid != did { return Err(ProvisioningError::ConfigConflict(format!("DOMAIN_ID mismatch"))); }
+    if fdid != did {
+        return Err(ProvisioningError::ConfigConflict(
+            "DOMAIN_ID mismatch".to_string(),
+        ));
+    }
 
     let mut rnodes = Vec::new();
     for n in &file.nodes {
         let fp = match &n.fixed_principal_id {
             Some(s) if s.starts_with("${") && s.ends_with('}') => {
-                let k = &s[2..s.len()-1];
-                Some(parse_uuid(k, vals.get(k).ok_or_else(|| ProvisioningError::UnknownPlaceholder(k.to_string()))?)?)
+                let k = &s[2..s.len() - 1];
+                Some(parse_uuid(
+                    k,
+                    vals.get(k)
+                        .ok_or_else(|| ProvisioningError::UnknownPlaceholder(k.to_string()))?,
+                )?)
             }
             Some(s) => Some(parse_uuid("fixed_principal_id", s)?),
             None => None,
         };
         rnodes.push(ResolvedNode {
-            node_key: n.node_key.clone(), display_name: n.display_name.clone(), order_index: n.order_index,
-            node_type: n.node_type.clone(), assignee_ref_type: n.assignee_ref_type.clone(),
-            fixed_principal_id: fp, instructions: n.instructions.clone(),
-            primary_advance_transition_key: n.primary_advance_transition_key.clone(), metadata: n.metadata.clone(),
+            node_key: n.node_key.clone(),
+            display_name: n.display_name.clone(),
+            order_index: n.order_index,
+            node_type: n.node_type.clone(),
+            assignee_ref_type: n.assignee_ref_type.clone(),
+            fixed_principal_id: fp,
+            instructions: n.instructions.clone(),
+            primary_advance_transition_key: n.primary_advance_transition_key.clone(),
+            metadata: n.metadata.clone(),
         });
     }
 
-    let digest = compute_digest(&file.definition_key, file.version.version_number,
-        &file.version.context_schema, &file.version.json_schema_dialect,
-        &file.version.validator_version, &rnodes, &file.transitions)?;
+    let digest = compute_digest(
+        &file.definition_key,
+        file.version.version_number,
+        &file.version.context_schema,
+        &file.version.json_schema_dialect,
+        &file.version.validator_version,
+        &rnodes,
+        &file.transitions,
+    )?;
 
     let pool = sqlx::PgPool::connect(&db).await?;
 
-    // Idempotency check: if already published with same key+version, skip.
-    if let Some((_, vs)) = sqlx::query_as::<_, (String, String)>(
-        "SELECT dv.definition_version_id::text, dv.version_status::text
+    // Idempotency check: compare against existing version with same key/version.
+    if let Some((_, stored_digest, vs)) = sqlx::query_as::<_, (String, Option<String>, String)>(
+        "SELECT dv.definition_version_id::text, dv.definition_digest, dv.version_status::text
          FROM workflow_definition_versions dv JOIN workflow_definitions d ON d.workflow_definition_id = dv.workflow_definition_id
          WHERE d.definition_key = $1 AND d.domain_id = $2 AND dv.version_number = $3 ORDER BY dv.created_at DESC LIMIT 1",
     ).bind(&file.definition_key).bind(did).bind(file.version.version_number).fetch_optional(&pool).await? {
-        if vs == "PUBLISHED" {
-            println!("Definition '{}' version {} already PUBLISHED — skipping", file.definition_key, file.version.version_number);
-            return Ok(());
-        }
-        if vs == "DRAFT" {
-            // Draft exists with same key+version; will be replaced below by replace_draft_graph
-            println!("Draft version {} already exists, will replace graph", file.version.version_number);
+        match vs.as_str() {
+            "PUBLISHED" | "DEPRECATED" => {
+                if stored_digest.as_deref() == Some(&digest) {
+                    println!("ALREADY_PROVISIONED: definition '{}' version {} already exists with matching digest", file.definition_key, file.version.version_number);
+                    return Ok(());
+                }
+                // Different content for same key/version — fail closed
+                eprintln!("DEFINITION_VERSION_DIGEST_MISMATCH: definition '{}' version {} exists with different content.\n  stored digest: {}\n  requested digest: {}\n  Refusing to overwrite.",
+                    file.definition_key, file.version.version_number,
+                    stored_digest.as_deref().unwrap_or("(null)"), &digest);
+                return Err(ProvisioningError::DigestMismatch(format!(
+                    "DEFINITION_VERSION_DIGEST_MISMATCH: version {} of '{}' already published with different content",
+                    file.version.version_number, file.definition_key)));
+            }
+            "DRAFT" => {
+                if stored_digest.as_deref() == Some(&digest) {
+                    println!("Draft version {} already exists with matching digest, will replace graph", file.version.version_number);
+                } else {
+                    println!("Draft version {} exists with different digest, will replace graph", file.version.version_number);
+                }
+                // Proceed — draft replacement is allowed
+            }
+            _ => {
+                // REVOKED — fall through to recreate
+            }
         }
     }
 
@@ -267,19 +368,39 @@ async fn run() -> Result<(), ProvisioningError> {
     };
 
     svc.replace_draft_graph(ReplaceDraftGraph {
-        actor_principal_id: actor, definition_version_id: ver_id, context_schema: file.version.context_schema.clone(),
-        nodes: rnodes.iter().map(|n| RawNodeDefinition {
-            node_key: n.node_key.clone(), display_name: n.display_name.clone(), order_index: n.order_index,
-            node_type: n.node_type.clone(), assignee_ref_type: n.assignee_ref_type.clone(),
-            fixed_principal_id: n.fixed_principal_id, instructions: n.instructions.clone(),
-            primary_advance_transition_key: n.primary_advance_transition_key.clone(), metadata: n.metadata.clone(),
-        }).collect(),
-        transitions: file.transitions.iter().map(|t| RawTransitionDefinition {
-            transition_key: t.transition_key.clone(), display_name: t.display_name.clone(),
-            source_node_key: t.source_node_key.clone(), target_node_key: t.target_node_key.clone(),
-            transition_effect: t.transition_effect.clone(), submission_schema: t.submission_schema.clone(), metadata: t.metadata.clone(),
-        }).collect(),
-    }).await.map_err(|e| ProvisioningError::ServiceError(e.to_string()))?;
+        actor_principal_id: actor,
+        definition_version_id: ver_id,
+        context_schema: file.version.context_schema.clone(),
+        nodes: rnodes
+            .iter()
+            .map(|n| RawNodeDefinition {
+                node_key: n.node_key.clone(),
+                display_name: n.display_name.clone(),
+                order_index: n.order_index,
+                node_type: n.node_type.clone(),
+                assignee_ref_type: n.assignee_ref_type.clone(),
+                fixed_principal_id: n.fixed_principal_id,
+                instructions: n.instructions.clone(),
+                primary_advance_transition_key: n.primary_advance_transition_key.clone(),
+                metadata: n.metadata.clone(),
+            })
+            .collect(),
+        transitions: file
+            .transitions
+            .iter()
+            .map(|t| RawTransitionDefinition {
+                transition_key: t.transition_key.clone(),
+                display_name: t.display_name.clone(),
+                source_node_key: t.source_node_key.clone(),
+                target_node_key: t.target_node_key.clone(),
+                transition_effect: t.transition_effect.clone(),
+                submission_schema: t.submission_schema.clone(),
+                metadata: t.metadata.clone(),
+            })
+            .collect(),
+    })
+    .await
+    .map_err(|e| ProvisioningError::ServiceError(e.to_string()))?;
     println!("Graph replaced");
 
     if sqlx::query_as::<_, (String,)>(
