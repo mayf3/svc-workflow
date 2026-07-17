@@ -262,6 +262,26 @@ async fn no_token_returns_401() {
         .await
         .unwrap();
     assert_eq!(assigned.status(), StatusCode::UNAUTHORIZED);
+
+    // creator-owned-drafts must also return 401 (not 404) without a token
+    let drafts = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/creator-owned-drafts",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(drafts.status(), StatusCode::UNAUTHORIZED);
+
+    // Unknown path returns 404
+    let unknown = app
+        .clone()
+        .oneshot(request("GET", "/internal/v1/worklists/unknown", None))
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -281,6 +301,17 @@ async fn missing_workflow_read_scope_returns_403() {
         .await
         .unwrap();
     assert_eq!(assigned.status(), StatusCode::FORBIDDEN);
+
+    let drafts = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/creator-owned-drafts",
+            Some(&no_read_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(drafts.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -1059,4 +1090,107 @@ async fn assigned_to_me_multi_role_no_duplicates() {
     let mut deduped = ids.clone();
     deduped.dedup();
     assert_eq!(ids, deduped);
+}
+
+// ---------------------------------------------------------------------------
+// Creator-owned drafts tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn creator_owned_drafts_returns_only_own_drafts() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let outsider = seed_second_principal(&pool).await;
+    let (version_id, _draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    let app = app(pool.clone());
+    let creator_token = token(creator, "workflow.read");
+
+    domain_membership(&pool, domain_id, creator).await;
+
+    // Create a draft instance (remains in DRAFT)
+    create_draft_only(&pool, creator, domain_id, version_id).await;
+
+    // Creator should see it in drafts
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/creator-owned-drafts",
+            Some(&creator_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+
+    // Outsider should not see it
+    let outsider_token = token(outsider, "workflow.read");
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/creator-owned-drafts",
+            Some(&outsider_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn non_draft_not_returned_in_creator_drafts() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let (version_id, draft_advance, _, _) =
+        seed_worklist_definition(&pool, domain_id, assignee).await;
+
+    let app = app(pool.clone());
+    let creator_token = token(creator, "workflow.read");
+
+    domain_membership(&pool, domain_id, creator).await;
+
+    // Create and advance - instance is now in NORMAL, not DRAFT
+    create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
+
+    // Creator should NOT see it in drafts (it's in NORMAL/REVIEW, not DRAFT)
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/creator-owned-drafts",
+            Some(&creator_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn unknown_path_returns_404() {
+    let pool = create_pool().await;
+    let principal_id = seed_second_principal(&pool).await;
+    let app = app(pool);
+    let actor_token = token(principal_id, "workflow.read");
+
+    let resp = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/unknown-route",
+            Some(&actor_token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
