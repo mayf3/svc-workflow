@@ -1,15 +1,16 @@
-//! Worklist query endpoints.
+//! Worklist query endpoint.
 //!
-//! Both endpoints require `workflow.read` scope and derive the actor
-//! exclusively from `JWT.sub`. No query parameter can override the actor.
+//! The only worklist endpoint is `assigned-to-me`. It requires `workflow.read`
+//! scope and derives the actor exclusively from `JWT.sub`. No query parameter
+//! can override the actor. WORKFLOW_CREATOR nodes are returned uniformly
+//! through this single endpoint.
 
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Query, State};
 use axum::Json;
 
 use crate::application::workflow_instance::query_types::{
-    AssignedWorkItem, CreatorDraftItem, ListAssignedToMe, ListCreatorOwnedDrafts, Page,
-    TimeUuidCursor,
+    AssignedWorkItem, ListAssignedToMe, Page, TimeUuidCursor,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::http::dto::WorklistQuery;
@@ -33,30 +34,6 @@ pub(crate) async fn assigned_to_me(
     let page = state
         .query_service
         .list_assigned_to_me(ListAssignedToMe {
-            actor_principal_id: principal.principal_id.into_uuid(),
-            before,
-            limit: query.limit,
-        })
-        .await
-        .map_err(ApiError::from_query)?;
-    Ok(Json(page))
-}
-
-/// GET /internal/v1/worklists/creator-owned-drafts
-///
-/// Returns draft instances created by the authenticated actor.
-/// Pagination uses `before` cursor (descending by created_at).
-pub(crate) async fn creator_owned_drafts(
-    State(state): State<AppState>,
-    principal: AuthenticatedPrincipal,
-    query: Result<Query<WorklistQuery>, QueryRejection>,
-) -> Result<Json<Page<CreatorDraftItem>>, ApiError> {
-    require_scope(&principal, "workflow.read")?;
-    let Query(query) = query.map_err(ApiError::from_query_rejection)?;
-    let before = parse_worklist_cursor(query.before_created_at, query.before_id)?;
-    let page = state
-        .query_service
-        .list_creator_owned_drafts(ListCreatorOwnedDrafts {
             actor_principal_id: principal.principal_id.into_uuid(),
             before,
             limit: query.limit,
