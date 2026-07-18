@@ -151,6 +151,15 @@ print(jwt.encode({
     'scope': 'workflow.read'
 }, '$JWT_SECRET', algorithm='HS256'))
 ")
+TOKEN_HUMAN=$(python3 -c "
+import jwt, time
+print(jwt.encode({
+    'sub': '$OWNER_ID', 'iss': 'auth-service', 'aud': 'svc-workflow',
+    'exp': int(time.time()) + 3600, 'iat': int(time.time()),
+    'principal_type': 'human', 'type': 'access', 'version': 'v1',
+    'scope': 'workflow.read'
+}, '$JWT_SECRET', algorithm='HS256'))
+")
 
 BASE_URL="http://127.0.0.1:$PORT"
 
@@ -220,6 +229,18 @@ else
         -H "Authorization: Bearer $TOKEN_OWNER")
     EVENT_COUNT=$(echo "$TIMELINE_RESP" | jq '.items | length')
     [ "$EVENT_COUNT" -ge 2 ] && pass "timeline: $EVENT_COUNT events" || fail "timeline: $(echo $TIMELINE_RESP | head -c 200)"
+    echo "$TIMELINE_RESP" | jq -e '
+        .items[0]
+        | has("event_id")
+          and has("workflow_instance_id")
+          and has("event_sequence")
+          and has("event_schema_version")
+          and has("actor_principal_id")
+          and has("created_at")
+          and (has("eventId") | not)
+    ' >/dev/null 2>&1 \
+        && pass "timeline event uses frozen snake_case fields" \
+        || fail "timeline event field mismatch: $(echo $TIMELINE_RESP | head -c 300)"
 
     echo "--- worklist ---"
     WL_RESP=$(curl -s "$BASE_URL/internal/v1/worklists/assigned-to-me" \
@@ -275,11 +296,22 @@ fi
 echo ""
 echo "--- negative path ---"
 
-# 5.8 401 Unauthorized
-HTTP_401=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/internal/v1/workflow-instances/domain?domainId=$DOMAIN_ID")
-[ "$HTTP_401" = "401" ] && pass "401 unauthorized" || fail "expected 401, got $HTTP_401"
+# 5.8 401 Missing Bearer
+MISSING_AUTH_RESP=$(curl -s "$BASE_URL/internal/v1/workflow-instances/domain?domainId=$DOMAIN_ID")
+MISSING_AUTH_CODE=$(echo "$MISSING_AUTH_RESP" | jq -r '.error.code // empty')
+[ "$MISSING_AUTH_CODE" = "unauthenticated" ] \
+    && pass "401 unauthenticated wire code" \
+    || fail "expected unauthenticated, got $(echo $MISSING_AUTH_RESP | head -c 200)"
 
-# 5.9 403 Forbidden (no workflow.execute scope for create)
+# 5.9 401 Invalid principal type
+HUMAN_RESP=$(curl -s "$BASE_URL/internal/v1/workflow-instances/domain?domainId=$DOMAIN_ID" \
+    -H "Authorization: Bearer $TOKEN_HUMAN")
+HUMAN_CODE=$(echo "$HUMAN_RESP" | jq -r '.error.code // empty')
+[ "$HUMAN_CODE" = "invalid_principal_type" ] \
+    && pass "401 invalid_principal_type for human token" \
+    || fail "expected invalid_principal_type, got $(echo $HUMAN_RESP | head -c 200)"
+
+# 5.10 403 Forbidden (no workflow.execute scope for create)
 HTTP_403=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/internal/v1/workflow-instances" \
     -H "Authorization: Bearer $TOKEN_CREATOR_RO" \
     -H "Idempotency-Key: conf-403-$SUFFIX" \
@@ -287,7 +319,18 @@ HTTP_403=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/internal/v1
     -d '{"domainId":"'"$DOMAIN_ID"'","definitionVersionId":"'"$VER_ID"'","metadata":{},"contextPayload":{}}')
 [ "$HTTP_403" = "403" ] && pass "403 forbidden" || fail "expected 403, got $HTTP_403"
 
-# 5.10 409 Idempotency Conflict (if we have a transition key)
+# 5.11 Unknown request fields remain rejected by the strict DTO contract
+UNKNOWN_FIELD_RESP=$(curl -s -X POST "$BASE_URL/internal/v1/workflow-instances" \
+    -H "Authorization: Bearer $TOKEN_OWNER" \
+    -H "Idempotency-Key: conf-unknown-$SUFFIX" \
+    -H "Content-Type: application/json" \
+    -d '{"domainId":"'"$DOMAIN_ID"'","definitionVersionId":"'"$VER_ID"'","metadata":{},"contextPayload":{},"principalId":"'"$OWNER_ID"'"}')
+UNKNOWN_FIELD_CODE=$(echo "$UNKNOWN_FIELD_RESP" | jq -r '.error.code // empty')
+[ "$UNKNOWN_FIELD_CODE" = "unknown_field" ] \
+    && pass "400 unknown_field for undeclared request property" \
+    || fail "expected unknown_field, got $(echo $UNKNOWN_FIELD_RESP | head -c 200)"
+
+# 5.12 409 Idempotency Conflict (if we have a transition key)
 if [ -n "${TRANSITION_KEY:-}" ]; then
     CONFLICT_RESP=$(curl -s -X POST "$BASE_URL/internal/v1/workflow-instances/$INSTANCE_ID/transitions" \
         -H "Authorization: Bearer $TOKEN_OWNER" \
@@ -298,7 +341,7 @@ if [ -n "${TRANSITION_KEY:-}" ]; then
     [ "$CONFLICT_CODE" = "idempotency_conflict" ] && pass "409 idempotency_conflict" || fail "expected idempotency_conflict, got $(echo $CONFLICT_RESP | head -c 200)"
 fi
 
-# 5.11 422 Invalid Cursor
+# 5.13 422 Invalid Cursor
 HTTP_422=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/internal/v1/workflow-instances/domain?domainId=$DOMAIN_ID&beforeCreatedAt=not-a-date&beforeId=not-a-uuid" \
     -H "Authorization: Bearer $TOKEN_OWNER")
 [ "$HTTP_422" = "422" ] && pass "422 invalid_cursor" || fail "expected 422, got $HTTP_422"

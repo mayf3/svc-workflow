@@ -14,12 +14,16 @@ servers:
       port:
         default: "8989"
 
+security:
+  - bearerAuth: []
+
 paths:
   /healthz:
     get:
       operationId: healthz
       summary: Liveness check
       tags: [health]
+      security: []
       responses:
         "200":
           description: Service is healthy
@@ -32,6 +36,7 @@ paths:
       operationId: readyz
       summary: Readiness check (includes migration check)
       tags: [health]
+      security: []
       responses:
         "200":
           description: Service is ready
@@ -50,6 +55,7 @@ paths:
       operationId: version
       summary: Service version metadata
       tags: [health]
+      security: []
       responses:
         "200":
           description: Version information
@@ -320,6 +326,12 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -342,9 +354,11 @@ components:
     # Error
     ErrorResponse:
       type: object
+      additionalProperties: false
       properties:
         error:
           type: object
+          additionalProperties: false
           properties:
             code:
               type: string
@@ -358,6 +372,7 @@ components:
     # Health
     HealthResponse:
       type: object
+      additionalProperties: false
       properties:
         status:
           type: string
@@ -365,13 +380,14 @@ components:
 
     VersionResponse:
       type: object
+      additionalProperties: false
       properties:
         service:
           type: string
           example: svc-workflow
         version:
           type: string
-          example: 0.3.1
+          example: 0.1.0
         gitSha:
           type: string
         schemaVersion:
@@ -385,6 +401,7 @@ components:
     # Request DTOs (camelCase)
     CreateWorkflowInstanceRequest:
       type: object
+      additionalProperties: false
       required: [domainId, definitionVersionId, metadata, contextPayload]
       properties:
         domainId:
@@ -406,6 +423,7 @@ components:
 
     ExecuteWorkflowTransitionRequest:
       type: object
+      additionalProperties: false
       required: [transitionDefinitionId, expectedWorkflowStateVersion]
       properties:
         transitionDefinitionId:
@@ -419,6 +437,7 @@ components:
     # Response DTOs (camelCase)
     CreateWorkflowInstanceResponse:
       type: object
+      additionalProperties: false
       properties:
         workflowInstanceId:
           type: string
@@ -433,9 +452,16 @@ components:
           format: uuid
         eventSequence:
           type: integer
+      required:
+        - workflowInstanceId
+        - workflowStateVersion
+        - currentContextRevisionId
+        - currentNodeVisitId
+        - eventSequence
 
     ExecuteWorkflowTransitionResponse:
       type: object
+      additionalProperties: false
       properties:
         workflowInstanceId:
           type: string
@@ -457,20 +483,31 @@ components:
           nullable: true
         eventSequence:
           type: integer
+      required:
+        - workflowInstanceId
+        - workflowStateVersion
+        - currentContextRevisionId
+        - sourceNodeVisitId
+        - currentNodeVisitId
+        - submissionId
+        - eventSequence
 
     # Detail (snake_case body in camelCase envelope)
     WorkflowInstanceDetailResponse:
       type: object
+      additionalProperties: false
       properties:
         visibility:
           type: string
           enum: [full, historical_participant]
         detail:
           type: object
+      required: [visibility, detail]
 
     # Timeline (camelCase)
     TimelineResponse:
       type: object
+      additionalProperties: false
       properties:
         items:
           type: array
@@ -479,45 +516,118 @@ components:
         nextCursor:
           type: integer
           nullable: true
+      required: [items, nextCursor]
 
     TimelineEvent:
       type: object
+      additionalProperties: false
       properties:
-        eventId:
+        event_id:
           type: string
           format: uuid
-        workflowInstanceId:
+        workflow_instance_id:
           type: string
           format: uuid
-        eventSequence:
+        event_sequence:
           type: integer
-        eventSchemaVersion:
+        event_schema_version:
           type: string
-        eventType:
-          type: string
-        actorPrincipalId:
+        command_id:
           type: string
           format: uuid
-        createdAt:
+          nullable: true
+        causation_id:
+          type: string
+          format: uuid
+          nullable: true
+        correlation_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        transition_effect:
+          type: string
+          nullable: true
+        source_node_visit_id:
+          type: string
+          format: uuid
+          nullable: true
+        target_node_visit_id:
+          type: string
+          format: uuid
+          nullable: true
+        context_revision_id:
+          type: string
+          format: uuid
+          nullable: true
+        submission_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_data:
+          type: object
+          nullable: true
+        event_data_digest:
+          type: string
+          nullable: true
+        actor_principal_id:
+          type: string
+          format: uuid
+        from_node_id:
+          type: string
+          format: uuid
+          nullable: true
+        to_node_id:
+          type: string
+          format: uuid
+          nullable: true
+        old_workflow_state_version:
+          type: integer
+        new_workflow_state_version:
+          type: integer
+        created_at:
           type: string
           format: date-time
+      required:
+        - event_id
+        - workflow_instance_id
+        - event_sequence
+        - event_schema_version
+        - command_id
+        - causation_id
+        - correlation_id
+        - event_type
+        - transition_effect
+        - source_node_visit_id
+        - target_node_visit_id
+        - context_revision_id
+        - submission_id
+        - event_data
+        - event_data_digest
+        - actor_principal_id
+        - from_node_id
+        - to_node_id
+        - old_workflow_state_version
+        - new_workflow_state_version
+        - created_at
 
     # Domain instance list (snake_case)
     DomainInstancePage:
       type: object
+      additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/DomainInstanceSummary"
         next_cursor:
-          nullable: true
-          oneOf:
-            - $ref: "#/components/schemas/Cursor"
-            - type: "null"
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
 
     DomainInstanceSummary:
       type: object
+      additionalProperties: false
       properties:
         workflow_instance_id:
           type: string
@@ -550,36 +660,47 @@ components:
         updated_at:
           type: string
           format: date-time
+      required:
+        - workflow_instance_id
+        - domain_id
+        - definition_version_id
+        - definition_key
+        - created_by_principal_id
+        - current_assignee_principal_id
+        - current_node
+        - is_terminal
+        - title
+        - created_at
+        - updated_at
 
     # Worklist (snake_case)
     WorklistPage:
       type: object
+      additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/AssignedWorkItem"
         next_cursor:
-          nullable: true
-          oneOf:
-            - $ref: "#/components/schemas/Cursor"
-            - type: "null"
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
 
     CreatorDraftPage:
       type: object
+      additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/CreatorDraftItem"
         next_cursor:
-          nullable: true
-          oneOf:
-            - $ref: "#/components/schemas/Cursor"
-            - type: "null"
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
 
     AssignedWorkItem:
       type: object
+      additionalProperties: false
       properties:
         detail:
           $ref: "#/components/schemas/FullWorkflowInstanceDetail"
@@ -591,9 +712,16 @@ components:
           type: boolean
         return_events_truncated:
           type: boolean
+      required:
+        - detail
+        - upstream_submissions
+        - return_feedback_events
+        - submissions_truncated
+        - return_events_truncated
 
     CreatorDraftItem:
       type: object
+      additionalProperties: false
       properties:
         detail:
           $ref: "#/components/schemas/FullWorkflowInstanceDetail"
@@ -601,9 +729,11 @@ components:
           type: boolean
         combined_executable:
           type: boolean
+      required: [detail, context_editable, combined_executable]
 
     FullWorkflowInstanceDetail:
       type: object
+      additionalProperties: false
       properties:
         instance:
           type: object
@@ -613,12 +743,25 @@ components:
         current_node_visit_id:
           type: string
           format: uuid
+        current_context:
+          type: object
+        current_visit:
+          type: object
         outgoing_transitions:
           type: array
+      required:
+        - instance
+        - current_context_revision_id
+        - current_node_visit_id
+        - current_context
+        - current_visit
+        - outgoing_transitions
 
     # Shared
     Cursor:
       type: object
+      nullable: true
+      additionalProperties: false
       properties:
         created_at:
           type: string
@@ -630,6 +773,7 @@ components:
 
     NodeSummary:
       type: object
+      additionalProperties: false
       properties:
         node_id:
           type: string

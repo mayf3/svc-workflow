@@ -1118,7 +1118,7 @@ async fn pagination_first_page_next_page_last_page() {
     assert!(page3["next_cursor"].is_null(), "last page has no cursor");
 
     // Verify all 3 IDs are unique (no duplicates, no omissions)
-    let ids: Vec<String> = vec![page1, page2, page3]
+    let ids: Vec<String> = [page1, page2, page3]
         .iter()
         .map(|page| {
             page["items"][0]["workflow_instance_id"]
