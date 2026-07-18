@@ -68,7 +68,7 @@ All runtime endpoints (except health/ready/version) require a Bearer JWT in the 
 | `iss`            | `auth-service`         |                                   |
 | `aud`            | `svc-workflow`         |                                   |
 | `scope`          | Space-separated scopes | e.g., `"workflow.execute workflow.read"` |
-| `principal_type` | `agent` or `human`     |                                   |
+| `principal_type` | `agent`                | Both current auth modes reject other values with 401 `invalid_principal_type` |
 | `type`           | `access`               |                                   |
 | `version`        | `v1`                   |                                   |
 
@@ -100,7 +100,9 @@ Missing scope returns `403` with code `forbidden`.
 
 **Create** and **Transition** responses use `camelCase`.
 
-**Timeline** response envelope uses `camelCase` with field `nextCursor` (integer).
+**Timeline** response envelope uses `camelCase` for `nextCursor` (integer), while
+the event items inside `items` retain their actual `snake_case` storage/query DTO
+field names (`event_id`, `workflow_instance_id`, `event_sequence`, and so on).
 
 **Worklist** and **Domain list** responses use `snake_case` (from `query_types::Page`):
 - `items` — array of items
