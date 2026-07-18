@@ -29,7 +29,27 @@ fn storage(error: sqlx::Error) -> WorkflowQueryError {
     WorkflowQueryError::StorageError(error.to_string())
 }
 
-pub(crate) async fn begin_snapshot(
+/// Shared domain-owner check reused by `classify_visibility` and the
+/// domain-wide list handler.
+pub(crate) async fn check_domain_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+    domain_id: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+           SELECT 1 FROM domain_role_bindings
+           WHERE domain_id = $1 AND principal_id = $2
+             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)",
+    )
+    .bind(domain_id)
+    .bind(actor)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)
+}
+
+pub async fn begin_snapshot(
     pool: &PgPool,
 ) -> Result<Transaction<'_, Postgres>, WorkflowQueryError> {
     let mut tx = pool.begin().await.map_err(storage)?;
@@ -186,17 +206,7 @@ async fn classify_visibility(
     base: &QueryBaseRow,
     actor: Uuid,
 ) -> Result<Option<QueryVisibility>, WorkflowQueryError> {
-    let owner: bool = sqlx::query_scalar(
-        "SELECT EXISTS(
-           SELECT 1 FROM domain_role_bindings
-           WHERE domain_id = $1 AND principal_id = $2
-             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)",
-    )
-    .bind(base.domain_id)
-    .bind(actor)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(storage)?;
+    let owner = check_domain_owner(tx, actor, base.domain_id).await?;
     if owner {
         return Ok(Some(QueryVisibility::DomainOwnerFull));
     }

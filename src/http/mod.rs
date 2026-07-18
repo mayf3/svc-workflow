@@ -46,6 +46,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::timeline::list),
         )
         .route(
+            "/internal/v1/workflow-instances/domain",
+            get(handlers::instances::domain_list),
+        )
+        .route(
             "/internal/v1/worklists/assigned-to-me",
             get(handlers::worklists::assigned_to_me),
         )

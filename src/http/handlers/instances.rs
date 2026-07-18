@@ -1,18 +1,21 @@
 //! Create and detail endpoints.
 
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{Path, State};
+use axum::extract::rejection::{JsonRejection, QueryRejection};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
 
 use crate::application::workflow_instance::create::create_workflow_instance;
-use crate::application::workflow_instance::query_types::GetWorkflowInstanceDetail;
+use crate::application::workflow_instance::query_types::{
+    GetWorkflowInstanceDetail, ListDomainInstances, TimeUuidCursor,
+};
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::http::dto::{
     detail_response, CreateWorkflowInstanceRequest, CreateWorkflowInstanceResponse,
+    DomainInstanceQuery,
 };
 use crate::http::error::ApiError;
 use crate::http::AppState;
@@ -87,4 +90,85 @@ pub(crate) async fn detail(
         .await
         .map_err(ApiError::from_query)?;
     Ok(Json(detail_response(detail)))
+}
+
+/// GET /internal/v1/workflow-instances/domain
+///
+/// Returns a paginated, filtered list of all instances in a domain.
+/// Only callable by principals with the DOMAIN_OWNER role for the
+/// specified domain.
+pub(crate) async fn domain_list(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    query: Result<Query<DomainInstanceQuery>, QueryRejection>,
+) -> Result<
+    Json<
+        crate::application::workflow_instance::query_types::Page<
+            crate::application::workflow_instance::query_types::DomainInstanceSummary,
+        >,
+    >,
+    ApiError,
+> {
+    require_scope(&principal, "workflow.read")?;
+    let Query(query) = query.map_err(ApiError::from_query_rejection)?;
+
+    // Validate lifecycle parameter (400 for invalid values)
+    let lifecycle = query
+        .parse_lifecycle()
+        .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
+    // Parse cursor
+    let before = parse_domain_cursor(query.before_created_at, query.before_id)?;
+
+    let result = state
+        .query_service
+        .list_domain_instances(ListDomainInstances {
+            actor_principal_id: principal.principal_id.into_uuid(),
+            domain_id: query.domain_id,
+            before,
+            limit: query.limit,
+            definition_key: query.definition_key,
+            lifecycle,
+            current_node_key: query.current_node_key,
+            assignee_principal_id: query.assignee_principal_id,
+        })
+        .await
+        .map_err(ApiError::from_query)?;
+
+    Ok(Json(result))
+}
+
+/// Parse the composite cursor for domain instance pagination.
+///
+/// Both `beforeCreatedAt` and `beforeId` must be present together, or both
+/// absent. Invalid or malformed values produce a 422 Unprocessable Entity.
+fn parse_domain_cursor(
+    before_created_at: Option<String>,
+    before_id: Option<String>,
+) -> Result<Option<TimeUuidCursor>, ApiError> {
+    match (before_created_at, before_id) {
+        (None, None) => Ok(None),
+        (Some(created_at), Some(id)) => {
+            let created_at = chrono::DateTime::parse_from_rfc3339(&created_at)
+                .map_err(|_| {
+                    ApiError::unprocessable(
+                        "invalid_cursor",
+                        "beforeCreatedAt must be an RFC 3339 timestamp",
+                    )
+                })?
+                .with_timezone(&chrono::Utc);
+            let id = uuid::Uuid::parse_str(&id).map_err(|_| {
+                ApiError::unprocessable("invalid_cursor", "beforeId must be a valid UUID")
+            })?;
+            Ok(Some(TimeUuidCursor { created_at, id }))
+        }
+        (Some(_), None) => Err(ApiError::unprocessable(
+            "invalid_cursor",
+            "beforeCreatedAt requires beforeId",
+        )),
+        (None, Some(_)) => Err(ApiError::unprocessable(
+            "invalid_cursor",
+            "beforeId requires beforeCreatedAt",
+        )),
+    }
 }
