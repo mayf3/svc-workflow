@@ -1,0 +1,693 @@
+openapi: "3.0.3"
+info:
+  title: Workflow Runtime HTTP API
+  version: "1.0.0"
+  description: |
+    Current-state freeze of all runtime workflow HTTP endpoints.
+    Based on commit 2dff132.
+
+servers:
+  - url: http://{host}:{port}
+    variables:
+      host:
+        default: 127.0.0.1
+      port:
+        default: "8989"
+
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness check
+      tags: [health]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /readyz:
+    get:
+      operationId: readyz
+      summary: Readiness check (includes migration check)
+      tags: [health]
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Service not ready (e.g., migration mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /version:
+    get:
+      operationId: version
+      summary: Service version metadata
+      tags: [health]
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+  /internal/v1/workflow-instances:
+    post:
+      operationId: createWorkflowInstance
+      summary: Create a workflow instance
+      tags: [instances]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkflowInstanceRequest"
+      responses:
+        "201":
+          description: Instance created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URL of the created instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWorkflowInstanceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}:
+    get:
+      operationId: getWorkflowInstanceDetail
+      summary: Get workflow instance detail
+      tags: [instances]
+      parameters:
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+      responses:
+        "200":
+          description: Instance detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowInstanceDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}/transitions:
+    post:
+      operationId: executeTransition
+      summary: Execute a workflow transition
+      tags: [transitions]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteWorkflowTransitionRequest"
+      responses:
+        "200":
+          description: Transition executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteWorkflowTransitionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}/timeline:
+    get:
+      operationId: getTimeline
+      summary: Get workflow instance event timeline
+      tags: [timeline]
+      parameters:
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+        - name: after
+          in: query
+          schema:
+            type: integer
+            description: Event sequence cursor (numeric)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Timeline events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/workflow-instances/domain:
+    get:
+      operationId: listDomainInstances
+      summary: List all instances in a domain (DOMAIN_OWNER only)
+      tags: [domain-list]
+      parameters:
+        - name: domainId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: definitionKey
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, terminal, all]
+        - name: currentNodeKey
+          in: query
+          schema:
+            type: string
+        - name: assigneePrincipalId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Paginated domain instance list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainInstancePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/worklists/assigned-to-me:
+    get:
+      operationId: listAssignedToMe
+      summary: List work items assigned to the authenticated actor
+      tags: [worklists]
+      parameters:
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated worklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorklistPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/worklists/creator-owned-drafts:
+    get:
+      operationId: listCreatorOwnedDrafts
+      summary: List draft instances created by the authenticated actor
+      tags: [worklists]
+      parameters:
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated creator draft list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorDraftPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[\\x21-\\x7e]+$"
+    WorkflowInstanceId:
+      name: workflowInstanceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # Error
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+          required: [code, message]
+      required: [error]
+
+    # Health
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    VersionResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: svc-workflow
+        version:
+          type: string
+          example: 0.3.1
+        gitSha:
+          type: string
+        schemaVersion:
+          type: string
+          example: "0010"
+        apiContractVersion:
+          type: string
+          example: internal-v0
+      required: [service, version, gitSha, schemaVersion, apiContractVersion]
+
+    # Request DTOs (camelCase)
+    CreateWorkflowInstanceRequest:
+      type: object
+      required: [domainId, definitionVersionId, metadata, contextPayload]
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        definitionVersionId:
+          type: string
+          format: uuid
+        externalReference:
+          type: string
+          maxLength: 512
+        externalUrl:
+          type: string
+          format: uri
+        metadata:
+          type: object
+        contextPayload:
+          type: object
+
+    ExecuteWorkflowTransitionRequest:
+      type: object
+      required: [transitionDefinitionId, expectedWorkflowStateVersion]
+      properties:
+        transitionDefinitionId:
+          type: string
+          format: uuid
+        expectedWorkflowStateVersion:
+          type: integer
+        submissionPayload:
+          type: object
+
+    # Response DTOs (camelCase)
+    CreateWorkflowInstanceResponse:
+      type: object
+      properties:
+        workflowInstanceId:
+          type: string
+          format: uuid
+        workflowStateVersion:
+          type: integer
+        currentContextRevisionId:
+          type: string
+          format: uuid
+        currentNodeVisitId:
+          type: string
+          format: uuid
+        eventSequence:
+          type: integer
+
+    ExecuteWorkflowTransitionResponse:
+      type: object
+      properties:
+        workflowInstanceId:
+          type: string
+          format: uuid
+        workflowStateVersion:
+          type: integer
+        currentContextRevisionId:
+          type: string
+          format: uuid
+        sourceNodeVisitId:
+          type: string
+          format: uuid
+        currentNodeVisitId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+          nullable: true
+        eventSequence:
+          type: integer
+
+    # Detail (snake_case body in camelCase envelope)
+    WorkflowInstanceDetailResponse:
+      type: object
+      properties:
+        visibility:
+          type: string
+          enum: [full, historical_participant]
+        detail:
+          type: object
+
+    # Timeline (camelCase)
+    TimelineResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEvent"
+        nextCursor:
+          type: integer
+          nullable: true
+
+    TimelineEvent:
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        workflowInstanceId:
+          type: string
+          format: uuid
+        eventSequence:
+          type: integer
+        eventSchemaVersion:
+          type: string
+        eventType:
+          type: string
+        actorPrincipalId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    # Domain instance list (snake_case)
+    DomainInstancePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainInstanceSummary"
+        next_cursor:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/Cursor"
+            - type: "null"
+
+    DomainInstanceSummary:
+      type: object
+      properties:
+        workflow_instance_id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        definition_version_id:
+          type: string
+          format: uuid
+        definition_key:
+          type: string
+        created_by_principal_id:
+          type: string
+          format: uuid
+        current_assignee_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+        current_node:
+          $ref: "#/components/schemas/NodeSummary"
+        is_terminal:
+          type: boolean
+        title:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Worklist (snake_case)
+    WorklistPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignedWorkItem"
+        next_cursor:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/Cursor"
+            - type: "null"
+
+    CreatorDraftPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatorDraftItem"
+        next_cursor:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/Cursor"
+            - type: "null"
+
+    AssignedWorkItem:
+      type: object
+      properties:
+        detail:
+          $ref: "#/components/schemas/FullWorkflowInstanceDetail"
+        upstream_submissions:
+          type: array
+        return_feedback_events:
+          type: array
+        submissions_truncated:
+          type: boolean
+        return_events_truncated:
+          type: boolean
+
+    CreatorDraftItem:
+      type: object
+      properties:
+        detail:
+          $ref: "#/components/schemas/FullWorkflowInstanceDetail"
+        context_editable:
+          type: boolean
+        combined_executable:
+          type: boolean
+
+    FullWorkflowInstanceDetail:
+      type: object
+      properties:
+        instance:
+          type: object
+        current_context_revision_id:
+          type: string
+          format: uuid
+        current_node_visit_id:
+          type: string
+          format: uuid
+        outgoing_transitions:
+          type: array
+
+    # Shared
+    Cursor:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+      required: [created_at, id]
+
+    NodeSummary:
+      type: object
+      properties:
+        node_id:
+          type: string
+          format: uuid
+        node_key:
+          type: string
+        display_name:
+          type: string
+        node_type:
+          type: string
+      required: [node_id, node_key, display_name, node_type]
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict (e.g., idempotency)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request too large
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooEarly:
+      description: Command still processing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
