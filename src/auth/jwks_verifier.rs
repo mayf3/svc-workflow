@@ -139,7 +139,7 @@ impl JwksVerifier {
         validation.algorithms = vec![Algorithm::RS256];
         validation.set_issuer(&[&self.issuer]);
         validation.set_audience(&[&self.audience]);
-        for claim in ["exp", "iat", "iss", "aud", "sub"] {
+        for claim in ["exp", "iat", "nbf", "iss", "aud", "sub"] {
             validation.required_spec_claims.insert(claim.to_string());
         }
         validation.validate_exp = true;
@@ -185,15 +185,19 @@ impl JwksVerifier {
             ApiError::unauthorized("invalid_principal_type", "invalid principal type")
         })?;
 
-        // 8. Validate token_use.
+        // 8. Validate token_use and determine the exact frozen profile.
         claims::validate_token_use(&claims.token_use)
             .map_err(|_| ApiError::unauthorized("malformed_token", "invalid token use"))?;
-
-        // 9. Determine if this is a direct or OBO token and validate profile.
-        // OBO is determined solely by token_use=workflow_obo.
-        // If a direct token carries act/azp, the direct profile check will reject it.
         let is_obo = claims.token_use.as_deref() == Some("workflow_obo");
 
+        let now = chrono::Utc::now().timestamp().max(0) as usize;
+        claims::validate_time_claims(&claims, is_obo, now, self.clock_skew_seconds)
+            .map_err(|_| ApiError::unauthorized("malformed_token", "invalid token timing"))?;
+
+        let scope_items = claims::canonical_scope(&claims.scope)
+            .map_err(|_| ApiError::unauthorized("invalid_scope", "invalid scope wire format"))?;
+
+        // 9. Validate Direct or OBO shape. Unknown claims were already rejected by serde.
         if is_obo {
             // Validate OBO profile with strict rules.
             claims::validate_obo(&claims).map_err(|e| {
@@ -216,12 +220,9 @@ impl JwksVerifier {
             })?;
         }
 
-        // 10. Parse scopes (clone before move).
-        let scope_string = claims.scope.clone().unwrap_or_default();
-        let scopes = scope_string
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect::<HashSet<_>>();
+        // 10. Preserve the exact canonical scope string for audit and authorization.
+        let scope_string = claims.scope.clone().expect("scope validated above");
+        let scopes = scope_items.into_iter().collect::<HashSet<_>>();
 
         // 11. Build auth context.
         let delegating = match &claims.act {
@@ -238,10 +239,7 @@ impl JwksVerifier {
                 .principal_type
                 .clone()
                 .unwrap_or_else(|| "agent".to_string()),
-            token_use: claims
-                .token_use
-                .clone()
-                .unwrap_or_else(|| "access".to_string()),
+            token_use: claims.token_use.clone().expect("token_use validated above"),
             delegating_principal_id: delegating,
             authorized_party: claims.azp.clone(),
             token_id: claims.jti.clone(),
