@@ -3,7 +3,9 @@
 use sqlx::PgPool;
 
 use super::query_types::*;
-use crate::store::postgres::workflow_instance_repository::{query_detail, query_worklists};
+use crate::store::postgres::workflow_instance_repository::{
+    query_detail, query_domain_instances, query_worklists,
+};
 
 #[derive(Clone)]
 pub struct WorkflowQueryService {
@@ -62,5 +64,37 @@ impl WorkflowQueryService {
         query: ListCreatorOwnedDrafts,
     ) -> Result<Page<CreatorDraftItem>, WorkflowQueryError> {
         query_worklists::list_creator_owned_drafts(&self.pool, query).await
+    }
+
+    /// List all instances in a domain (authorized domain owners only).
+    ///
+    /// Performs DOMAIN_OWNER authorization check before querying. Returns
+    /// `WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible` (mapped to
+    /// 403 by the HTTP handler) when the actor is not a domain owner.
+    pub async fn list_domain_instances(
+        &self,
+        query: ListDomainInstances,
+    ) -> Result<Page<DomainInstanceSummary>, WorkflowQueryError> {
+        use crate::store::postgres::workflow_instance_repository::query_visibility;
+
+        let mut tx = query_visibility::begin_snapshot(&self.pool).await?;
+        let is_owner = query_visibility::check_domain_owner(
+            &mut tx,
+            query.actor_principal_id,
+            query.domain_id,
+        )
+        .await?;
+        if !is_owner {
+            tx.commit()
+                .await
+                .map_err(|e| WorkflowQueryError::StorageError(e.to_string()))?;
+            return Err(WorkflowQueryError::WorkflowInstanceNotFoundOrNotVisible);
+        }
+        tx.commit()
+            .await
+            .map_err(|e| WorkflowQueryError::StorageError(e.to_string()))?;
+
+        // Delegate to the repository for the actual query
+        query_domain_instances::list_domain_instances(&self.pool, query).await
     }
 }

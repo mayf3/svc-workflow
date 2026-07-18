@@ -10,6 +10,7 @@ pub mod command_receipt;
 pub mod create_transaction;
 pub mod definition_lookup;
 pub mod query_detail;
+pub mod query_domain_instances;
 pub mod query_rows;
 pub mod query_visibility;
 pub mod query_worklists;

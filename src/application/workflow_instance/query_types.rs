@@ -263,3 +263,51 @@ pub struct CreatorDraftItem {
     pub context_editable: bool,
     pub combined_executable: bool,
 }
+
+// ---------------------------------------------------------------------------
+// Domain-wide instance list (Efficiency Manager global view)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecycleFilter {
+    Active,
+    Terminal,
+    All,
+}
+
+impl LifecycleFilter {
+    pub fn as_sql_filter(&self) -> &'static str {
+        match self {
+            Self::Active => "non-terminal",
+            Self::Terminal => "terminal",
+            Self::All => "all",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ListDomainInstances {
+    pub actor_principal_id: Uuid,
+    pub domain_id: Uuid,
+    pub before: Option<TimeUuidCursor>,
+    pub limit: Option<u32>,
+    pub definition_key: Option<String>,
+    pub lifecycle: Option<LifecycleFilter>,
+    pub current_node_key: Option<String>,
+    pub assignee_principal_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DomainInstanceSummary {
+    pub workflow_instance_id: Uuid,
+    pub domain_id: Uuid,
+    pub definition_version_id: Uuid,
+    pub definition_key: String,
+    pub created_by_principal_id: Uuid,
+    pub current_assignee_principal_id: Option<Uuid>,
+    pub current_node: PublicNodeSummary,
+    pub is_terminal: bool,
+    pub title: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

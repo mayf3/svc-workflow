@@ -91,6 +91,49 @@ pub struct WorklistQuery {
     pub limit: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DomainInstanceQuery {
+    pub domain_id: Uuid,
+    pub before_created_at: Option<String>,
+    pub before_id: Option<String>,
+    pub limit: Option<u32>,
+    pub definition_key: Option<String>,
+    /// One of `active`, `terminal`, `all`. Invalid values produce a 400
+    /// at the handler layer.
+    pub lifecycle: Option<String>,
+    pub current_node_key: Option<String>,
+    pub assignee_principal_id: Option<Uuid>,
+}
+
+impl DomainInstanceQuery {
+    /// Validate and convert the lifecycle string to the strong type.
+    /// Returns an error code + message tuple for invalid values.
+    pub(crate) fn parse_lifecycle(
+        &self,
+    ) -> Result<
+        Option<crate::application::workflow_instance::query_types::LifecycleFilter>,
+        (&'static str, &'static str),
+    > {
+        match self.lifecycle.as_deref() {
+            None => Ok(None),
+            Some("active") => Ok(Some(
+                crate::application::workflow_instance::query_types::LifecycleFilter::Active,
+            )),
+            Some("terminal") => Ok(Some(
+                crate::application::workflow_instance::query_types::LifecycleFilter::Terminal,
+            )),
+            Some("all") => Ok(Some(
+                crate::application::workflow_instance::query_types::LifecycleFilter::All,
+            )),
+            Some(_) => Err((
+                "invalid_lifecycle",
+                "lifecycle must be 'active', 'terminal', or 'all'",
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineResponse {
