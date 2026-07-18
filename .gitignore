@@ -3,6 +3,11 @@
 **/*.rs.bk
 Cargo.lock.bak
 
+# TypeScript Workflow SDK
+/node_modules
+/sdk/typescript/dist
+/coverage
+
 # Build artifacts
 *.exe
 *.dll

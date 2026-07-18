@@ -1,0 +1,40 @@
+{
+  "name": "@workflow-foundation/sdk",
+  "version": "1.0.0",
+  "description": "Thin TypeScript HTTP SDK and CLI starter for svc-workflow Contract V1",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./sdk/typescript/dist/index.js",
+  "types": "./sdk/typescript/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./sdk/typescript/dist/index.d.ts",
+      "import": "./sdk/typescript/dist/index.js"
+    }
+  },
+  "bin": {
+    "workflow-cli": "./sdk/typescript/dist/cli.js"
+  },
+  "files": [
+    "sdk/typescript/dist",
+    "sdk/typescript/README.md"
+  ],
+  "scripts": {
+    "build:sdk": "tsc -p tsconfig.sdk.json",
+    "test:sdk": "vitest run --config sdk/typescript/vitest.config.ts",
+    "test:sdk:integration": "vitest run --config sdk/typescript/vitest.config.ts sdk/typescript/tests/real-process.test.ts",
+    "prepare": "npm run build:sdk"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
