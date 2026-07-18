@@ -466,6 +466,8 @@ mod admin_recovery_receipt_reauthorization;
 #[path = "17_workflow_runtime/legacy_import/mod.rs"]
 mod legacy_import;
 
+#[path = "17_workflow_runtime/http/domain_list.rs"]
+mod http_domain_list;
 #[path = "17_workflow_runtime/http/e2e/mod.rs"]
 mod http_e2e;
 #[path = "17_workflow_runtime/http/jwks_auth.rs"]

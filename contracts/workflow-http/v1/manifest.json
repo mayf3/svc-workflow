@@ -1,0 +1,16 @@
+{
+  "serial": "V1-2026-07-18",
+  "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
+  "contract_version": "1.0.0",
+  "contract_scope": "runtime",
+  "title": "Workflow Runtime HTTP Contract V1 (Current-State Freeze)",
+  "owner_repository": "svc-workflow",
+  "owner_head_sha": "2dff1320d1488ff4d2137795df1622d61d01c00c",
+  "owner_tree_sha": "3fb6d70785daff0d44821a0845389df3c027e8d9",
+  "schema_digest": "6f5a8630425e8edc212dc0c004c0fff75e098ab086fa79a1086ee733d508d324",
+  "bundle_digest": "4abec78cbd7ce6e5689a2266761351adbc242daed97f3928029deeb26a00ce34",
+  "compatibility_policy": "strict_backward_compatible",
+  "created_at": "2026-07-18T00:00:00Z",
+  "author": "IMPLEMENTATION_AGENT",
+  "description": "Current-state freeze of all runtime workflow HTTP endpoints. Records actual wire format, error codes, pagination semantics, and authorization model as implemented at this commit. Not an API redesign."
+}
