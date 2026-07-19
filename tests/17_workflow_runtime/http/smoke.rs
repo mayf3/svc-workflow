@@ -63,6 +63,7 @@ fn app(pool: sqlx::PgPool) -> axum::Router {
         hs256_config: Some(hs256),
         jwks_config: None,
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        auth_v1_canary_config: Default::default(),
     };
     http::router(AppState::new(pool, &config), &config)
 }
