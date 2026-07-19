@@ -22,7 +22,7 @@ INSERT INTO workflow_definition_versions (definition_version_id, workflow_defini
 VALUES ('eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'dddddddd-dddd-4ddd-dddd-dddddddddddd', 1, 'PUBLISHED', '{"type":"object"}'::jsonb);
 
 INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type)
-VALUES ('ffffffff-ffff-4fff-ffff-ffffffffffff', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'review', 'Review', 0, 'HUMAN_TASK', 'FIXED_PRINCIPAL');
+VALUES ('ffffffff-ffff-4fff-ffff-ffffffffffff', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'review', 'Review', 0, 'NORMAL', 'FIXED_PRINCIPAL');
 
 UPDATE workflow_node_definitions SET fixed_principal_id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' WHERE node_id = 'ffffffff-ffff-4fff-ffff-ffffffffffff';
 
@@ -30,8 +30,8 @@ UPDATE workflow_node_definitions SET fixed_principal_id = 'aaaaaaaa-aaaa-4aaa-aa
 INSERT INTO workflow_instances (workflow_instance_id, domain_id, definition_version_id, created_by_principal_id)
 VALUES ('11111111-1111-4111-1111-111111111111', 'cccccccc-cccc-4ccc-cccc-cccccccccccc', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
-INSERT INTO workflow_context_revisions (context_revision_id, workflow_instance_id, revision_number, context_payload, created_by_principal_id)
-VALUES ('22222222-2222-4222-2222-222222222222', '11111111-1111-4111-1111-111111111111', 1, '{}'::jsonb, 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+INSERT INTO workflow_context_revisions (context_revision_id, workflow_instance_id, revision_number, previous_revision_id, payload, payload_digest, created_by_principal_id)
+VALUES ('22222222-2222-4222-2222-222222222222', '11111111-1111-4111-1111-111111111111', 1, NULL, '{}'::jsonb, '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
 INSERT INTO workflow_node_visits (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
 VALUES ('33333333-3333-4333-3333-333333333333', '11111111-1111-4111-1111-111111111111', 'ffffffff-ffff-4fff-ffff-ffffffffffff', 1, 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
@@ -42,8 +42,8 @@ UPDATE workflow_instances SET current_context_revision_id = '22222222-2222-4222-
 INSERT INTO workflow_instances (workflow_instance_id, domain_id, definition_version_id, created_by_principal_id)
 VALUES ('44444444-4444-4444-4444-444444444444', 'cccccccc-cccc-4ccc-cccc-cccccccccccc', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb');
 
-INSERT INTO workflow_context_revisions (context_revision_id, workflow_instance_id, revision_number, context_payload, created_by_principal_id)
-VALUES ('55555555-5555-4555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 1, '{}'::jsonb, 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb');
+INSERT INTO workflow_context_revisions (context_revision_id, workflow_instance_id, revision_number, previous_revision_id, payload, payload_digest, created_by_principal_id)
+VALUES ('55555555-5555-4555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 1, NULL, '{}'::jsonb, '44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a', 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb');
 
 INSERT INTO workflow_node_visits (node_visit_id, workflow_instance_id, node_id, visit_number, assignee_principal_id)
 VALUES ('66666666-6666-4666-6666-666666666666', '44444444-4444-4444-4444-444444444444', 'ffffffff-ffff-4fff-ffff-ffffffffffff', 1, 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb');
