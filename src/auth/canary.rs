@@ -42,11 +42,18 @@ use super::AuthenticatedPrincipal;
 ///
 /// Default-off.  When enabled, only requests where **both** `client_id`
 /// and `sub` match the configured values enter the canary profile.
+///
+/// Write operations require an additional `AUTH_V1_CANARY_WRITE_ENABLED`
+/// flag (default-off).  When write is disabled, canary-matching tokens
+/// are rejected at write endpoints with a 403 before any verification.
 #[derive(Debug, Clone)]
 pub struct AuthV1CanaryConfig {
     /// Master switch.  When `false` (the default) the canary has zero effect;
     /// legacy auth is used for every request.
     pub enabled: bool,
+    /// Separate write gate.  When `false` (the default), canary-authenticated
+    /// requests are blocked from write endpoints with a definitive 403.
+    pub write_enabled: bool,
     /// The only `client_id` that the canary accepts.
     pub allowed_client_id: String,
     /// The only `sub` (principal UUID) that the canary accepts.
@@ -71,6 +78,7 @@ impl Default for AuthV1CanaryConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            write_enabled: false,
             allowed_client_id: String::new(),
             allowed_sub: String::new(),
             jwks_url: String::new(),
@@ -92,6 +100,9 @@ impl AuthV1CanaryConfig {
     pub fn from_env() -> Self {
         Self {
             enabled: std::env::var("AUTH_V1_CANARY_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            write_enabled: std::env::var("AUTH_V1_CANARY_WRITE_ENABLED")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             allowed_client_id: std::env::var("AUTH_V1_CANARY_ALLOWED_CLIENT_ID")
@@ -125,6 +136,11 @@ impl AuthV1CanaryConfig {
     pub fn is_active(&self) -> bool {
         self.enabled && !self.allowed_client_id.is_empty() && !self.allowed_sub.is_empty()
     }
+
+    /// Quick check: canary is active AND write operations are permitted.
+    pub fn write_active(&self) -> bool {
+        self.is_active() && self.write_enabled
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,9 +154,12 @@ impl AuthV1CanaryConfig {
 ///   `token_use`, `type`, `version`, `scope`, `jti`, `iat`, `nbf`, `exp`
 /// - `serde(deny_unknown_fields)` enforces the `additionalProperties: false`
 ///   rule from the token-profiles schema.
+///
+/// Made `pub(crate)` so route guards can use strict deserialization for
+/// fail-closed Auth V1 token identification.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct V1DirectMachineClaims {
+pub(crate) struct V1DirectMachineClaims {
     pub iss: String,
     pub sub: String,
     pub aud: String,
@@ -155,6 +174,62 @@ pub struct V1DirectMachineClaims {
     pub iat: usize,
     pub nbf: usize,
     pub exp: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Auth V1 token identification (fail-closed guard)
+// ---------------------------------------------------------------------------
+
+/// Check whether a raw JWT string matches the Auth V1 DirectMachineAccess
+/// profile shape **without** verifying the signature.
+///
+/// Returns `true` when:
+/// 1. The JWT header declares `alg = RS256` and includes a `kid`.
+/// 2. The JWT payload can be deserialised into `V1DirectMachineClaims`
+///    (which has `serde(deny_unknown_fields)` and all fields required).
+///
+/// Legacy tokens that use a different algorithm (HS256) or carry extra
+/// claims (e.g. `agent_id`, `act`, `azp`) will return `false`.
+///
+/// This is the only gate for deciding whether a token enters the canary
+/// path or falls through to legacy auth — the canary path **never**
+/// delegates back to legacy for a recognised V1 token.
+pub(crate) fn looks_like_auth_v1_token(token: &str) -> bool {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    // 1. Header check: RS256 + kid required.
+    let header = match jsonwebtoken::decode_header(token) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    if header.alg != jsonwebtoken::Algorithm::RS256 || header.kid.is_none() {
+        return false;
+    }
+    // 2. Strict payload decoding into V1DirectMachineClaims.
+    let payload_bytes = match decode_base64url(parts[1]) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    serde_json::from_slice::<V1DirectMachineClaims>(&payload_bytes).is_ok()
+}
+
+/// Base64url decode with padding tolerance (mirrors the guard helper).
+fn decode_base64url(input: &str) -> Result<Vec<u8>, ()> {
+    let len = input.len();
+    let remainder = len % 4;
+    let padded = if remainder == 2 {
+        format!("{input}==")
+    } else if remainder == 3 {
+        format!("{input}=")
+    } else {
+        input.to_string()
+    };
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE
+        .decode(padded.as_bytes())
+        .map_err(|_| ())
 }
 
 // ---------------------------------------------------------------------------
@@ -400,14 +475,8 @@ impl AuthV1CanaryVerifier {
         // 8. Validate scope wire format (contract: scope_wire_format).
         validate_canary_scope(&claims.scope)?;
 
-        // Scope must contain workflow.read (task minimum requirement).
-        let scope_items: HashSet<&str> = claims.scope.split(' ').collect();
-        if !scope_items.contains("workflow.read") {
-            return Err(ApiError::unauthorized(
-                "insufficient_scope",
-                "the token must include the workflow.read scope",
-            ));
-        }
+        // Scope is validated above.  Handler-level `require_scope` enforces
+        // the specific scope (workflow.read or workflow.execute) per endpoint.
 
         // 9. Validate time claims against contract rules.
         validate_canary_time_claims(
@@ -893,6 +962,7 @@ mod tests {
     fn canary_config() -> AuthV1CanaryConfig {
         AuthV1CanaryConfig {
             enabled: true,
+            write_enabled: false,
             allowed_client_id: "canary-client".to_string(),
             allowed_sub: "20000000-0000-4000-8000-000000000001".to_string(),
             jwks_url: "http://localhost:0/jwks".to_string(), // not used in unit tests
@@ -1032,6 +1102,7 @@ mod tests {
     fn is_active_requires_all_fields() {
         let mut config = AuthV1CanaryConfig {
             enabled: true,
+            write_enabled: false,
             allowed_client_id: "client".to_string(),
             allowed_sub: "sub".to_string(),
             jwks_url: "".to_string(),

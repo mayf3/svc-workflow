@@ -21,6 +21,7 @@ mod verifier;
 
 pub use auth_context::AuthContext;
 pub use auth_mode::{validate_mode_gates, AuthMode, Hs256Config, JwksConfig};
+pub(crate) use canary::looks_like_auth_v1_token;
 pub use canary::{AuthV1CanaryConfig, AuthV1CanaryVerifier, CanaryAuthenticated, CanaryPrincipal};
 pub use claims::WorkflowClaims;
 pub use jwks_verifier::JwksVerifier;
