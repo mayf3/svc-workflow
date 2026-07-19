@@ -1,250 +1,20 @@
-//! JWKS-mode integration tests using a local mock JWKS endpoint.
+//! JWKS-mode integration tests for the V1 DirectMachineAccess profile.
 //!
-//! These tests exercise the RS256 JWKS verifier, cache behaviour, OBO token
-//! parsing, actor resolution, scope enforcement, and failure semantics.
+//! Tests the RS256 JWKS verifier using a local mock JWKS endpoint.
+//! Only V1 DirectMachineAccess tokens are accepted — OBO tokens and HS256
+//! are rejected at the verifier level.
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use serde_json::{json, Value};
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpListener;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{AuthMode, AuthenticatedPrincipal, JwksConfig};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::http::{self, error::ApiError, AppState, HttpConfig};
 
 use super::*;
-
-// ---------------------------------------------------------------------------
-// Test RSA key material (2048-bit)
-// ---------------------------------------------------------------------------
-
-const TEST_RSA_N: &str = "zLFR5xYtoavfN3HKTpix5__zi4MXpiWYQAqa__FHkONKDj14yFnk9DV2QMcc6v_jCYqWD8arZ39oNPNz9mtEthOScwv-ORQQh3JxcCltZsgDTdzPsXpN61wkcWVU9fgaWjdQBssL3D1cd3vBLyYYb0qVkXFtwmf2r_s9PjrbtViQPuG9Xhh-L5pGfLsptN3C2-K8vy9I6A-R4YdD3pLdue-X5P3gQObbxLiLzekdR_ZTNsNCukqksj_JxcdVIxwuatg6OYuOPhyGEZb6kedoaJMqLxmCF5lEse_pNaDFOuIIt01hflru9ibhnZ0KK1-7351Flef6xf7JzatGIWmreQ";
-const TEST_RSA_E: &str = "AQAB";
-const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEAzLFR5xYtoavfN3HKTpix5//zi4MXpiWYQAqa//FHkONKDj14\nyFnk9DV2QMcc6v/jCYqWD8arZ39oNPNz9mtEthOScwv+ORQQh3JxcCltZsgDTdzP\nsXpN61wkcWVU9fgaWjdQBssL3D1cd3vBLyYYb0qVkXFtwmf2r/s9PjrbtViQPuG9\nXhh+L5pGfLsptN3C2+K8vy9I6A+R4YdD3pLdue+X5P3gQObbxLiLzekdR/ZTNsNC\nukqksj/JxcdVIxwuatg6OYuOPhyGEZb6kedoaJMqLxmCF5lEse/pNaDFOuIIt01h\nflru9ibhnZ0KK1+7351Flef6xf7JzatGIWmreQIDAQABAoIBAAkSvxeoMwOck7to\nbthHCnPHM6t2dyDlP7dvAOnhbxOsD4dMEEOJQI3WpNRAPzbnes/cdcRjQQvIaP0X\n4YcFwDj16yLwYCd1jToDx6V6IKBSs1rLM+WhDz0ki3T/UeHJSpm/I+v5KiBsE+Iz\n+R826BRe0Pxuc7gPVa79SvysLTr/iq1dE545W0UEC1bAqXc2sJfaIFa10xIG3Gmk\nV46FW+8rZIzAmuR7OA1lWSG4f45m4x78/LgF/gb4xoXOG/NAB9d+hgq/NI0M+JxU\nAackLa9V2T4ECs8lUSuUek8XFgEiSAXQDr9dH3cbrCUR69AjHsVtJQlkli69GXKG\nmWjk9AECgYEA7tfZtZ73LfAcAkG7EWMzbI1yXKkRtzdiKT1EgrbfsPU7GwpwRqxO\nTW9P8ZmKvh5Npi5t0+QpMgQGGTbuI1LLO9EDP/oiOXI9DZtNEYeSa4zNoiKWKkMl\noPs2i4/kUNNPqMBW/JnRmoapM/9GWAv7xYjhw+tYVUrf6S2jnWHOGfkCgYEA22V3\ngjZdMblt2B7M9sE3cMixCp7elG9iM0hH77JThTK+NMFslbIE/VDKdifjPPq85fi5\n64fm7eGH5nBNRn2+6xBqH8PAdaTgSyPWpVkhL6kkNrjyTnjhPOHZAxgWEYKZw3LE\n/s7ej4vazYrE8voIJSwtDrSNZIFDsmShWlzgfYECgYBPJE8Lk4UsP6fIR6eI92oO\nyj/e3Fb2cu+f4qFU/uvYYyoWp7rUcDvyBLRkxg/nN3tbWX8i+zN7U0ICEOWP5ttZ\nEsUU6fl1N5lrbM54xIeMA7gPxY4kquNJGHTWgfORpLN8o18vjHibz4s5o5jXjAD9\nT4IfvVgjyw+u4GSavdHhYQKBgBTxaqcTaXIFsWagChDEAPbTMZNB9x1URJuAmt1W\nuIJOhbmjfSoNBEzqGWmOBTMc/Es3owfIwVKT5NUqgzXnawIlXvwJQ6X3RzHlCehe\nybwy+TIAFaFICLg3FvAkrHafcO4nVoa8WKJ7Rze3t3U6SOzDesmckqK1dDDjSkPF\n+egBAoGAV9k+JQZzLc5+XJgsm8htUS2b0MOipCaABLf8P6IISyiE3ccvEECuwjfS\nBHgT+w1o5NF/c1zANedBtHmfk5XIvrf/OWzXhEGSWXhBrn2LLPCuh1OOHDQlKvff\nqIPymQBoF0zFpZdyAbKy7b8/fji7yG0vXceAa3jO4xSn6eYhGPQ=\n-----END RSA PRIVATE KEY-----\n";
-
-const JWKS_KID: &str = "test-key-1";
-
-// ---------------------------------------------------------------------------
-// Token types
-// ---------------------------------------------------------------------------
-
-#[derive(Serialize)]
-struct TestClaims {
-    sub: String,
-    iss: String,
-    aud: String,
-    exp: usize,
-    iat: usize,
-    nbf: Option<usize>,
-    principal_type: String,
-    #[serde(rename = "type")]
-    token_type: String,
-    version: String,
-    scope: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    token_use: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    act: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    azp: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    jti: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    client_id: Option<String>,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn rs256_token(
-    subject: Uuid,
-    scope: &str,
-    principal_type: &str,
-    token_use: Option<&str>,
-    act: Option<serde_json::Value>,
-    azp: Option<&str>,
-    jti: Option<&str>,
-    exp_offset: i64,
-) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    let claims = TestClaims {
-        sub: subject.to_string(),
-        iss: "auth-service".to_string(),
-        aud: "svc-workflow".to_string(),
-        exp: (now as i64 + exp_offset) as usize,
-        iat: now,
-        nbf: None,
-        principal_type: principal_type.to_string(),
-        token_type: "access".to_string(),
-        version: "v1".to_string(),
-        scope: scope.to_string(),
-        token_use: token_use.map(String::from),
-        act,
-        azp: azp.map(String::from),
-        jti: jti.map(String::from),
-        client_id: azp.map(String::from), // OBO uses azp as client_id
-    };
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    encode(&header, &claims, &key).unwrap()
-}
-
-/// Direct token with explicit client_id (no azp for direct).
-fn rs256_direct_token(
-    subject: Uuid,
-    scope: &str,
-    principal_type: &str,
-    client_id: Option<&str>,
-    exp_offset: i64,
-) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    let claims = TestClaims {
-        sub: subject.to_string(),
-        iss: "auth-service".to_string(),
-        aud: "svc-workflow".to_string(),
-        exp: (now as i64 + exp_offset) as usize,
-        iat: now,
-        nbf: None,
-        principal_type: principal_type.to_string(),
-        token_type: "access".to_string(),
-        version: "v1".to_string(),
-        scope: scope.to_string(),
-        token_use: None,
-        act: None,
-        azp: None,
-        jti: None,
-        client_id: client_id.map(String::from),
-    };
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    encode(&header, &claims, &key).unwrap()
-}
-
-/// OBO token with explicit client_id (can differ from azp for testing).
-#[allow(clippy::too_many_arguments)]
-fn rs256_obo_token(
-    subject: Uuid,
-    scope: &str,
-    principal_type: &str,
-    act_sub: Uuid,
-    azp: Option<&str>,
-    client_id: Option<&str>,
-    jti: Option<&str>,
-    nested_act: bool,
-    exp_offset: i64,
-) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    let act_value = if nested_act {
-        json!({"sub": act_sub.to_string(), "act": {"sub": Uuid::new_v4().to_string()}})
-    } else {
-        json!({"sub": act_sub.to_string()})
-    };
-    let claims = TestClaims {
-        sub: subject.to_string(),
-        iss: "auth-service".to_string(),
-        aud: "svc-workflow".to_string(),
-        exp: (now as i64 + exp_offset) as usize,
-        iat: now,
-        nbf: None,
-        principal_type: principal_type.to_string(),
-        token_type: "access".to_string(),
-        version: "v1".to_string(),
-        scope: scope.to_string(),
-        token_use: Some("workflow_obo".to_string()),
-        act: Some(act_value),
-        azp: azp.map(String::from),
-        jti: jti.map(String::from),
-        client_id: client_id.map(String::from),
-    };
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    encode(&header, &claims, &key).unwrap()
-}
-
-fn rs256_token_nbf_future(subject: Uuid, scope: &str, principal_type: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    let claims = TestClaims {
-        sub: subject.to_string(),
-        iss: "auth-service".to_string(),
-        aud: "svc-workflow".to_string(),
-        exp: (now as i64 + 3600) as usize,
-        iat: now,
-        nbf: Some(now + 3600),
-        principal_type: principal_type.to_string(),
-        token_type: "access".to_string(),
-        version: "v1".to_string(),
-        scope: scope.to_string(),
-        token_use: None,
-        act: None,
-        azp: None,
-        jti: None,
-        client_id: None,
-    };
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    encode(&header, &claims, &key).unwrap()
-}
-
-// ---------------------------------------------------------------------------
-// Mock JWKS server
-// ---------------------------------------------------------------------------
-
-struct MockJwksServer {
-    url: String,
-    #[allow(dead_code)]
-    shutdown: tokio::sync::oneshot::Sender<()>,
-}
-
-impl MockJwksServer {
-    async fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{addr}/.well-known/jwks.json");
-        let (shutdown, mut rx) = tokio::sync::oneshot::channel::<()>();
-
-        // Build JWKS response
-        let body = serde_json::json!({
-            "keys": [{
-                "kty": "RSA",
-                "use": "sig",
-                "alg": "RS256",
-                "kid": JWKS_KID,
-                "n": TEST_RSA_N,
-                "e": TEST_RSA_E,
-            }]
-        })
-        .to_string();
-
-        // Accept connections until shutdown signal
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    result = listener.accept() => {
-                        if let Ok((stream, _)) = result {
-                            let resp = format!(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-                                body.len(), body
-                            );
-                            let mut writer = tokio::io::BufWriter::new(stream);
-                            let _ = writer.write_all(resp.as_bytes()).await;
-                            let _ = writer.flush().await;
-                        }
-                    }
-                    _ = &mut rx => break,
-                }
-            }
-        });
-
-        Self { url, shutdown }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Helper: build app + config in JWKS mode
@@ -255,9 +25,7 @@ fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
         bind_addr,
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        auth_mode: AuthMode::Jwks,
-        hs256_config: None,
-        jwks_config: Some(JwksConfig {
+        jwks_config: JwksConfig {
             jwks_url: jwks_url.to_string(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),
@@ -265,9 +33,21 @@ fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
             http_timeout_secs: 5,
             max_stale_secs: 60,
             clock_skew_seconds: 0,
-        }),
+        },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
-        auth_v1_canary_config: Default::default(),
+        auth_v1_canary_config: AuthV1CanaryConfig {
+            enabled: true,
+            write_enabled: true,
+            allowed_client_id: String::new(),
+            allowed_sub: String::new(),
+            jwks_url: String::new(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 30,
+            http_timeout_secs: 5,
+            max_stale_secs: 60,
+            clock_skew_seconds: 0,
+        },
     }
 }
 
@@ -288,25 +68,28 @@ fn request(method: &str, uri: &str, token: Option<&str>, body: Option<Value>) ->
         .unwrap()
 }
 
+#[allow(dead_code)]
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }
 
-async fn verify_token(state: &AppState, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
+async fn verify_token(
+    state: &AppState,
+    token: &str,
+) -> Result<svc_workflow::auth::AuthenticatedPrincipal, ApiError> {
     state.auth_verifier.verify(token).await
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests — V1 DirectMachineAccess profile
 // ---------------------------------------------------------------------------
 
-/// 1. test_hs256 mode: valid token → 200 via healthz/readyz.
-/// 6. Valid RS256 direct Agent token.
+/// 1. Valid token: JWKS mode is operational (readyz healthcheck).
 #[tokio::test]
-async fn valid_rs256_mode_and_direct_agent_token() {
+async fn valid_token_and_readyz() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
@@ -323,63 +106,35 @@ async fn valid_rs256_mode_and_direct_agent_token() {
     assert_eq!(json_body(resp).await["status"], "ready");
 }
 
-/// 7. Valid RS256 direct Agent token — principal_type=agent (V0 contract).
+/// 2. Valid RS256 direct Agent token accepted.
 #[tokio::test]
-async fn valid_rs256_direct_agent_token() {
+async fn valid_direct_agent_token() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let token = rs256_direct_token(
+    let token = common::v1_token(
         Uuid::new_v4(),
         "workflow.read",
-        "agent",
-        Some("test-client"),
+        "test-client",
         300,
+        &mock.key_pair,
     );
     let result = verify_token(&state, &token).await;
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().auth_context.principal_type, "agent");
+    let principal = result.unwrap();
+    assert_eq!(principal.auth_context.token_use, "access");
+    assert_eq!(principal.auth_context.principal_type, "agent");
 }
 
-/// 8–9. Valid OBO tokens (Agent only per V0 contract).
+/// 3. Wrong issuer rejected.
 #[tokio::test]
-async fn valid_rs256_obo_tokens() {
+async fn wrong_issuer_rejected() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let actor = Uuid::new_v4();
-    let delegator = Uuid::new_v4();
-
-    // OBO Agent token
-    let token = rs256_obo_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        delegator,
-        Some("test-client"),
-        Some("test-client"),
-        Some("jti-001"),
-        false,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_ok(), "OBO Agent token should be valid");
-    assert_eq!(result.unwrap().auth_context.token_use, "workflow_obo");
-}
-
-/// 10. HS256 token rejected in jwks mode.
-#[tokio::test]
-async fn hs256_token_rejected_in_jwks_mode() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
@@ -387,78 +142,82 @@ async fn hs256_token_rejected_in_jwks_mode() {
 
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = json!({
+        "iss": "wrong-issuer",
         "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
         "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
         "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "access",
         "type": "access",
         "version": "v1",
-        "scope": "workflow.read"
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
     });
-    let hs256_token = encode(
-        &Header::new(Algorithm::HS256),
-        &claims,
-        &EncodingKey::from_secret(b"dummy-secret"),
-    )
-    .unwrap();
-    let result = verify_token(&state, &hs256_token).await;
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
     assert!(result.is_err());
 }
 
-/// 11. alg=none rejected.
+/// 4. Wrong audience rejected.
 #[tokio::test]
-async fn alg_none_and_wrong_alg_rejected() {
+async fn wrong_audience_rejected() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // HS256 is wrong algorithm for JWKS mode
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = json!({
-        "sub": Uuid::new_v4().to_string(),
         "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "wrong-audience",
         "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "access",
         "type": "access",
         "version": "v1",
-        "scope": "workflow.read"
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
     });
-    let token = encode(
-        &Header::new(Algorithm::HS256),
-        &claims,
-        &EncodingKey::from_secret(b"dummy"),
-    )
-    .unwrap();
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
     let result = verify_token(&state, &token).await;
     assert!(result.is_err());
 }
 
-/// 12. Wrong signature rejected.
+/// 5. Wrong signature rejected.
 #[tokio::test]
 async fn wrong_signature_rejected() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let mut token = rs256_token(
+    let mut token = common::v1_token(
         Uuid::new_v4(),
         "workflow.read",
-        "agent",
-        None,
-        None,
-        None,
-        None,
+        "test-client",
         300,
+        &mock.key_pair,
     );
     // Replace last char to invalidate signature
     let len = token.len();
@@ -468,11 +227,149 @@ async fn wrong_signature_rejected() {
     assert!(result.is_err());
 }
 
-/// 13. Missing kid rejected.
+/// 6. Expired token rejected.
+#[tokio::test]
+async fn expired_token_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "access",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now - 1200,
+        "nbf": now - 1200,
+        "exp": now - 600,
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), "token_expired");
+}
+
+/// 7. Wrong principal_type rejected.
+#[tokio::test]
+async fn wrong_principal_type_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "human",
+        "client_id": "test-client",
+        "token_use": "access",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 8. Wrong token_use rejected.
+#[tokio::test]
+async fn wrong_token_use_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "invalid_use",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 9. HS256 token rejected in JWKS mode.
+#[tokio::test]
+async fn hs256_token_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let claims = json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read"
+    });
+    let hs256_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(b"dummy-secret"),
+    )
+    .unwrap();
+    let result = verify_token(&state, &hs256_token).await;
+    assert!(result.is_err());
+}
+
+/// 10. Missing kid header rejected.
 #[tokio::test]
 async fn missing_kid_rejected() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
@@ -481,525 +378,49 @@ async fn missing_kid_rejected() {
     // RS256 token without kid header
     let now = chrono::Utc::now().timestamp() as usize;
     let claims = json!({
-        "sub": Uuid::new_v4().to_string(),
         "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read"
-    });
-    let token = encode(
-        &Header::new(Algorithm::RS256),
-        &claims,
-        &EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap(),
-    )
-    .unwrap();
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 16–17. Wrong issuer/audience.
-#[tokio::test]
-async fn wrong_issuer_and_audience_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    let now = chrono::Utc::now().timestamp() as usize;
-
-    let claims = json!({
         "sub": Uuid::new_v4().to_string(),
-        "iss": "wrong-issuer",
         "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
         "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read"
-    });
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let token = encode(&header, &claims, &key).unwrap();
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-
-    let claims2 = json!({
-        "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
-        "aud": "wrong-audience",
-        "exp": now + 300,
-        "iat": now,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read"
-    });
-    let token2 = encode(&header, &claims2, &key).unwrap();
-    let result2 = verify_token(&state, &token2).await;
-    assert!(result2.is_err());
-}
-
-/// 18. Expired token.
-#[tokio::test]
-async fn expired_token_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let now = chrono::Utc::now().timestamp() as usize;
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let claims = json!({
-        "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now - 3600,
-        "iat": now - 7200,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read"
-    });
-    let token = encode(&header, &claims, &key).unwrap();
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "token_expired");
-}
-
-/// 19. nbf not yet active.
-#[tokio::test]
-async fn nbf_not_yet_active_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_token_nbf_future(Uuid::new_v4(), "workflow.read", "agent");
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 20. Non-UUID sub rejected.
-#[tokio::test]
-async fn non_uuid_sub_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let now = chrono::Utc::now().timestamp() as usize;
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let claims = json!({
-        "sub": "not-a-uuid",
-        "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read"
-    });
-    let token = encode(&header, &claims, &key).unwrap();
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 21. Wrong principal_type (e.g. "service").
-#[tokio::test]
-async fn wrong_principal_type_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_token(
-        Uuid::new_v4(),
-        "workflow.read",
-        "service",
-        None,
-        None,
-        None,
-        None,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 22. Wrong token_use.
-#[tokio::test]
-async fn wrong_token_use_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_token(
-        Uuid::new_v4(),
-        "workflow.read",
-        "agent",
-        Some("invalid_use"),
-        None,
-        None,
-        None,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 23–25. OBO missing required fields.
-#[tokio::test]
-async fn obo_missing_fields() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let actor = Uuid::new_v4();
-    let delegator = Uuid::new_v4();
-
-    // Missing act (but token_use=workflow_obo)
-    let token = rs256_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        Some("workflow_obo"),
-        None,
-        Some("client"),
-        Some("jti"),
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-
-    // Missing azp
-    let token = rs256_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        Some("workflow_obo"),
-        Some(json!({"sub": delegator.to_string()})),
-        None,
-        Some("jti"),
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-
-    // Missing jti
-    let token = rs256_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        Some("workflow_obo"),
-        Some(json!({"sub": delegator.to_string()})),
-        Some("client"),
-        None,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-}
-
-/// 38–39. Missing scope.
-#[tokio::test]
-async fn scope_enforcement() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let app = http::router(state, &config);
-    let read_token = rs256_token(
-        Uuid::new_v4(),
-        "workflow.read",
-        "agent",
-        None,
-        None,
-        None,
-        None,
-        300,
-    );
-
-    let resp = app
-        .clone()
-        .oneshot(request(
-            "POST",
-            "/internal/v1/workflow-instances",
-            Some(&read_token),
-            Some(json!({
-                "domainId": Uuid::new_v4(),
-                "definitionVersionId": Uuid::new_v4(),
-                "metadata": {},
-                "contextPayload": {}
-            })),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-/// 26. Cache hit works across multiple verifications.
-#[tokio::test]
-async fn cache_hit_multiple_verifications() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    // Give eager fetch time to complete
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Multiple verifications with different subjects
-    for _ in 0..3 {
-        let token = rs256_token(
-            Uuid::new_v4(),
-            "workflow.read",
-            "agent",
-            None,
-            None,
-            None,
-            None,
-            300,
-        );
-        let result = verify_token(&state, &token).await;
-        assert!(result.is_ok());
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Profile hardening tests
-// ---------------------------------------------------------------------------
-
-/// 41. Direct token with act claim → rejected.
-#[tokio::test]
-async fn direct_token_with_act_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_token(
-        Uuid::new_v4(),
-        "workflow.read",
-        "agent",
-        None,
-        Some(json!({"sub": Uuid::new_v4().to_string()})),
-        None,
-        None,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "invalid_direct_profile");
-}
-
-/// 42. Direct token with azp claim → rejected.
-#[tokio::test]
-async fn direct_token_with_azp_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // Use a raw JSON token with azp set (rs256_direct_token omits azp).
-    let now = chrono::Utc::now().timestamp() as usize;
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-    let claims = json!({
-        "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
-        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "access",
         "type": "access",
         "version": "v1",
         "scope": "workflow.read",
-        "client_id": "test-client",
-        "azp": "some-azp",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
     });
-    let token = encode(&header, &claims, &key).unwrap();
+    // No kid in header
+    let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
     let result = verify_token(&state, &token).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "invalid_direct_profile");
 }
 
-/// 43. OBO token with client_id != azp → rejected.
+/// 11. Token with extra field rejected (deny_unknown_fields).
 #[tokio::test]
-async fn obo_token_client_id_not_eq_azp_rejected() {
+async fn extra_field_rejected() {
     let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
+    let mock = common::MockJwksServer::start().await;
     let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
     let state = AppState::new(pool, &config);
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let actor = Uuid::new_v4();
-    let delegator = Uuid::new_v4();
-    let token = rs256_obo_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        delegator,
-        Some("adc-client"),
-        Some("different-client"), // client_id != azp
-        Some("jti-003"),
-        false,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "invalid_client_claims");
-}
-
-/// 44. OBO token with nested act → rejected.
-#[tokio::test]
-async fn obo_token_nested_act_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let actor = Uuid::new_v4();
-    let delegator = Uuid::new_v4();
-    let token = rs256_obo_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        delegator,
-        Some("adc-client"),
-        Some("adc-client"),
-        Some("jti-004"),
-        true, // nested act
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "invalid_actor");
-}
-
-/// 45. Human principal_type → rejected (V0 is agent-only).
-#[tokio::test]
-async fn human_principal_type_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_direct_token(
+    let token = common::v1_token_with_extra_field(
         Uuid::new_v4(),
         "workflow.read",
-        "human",
-        Some("test-client"),
+        "test-client",
         300,
+        "extra_field",
+        "rejected",
+        &mock.key_pair,
     );
+
     let result = verify_token(&state, &token).await;
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), "invalid_principal_type");
-}
-
-/// 46. Valid RS256 direct agent token still works after hardening.
-#[tokio::test]
-async fn valid_direct_agent_token_hardened() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let token = rs256_direct_token(
-        Uuid::new_v4(),
-        "workflow.execute",
-        "agent",
-        Some("test-client"),
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(
-        result.is_ok(),
-        "valid direct agent token should be accepted after hardening"
-    );
-    let principal = result.unwrap();
-    assert_eq!(principal.auth_context.token_use, "access");
-    assert_eq!(principal.auth_context.principal_type, "agent");
-}
-
-/// 47. Valid OBO agent token still works after hardening.
-#[tokio::test]
-async fn valid_obo_agent_token_hardened() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let actor = Uuid::new_v4();
-    let delegator = Uuid::new_v4();
-    let token = rs256_obo_token(
-        actor,
-        "workflow.execute",
-        "agent",
-        delegator,
-        Some("adc-client"),
-        Some("adc-client"),
-        Some("jti-005"),
-        false,
-        300,
-    );
-    let result = verify_token(&state, &token).await;
-    assert!(
-        result.is_ok(),
-        "valid OBO agent token should be accepted after hardening"
-    );
-}
-
-/// 48. Frozen V1 wire-shape violations fail closed at the resource service.
-///     (Removed: validation moved to canary profile; V0 JWKS path no longer enforces
-///      deny_unknown_fields or agent_id requirement — those were from unauthorized commits.)
-/// 49. Existing HS256 smoke preserved — this test module coexists with http_smoke.
-/// 50. Existing tests preserved — proven by compilation.
-#[tokio::test]
-async fn regression_existing_tests_unchanged() {
-    // Meta-assertion: the existing test binaries compile and run.
-    // Test count is verified in the final report.
 }

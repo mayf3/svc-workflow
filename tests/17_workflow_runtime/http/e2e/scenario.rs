@@ -6,12 +6,13 @@ use svc_workflow::application::workflow_instance::idempotency::{
 };
 
 use super::database::TemporaryDatabase;
-use super::server::{token, RunningServer};
+use super::server::RunningServer;
 use super::*;
 
 struct Scenario {
     pool: PgPool,
     base_url: String,
+    key_pair: common::RsaTestKeyPair,
     principal_id: Uuid,
     domain_id: Uuid,
     version_id: Uuid,
@@ -83,10 +84,11 @@ async fn setup_scenario(pool: PgPool) -> (RunningServer, Scenario) {
     .await
     .expect("normal transition");
     let outsider_id = seed_second_principal(&pool).await;
-    let server = RunningServer::start(pool.clone(), 2_097_152).await;
+    let server = RunningServer::start(pool.clone(), 2_097_152, &principal_id.to_string()).await;
     let scenario = Scenario {
         pool,
         base_url: server.base_url.clone(),
+        key_pair: server.key_pair.clone(),
         principal_id,
         domain_id,
         version_id,
@@ -101,6 +103,7 @@ async fn run_scenario(scenario: Scenario) {
     let Scenario {
         pool,
         base_url,
+        key_pair,
         principal_id,
         domain_id,
         version_id,
@@ -111,8 +114,15 @@ async fn run_scenario(scenario: Scenario) {
     let database = ScenarioDatabase { pool };
     let server = ScenarioServer { base_url };
     let client = Client::new();
-    let actor_token = token(principal_id, "workflow.execute workflow.read");
-    let outsider_token = token(outsider_id, "workflow.read");
+    let actor_token = common::v1_token(
+        principal_id,
+        "workflow.execute workflow.read",
+        "e2e-client",
+        300,
+        &key_pair,
+    );
+    let outsider_token =
+        common::v1_token(outsider_id, "workflow.read", "e2e-client", 300, &key_pair);
 
     let (ready_status, ready_body) = json_response(
         client
@@ -339,7 +349,8 @@ async fn run_scenario(scenario: Scenario) {
     )
     .await;
     assert_eq!(not_visible, not_found);
-    assert_eq!(not_visible.0, 404);
+    assert_eq!(not_visible.0, 401);
+    assert_eq!(not_visible.1["error"]["code"], "unauthorized_principal");
 
     let (reference_status, reference_error) = json_response(
         client

@@ -11,18 +11,11 @@ use crate::http::error::ApiError;
 use crate::http::AppState;
 
 use super::auth_context::AuthContext;
-use super::canary::CanaryPrincipal;
 
-/// Authenticated principal extracted from a verified JWT.
+/// Authenticated principal extracted from a verified Auth V1 JWT.
 ///
 /// Carries both the domain identity (`principal_id`) and the structured
 /// authentication context for audit logging.
-///
-/// ## Auth V1 Canary integration
-///
-/// When the canary middleware has already authenticated the request
-/// (via `CanaryPrincipal` extension), this extractor uses that principal
-/// directly without running legacy auth.
 #[derive(Debug, Clone)]
 pub struct AuthenticatedPrincipal {
     pub principal_id: PrincipalId,
@@ -56,11 +49,6 @@ impl FromRequestParts<AppState> for AuthenticatedPrincipal {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // Check if the canary middleware has already authenticated this request.
-        if let Some(canary) = parts.extensions.get::<super::canary::CanaryPrincipal>() {
-            return Ok(canary.0.clone());
-        }
-
         let value = parts
             .headers
             .get(AUTHORIZATION)

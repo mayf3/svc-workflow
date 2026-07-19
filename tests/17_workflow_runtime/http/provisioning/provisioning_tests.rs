@@ -2,67 +2,38 @@
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{AuthMode, Hs256Config};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::domain::ids::PrincipalId;
 use svc_workflow::http::{self, AppState, HttpConfig};
 
 use super::*;
 
-const JWT_SECRET: &str = "provisioning-test-secret-at-least-32-bytes";
-
 // Provisioning allow-list principal
 const PROVISIONING_PRINCIPAL_ID: &str = "11111111-1111-1111-1111-111111111111";
 
-#[derive(Serialize)]
-struct Claims {
-    sub: String,
-    iss: &'static str,
-    aud: &'static str,
-    exp: usize,
-    iat: usize,
-    principal_type: &'static str,
-    #[serde(rename = "type")]
-    token_type: &'static str,
-    version: &'static str,
-    scope: String,
-}
-
-fn token(principal_id: Uuid, scope: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    encode(
-        &Header::new(Algorithm::HS256),
-        &Claims {
-            sub: principal_id.to_string(),
-            iss: "auth-service",
-            aud: "svc-workflow",
-            exp: now + 300,
-            iat: now,
-            principal_type: "agent",
-            token_type: "access",
-            version: "v1",
-            scope: scope.to_string(),
-        },
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .unwrap()
-}
-
-fn provisioning_token() -> String {
-    token(
+fn provisioning_token(key_pair: &common::RsaTestKeyPair) -> String {
+    common::v1_token(
         Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
-        "workflow.admin workflow.read workflow.execute",
+        "workflow.admin workflow.execute workflow.read",
+        "prov-client",
+        300,
+        key_pair,
     )
 }
 
-fn regular_token() -> String {
-    token(Uuid::new_v4(), "workflow.read workflow.execute")
+fn regular_token(key_pair: &common::RsaTestKeyPair) -> String {
+    common::v1_token(
+        Uuid::new_v4(),
+        "workflow.execute workflow.read",
+        "prov-client",
+        300,
+        key_pair,
+    )
 }
 
 /// Seed the provisioning actor as a real principal in the database.
@@ -90,26 +61,34 @@ async fn seed_provisioning_actor(pool: &sqlx::PgPool) {
     .expect("clean stale processing receipts");
 }
 
-fn app(pool: sqlx::PgPool) -> axum::Router {
-    app_for_actor(pool, Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap())
-}
-
-fn app_for_actor(pool: sqlx::PgPool, actor_id: Uuid) -> axum::Router {
-    let hs256 = Hs256Config {
-        secret: JWT_SECRET.to_string(),
-        issuer: "auth-service".to_string(),
-        audience: "svc-workflow".to_string(),
-        clock_skew_seconds: 0,
-    };
+fn build_app(pool: sqlx::PgPool, jwks_url: &str, actor_id: Uuid) -> axum::Router {
     let config = HttpConfig {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        auth_mode: AuthMode::TestHs256,
-        hs256_config: Some(hs256),
-        jwks_config: None,
+        jwks_config: JwksConfig {
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
         provisioning_config: ProvisioningConfig::new(vec![PrincipalId::from_uuid(actor_id)]),
-        auth_v1_canary_config: Default::default(),
+        auth_v1_canary_config: AuthV1CanaryConfig {
+            enabled: true,
+            write_enabled: true,
+            allowed_client_id: "prov-client".to_string(),
+            allowed_sub: String::new(), // empty = skip allow-list check
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
     };
     http::router(AppState::new(pool, &config), &config)
 }
@@ -153,8 +132,14 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn no_token_rejected() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let resp = app
         .clone()
         .oneshot(request(
@@ -178,14 +163,20 @@ async fn no_token_rejected() {
 #[tokio::test]
 async fn missing_scope_rejected() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let resp = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&regular_token()),
+            Some(&regular_token(&mock.key_pair)),
             Some(&unique_key("key-2")),
             Some(json!({
                 "principalId": Uuid::new_v4(),
@@ -203,15 +194,21 @@ async fn missing_scope_rejected() {
 #[tokio::test]
 async fn create_principal_success() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let principal_id = Uuid::new_v4();
     let resp = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-3")),
             Some(json!({
                 "principalId": principal_id,
@@ -233,8 +230,14 @@ async fn create_principal_success() {
 #[tokio::test]
 async fn create_human_and_agent() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // HUMAN
     let human_id = Uuid::new_v4();
@@ -243,7 +246,7 @@ async fn create_human_and_agent() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-human")),
             Some(json!({
                 "principalId": human_id,
@@ -263,7 +266,7 @@ async fn create_human_and_agent() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-agent")),
             Some(json!({
                 "principalId": agent_id,
@@ -281,8 +284,14 @@ async fn create_human_and_agent() {
 #[tokio::test]
 async fn idempotent_replay() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let principal_id = Uuid::new_v4();
     let body = json!({
         "principalId": principal_id,
@@ -297,7 +306,7 @@ async fn idempotent_replay() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(body.clone()),
         ))
@@ -310,7 +319,7 @@ async fn idempotent_replay() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(body),
         ))
@@ -324,8 +333,14 @@ async fn idempotent_replay() {
 #[tokio::test]
 async fn modify_principal_enabled() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let principal_id = Uuid::new_v4();
 
     // Create disabled
@@ -334,7 +349,7 @@ async fn modify_principal_enabled() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-enable-1")),
             Some(json!({
                 "principalId": principal_id,
@@ -354,7 +369,7 @@ async fn modify_principal_enabled() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-enable-2")),
             Some(json!({
                 "principalId": principal_id,
@@ -373,8 +388,14 @@ async fn modify_principal_enabled() {
 #[tokio::test]
 async fn principal_type_conflict() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let principal_id = Uuid::new_v4();
 
     // Create as agent
@@ -383,7 +404,7 @@ async fn principal_type_conflict() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-type-1")),
             Some(json!({
                 "principalId": principal_id,
@@ -402,7 +423,7 @@ async fn principal_type_conflict() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-type-2")),
             Some(json!({
                 "principalId": principal_id,
@@ -424,15 +445,21 @@ async fn principal_type_conflict() {
 #[tokio::test]
 async fn create_domain_success() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let domain_id = Uuid::new_v4();
     let resp = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("key-domain")),
             Some(json!({
                 "domainId": domain_id,
