@@ -47,8 +47,6 @@ struct TestClaims {
     version: String,
     scope: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    agent_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     token_use: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     act: Option<serde_json::Value>,
@@ -72,30 +70,22 @@ fn rs256_token(
     exp_offset: i64,
 ) -> String {
     let now = chrono::Utc::now().timestamp() as usize;
-    let direct = token_use.is_none();
     let claims = TestClaims {
         sub: subject.to_string(),
         iss: "auth-service".to_string(),
         aud: "svc-workflow".to_string(),
         exp: (now as i64 + exp_offset) as usize,
         iat: now,
-        nbf: Some(now),
+        nbf: None,
         principal_type: principal_type.to_string(),
         token_type: "access".to_string(),
         version: "v1".to_string(),
         scope: scope.to_string(),
-        agent_id: Some("test-agent".to_string()),
-        token_use: Some(token_use.unwrap_or("access").to_string()),
+        token_use: token_use.map(String::from),
         act,
         azp: azp.map(String::from),
-        jti: jti
-            .or(direct.then_some("test-direct-jti-01"))
-            .map(String::from),
-        client_id: if direct {
-            Some("test-client".to_string())
-        } else {
-            azp.map(String::from)
-        },
+        jti: jti.map(String::from),
+        client_id: azp.map(String::from), // OBO uses azp as client_id
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(JWKS_KID.to_string());
@@ -118,16 +108,15 @@ fn rs256_direct_token(
         aud: "svc-workflow".to_string(),
         exp: (now as i64 + exp_offset) as usize,
         iat: now,
-        nbf: Some(now),
+        nbf: None,
         principal_type: principal_type.to_string(),
         token_type: "access".to_string(),
         version: "v1".to_string(),
         scope: scope.to_string(),
-        agent_id: Some("test-agent".to_string()),
-        token_use: Some("access".to_string()),
+        token_use: None,
         act: None,
         azp: None,
-        jti: Some("test-direct-jti-02".to_string()),
+        jti: None,
         client_id: client_id.map(String::from),
     };
     let mut header = Header::new(Algorithm::RS256);
@@ -161,12 +150,11 @@ fn rs256_obo_token(
         aud: "svc-workflow".to_string(),
         exp: (now as i64 + exp_offset) as usize,
         iat: now,
-        nbf: Some(now),
+        nbf: None,
         principal_type: principal_type.to_string(),
         token_type: "access".to_string(),
         version: "v1".to_string(),
         scope: scope.to_string(),
-        agent_id: Some("test-agent".to_string()),
         token_use: Some("workflow_obo".to_string()),
         act: Some(act_value),
         azp: azp.map(String::from),
@@ -192,12 +180,11 @@ fn rs256_token_nbf_future(subject: Uuid, scope: &str, principal_type: &str) -> S
         token_type: "access".to_string(),
         version: "v1".to_string(),
         scope: scope.to_string(),
-        agent_id: Some("test-agent".to_string()),
-        token_use: Some("access".to_string()),
+        token_use: None,
         act: None,
         azp: None,
-        jti: Some("test-direct-jti-03".to_string()),
-        client_id: Some("test-client".to_string()),
+        jti: None,
+        client_id: None,
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(JWKS_KID.to_string());
@@ -336,7 +323,7 @@ async fn valid_rs256_mode_and_direct_agent_token() {
     assert_eq!(json_body(resp).await["status"], "ready");
 }
 
-/// 7. Valid RS256 direct Agent token — principal_type=agent (V1 contract).
+/// 7. Valid RS256 direct Agent token — principal_type=agent (V0 contract).
 #[tokio::test]
 async fn valid_rs256_direct_agent_token() {
     let pool = create_pool().await;
@@ -358,7 +345,7 @@ async fn valid_rs256_direct_agent_token() {
     assert_eq!(result.unwrap().auth_context.principal_type, "agent");
 }
 
-/// 8–9. Valid OBO tokens (Agent only for the first-wave V1 audience).
+/// 8–9. Valid OBO tokens (Agent only per V0 contract).
 #[tokio::test]
 async fn valid_rs256_obo_tokens() {
     let pool = create_pool().await;
@@ -379,7 +366,7 @@ async fn valid_rs256_obo_tokens() {
         delegator,
         Some("test-client"),
         Some("test-client"),
-        Some("test-obo-jti-001"),
+        Some("jti-001"),
         false,
         300,
     );
@@ -405,7 +392,6 @@ async fn hs256_token_rejected_in_jwks_mode() {
         "aud": "svc-workflow",
         "exp": now + 300,
         "iat": now,
-        "nbf": now,
         "principal_type": "agent",
         "type": "access",
         "version": "v1",
@@ -581,7 +567,6 @@ async fn expired_token_rejected() {
         "aud": "svc-workflow",
         "exp": now - 3600,
         "iat": now - 7200,
-        "nbf": now - 7200,
         "principal_type": "agent",
         "type": "access",
         "version": "v1",
@@ -628,7 +613,6 @@ async fn non_uuid_sub_rejected() {
         "aud": "svc-workflow",
         "exp": now + 300,
         "iat": now,
-        "nbf": now,
         "principal_type": "agent",
         "type": "access",
         "version": "v1",
@@ -861,14 +845,10 @@ async fn direct_token_with_azp_rejected() {
         "aud": "svc-workflow",
         "exp": now + 300,
         "iat": now,
-        "nbf": now,
         "principal_type": "agent",
         "type": "access",
         "version": "v1",
         "scope": "workflow.read",
-        "agent_id": "test-agent",
-        "token_use": "access",
-        "jti": "test-direct-jti-04",
         "client_id": "test-client",
         "azp": "some-azp",
     });
@@ -897,7 +877,7 @@ async fn obo_token_client_id_not_eq_azp_rejected() {
         delegator,
         Some("adc-client"),
         Some("different-client"), // client_id != azp
-        Some("test-obo-jti-003"),
+        Some("jti-003"),
         false,
         300,
     );
@@ -925,7 +905,7 @@ async fn obo_token_nested_act_rejected() {
         delegator,
         Some("adc-client"),
         Some("adc-client"),
-        Some("test-obo-jti-004"),
+        Some("jti-004"),
         true, // nested act
         300,
     );
@@ -1002,7 +982,7 @@ async fn valid_obo_agent_token_hardened() {
         delegator,
         Some("adc-client"),
         Some("adc-client"),
-        Some("test-obo-jti-005"),
+        Some("jti-005"),
         false,
         300,
     );
