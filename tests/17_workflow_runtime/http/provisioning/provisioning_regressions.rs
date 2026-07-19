@@ -3,15 +3,21 @@ use super::*;
 #[tokio::test]
 async fn domain_key_conflict() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool.clone());
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let conflict_key = unique_domain_key("conflict-key");
     let first = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("domain-key-first")),
             Some(json!({
                 "domainId": Uuid::new_v4(),
@@ -27,7 +33,7 @@ async fn domain_key_conflict() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("domain-key-second")),
             Some(json!({
                 "domainId": Uuid::new_v4(),
@@ -47,15 +53,21 @@ async fn domain_key_conflict() {
 #[tokio::test]
 async fn role_binding_create_and_replay() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     let principal_id = Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap();
     let domain_id = Uuid::new_v4();
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     app.clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("binding-domain")),
             Some(json!({
                 "domainId": domain_id,
@@ -73,7 +85,7 @@ async fn role_binding_create_and_replay() {
             .oneshot(request(
                 "PUT",
                 &format!("/internal/v1/admin/domains/{domain_id}/role-bindings/{principal_id}"),
-                Some(&provisioning_token()),
+                Some(&provisioning_token(&mock.key_pair)),
                 Some(&key),
                 Some(json!({"roleKey": "DOMAIN_OWNER", "enabled": true})),
             ))
@@ -86,15 +98,21 @@ async fn role_binding_create_and_replay() {
 #[tokio::test]
 async fn role_binding_unknown_principal_failure_is_replayed() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     let domain_id = Uuid::new_v4();
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let unknown_principal_id = Uuid::new_v4();
     app.clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("unknown-domain")),
             Some(json!({
                 "domainId": domain_id,
@@ -115,7 +133,7 @@ async fn role_binding_unknown_principal_failure_is_replayed() {
                     "/internal/v1/admin/domains/{domain_id}/role-bindings/{}",
                     unknown_principal_id
                 ),
-                Some(&provisioning_token()),
+                Some(&provisioning_token(&mock.key_pair)),
                 Some(&key),
                 Some(json!({"roleKey": "DOMAIN_OWNER", "enabled": true})),
             ))
@@ -128,8 +146,14 @@ async fn role_binding_unknown_principal_failure_is_replayed() {
 #[tokio::test]
 async fn principal_hash_covers_source_and_revision() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let principal_id = Uuid::new_v4();
     let key = unique_key("principal-full-hash");
     let first = app
@@ -137,7 +161,7 @@ async fn principal_hash_covers_source_and_revision() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({
                 "principalId": principal_id,
@@ -154,7 +178,7 @@ async fn principal_hash_covers_source_and_revision() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({
                 "principalId": principal_id,
@@ -172,8 +196,14 @@ async fn principal_hash_covers_source_and_revision() {
 #[tokio::test]
 async fn domain_hash_covers_display_name() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool.clone());
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let domain_id = Uuid::new_v4();
     let key = unique_key("domain-full-hash");
     let first = app
@@ -181,7 +211,7 @@ async fn domain_hash_covers_display_name() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({
                 "domainId": domain_id,
@@ -203,7 +233,7 @@ async fn domain_hash_covers_display_name() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({
                 "domainId": domain_id,
@@ -220,15 +250,23 @@ async fn domain_hash_covers_display_name() {
 #[tokio::test]
 async fn allowlisted_actor_bootstraps_itself_then_disabled_actor_is_rejected() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     let actor_id = Uuid::new_v4();
-    let actor_token = token(actor_id, "workflow.admin");
-    let app = app_for_actor(pool.clone(), actor_id);
+    let actor_token_str = common::v1_token(
+        actor_id,
+        "workflow.admin",
+        "prov-client",
+        300,
+        &mock.key_pair,
+    );
+    let app = build_app(pool.clone(), &mock.url, actor_id);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let bootstrap = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&actor_token),
+            Some(&actor_token_str),
             Some(&unique_key("bootstrap")),
             Some(json!({
                 "principalId": actor_id,
@@ -246,7 +284,7 @@ async fn allowlisted_actor_bootstraps_itself_then_disabled_actor_is_rejected() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&actor_token),
+            Some(&actor_token_str),
             Some(&unique_key("self-disable")),
             Some(json!({
                 "principalId": actor_id,
@@ -263,7 +301,7 @@ async fn allowlisted_actor_bootstraps_itself_then_disabled_actor_is_rejected() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&actor_token),
+            Some(&actor_token_str),
             Some(&unique_key("disabled-write")),
             Some(json!({
                 "domainId": Uuid::new_v4(),
@@ -279,14 +317,20 @@ async fn allowlisted_actor_bootstraps_itself_then_disabled_actor_is_rejected() {
 #[tokio::test]
 async fn unknown_actor_field_and_invalid_role_are_rejected() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool);
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let unknown = app
         .clone()
         .oneshot(request(
             "POST",
             "/internal/v1/admin/principals",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("unknown-field")),
             Some(json!({
                 "principalId": Uuid::new_v4(),
@@ -308,7 +352,7 @@ async fn unknown_actor_field_and_invalid_role_are_rejected() {
                 Uuid::new_v4(),
                 Uuid::new_v4()
             ),
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("invalid-role")),
             Some(json!({"roleKey": "FUTURE_SUPERUSER", "enabled": true})),
         ))
@@ -320,8 +364,14 @@ async fn unknown_actor_field_and_invalid_role_are_rejected() {
 #[tokio::test]
 async fn concurrent_owner_replacements_are_serialized() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool.clone());
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let domain_id = Uuid::new_v4();
     let owner_a = Uuid::new_v4();
     let owner_b = Uuid::new_v4();
@@ -331,7 +381,7 @@ async fn concurrent_owner_replacements_are_serialized() {
             .oneshot(request(
                 "POST",
                 "/internal/v1/admin/principals",
-                Some(&provisioning_token()),
+                Some(&provisioning_token(&mock.key_pair)),
                 Some(&unique_key("owner-principal")),
                 Some(json!({
                     "principalId": owner,
@@ -349,7 +399,7 @@ async fn concurrent_owner_replacements_are_serialized() {
         .oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&unique_key("owner-domain")),
             Some(json!({
                 "domainId": domain_id,
@@ -365,7 +415,7 @@ async fn concurrent_owner_replacements_are_serialized() {
         app.clone().oneshot(request(
             "PUT",
             &format!("/internal/v1/admin/domains/{domain_id}/owner"),
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({"newOwnerPrincipalId": owner})),
         ))
@@ -390,14 +440,20 @@ async fn concurrent_owner_replacements_are_serialized() {
 #[tokio::test]
 async fn concurrent_domain_key_collision_is_stable() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool.clone());
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let domain_key = unique_domain_key("concurrent-key");
     let call = |domain_id, key: String| {
         app.clone().oneshot(request(
             "POST",
             "/internal/v1/admin/domains",
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             Some(&key),
             Some(json!({
                 "domainId": domain_id,
@@ -424,16 +480,22 @@ async fn concurrent_domain_key_collision_is_stable() {
 #[tokio::test]
 async fn definition_version_includes_mapping_and_domain_gate() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     let (_, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_, version_id, _) = seed_published_definition_normal_node(&pool, domain_id).await;
     seed_provisioning_actor(&pool).await;
-    let app = app(pool.clone());
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let response = app
         .clone()
         .oneshot(request(
             "GET",
             &format!("/internal/v1/admin/definition-versions/{version_id}"),
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             None,
             None,
         ))
@@ -453,7 +515,7 @@ async fn definition_version_includes_mapping_and_domain_gate() {
         .oneshot(request(
             "GET",
             &format!("/internal/v1/admin/definition-versions/{version_id}"),
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             None,
             None,
         ))
@@ -465,12 +527,19 @@ async fn definition_version_includes_mapping_and_domain_gate() {
 #[tokio::test]
 async fn definition_version_not_found() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     seed_provisioning_actor(&pool).await;
-    let response = app(pool)
+    let app = build_app(
+        pool,
+        &mock.url,
+        Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let response = app
         .oneshot(request(
             "GET",
             &format!("/internal/v1/admin/definition-versions/{}", Uuid::new_v4()),
-            Some(&provisioning_token()),
+            Some(&provisioning_token(&mock.key_pair)),
             None,
             None,
         ))

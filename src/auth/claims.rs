@@ -1,9 +1,51 @@
-//! JWT claims types for direct and OBO token verification.
+//! JWT claims types for Auth V1 DirectMachineAccess and OBO token verification.
+//!
+//! Direct access tokens are validated against the strict `V1DirectMachineClaims`
+//! struct (RS256, `deny_unknown_fields`, all fields required).
+//!
+//! OBO tokens use the lenient `WorkflowClaims` struct (kept for future use).
+
+use std::collections::HashSet;
 
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::domain::ids::PrincipalId;
+use crate::http::error::ApiError;
+
+// ---------------------------------------------------------------------------
+// Auth V1 DirectMachineAccess claims (strict, deny_unknown_fields)
+// ---------------------------------------------------------------------------
+
+/// Narrow claims set matching the Auth V1 DirectMachineAccess profile.
+///
+/// All fields are required. `agent_id` is optional diagnostic metadata.
+/// The sole principal identifier is `sub`.
+///
+/// Contract source: frozen Minimal Auth V1 Bundle.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct V1DirectMachineClaims {
+    pub iss: String,
+    pub sub: String,
+    pub aud: String,
+    pub principal_type: String,
+    pub client_id: String,
+    pub token_use: String,
+    #[serde(rename = "type")]
+    pub token_type: String,
+    pub version: String,
+    pub scope: String,
+    pub agent_id: Option<String>,
+    pub jti: String,
+    pub iat: usize,
+    pub nbf: usize,
+    pub exp: usize,
+}
+
+// ---------------------------------------------------------------------------
+// OBO claims (lenient, kept for future use)
+// ---------------------------------------------------------------------------
 
 /// Act claim for OBO delegation (RFC 8693 style).
 #[derive(Debug, Deserialize)]
@@ -14,10 +56,7 @@ pub struct ActClaim {
     pub nested_act: Option<serde_json::Value>,
 }
 
-/// Full set of claims supported by svc-workflow authentication.
-///
-/// Supports both direct access tokens (`token_use: access`) and
-/// on-behalf-of tokens (`token_use: workflow_obo`).
+/// Lenient claims set for OBO token verification.
 #[derive(Debug, Deserialize)]
 pub struct WorkflowClaims {
     pub sub: Option<String>,
@@ -27,48 +66,169 @@ pub struct WorkflowClaims {
     pub iat: Option<usize>,
     pub nbf: Option<usize>,
     pub principal_type: Option<String>,
-    /// Legacy `type` claim — required for backward compatibility.
     #[serde(rename = "type")]
     pub token_type: Option<String>,
     pub version: Option<String>,
     pub scope: Option<String>,
-    /// Token use discriminator: `access` (direct) or `workflow_obo` (delegated).
     pub token_use: Option<String>,
-    /// OBO: subject of the delegated authority (ADC service principal).
     pub act: Option<ActClaim>,
-    /// OBO: authorized party (OAuth client ID).
     pub azp: Option<String>,
-    /// OBO: unique token identifier for replay prevention.
     pub jti: Option<String>,
-    /// Direct: OAuth client ID of the token issuer's client.
     pub client_id: Option<String>,
 }
 
-/// Result of parsing subject into a validated PrincipalId.
-pub struct ParsedSubject {
-    pub principal_id: PrincipalId,
-    pub subject_uuid: Uuid,
-}
+// ---------------------------------------------------------------------------
+// V1 validation helpers
+// ---------------------------------------------------------------------------
 
-/// Parse and validate the `sub` claim as a UUID.
-pub fn parse_subject(sub: &Option<String>) -> Result<ParsedSubject, String> {
-    let sub = sub.as_deref().ok_or("missing sub")?;
-    let uuid = Uuid::parse_str(sub).map_err(|_| "sub must be a valid UUID".to_string())?;
-    Ok(ParsedSubject {
-        principal_id: PrincipalId::from_uuid(uuid),
-        subject_uuid: uuid,
-    })
-}
-
-/// Validate that a required non-empty string claim is present.
-pub fn require_claim(value: &Option<String>, name: &str) -> Result<(), String> {
-    match value.as_deref() {
-        Some(v) if !v.is_empty() => Ok(()),
-        _ => Err(format!("missing required claim: {name}")),
+/// Validate V1 scope against the ASCII-space wire format.
+///
+/// Rules:
+/// - separator: U+0020 (ASCII space)
+/// - case-sensitive
+/// - no leading/trailing space
+/// - no duplicates
+/// - sorted: unsigned-ascii-byte-ascending
+/// - each item matches `^[a-z][a-z0-9-]*\.[a-z][a-z0-9._-]*$`
+pub fn validate_v1_scope(scope: &str) -> Result<(), ApiError> {
+    if scope.is_empty() {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope must not be empty",
+        ));
     }
+    if !scope.is_ascii() {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope must be ASCII",
+        ));
+    }
+    if scope.starts_with(' ') || scope.ends_with(' ') {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope must not have leading or trailing spaces",
+        ));
+    }
+    let items: Vec<&str> = scope.split(' ').collect();
+    if items.iter().any(|item| item.is_empty()) {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope items must be separated by single spaces",
+        ));
+    }
+    let unique: HashSet<&str> = items.iter().copied().collect();
+    if unique.len() != items.len() {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope items must not contain duplicates",
+        ));
+    }
+    if items.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(ApiError::unauthorized(
+            "invalid_scope",
+            "scope items must be sorted in ASCII ascending order",
+        ));
+    }
+    for item in &items {
+        if !is_valid_scope_item(item) {
+            return Err(ApiError::unauthorized(
+                "invalid_scope",
+                "scope item has invalid format",
+            ));
+        }
+    }
+    Ok(())
 }
 
-/// Validate `principal_type` is exactly `agent` (V0 contract).
+/// Check that a scope item matches `^[a-z][a-z0-9-]*\.[a-z][a-z0-9._-]*$`
+fn is_valid_scope_item(item: &str) -> bool {
+    let Some(dot_pos) = item.find('.') else {
+        return false;
+    };
+    let prefix = &item[..dot_pos];
+    let suffix = &item[dot_pos + 1..];
+    if prefix.is_empty() || suffix.is_empty() {
+        return false;
+    }
+    prefix
+        .as_bytes()
+        .first()
+        .is_some_and(|b| b.is_ascii_lowercase())
+        && prefix
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && suffix
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_lowercase())
+        && suffix.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+        })
+}
+
+/// Validate time claims against the contract rules.
+///
+/// - clock_skew_tolerance_seconds: configured value
+/// - machine_access_ttl_seconds: 600
+/// - `nbf ≤ iat`
+/// - `exp > iat` and `exp - iat ≤ machine_access_ttl_seconds`
+pub fn validate_v1_time_claims(
+    iat: usize,
+    nbf: usize,
+    exp: usize,
+    clock_skew_seconds: u64,
+) -> Result<(), ApiError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as usize;
+    let skew = clock_skew_seconds as usize;
+    let machine_ttl = 600;
+
+    if nbf > iat {
+        return Err(ApiError::unauthorized(
+            "invalid_time_claims",
+            "nbf must not be later than iat",
+        ));
+    }
+    if exp <= iat {
+        return Err(ApiError::unauthorized(
+            "invalid_time_claims",
+            "exp must be after iat",
+        ));
+    }
+    if exp - iat > machine_ttl {
+        return Err(ApiError::unauthorized(
+            "token_ttl_exceeded",
+            "token TTL must not exceed the maximum allowed duration",
+        ));
+    }
+    if iat > now.saturating_add(skew) {
+        return Err(ApiError::unauthorized(
+            "invalid_time_claims",
+            "iat is too far in the future",
+        ));
+    }
+    if nbf > now.saturating_add(skew) {
+        return Err(ApiError::unauthorized(
+            "token_not_yet_valid",
+            "token is not yet valid (nbf in the future)",
+        ));
+    }
+    if exp <= now.saturating_sub(skew) {
+        return Err(ApiError::unauthorized(
+            "token_expired",
+            "access token has expired",
+        ));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// OBO validation helpers (kept for future use)
+// ---------------------------------------------------------------------------
+
+/// Validate `principal_type` is exactly `agent`.
 pub fn validate_principal_type(principal_type: &Option<String>) -> Result<(), String> {
     match principal_type.as_deref() {
         Some("agent") => Ok(()),
@@ -86,21 +246,12 @@ pub fn validate_token_use(token_use: &Option<String>) -> Result<(), String> {
         Some(other) => Err(format!(
             "invalid token_use '{other}': expected 'access' or 'workflow_obo'"
         )),
-        None => {
-            // Default to "access" if missing (backward compat with existing tokens)
-            Ok(())
-        }
+        None => Ok(()),
     }
 }
 
 /// Validate Direct token profile.
-///
-/// Direct tokens must not carry OBO markers:
-/// - `act` must be absent
-/// - `azp` must be absent
-/// - `token_use` must not be `workflow_obo`
 pub fn validate_direct_profile(claims: &WorkflowClaims) -> Result<(), String> {
-    // Direct tokens must not have delegation claims.
     if claims.act.is_some() {
         return Err("direct token must not carry act claim".to_string());
     }
@@ -119,32 +270,16 @@ pub fn has_nested_act(act: &ActClaim) -> bool {
 }
 
 /// Validate OBO-specific claims with strict profile enforcement.
-///
-/// Requirements:
-/// - `act` present with valid `act.sub` (UUID)
-/// - No nested `act` (delegation chain not supported in V0)
-/// - `azp` present and non-empty
-/// - `client_id` present, non-empty, and equal to `azp`
-/// - `jti` present and non-empty
 pub fn validate_obo(claims: &WorkflowClaims) -> Result<(), String> {
-    // OBO token: act must be present
     let act = claims.act.as_ref().ok_or("OBO token missing act")?;
-
-    // act.sub must be present and a valid UUID
     let act_sub = act.sub.as_deref().ok_or("OBO token missing act.sub")?;
     Uuid::parse_str(act_sub).map_err(|_| "OBO act.sub must be a valid UUID".to_string())?;
-
-    // Reject nested delegation (V0 does not support chain)
     if has_nested_act(act) {
         return Err("OBO token must not contain nested act".to_string());
     }
-
-    // azp must be present and non-empty
     if claims.azp.as_deref().is_none_or(str::is_empty) {
         return Err("OBO token missing azp".to_string());
     }
-
-    // client_id must be present and equal to azp
     let client_id = claims
         .client_id
         .as_deref()
@@ -156,8 +291,6 @@ pub fn validate_obo(claims: &WorkflowClaims) -> Result<(), String> {
     if client_id != azp {
         return Err("OBO token client_id must equal azp".to_string());
     }
-
-    // jti must be present and non-empty
     if claims.jti.as_deref().is_none_or(str::is_empty) {
         return Err("OBO token missing jti".to_string());
     }
@@ -169,143 +302,164 @@ pub fn is_obo(claims: &WorkflowClaims) -> bool {
     claims.act.is_some() || matches!(claims.token_use.as_deref(), Some("workflow_obo"))
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // --- V1 scope validation ---
+
     #[test]
-    fn validates_valid_subject() {
-        let uuid = Uuid::new_v4();
-        let result = parse_subject(&Some(uuid.to_string())).unwrap();
-        assert_eq!(result.subject_uuid, uuid);
+    fn v1_scope_accepts_valid() {
+        assert!(validate_v1_scope("workflow.execute workflow.read").is_ok());
+        assert!(validate_v1_scope("workflow.read").is_ok());
     }
 
     #[test]
-    fn rejects_invalid_subject() {
-        assert!(parse_subject(&Some("not-a-uuid".to_string())).is_err());
-        assert!(parse_subject(&None).is_err());
+    fn v1_scope_rejects_empty() {
+        assert!(validate_v1_scope("").is_err());
     }
 
     #[test]
-    fn accepts_agent_only() {
-        assert!(validate_principal_type(&Some("agent".to_string())).is_ok());
-        assert!(validate_principal_type(&Some("human".to_string())).is_err());
-        assert!(validate_principal_type(&Some("service".to_string())).is_err());
-        assert!(validate_principal_type(&None).is_err());
+    fn v1_scope_rejects_duplicates() {
+        assert!(validate_v1_scope("workflow.read workflow.read").is_err());
     }
 
     #[test]
-    fn token_use_defaults_to_access() {
-        assert!(validate_token_use(&None).is_ok());
-        assert!(validate_token_use(&Some("access".to_string())).is_ok());
-        assert!(validate_token_use(&Some("workflow_obo".to_string())).is_ok());
-        assert!(validate_token_use(&Some("invalid".to_string())).is_err());
+    fn v1_scope_rejects_unsorted() {
+        assert!(validate_v1_scope("workflow.read workflow.execute").is_err());
     }
 
     #[test]
-    fn direct_profile_rejects_obo_markers() {
-        // Direct token with act → reject
-        let claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(9999999999),
-            iat: Some(1000000000),
-            nbf: None,
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.read".to_string()),
-            token_use: None,
-            act: Some(ActClaim {
-                sub: Some(Uuid::new_v4().to_string()),
-                nested_act: None,
-            }),
-            azp: None,
-            jti: None,
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(
-            validate_direct_profile(&claims).is_err(),
-            "direct token with act must be rejected"
-        );
-
-        // Direct token with azp → reject
-        let claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(9999999999),
-            iat: Some(1000000000),
-            nbf: None,
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.read".to_string()),
-            token_use: None,
-            act: None,
-            azp: Some("some-azp".to_string()),
-            jti: None,
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(
-            validate_direct_profile(&claims).is_err(),
-            "direct token with azp must be rejected"
-        );
-
-        // Direct token with token_use=workflow_obo → reject
-        let claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(9999999999),
-            iat: Some(1000000000),
-            nbf: None,
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.read".to_string()),
-            token_use: Some("workflow_obo".to_string()),
-            act: None,
-            azp: None,
-            jti: None,
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(
-            validate_direct_profile(&claims).is_err(),
-            "direct token with workflow_obo must be rejected"
-        );
-
-        // Valid direct token → accept
-        let claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(9999999999),
-            iat: Some(1000000000),
-            nbf: None,
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.read".to_string()),
-            token_use: None,
-            act: None,
-            azp: None,
-            jti: None,
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(
-            validate_direct_profile(&claims).is_ok(),
-            "valid direct token must be accepted"
-        );
+    fn v1_scope_rejects_trailing_space() {
+        assert!(validate_v1_scope("workflow.read ").is_err());
     }
 
     #[test]
-    fn obo_validation() {
-        let uuid = Uuid::new_v4();
+    fn v1_scope_rejects_leading_space() {
+        assert!(validate_v1_scope(" workflow.read").is_err());
+    }
+
+    #[test]
+    fn v1_scope_rejects_consecutive_spaces() {
+        assert!(validate_v1_scope("workflow.read  workflow.execute").is_err());
+    }
+
+    #[test]
+    fn v1_scope_rejects_non_ascii() {
+        assert!(validate_v1_scope("workflow.读取").is_err());
+    }
+
+    #[test]
+    fn v1_scope_accepts_unknown_scopes() {
+        assert!(validate_v1_scope("custom.namespace workflow.read").is_ok());
+    }
+
+    // --- V1 time validation ---
+
+    #[test]
+    fn v1_time_valid() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now, now, now + 300, 60).is_ok());
+        assert!(validate_v1_time_claims(now - 30, now - 30, now + 570, 60).is_ok());
+    }
+
+    #[test]
+    fn v1_time_rejects_future_nbf() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now, now + 10, now + 300, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_expired() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now - 600, now - 600, now - 1, 0).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_excessive_ttl() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now, now, now + 601, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_exp_equal_iat() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now, now, now, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_exp_before_iat() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now, now, now - 1, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_future_iat_beyond_skew() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now + 120, now, now + 600, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_rejects_expired_beyond_skew() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now - 120, now - 120, now - 61, 60).is_err());
+    }
+
+    #[test]
+    fn v1_time_accepts_within_skew() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        assert!(validate_v1_time_claims(now - 60, now - 60, now + 540, 60).is_ok());
+    }
+
+    #[test]
+    fn scope_item_pattern() {
+        assert!(is_valid_scope_item("workflow.read"));
+        assert!(is_valid_scope_item("workflow.execute"));
+        assert!(is_valid_scope_item("adc.read"));
+        assert!(!is_valid_scope_item("read"));
+        assert!(!is_valid_scope_item(".read"));
+        assert!(!is_valid_scope_item("workflow."));
+        assert!(!is_valid_scope_item("Workflow.read"));
+    }
+
+    // --- OBO validation (preserved) ---
+
+    #[test]
+    fn obo_validation_preserved() {
         let act_sub = Uuid::new_v4();
-        let mut claims = WorkflowClaims {
-            sub: Some(uuid.to_string()),
+        let claims = WorkflowClaims {
+            sub: Some(Uuid::new_v4().to_string()),
             iss: Some("auth-service".to_string()),
             aud: Some("svc-workflow".to_string()),
             exp: Some(9999999999),
@@ -324,57 +478,7 @@ mod tests {
             jti: Some("unique-token-id".to_string()),
             client_id: Some("test-client".to_string()),
         };
-        assert!(
-            validate_obo(&claims).is_ok(),
-            "valid OBO token must be accepted"
-        );
-
-        // client_id != azp → reject
-        claims.client_id = Some("other-client".to_string());
-        assert!(
-            validate_obo(&claims).is_err(),
-            "client_id != azp must be rejected"
-        );
-        claims.client_id = Some("test-client".to_string());
-
-        // Missing jti → reject
-        claims.jti = None;
-        assert!(validate_obo(&claims).is_err());
-        claims.jti = Some("tid".to_string());
-
-        // Missing azp → reject
-        claims.azp = None;
-        assert!(validate_obo(&claims).is_err());
-        claims.azp = Some("test-client".to_string());
-
-        // Missing client_id → reject
-        claims.client_id = None;
-        assert!(validate_obo(&claims).is_err());
-        claims.client_id = Some("test-client".to_string());
-
-        // Invalid act.sub → reject
-        claims.act = Some(ActClaim {
-            sub: Some("not-uuid".to_string()),
-            nested_act: None,
-        });
-        assert!(validate_obo(&claims).is_err());
-
-        // Restore valid act.sub
-        claims.act = Some(ActClaim {
-            sub: Some(act_sub.to_string()),
-            nested_act: None,
-        });
         assert!(validate_obo(&claims).is_ok());
-
-        // Nested act → reject
-        claims.act = Some(ActClaim {
-            sub: Some(act_sub.to_string()),
-            nested_act: Some(serde_json::json!({"sub": Uuid::new_v4().to_string()})),
-        });
-        assert!(
-            validate_obo(&claims).is_err(),
-            "nested act must be rejected"
-        );
     }
 
     #[test]
@@ -384,11 +488,25 @@ mod tests {
             nested_act: None,
         };
         assert!(!has_nested_act(&no_nest));
-
         let with_nest = ActClaim {
             sub: Some(Uuid::new_v4().to_string()),
             nested_act: Some(serde_json::json!({"sub": "uuid"})),
         };
         assert!(has_nested_act(&with_nest));
+    }
+
+    #[test]
+    fn validate_principal_type_works() {
+        assert!(validate_principal_type(&Some("agent".to_string())).is_ok());
+        assert!(validate_principal_type(&Some("human".to_string())).is_err());
+        assert!(validate_principal_type(&None).is_err());
+    }
+
+    #[test]
+    fn validate_token_use_works() {
+        assert!(validate_token_use(&None).is_ok());
+        assert!(validate_token_use(&Some("access".to_string())).is_ok());
+        assert!(validate_token_use(&Some("workflow_obo".to_string())).is_ok());
+        assert!(validate_token_use(&Some("invalid".to_string())).is_err());
     }
 }

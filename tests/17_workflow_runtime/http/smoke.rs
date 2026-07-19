@@ -1,71 +1,54 @@
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{AuthMode, Hs256Config};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
 use super::*;
 
-const JWT_SECRET: &str = "http-smoke-secret-at-least-32-bytes";
-
-#[derive(Serialize)]
-struct Claims {
-    sub: String,
-    iss: &'static str,
-    aud: &'static str,
-    exp: usize,
-    iat: usize,
-    principal_type: &'static str,
-    #[serde(rename = "type")]
-    token_type: &'static str,
-    version: &'static str,
-    scope: String,
+fn token(principal_id: Uuid, scope: &str, key_pair: &common::RsaTestKeyPair) -> String {
+    common::v1_token(principal_id, scope, "test-client", 300, key_pair)
 }
 
-fn token(principal_id: Uuid, scope: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    encode(
-        &Header::new(Algorithm::HS256),
-        &Claims {
-            sub: principal_id.to_string(),
-            iss: "auth-service",
-            aud: "svc-workflow",
-            exp: now + 300,
-            iat: now,
-            principal_type: "agent",
-            token_type: "access",
-            version: "v1",
-            scope: scope.to_string(),
-        },
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .unwrap()
-}
-
-fn app(pool: sqlx::PgPool) -> axum::Router {
-    let hs256 = Hs256Config {
-        secret: JWT_SECRET.to_string(),
-        issuer: "auth-service".to_string(),
-        audience: "svc-workflow".to_string(),
-        clock_skew_seconds: 0,
-    };
+fn build_config(
+    pool: &sqlx::PgPool,
+    jwks_url: &str,
+    allowed_sub: &str,
+) -> (axum::Router, AppState) {
     let config = HttpConfig {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        auth_mode: AuthMode::TestHs256,
-        hs256_config: Some(hs256),
-        jwks_config: None,
+        jwks_config: JwksConfig {
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
-        auth_v1_canary_config: Default::default(),
+        auth_v1_canary_config: AuthV1CanaryConfig {
+            enabled: true,
+            write_enabled: true,
+            allowed_client_id: "test-client".to_string(),
+            allowed_sub: allowed_sub.to_string(),
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
     };
-    http::router(AppState::new(pool, &config), &config)
+    let state = AppState::new(pool.clone(), &config);
+    (http::router(state.clone(), &config), state)
 }
 
 fn request(
@@ -98,6 +81,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn internal_api_create_detail_transition_timeline_and_security() {
     let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_, definition_version_id, _) =
         seed_published_definition_normal_node(&pool, domain_id).await;
@@ -112,8 +96,15 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
     .await
     .unwrap();
     let other_principal = seed_second_principal(&pool).await;
-    let app = app(pool);
-    let full_token = token(principal_id, "workflow.execute workflow.read");
+
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let full_token = token(
+        principal_id,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
 
     let health = app
         .clone()
@@ -239,7 +230,7 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
     assert_eq!(detail.status(), StatusCode::OK);
     assert_eq!(json_body(detail).await["visibility"], "full");
 
-    let read_only = token(principal_id, "workflow.read");
+    let read_only = token(principal_id, "workflow.read", &mock.key_pair);
     let forbidden = app
         .clone()
         .oneshot(request(
@@ -256,7 +247,7 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
         .unwrap();
     assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
 
-    let other_token = token(other_principal, "workflow.execute");
+    let other_token = token(other_principal, "workflow.execute", &mock.key_pair);
     let not_assignee = app
         .clone()
         .oneshot(request(
@@ -271,10 +262,12 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
         ))
         .await
         .unwrap();
-    assert_eq!(not_assignee.status(), StatusCode::FORBIDDEN);
+    // The other_principal's sub does not match the allowed_sub in the canary
+    // config, so the auth layer rejects it before reaching the handler.
+    assert_eq!(not_assignee.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         json_body(not_assignee).await["error"]["code"],
-        "principal_not_assignee"
+        "unauthorized_principal"
     );
 
     let transitioned = app

@@ -153,7 +153,7 @@ mod tests {
 
     use super::*;
     use crate::application::provisioning::ProvisioningConfig;
-    use crate::auth::{AuthContext, AuthMode, Hs256Config};
+    use crate::auth::{AuthContext, JwksConfig};
     use crate::domain::ids::PrincipalId;
     use crate::http::HttpConfig;
 
@@ -181,14 +181,15 @@ mod tests {
             bind_addr: "127.0.0.1:0".parse().unwrap(),
             request_body_max_bytes: 1024,
             request_timeout_seconds: 1,
-            auth_mode: AuthMode::TestHs256,
-            hs256_config: Some(Hs256Config {
-                secret: "test-secret-at-least-32-bytes-long".to_string(),
+            jwks_config: JwksConfig {
+                jwks_url: "http://127.0.0.1:0/jwks".to_string(),
                 issuer: "auth-service".to_string(),
                 audience: "svc-workflow".to_string(),
-                clock_skew_seconds: 0,
-            }),
-            jwks_config: None,
+                cache_ttl_secs: 300,
+                http_timeout_secs: 5,
+                max_stale_secs: 600,
+                clock_skew_seconds: 60,
+            },
             provisioning_config: ProvisioningConfig::new(vec![principal_id]),
             auth_v1_canary_config: Default::default(),
         };
