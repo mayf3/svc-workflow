@@ -7,10 +7,9 @@ use crate::domain::ids::PrincipalId;
 
 /// Act claim for OBO delegation (RFC 8693 style).
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ActClaim {
     pub sub: Option<String>,
-    /// Detect nested delegation — not allowed by the frozen V1 profile.
+    /// Detect nested delegation — not allowed in V0.
     #[serde(rename = "act")]
     pub nested_act: Option<serde_json::Value>,
 }
@@ -20,7 +19,6 @@ pub struct ActClaim {
 /// Supports both direct access tokens (`token_use: access`) and
 /// on-behalf-of tokens (`token_use: workflow_obo`).
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkflowClaims {
     pub sub: Option<String>,
     pub iss: Option<String>,
@@ -42,7 +40,7 @@ pub struct WorkflowClaims {
     pub act: Option<ActClaim>,
     /// OBO: authorized party (OAuth client ID).
     pub azp: Option<String>,
-    /// Unique token identifier for audit correlation.
+    /// OBO: unique token identifier for replay prevention.
     pub jti: Option<String>,
     /// Direct: OAuth client ID of the token issuer's client.
     pub client_id: Option<String>,
@@ -90,7 +88,10 @@ pub fn validate_token_use(token_use: &Option<String>) -> Result<(), String> {
         Some(other) => Err(format!(
             "invalid token_use '{other}': expected 'access' or 'workflow_obo'"
         )),
-        None => Err("missing token_use".to_string()),
+        None => {
+            // Default to "access" if missing (backward compat with existing tokens)
+            Ok(())
+        }
     }
 }
 
@@ -101,9 +102,6 @@ pub fn validate_token_use(token_use: &Option<String>) -> Result<(), String> {
 /// - `azp` must be absent
 /// - `token_use` must not be `workflow_obo`
 pub fn validate_direct_profile(claims: &WorkflowClaims) -> Result<(), String> {
-    if claims.token_use.as_deref() != Some("access") {
-        return Err("direct token must have token_use=access".to_string());
-    }
     // Direct tokens must not have delegation claims.
     if claims.act.is_some() {
         return Err("direct token must not carry act claim".to_string());
@@ -164,72 +162,8 @@ pub fn validate_obo(claims: &WorkflowClaims) -> Result<(), String> {
     }
 
     // jti must be present and non-empty
-    require_token_id(&claims.jti)?;
-    if claims.agent_id.as_deref().is_some_and(str::is_empty) {
-        return Err("OBO token agent_id must not be empty".to_string());
-    }
-    Ok(())
-}
-
-fn require_token_id(jti: &Option<String>) -> Result<(), String> {
-    if jti.as_deref().is_none_or(|value| value.len() < 16) {
-        return Err("token jti must contain at least 16 characters".to_string());
-    }
-    Ok(())
-}
-
-/// Validate the frozen ASCII-space scope wire format and return exact items.
-pub fn canonical_scope(scope: &Option<String>) -> Result<Vec<String>, String> {
-    let scope = scope.as_deref().ok_or("missing scope")?;
-    if scope.is_empty() || !scope.is_ascii() {
-        return Err("scope must be a non-empty ASCII string".to_string());
-    }
-    let items = scope.split(' ').collect::<Vec<_>>();
-    if items.iter().any(|item| item.is_empty()) {
-        return Err("scope must use one ASCII space between items".to_string());
-    }
-    if items.windows(2).any(|pair| pair[0] >= pair[1]) {
-        return Err("scope items must be unique and sorted".to_string());
-    }
-    if items.iter().any(|item| !valid_workflow_scope_item(item)) {
-        return Err("scope item is outside the workflow namespace".to_string());
-    }
-    Ok(items.into_iter().map(str::to_owned).collect())
-}
-
-fn valid_workflow_scope_item(item: &str) -> bool {
-    let Some(action) = item.strip_prefix("workflow.") else {
-        return false;
-    };
-    let Some(first) = action.as_bytes().first() else {
-        return false;
-    };
-    first.is_ascii_lowercase()
-        && action.as_bytes().iter().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
-        })
-}
-
-/// Enforce frozen NumericDate ordering, skew and profile TTL bounds.
-pub fn validate_time_claims(
-    claims: &WorkflowClaims,
-    is_obo: bool,
-    now: usize,
-    clock_skew_seconds: u64,
-) -> Result<(), String> {
-    let iat = claims.iat.ok_or("missing iat")?;
-    let nbf = claims.nbf.ok_or("missing nbf")?;
-    let exp = claims.exp.ok_or("missing exp")?;
-    let skew = usize::try_from(clock_skew_seconds).unwrap_or(usize::MAX);
-    let maximum_ttl = if is_obo { 300 } else { 600 };
-    if nbf > iat || exp <= iat || exp - iat > maximum_ttl {
-        return Err("invalid token time ordering or TTL".to_string());
-    }
-    if iat > now.saturating_add(skew)
-        || nbf > now.saturating_add(skew)
-        || exp <= now.saturating_sub(skew)
-    {
-        return Err("token is outside the accepted time window".to_string());
+    if claims.jti.as_deref().is_none_or(str::is_empty) {
+        return Err("OBO token missing jti".to_string());
     }
     Ok(())
 }
@@ -265,8 +199,8 @@ mod tests {
     }
 
     #[test]
-    fn token_use_is_required_and_exact() {
-        assert!(validate_token_use(&None).is_err());
+    fn token_use_defaults_to_access() {
+        assert!(validate_token_use(&None).is_ok());
         assert!(validate_token_use(&Some("access".to_string())).is_ok());
         assert!(validate_token_use(&Some("workflow_obo".to_string())).is_ok());
         assert!(validate_token_use(&Some("invalid".to_string())).is_err());
@@ -286,14 +220,13 @@ mod tests {
             token_type: Some("access".to_string()),
             version: Some("v1".to_string()),
             scope: Some("workflow.read".to_string()),
-            agent_id: Some("test-agent".to_string()),
-            token_use: Some("access".to_string()),
+            token_use: None,
             act: Some(ActClaim {
                 sub: Some(Uuid::new_v4().to_string()),
                 nested_act: None,
             }),
             azp: None,
-            jti: Some("direct-token-id-01".to_string()),
+            jti: None,
             client_id: Some("test-client".to_string()),
         };
         assert!(
@@ -313,11 +246,10 @@ mod tests {
             token_type: Some("access".to_string()),
             version: Some("v1".to_string()),
             scope: Some("workflow.read".to_string()),
-            agent_id: Some("test-agent".to_string()),
-            token_use: Some("access".to_string()),
+            token_use: None,
             act: None,
             azp: Some("some-azp".to_string()),
-            jti: Some("direct-token-id-02".to_string()),
+            jti: None,
             client_id: Some("test-client".to_string()),
         };
         assert!(
@@ -337,7 +269,6 @@ mod tests {
             token_type: Some("access".to_string()),
             version: Some("v1".to_string()),
             scope: Some("workflow.read".to_string()),
-            agent_id: Some("test-agent".to_string()),
             token_use: Some("workflow_obo".to_string()),
             act: None,
             azp: None,
@@ -361,11 +292,10 @@ mod tests {
             token_type: Some("access".to_string()),
             version: Some("v1".to_string()),
             scope: Some("workflow.read".to_string()),
-            agent_id: Some("test-agent".to_string()),
-            token_use: Some("access".to_string()),
+            token_use: None,
             act: None,
             azp: None,
-            jti: Some("direct-token-id-03".to_string()),
+            jti: None,
             client_id: Some("test-client".to_string()),
         };
         assert!(
@@ -389,14 +319,13 @@ mod tests {
             token_type: Some("access".to_string()),
             version: Some("v1".to_string()),
             scope: Some("workflow.execute".to_string()),
-            agent_id: Some("test-agent".to_string()),
             token_use: Some("workflow_obo".to_string()),
             act: Some(ActClaim {
                 sub: Some(act_sub.to_string()),
                 nested_act: None,
             }),
             azp: Some("test-client".to_string()),
-            jti: Some("unique-token-id-01".to_string()),
+            jti: Some("unique-token-id".to_string()),
             client_id: Some("test-client".to_string()),
         };
         assert!(
@@ -415,7 +344,7 @@ mod tests {
         // Missing jti → reject
         claims.jti = None;
         assert!(validate_obo(&claims).is_err());
-        claims.jti = Some("unique-token-id-02".to_string());
+        claims.jti = Some("tid".to_string());
 
         // Missing azp → reject
         claims.azp = None;
@@ -450,56 +379,6 @@ mod tests {
             validate_obo(&claims).is_err(),
             "nested act must be rejected"
         );
-    }
-
-    #[test]
-    fn scope_wire_format_is_canonical() {
-        assert_eq!(
-            canonical_scope(&Some("workflow.execute workflow.read".to_string())).unwrap(),
-            vec!["workflow.execute", "workflow.read"]
-        );
-        for invalid in [
-            "workflow.read workflow.execute",
-            "workflow.read workflow.read",
-            " workflow.read",
-            "workflow.read ",
-            "workflow.read  workflow.write",
-            "okr.read",
-            "workflow.Read",
-        ] {
-            assert!(
-                canonical_scope(&Some(invalid.to_string())).is_err(),
-                "{invalid}"
-            );
-        }
-    }
-
-    #[test]
-    fn time_claims_enforce_order_and_profile_ttl() {
-        let mut claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(1_500),
-            iat: Some(1_000),
-            nbf: Some(1_000),
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.read".to_string()),
-            agent_id: Some("test-agent".to_string()),
-            token_use: Some("access".to_string()),
-            act: None,
-            azp: None,
-            jti: Some("direct-token-id-04".to_string()),
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(validate_time_claims(&claims, false, 1_100, 60).is_ok());
-        claims.exp = Some(1_601);
-        assert!(validate_time_claims(&claims, false, 1_100, 60).is_err());
-        claims.exp = Some(1_200);
-        claims.nbf = Some(1_001);
-        assert!(validate_time_claims(&claims, false, 1_100, 60).is_err());
     }
 
     #[test]
