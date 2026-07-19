@@ -293,7 +293,8 @@ async fn v1_write_transition() {
         &mock.key_pair,
     );
     let transition_body = json!({
-        "transitionId": advance_id,
+        "transitionDefinitionId": advance_id,
+        "expectedWorkflowStateVersion": 1,
         "submissionPayload": null
     });
     let trans_resp = app
