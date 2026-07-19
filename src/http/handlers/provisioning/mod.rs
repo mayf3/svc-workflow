@@ -190,6 +190,7 @@ mod tests {
             }),
             jwks_config: None,
             provisioning_config: ProvisioningConfig::new(vec![principal_id]),
+            auth_v1_canary_config: Default::default(),
         };
         (principal, AppState::new(pool, &config))
     }

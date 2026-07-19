@@ -109,6 +109,7 @@ fn app_for_actor(pool: sqlx::PgPool, actor_id: Uuid) -> axum::Router {
         hs256_config: Some(hs256),
         jwks_config: None,
         provisioning_config: ProvisioningConfig::new(vec![PrincipalId::from_uuid(actor_id)]),
+        auth_v1_canary_config: Default::default(),
     };
     http::router(AppState::new(pool, &config), &config)
 }

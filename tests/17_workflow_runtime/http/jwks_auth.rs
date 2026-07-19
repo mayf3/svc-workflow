@@ -280,6 +280,7 @@ fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
             clock_skew_seconds: 0,
         }),
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        auth_v1_canary_config: Default::default(),
     }
 }
 
