@@ -58,6 +58,7 @@ fn test_config(bind_addr: std::net::SocketAddr, body_limit: usize) -> HttpConfig
         }),
         jwks_config: None,
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        auth_v1_canary_config: Default::default(),
     }
 }
 
