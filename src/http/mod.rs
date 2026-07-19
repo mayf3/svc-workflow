@@ -1,6 +1,7 @@
 //! Axum adapter for the internal workflow API.
 //!
-//! Includes the Auth V1 single-agent read-only canary middleware.
+//! Auth V1 is the only authentication path.  A write gate middleware
+//! blocks write endpoints when `AUTH_V1_CANARY_WRITE_ENABLED` is false.
 
 pub mod canary_guard;
 pub mod dto;
@@ -61,10 +62,7 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/worklists/assigned-to-me",
-            get(handlers::worklists::assigned_to_me).layer(middleware::from_fn_with_state(
-                state.clone(),
-                canary_guard::canary_worklist_guard,
-            )),
+            get(handlers::worklists::assigned_to_me),
         )
         .route(
             "/internal/v1/worklists/creator-owned-drafts",

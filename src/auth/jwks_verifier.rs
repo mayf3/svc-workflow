@@ -1,4 +1,10 @@
-//! RS256 JWKS verifier with caching, controlled refresh, and fail-closed semantics.
+//! RS256 JWKS verifier with Auth V1 DirectMachineAccess profile enforcement.
+//!
+//! This is the sole authentication verifier — service no longer supports
+//! HS256 or legacy claims.  Tokens are validated against the strict
+//! `V1DirectMachineClaims` struct (RS256, `deny_unknown_fields`).
+//!
+//! OBO token verification code is preserved for future use.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -15,7 +21,8 @@ use crate::http::error::ApiError;
 
 use super::auth_context::AuthContext;
 use super::auth_mode::JwksConfig;
-use super::claims::{self, WorkflowClaims};
+use super::canary::AuthV1CanaryConfig;
+use super::claims::{self, V1DirectMachineClaims};
 use super::AuthenticatedPrincipal;
 
 /// Maximum response body size for JWKS fetch (1 MB).
@@ -30,9 +37,7 @@ struct RawJwk {
     #[serde(rename = "use")]
     key_use: Option<String>,
     alg: Option<String>,
-    /// RSA modulus (base64url-encoded).
     n: Option<String>,
-    /// RSA exponent (base64url-encoded).
     e: Option<String>,
 }
 
@@ -54,30 +59,30 @@ struct JwksCacheState {
     fetched_at: Instant,
 }
 
-/// RS256 JWKS verifier with caching and controlled refresh.
+/// RS256 JWKS verifier with Auth V1 profile enforcement.
 pub struct JwksVerifier {
     cache: Arc<tokio::sync::RwLock<Option<JwksCacheState>>>,
     http_client: reqwest::Client,
     jwks_url: String,
     cache_ttl: Duration,
     max_stale: Duration,
-    /// Concurrency suppression for JWKS refresh.
     refresh_lock: Arc<Mutex<()>>,
     issuer: String,
     audience: String,
     clock_skew_seconds: u64,
+    /// Auth V1 feature flags and allow-list.
+    config: AuthV1CanaryConfig,
 }
 
 impl JwksVerifier {
-    /// Create a new `JwksVerifier` from configuration.
+    /// Create a new `JwksVerifier`.
     ///
     /// An initial JWKS fetch is attempted eagerly in the background.
-    pub fn new(config: &JwksConfig) -> Self {
+    pub fn new(config: &JwksConfig, canary_config: &AuthV1CanaryConfig) -> Self {
         let cache: Arc<tokio::sync::RwLock<Option<JwksCacheState>>> =
             Arc::new(tokio::sync::RwLock::new(None));
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.http_timeout_secs))
-            // Redirect policy: do not follow any redirects (fail closed on 3xx).
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("reqwest::Client builder with valid config");
@@ -91,6 +96,7 @@ impl JwksVerifier {
             issuer: config.issuer.clone(),
             audience: config.audience.clone(),
             clock_skew_seconds: config.clock_skew_seconds,
+            config: canary_config.clone(),
         };
         // Eagerly attempt initial fetch.
         let eager = verifier.clone();
@@ -100,7 +106,7 @@ impl JwksVerifier {
         verifier
     }
 
-    /// Check whether the verifier has at least one cached key within the max-stale window.
+    /// Check whether the verifier has at least one cached key within max-stale.
     pub async fn is_ready(&self) -> bool {
         let guard = self.cache.read().await;
         match guard.as_ref() {
@@ -109,16 +115,26 @@ impl JwksVerifier {
         }
     }
 
-    /// Verify a JWT in JWKS mode.
+    /// Verify a JWT against the Auth V1 DirectMachineAccess profile.
     ///
     /// Algorithm must be RS256. Token must include a `kid` that maps to
     /// a cached JWKS key. Unknown kids trigger a controlled refresh.
+    ///
+    /// Returns `AuthenticatedPrincipal` with `principal_id = token.sub`.
     pub async fn verify(&self, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
-        // 1. Decode and validate the JWT header.
+        // 1. Master switch check.
+        if !self.config.enabled {
+            return Err(ApiError::unauthorized(
+                "auth_v1_disabled",
+                "Auth V1 authentication is not enabled",
+            ));
+        }
+
+        // 2. Decode and validate the JWT header.
         let header = decode_header(token)
             .map_err(|_| ApiError::unauthorized("malformed_token", "malformed JWT header"))?;
 
-        // Algorithm must be RS256.
+        // Algorithm must be RS256 (contract: signing.algorithm = RS256).
         if header.alg != Algorithm::RS256 {
             return Err(ApiError::unauthorized(
                 "algorithm_not_allowed",
@@ -126,15 +142,15 @@ impl JwksVerifier {
             ));
         }
 
-        // Kid is required.
+        // Kid is required for JWKS-based verification.
         let kid = header.kid.as_deref().ok_or_else(|| {
             ApiError::unauthorized("malformed_token", "JWT must include a kid header")
         })?;
 
-        // 2. Look up the key, optionally refreshing cache.
+        // 3. Look up the key, optionally refreshing cache.
         let key = self.lookup_key(kid).await?;
 
-        // 3. Build validation.
+        // 4. Build validation.
         let mut validation = Validation::new(Algorithm::RS256);
         validation.algorithms = vec![Algorithm::RS256];
         validation.set_issuer(&[&self.issuer]);
@@ -146,131 +162,144 @@ impl JwksVerifier {
         validation.validate_nbf = true;
         validation.leeway = self.clock_skew_seconds;
 
-        // 4. Decode and verify.
-        let data =
-            decode::<WorkflowClaims>(token, &key, &validation).map_err(|error| {
-                match error.kind() {
-                    ErrorKind::ExpiredSignature => {
-                        ApiError::unauthorized("token_expired", "access token has expired")
-                    }
-                    ErrorKind::MissingRequiredClaim(claim) => ApiError::unauthorized_with_details(
-                        "malformed_token",
-                        "access token is missing a required claim",
-                        serde_json::json!({ "claim": claim }),
-                    ),
-                    ErrorKind::InvalidAlgorithm => {
-                        ApiError::unauthorized("algorithm_not_allowed", "invalid JWT algorithm")
-                    }
-                    ErrorKind::InvalidIssuer => {
-                        ApiError::unauthorized("wrong_issuer", "token issuer mismatch")
-                    }
-                    ErrorKind::InvalidAudience => {
-                        ApiError::unauthorized("wrong_audience", "token audience mismatch")
-                    }
-                    _ => ApiError::unauthorized("malformed_token", "invalid access token"),
+        // 5. Decode as V1DirectMachineClaims (strict, deny_unknown_fields).
+        let data = decode::<V1DirectMachineClaims>(token, &key, &validation).map_err(|error| {
+            match error.kind() {
+                ErrorKind::ExpiredSignature => {
+                    ApiError::unauthorized("token_expired", "access token has expired")
                 }
-            })?;
+                ErrorKind::MissingRequiredClaim(claim) => ApiError::unauthorized_with_details(
+                    "malformed_token",
+                    "access token is missing a required claim",
+                    serde_json::json!({ "claim": claim }),
+                ),
+                ErrorKind::InvalidAlgorithm => {
+                    ApiError::unauthorized("algorithm_not_allowed", "invalid JWT algorithm")
+                }
+                ErrorKind::InvalidIssuer => {
+                    ApiError::unauthorized("wrong_issuer", "token issuer mismatch")
+                }
+                ErrorKind::InvalidAudience => {
+                    ApiError::unauthorized("wrong_audience", "token audience mismatch")
+                }
+                _ => {
+                    // Include the serde error detail for debugging (e.g. unknown fields).
+                    let msg = format!("invalid access token: {}", error);
+                    ApiError::unauthorized("malformed_token", Box::leak(msg.into_boxed_str()))
+                }
+            }
+        })?;
 
         let claims = data.claims;
 
-        // 5. Validate required custom claims (legacy backward compat).
-        super::verifier::require_legacy_claims(&claims)?;
+        // 6. Validate V1 profile claims.
 
-        // 6. Parse and validate subject.
-        let parsed = claims::parse_subject(&claims.sub)
-            .map_err(|_| ApiError::unauthorized("malformed_token", "invalid subject claim"))?;
-
-        // 7. Validate principal_type (agent only per V0 contract).
-        claims::validate_principal_type(&claims.principal_type).map_err(|_| {
-            ApiError::unauthorized("invalid_principal_type", "invalid principal type")
-        })?;
-
-        // 8. Validate token_use.
-        claims::validate_token_use(&claims.token_use)
-            .map_err(|_| ApiError::unauthorized("malformed_token", "invalid token use"))?;
-
-        // 9. Determine if this is a direct or OBO token and validate profile.
-        // OBO is determined solely by token_use=workflow_obo.
-        // If a direct token carries act/azp, the direct profile check will reject it.
-        let is_obo = claims.token_use.as_deref() == Some("workflow_obo");
-
-        if is_obo {
-            // Validate OBO profile with strict rules.
-            claims::validate_obo(&claims).map_err(|e| {
-                let code = if e.contains("nested act") {
-                    "invalid_actor"
-                } else if e.contains("client_id") {
-                    "invalid_client_claims"
-                } else {
-                    "invalid_obo_profile"
-                };
-                ApiError::unauthorized(code, "OBO claims validation failed")
-            })?;
-        } else {
-            // Validate Direct token profile.
-            claims::validate_direct_profile(&claims).map_err(|_e| {
-                ApiError::unauthorized(
-                    "invalid_direct_profile",
-                    "direct token profile validation failed",
-                )
-            })?;
+        // principal_type must be "agent" (contract: directMachineAccess.principal_type).
+        if claims.principal_type != "agent" {
+            return Err(ApiError::unauthorized(
+                "invalid_principal_type",
+                "principal_type must be agent",
+            ));
         }
 
-        // 10. Parse scopes (clone before move).
-        let scope_string = claims.scope.clone().unwrap_or_default();
-        let scopes = scope_string
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect::<HashSet<_>>();
+        // token_use must be "access" (contract: directMachineAccess.token_use).
+        if claims.token_use != "access" {
+            return Err(ApiError::unauthorized(
+                "invalid_token_use",
+                "token_use must be access",
+            ));
+        }
 
-        // 11. Build auth context.
-        let delegating = match &claims.act {
-            Some(act) => act
-                .sub
-                .as_ref()
-                .and_then(|s| Uuid::parse_str(s).ok())
-                .map(PrincipalId::from_uuid),
-            None => None,
-        };
+        // type must be "access" (contract: directMachineAccess.type).
+        if claims.token_type != "access" {
+            return Err(ApiError::unauthorized(
+                "invalid_token_type",
+                "token type must be access",
+            ));
+        }
+
+        // version must be "v1" (contract: manifest.token_version).
+        if claims.version != "v1" {
+            return Err(ApiError::unauthorized(
+                "malformed_token",
+                "token version must be v1",
+            ));
+        }
+
+        // jti must have at least 16 characters (contract: jti.minLength = 16).
+        if claims.jti.len() < 16 {
+            return Err(ApiError::unauthorized(
+                "malformed_token",
+                "jti must contain at least 16 characters",
+            ));
+        }
+
+        // 7. Validate sub is a valid UUID.
+        let sub_uuid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| ApiError::unauthorized("malformed_token", "sub must be a valid UUID"))?;
+
+        // 8. Validate allow-list.
+        if !self.config.allowed_client_id.is_empty()
+            && claims.client_id != self.config.allowed_client_id
+        {
+            return Err(ApiError::unauthorized(
+                "unauthorized_client",
+                "client_id is not authorized",
+            ));
+        }
+        if !self.config.allowed_sub.is_empty() && claims.sub != self.config.allowed_sub {
+            return Err(ApiError::unauthorized(
+                "unauthorized_principal",
+                "sub is not authorized",
+            ));
+        }
+
+        // 9. Validate scope wire format.
+        claims::validate_v1_scope(&claims.scope)?;
+
+        // 10. Validate time claims.
+        claims::validate_v1_time_claims(
+            claims.iat,
+            claims.nbf,
+            claims.exp,
+            self.clock_skew_seconds,
+        )?;
+
+        // 11. Build scopes set.
+        let scopes: HashSet<String> = claims.scope.split(' ').map(str::to_owned).collect();
+
+        // 12. Build auth context.
         let auth_context = AuthContext {
-            subject: parsed.principal_id,
-            principal_type: claims
-                .principal_type
-                .clone()
-                .unwrap_or_else(|| "agent".to_string()),
-            token_use: claims
-                .token_use
-                .clone()
-                .unwrap_or_else(|| "access".to_string()),
-            delegating_principal_id: delegating,
-            authorized_party: claims.azp.clone(),
-            token_id: claims.jti.clone(),
-            audience: claims.aud.clone().unwrap_or_default(),
-            scope: scope_string,
+            subject: PrincipalId::from_uuid(sub_uuid),
+            principal_type: "agent".to_string(),
+            token_use: "access".to_string(),
+            delegating_principal_id: None,
+            authorized_party: None,
+            token_id: Some(claims.jti),
+            audience: self.audience.clone(),
+            scope: claims.scope,
         };
 
         Ok(AuthenticatedPrincipal::new_with_context(
-            parsed.principal_id,
+            PrincipalId::from_uuid(sub_uuid),
             scopes,
             auth_context,
         ))
     }
 
-    /// Look up a kid in cache, triggering a refresh if needed.
+    // ---- JWKS cache ----
+
     async fn lookup_key(&self, kid: &str) -> Result<DecodingKey, ApiError> {
         // Fast path: check cache.
         {
             let guard = self.cache.read().await;
             if let Some(state) = guard.as_ref() {
                 let elapsed = state.fetched_at.elapsed();
-                // If within TTL, use cache directly.
                 if elapsed <= self.cache_ttl {
                     if let Some(key) = find_key(&state.keys, kid) {
                         return Ok(key);
                     }
                 }
-                // If within max_stale but beyond TTL, use cache for known kid,
-                // but trigger refresh for unknown kid.
                 if elapsed <= self.max_stale {
                     if let Some(key) = find_key(&state.keys, kid) {
                         return Ok(key);
@@ -284,12 +313,10 @@ impl JwksVerifier {
         match result {
             Ok(key) => Ok(key),
             Err(_) => {
-                // Last resort: if cache is within max_stale, use it even for unknown kid
-                // (it won't match but we tried). This is the "fail closed" path.
                 let guard = self.cache.read().await;
                 match guard.as_ref() {
                     Some(state) if state.fetched_at.elapsed() <= self.max_stale => Err(
-                        ApiError::unauthorized("unknown_kid", "unknown key ID after refresh"),
+                        ApiError::unauthorized("unknown_kid", "unknown key ID after JWKS refresh"),
                     ),
                     _ => Err(ApiError::service_unavailable(
                         "jwks_unavailable",
@@ -300,11 +327,10 @@ impl JwksVerifier {
         }
     }
 
-    /// Refresh JWKS cache and look up the kid. Uses a mutex to prevent concurrent fetches.
     async fn refresh_and_find(&self, kid: &str) -> Result<DecodingKey, ()> {
         let _lock = self.refresh_lock.lock().await;
 
-        // Double-check: maybe another thread already refreshed.
+        // Double-check after acquiring lock.
         {
             let guard = self.cache.read().await;
             if let Some(state) = guard.as_ref() {
@@ -314,10 +340,8 @@ impl JwksVerifier {
             }
         }
 
-        // Fetch fresh JWKS.
         self.fetch_jwks().await.map_err(|_| ())?;
 
-        // Look up the kid in the new set.
         let guard = self.cache.read().await;
         match guard.as_ref() {
             Some(state) => match find_key(&state.keys, kid) {
@@ -328,7 +352,6 @@ impl JwksVerifier {
         }
     }
 
-    /// Fetch JWKS from the configured URL and update the cache.
     async fn fetch_jwks(&self) -> Result<(), ()> {
         let response = self
             .http_client
@@ -361,14 +384,12 @@ impl JwksVerifier {
         let mut keys: Vec<JwkKey> = Vec::new();
         let mut seen_kids = std::collections::HashSet::new();
         for raw in jwks.keys {
-            // Only accept RSA keys with sig use.
             if raw.key_type.as_deref() != Some("RSA") {
                 continue;
             }
             if !matches!(raw.key_use.as_deref(), None | Some("sig")) {
                 continue;
             }
-            // Require algorithm RS256 or absent (will be checked during verify).
             if !matches!(raw.alg.as_deref(), None | Some("RS256")) {
                 continue;
             }
@@ -376,7 +397,6 @@ impl JwksVerifier {
                 Some(ref k) if !k.is_empty() => k.clone(),
                 _ => continue,
             };
-            // Reject duplicate kid — fail closed for non-deterministic key behavior.
             if !seen_kids.insert(kid.clone()) {
                 tracing::warn!(url = %self.jwks_url, kid = %kid, "duplicate kid in JWKS response");
                 return Err(());
@@ -389,11 +409,10 @@ impl JwksVerifier {
                 Some(ref e) if !e.is_empty() => e.clone(),
                 _ => continue,
             };
-            // Build DecodingKey from RSA components (base64url-encoded n and e).
             let decoding_key = match DecodingKey::from_rsa_components(&n, &e) {
                 Ok(key) => key,
                 Err(error) => {
-                    tracing::warn!(kid = %kid, error = %error, "failed to build RSA decoding key from JWK");
+                    tracing::warn!(kid = %kid, error = %error, "failed to build RSA decoding key");
                     continue;
                 }
             };
@@ -401,7 +420,10 @@ impl JwksVerifier {
         }
 
         if keys.is_empty() {
-            tracing::warn!(url = %self.jwks_url, "JWKS response contained no usable RSA keys");
+            tracing::warn!(
+                url = %self.jwks_url,
+                "JWKS response contained no usable RSA keys"
+            );
             return Err(());
         }
 
@@ -415,7 +437,6 @@ impl JwksVerifier {
     }
 }
 
-/// Helper: clone for background eager fetch.
 impl Clone for JwksVerifier {
     fn clone(&self) -> Self {
         Self {
@@ -428,20 +449,16 @@ impl Clone for JwksVerifier {
             issuer: self.issuer.clone(),
             audience: self.audience.clone(),
             clock_skew_seconds: self.clock_skew_seconds,
+            config: self.config.clone(),
         }
     }
 }
 
-/// Find a key by kid in the cached key list.
 fn find_key(keys: &[JwkKey], kid: &str) -> Option<DecodingKey> {
     keys.iter()
         .find(|k| k.kid == kid)
         .map(|k| k.decoding_key.clone())
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

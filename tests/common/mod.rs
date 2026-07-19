@@ -7,6 +7,193 @@
 
 use sqlx::PgPool;
 
+// ---------------------------------------------------------------------------
+// RSA key pair helpers (runtime generation, no embedded private keys)
+// ---------------------------------------------------------------------------
+
+use base64::Engine as _;
+
+/// An RSA key pair with its JWKS kid and base64url-encoded components.
+#[derive(Clone)]
+pub struct RsaTestKeyPair {
+    pub private_key_pem: String,
+    pub kid: String,
+    pub n_base64url: String,
+    pub e_base64url: String,
+}
+
+// ---------------------------------------------------------------------------
+// Mock JWKS server (runtime RSA key generation)
+// ---------------------------------------------------------------------------
+
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+
+/// A mock JWKS server that serves a single RSA public key.
+///
+/// The key pair is generated at runtime — no embedded private keys.
+pub struct MockJwksServer {
+    pub url: String,
+    pub key_pair: RsaTestKeyPair,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+}
+
+impl MockJwksServer {
+    pub async fn start() -> Self {
+        use tokio::io::AsyncWriteExt;
+
+        let key_pair = generate_rsa_key_pair();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{addr}/.well-known/jwks.json");
+        let (shutdown, mut rx) = tokio::sync::oneshot::channel::<()>();
+
+        let body = serde_json::json!({
+            "keys": [{
+                "kty": "RSA",
+                "use": "sig",
+                "alg": "RS256",
+                "kid": key_pair.kid,
+                "n": key_pair.n_base64url,
+                "e": key_pair.e_base64url,
+            }]
+        })
+        .to_string();
+
+        let body_clone = body.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        if let Ok((stream, _)) = result {
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                                body_clone.len(), body_clone
+                            );
+                            let mut writer = tokio::io::BufWriter::new(stream);
+                            let _ = writer.write_all(resp.as_bytes()).await;
+                            let _ = writer.flush().await;
+                        }
+                    }
+                    _ = &mut rx => break,
+                }
+            }
+        });
+
+        Self {
+            url,
+            key_pair,
+            shutdown,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Auth V1 token factory (RS256, runtime keys, full V1DirectMachineClaims)
+// ---------------------------------------------------------------------------
+
+use jsonwebtoken::{encode as jwt_encode, Algorithm, EncodingKey, Header};
+
+/// Create an RS256 JWT matching the Auth V1 DirectMachineAccess profile.
+pub fn v1_token(
+    subject: uuid::Uuid,
+    scope: &str,
+    client_id: &str,
+    exp_offset: i64,
+    key_pair: &RsaTestKeyPair,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": subject.to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": client_id,
+        "token_use": "access",
+        "type": "access",
+        "version": "v1",
+        "scope": scope,
+        "jti": format!("test-{}", uuid::Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": (now as i64 + exp_offset) as usize,
+    });
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key = EncodingKey::from_rsa_pem(key_pair.private_key_pem.as_bytes()).unwrap();
+    jwt_encode(&header, &claims, &key).unwrap()
+}
+
+/// Create a V1 token with an extra field (violates deny_unknown_fields).
+pub fn v1_token_with_extra_field(
+    subject: uuid::Uuid,
+    scope: &str,
+    client_id: &str,
+    exp_offset: i64,
+    extra_key: &str,
+    extra_value: &str,
+    key_pair: &RsaTestKeyPair,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": subject.to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": client_id,
+        "token_use": "access",
+        "type": "access",
+        "version": "v1",
+        "scope": scope,
+        "jti": format!("test-{}", uuid::Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": (now as i64 + exp_offset) as usize,
+        extra_key: extra_value,
+    });
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key = EncodingKey::from_rsa_pem(key_pair.private_key_pem.as_bytes()).unwrap();
+    jwt_encode(&header, &claims, &key).unwrap()
+}
+
+/// Generate a fresh 2048-bit RSA key pair at runtime.
+///
+/// The private key PEM can be used with `jsonwebtoken::EncodingKey::from_rsa_pem()`.
+/// The `n_base64url` and `e_base64url` can be placed in a mock JWKS response.
+pub fn generate_rsa_key_pair() -> RsaTestKeyPair {
+    use rsa::pkcs8::EncodePrivateKey;
+    use rsa::traits::PublicKeyParts;
+    use rsa::RsaPrivateKey;
+
+    let mut rng = rand::thread_rng();
+    let private_key = RsaPrivateKey::new(&mut rng, 2048).expect("generate RSA key pair");
+
+    let kid = uuid::Uuid::new_v4().to_string();
+
+    // PEM-encode the private key for jsonwebtoken
+    let private_key_pem = private_key
+        .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+        .expect("PEM-encode RSA private key")
+        .to_string();
+
+    // Extract n and e as base64url-encoded strings
+    let n_bytes = private_key.n().to_bytes_be();
+    let e_bytes = private_key.e().to_bytes_be();
+
+    let n_base64url = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(n_bytes);
+    let e_base64url = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(e_bytes);
+
+    RsaTestKeyPair {
+        private_key_pem,
+        kid,
+        n_base64url,
+        e_base64url,
+    }
+}
+
 /// Default test database URL.
 const TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
 
