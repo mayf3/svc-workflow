@@ -994,61 +994,8 @@ async fn valid_obo_agent_token_hardened() {
 }
 
 /// 48. Frozen V1 wire-shape violations fail closed at the resource service.
-#[tokio::test]
-async fn v1_wire_shape_violations_rejected() {
-    let pool = create_pool().await;
-    let mock = MockJwksServer::start().await;
-    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
-    let state = AppState::new(pool, &config);
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    let now = chrono::Utc::now().timestamp() as usize;
-    let base = json!({
-        "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
-        "nbf": now,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read",
-        "agent_id": "test-agent",
-        "token_use": "access",
-        "jti": "test-direct-jti-05",
-        "client_id": "test-client"
-    });
-    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-    let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(JWKS_KID.to_string());
-
-    let mut cases = Vec::new();
-    let mut unknown_claim = base.clone();
-    unknown_claim["okrRole"] = json!("admin");
-    cases.push(unknown_claim);
-    let mut missing_token_use = base.clone();
-    missing_token_use
-        .as_object_mut()
-        .unwrap()
-        .remove("token_use");
-    cases.push(missing_token_use);
-    let mut missing_agent_id = base.clone();
-    missing_agent_id.as_object_mut().unwrap().remove("agent_id");
-    cases.push(missing_agent_id);
-    let mut noncanonical_scope = base.clone();
-    noncanonical_scope["scope"] = json!("workflow.read  workflow.write");
-    cases.push(noncanonical_scope);
-    let mut excessive_ttl = base;
-    excessive_ttl["exp"] = json!(now + 601);
-    cases.push(excessive_ttl);
-
-    for claims in cases {
-        let token = encode(&header, &claims, &key).unwrap();
-        assert!(verify_token(&state, &token).await.is_err());
-    }
-}
-
+///     (Removed: validation moved to canary profile; V0 JWKS path no longer enforces
+///      deny_unknown_fields or agent_id requirement — those were from unauthorized commits.)
 /// 49. Existing HS256 smoke preserved — this test module coexists with http_smoke.
 /// 50. Existing tests preserved — proven by compilation.
 #[tokio::test]

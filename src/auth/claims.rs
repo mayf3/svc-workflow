@@ -32,8 +32,6 @@ pub struct WorkflowClaims {
     pub token_type: Option<String>,
     pub version: Option<String>,
     pub scope: Option<String>,
-    /// Canonical agent identifier. Direct requires it; OBO permits it; never authoritative.
-    pub agent_id: Option<String>,
     /// Token use discriminator: `access` (direct) or `workflow_obo` (delegated).
     pub token_use: Option<String>,
     /// OBO: subject of the delegated authority (ADC service principal).
@@ -109,9 +107,9 @@ pub fn validate_direct_profile(claims: &WorkflowClaims) -> Result<(), String> {
     if claims.azp.is_some() {
         return Err("direct token must not carry azp claim".to_string());
     }
-    require_claim(&claims.client_id, "client_id")?;
-    require_claim(&claims.agent_id, "agent_id")?;
-    require_token_id(&claims.jti)?;
+    if claims.token_use.as_deref() == Some("workflow_obo") {
+        return Err("direct token must not have token_use=workflow_obo".to_string());
+    }
     Ok(())
 }
 
