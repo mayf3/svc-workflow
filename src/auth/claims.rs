@@ -32,7 +32,7 @@ pub struct WorkflowClaims {
     pub token_type: Option<String>,
     pub version: Option<String>,
     pub scope: Option<String>,
-    /// Optional canonical agent identifier; never authoritative for resource authorization.
+    /// Canonical agent identifier. Direct requires it; OBO permits it; never authoritative.
     pub agent_id: Option<String>,
     /// Token use discriminator: `access` (direct) or `workflow_obo` (delegated).
     pub token_use: Option<String>,
@@ -110,9 +110,7 @@ pub fn validate_direct_profile(claims: &WorkflowClaims) -> Result<(), String> {
         return Err("direct token must not carry azp claim".to_string());
     }
     require_claim(&claims.client_id, "client_id")?;
-    if claims.agent_id.as_deref().is_some_and(str::is_empty) {
-        return Err("direct token agent_id must not be empty".to_string());
-    }
+    require_claim(&claims.agent_id, "agent_id")?;
     require_token_id(&claims.jti)?;
     Ok(())
 }
