@@ -1,15 +1,26 @@
-//! Auth V1 Canary route guard middleware.
+//! Auth V1 Canary route guard middleware — fail-closed.
 //!
-//! Two guards:
+//! ## Design
 //!
-//! - `canary_worklist_guard`: intercepts `GET /internal/v1/worklists/assigned-to-me`
-//!   when the canary is active, performs V1 token verification, and injects the
-//!   canary-authenticated principal into request extensions.
-//! - `canary_write_guard`: intercepts write endpoints (create, transition) and
-//!   rejects requests whose token matches the canary allow-list — even before
-//!   legacy auth runs.
+//! Both guards implement a **fail-closed** two-phase pipeline:
 //!
-//! Both guards are no-ops when the canary is disabled.
+//! 1. **Token identification** — does the request carry a JWT that matches
+//!    the Auth V1 DirectMachineAccess profile shape (RS256 + kid + strict
+//!    claims set)?  If yes, the token **must** pass the canary path or be
+//!    rejected.  It never falls through to legacy auth.
+//!
+//! 2. **Canary validation** — feature flags, allow-list, V1 verification,
+//!    and (for write) the write-gate flag.
+//!
+//! Tokens that do **not** match the V1 shape (e.g. HS256 tokens, tokens
+//! with extra claims such as `agent_id`) are passed through to the legacy
+//! `AuthenticatedPrincipal` extractor.
+//!
+//! ## Route isolation
+//!
+//! - `canary_worklist_guard`: attached to `GET /internal/v1/worklists/assigned-to-me`
+//! - `canary_write_guard`: attached to `POST /internal/v1/workflow-instances`
+//!   and `POST /internal/v1/workflow-instances/{id}/transitions`
 
 use axum::body::Body;
 use axum::extract::State;
@@ -19,29 +30,139 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
+use crate::auth::looks_like_auth_v1_token;
 use crate::auth::{CanaryAuthenticated, CanaryPrincipal};
 use crate::http::error::ApiError;
 use crate::http::AppState;
 
-/// Lightweight claims peek for allow-list matching (no signature verification).
-#[derive(Debug, Deserialize)]
-struct PeekClaims {
-    client_id: Option<String>,
-    sub: Option<String>,
+// ---------------------------------------------------------------------------
+// Decision enum
+// ---------------------------------------------------------------------------
+
+/// Outcome of the canary guard's decision logic.
+#[derive(Debug)]
+enum CanaryDecision {
+    /// The request carries a recognised Auth V1 token that was verified and
+    /// authorised.  `CanaryAuthenticated` / `CanaryPrincipal` have been
+    /// injected into the request extensions.  The middleware chain should
+    /// continue to the handler.
+    Accept,
+    /// The request carries a recognised Auth V1 token but one or more checks
+    /// failed.  The caller must return this response immediately.
+    Reject(Response),
+    /// The request does **not** carry an Auth V1 token.  The guard should
+    /// pass through to legacy auth (the `AuthenticatedPrincipal` extractor).
+    FallThrough,
 }
 
+// ---------------------------------------------------------------------------
+// Shared decision function
+// ---------------------------------------------------------------------------
+
+/// Run the fail-closed canary decision for a request.
+///
+/// `is_write_guard` controls whether the write-gate flag is checked
+/// (write guards only).
+async fn decide_canary_action(
+    state: &AppState,
+    token: &str,
+    request: &mut Request<Body>,
+    is_write_guard: bool,
+) -> CanaryDecision {
+    // 1. Token identification.
+    if !looks_like_auth_v1_token(token) {
+        return CanaryDecision::FallThrough;
+    }
+
+    // The token looks like an Auth V1 token.  From this point onward the
+    // canary path is authoritative — no fallback to legacy auth.
+
+    // 2. Canary must be active (enabled + configured).
+    let verifier = match state.auth_v1_canary_verifier.as_ref() {
+        Some(v) if state.auth_v1_canary_config.is_active() => v,
+        _ => {
+            return CanaryDecision::Reject(
+                ApiError::unauthorized(
+                    "auth_v1_disabled",
+                    "Auth V1 authentication is not available",
+                )
+                .into_response(),
+            );
+        }
+    };
+
+    // 3. Allow-list check (peek at client_id + sub before full verification).
+    match peek_token_claims(token) {
+        Ok(Some(peek)) => {
+            let allowed_client = &state.auth_v1_canary_config.allowed_client_id;
+            let allowed_sub = &state.auth_v1_canary_config.allowed_sub;
+
+            let client_ok = peek.client_id.as_deref() == Some(allowed_client.as_str());
+            let sub_ok = peek.sub.as_deref() == Some(allowed_sub.as_str());
+
+            if !client_ok {
+                return CanaryDecision::Reject(
+                    ApiError::unauthorized(
+                        "unauthorized_client",
+                        "client_id is not authorised for the Auth V1 canary",
+                    )
+                    .into_response(),
+                );
+            }
+            if !sub_ok {
+                return CanaryDecision::Reject(
+                    ApiError::unauthorized(
+                        "unauthorized_principal",
+                        "sub is not authorised for the Auth V1 canary",
+                    )
+                    .into_response(),
+                );
+            }
+        }
+        Ok(None) => {
+            // V1-shaped token but claims could not be peeked — reject.
+            return CanaryDecision::Reject(
+                ApiError::unauthorized("malformed_token", "malformed Auth V1 token")
+                    .into_response(),
+            );
+        }
+        Err(_) => {
+            // Malformed payload — reject.
+            return CanaryDecision::Reject(
+                ApiError::unauthorized("malformed_token", "malformed Auth V1 token")
+                    .into_response(),
+            );
+        }
+    }
+
+    // 4. Write-gate check (only for write guards).
+    if is_write_guard && !state.auth_v1_canary_config.write_enabled {
+        return CanaryDecision::Reject(
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                "canary_read_only",
+                "the Auth V1 canary profile only allows read operations on assigned-to-me",
+            )
+            .into_response(),
+        );
+    }
+
+    // 5. Full V1 verification.
+    match verifier.verify(token).await {
+        Ok(principal) => {
+            request.extensions_mut().insert(CanaryAuthenticated);
+            request.extensions_mut().insert(CanaryPrincipal(principal));
+            CanaryDecision::Accept
+        }
+        Err(error) => CanaryDecision::Reject(error.into_response()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Guards
+// ---------------------------------------------------------------------------
+
 /// Middleware for `GET /internal/v1/worklists/assigned-to-me`.
-///
-/// When the canary is active:
-/// 1. Extract the Bearer token.
-/// 2. Peek at `client_id` and `sub` to check the allow-list.
-/// 3. If the allow-list matches, perform full V1 verification.
-/// 4. If V1 verification succeeds, inject `CanaryAuthenticated` + `CanaryPrincipal`
-///    extensions and pass through.
-/// 5. If V1 verification fails, return 401.
-/// 6. If the allow-list does not match, pass through to legacy auth.
-///
-/// When the canary is disabled, this is a no-op.
 pub(crate) async fn canary_worklist_guard(
     State(state): State<AppState>,
     method: Method,
@@ -49,120 +170,57 @@ pub(crate) async fn canary_worklist_guard(
     mut request: Request<Body>,
     next: Next,
 ) -> Response {
-    // No-op if canary is not active.
-    if state.auth_v1_canary_verifier.is_none() || !state.auth_v1_canary_config.is_active() {
-        return next.run(request).await;
-    }
-
     // Only intercept GET requests for the assigned-to-me endpoint.
     if method != Method::GET {
         return next.run(request).await;
     }
 
-    // Extract Bearer token.
     let token = match extract_bearer_token(&headers) {
-        Some(t) => t,
+        Some(t) => t.to_owned(),
         None => return next.run(request).await,
     };
 
-    // Peek at claims to check allow-list.
-    match peek_token_claims(token) {
-        Ok(Some(peek)) => {
-            let allowed_client = &state.auth_v1_canary_config.allowed_client_id;
-            let allowed_sub = &state.auth_v1_canary_config.allowed_sub;
-
-            let matches_allow_list = peek.client_id.as_deref() == Some(allowed_client.as_str())
-                && peek.sub.as_deref() == Some(allowed_sub.as_str());
-
-            if !matches_allow_list {
-                // Not a canary token — let legacy auth handle it.
-                return next.run(request).await;
-            }
-
-            // Canary allow-list matches — perform full V1 verification.
-            match state
-                .auth_v1_canary_verifier
-                .as_ref()
-                .unwrap()
-                .verify(token)
-                .await
-            {
-                Ok(principal) => {
-                    // Inject extensions so the handler knows we used canary.
-                    request.extensions_mut().insert(CanaryAuthenticated);
-                    request.extensions_mut().insert(CanaryPrincipal(principal));
-                    next.run(request).await
-                }
-                Err(error) => error.into_response(),
-            }
-        }
-        Ok(None) => {
-            // Token could not be peek-decoded — let legacy auth try.
-            next.run(request).await
-        }
-        Err(_) => {
-            // Malformed token — let legacy auth handle it.
-            next.run(request).await
-        }
+    match decide_canary_action(&state, &token, &mut request, false).await {
+        CanaryDecision::Accept => next.run(request).await,
+        CanaryDecision::Reject(response) => response,
+        CanaryDecision::FallThrough => next.run(request).await,
     }
 }
 
 /// Middleware for write endpoints (create, transition).
-///
-/// When the canary is active, checks if the request token matches the canary
-/// allow-list.  If yes, rejects with 403 — the canary profile is read-only.
-/// If no, passes through to legacy auth.
-///
-/// This ensures route-level isolation: a canary token cannot call write
-/// endpoints regardless of its scope claims.
 pub(crate) async fn canary_write_guard(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
-    request: Request<Body>,
+    mut request: Request<Body>,
     next: Next,
 ) -> Response {
-    // No-op if canary is not active.
-    if state.auth_v1_canary_verifier.is_none() || !state.auth_v1_canary_config.is_active() {
-        return next.run(request).await;
-    }
-
-    // Extract Bearer token.
     let token = match extract_bearer_token(&headers) {
-        Some(t) => t,
+        Some(t) => t.to_owned(),
         None => return next.run(request).await,
     };
 
-    // Peek at claims to check allow-list.
-    match peek_token_claims(token) {
-        Ok(Some(peek)) => {
-            let allowed_client = &state.auth_v1_canary_config.allowed_client_id;
-            let allowed_sub = &state.auth_v1_canary_config.allowed_sub;
-
-            let matches_allow_list = peek.client_id.as_deref() == Some(allowed_client.as_str())
-                && peek.sub.as_deref() == Some(allowed_sub.as_str());
-
-            if matches_allow_list {
-                // This is a canary token trying to write — reject.
-                return ApiError::new(
-                    StatusCode::FORBIDDEN,
-                    "canary_read_only",
-                    "the Auth V1 canary profile only allows read operations on assigned-to-me",
-                )
-                .into_response();
-            }
-        }
-        Ok(None) | Err(_) => {
-            // Can't peek or token doesn't have the claims — let legacy auth handle it.
-        }
+    match decide_canary_action(&state, &token, &mut request, true).await {
+        CanaryDecision::Accept => next.run(request).await,
+        CanaryDecision::Reject(response) => response,
+        CanaryDecision::FallThrough => next.run(request).await,
     }
-
-    next.run(request).await
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /// Extract Bearer token from the Authorization header.
 fn extract_bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
     let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
     value.strip_prefix("Bearer ").filter(|t| !t.is_empty())
+}
+
+/// Lightweight claims peek for allow-list matching (no signature verification).
+#[derive(Debug, Deserialize)]
+struct PeekClaims {
+    client_id: Option<String>,
+    sub: Option<String>,
 }
 
 /// Decode the JWT payload (not verifying signature) to peek at `client_id` and `sub`.
@@ -177,7 +235,7 @@ fn peek_token_claims(token: &str) -> Result<Option<PeekClaims>, ()> {
 }
 
 /// Decode base64url with padding tolerance.
-fn base64_url_decode(input: &str) -> Result<Vec<u8>, ()> {
+pub(crate) fn base64_url_decode(input: &str) -> Result<Vec<u8>, ()> {
     // Add padding if needed.
     let len = input.len();
     let remainder = len % 4;
@@ -193,6 +251,10 @@ fn base64_url_decode(input: &str) -> Result<Vec<u8>, ()> {
         .decode(padded.as_bytes())
         .map_err(|_| ())
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
