@@ -929,85 +929,82 @@ mod tests {
     const TEST_RSA_E: &str = "AQAB";
     const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEAzLFR5xYtoavfN3HKTpix5//zi4MXpiWYQAqa//FHkONKDj14\nyFnk9DV2QMcc6v/jCYqWD8arZ39oNPNz9mtEthOScwv+ORQQh3JxcCltZsgDTdzP\nsXpN61wkcWVU9fgaWjdQBssL3D1cd3vBLyYYb0qVkXFtwmf2r/s9PjrbtViQPuG9\nXhh+L5pGfLsptN3C2+K8vy9I6A+R4YdD3pLdue+X5P3gQObbxLiLzekdR/ZTNsNC\nukqksj/JxcdVIxwuatg6OYuOPhyGEZb6kedoaJMqLxmCF5lEse/pNaDFOuIIt01h\nflru9ibhnZ0KK1+7351Flef6xf7JzatGIWmreQIDAQABAoIBAAkSvxeoMwOck7to\nbthHCnPHM6t2dyDlP7dvAOnhbxOsD4dMEEOJQI3WpNRAPzbnes/cdcRjQQvIaP0X\n4YcFwDj16yLwYCd1jToDx6V6IKBSs1rLM+WhDz0ki3T/UeHJSpm/I+v5KiBsE+Iz\n+R826BRe0Pxuc7gPVa79SvysLTr/iq1dE545W0UEC1bAqXc2sJfaIFa10xIG3Gmk\nV46FW+8rZIzAmuR7OA1lWSG4f45m4x78/LgF/gb4xoXOG/NAB9d+hgq/NI0M+JxU\nAackLa9V2T4ECs8lUSuUek8XFgEiSAXQDr9dH3cbrCUR69AjHsVtJQlkli69GXKG\nmWjk9AECgYEA7tfZtZ73LfAcAkG7EWMzbI1yXKkRtzdiKT1EgrbfsPU7GwpwRqxO\nTW9P8ZmKvh5Npi5t0+QpMgQGGTbuI1LLO9EDP/oiOXI9DZtNEYeSa4zNoiKWKkMl\noPs2i4/kUNNPqMBW/JnRmoapM/9GWAv7xYjhw+tYVUrf6S2jnWHOGfkCgYEA22V3\ngjZdMblt2B7M9sE3cMixCp7elG9iM0hH77JThTK+NMFslbIE/VDKdifjPPq85fi5\n64fm7eGH5nBNRn2+6xBqH8PAdaTgSyPWpVkhL6kkNrjyTnjhPOHZAxgWEYKZw3LE\n/s7ej4vazYrE8voIJSwtDrSNZIFDsmShWlzgfYECgYBPJE8Lk4UsP6fIR6eI92oO\nyj/e3Fb2cu+f4qFU/uvYYyoWp7rUcDvyBLRkxg/nN3tbWX8i+zN7U0ICEOWP5ttZ\nEsUU6fl1N5lrbM54xIeMA7gPxY4kquNJGHTWgfORpLN8o18vjHibz4s5o5jXjAD9\nT4IfvVgjyw+u4GSavdHhYQKBgBTxaqcTaXIFsWagChDEAPbTMZNB9x1URJuAmt1W\nuIJOhbmjfSoNBEzqGWmOBTMc/Es3owfIwVKT5NUqgzXnawIlXvwJQ6X3RzHlCehe\nybwy+TIAFaFICLg3FvAkrHafcO4nVoa8WKJ7Rze3t3U6SOzDesmckqK1dDDjSkPF\n+egBAoGAV9k+JQZzLc5+XJgsm8htUS2b0MOipCaABLf8P6IISyiE3ccvEECuwjfS\nBHgT+w1o5NF/c1zANedBtHmfk5XIvrf/OWzXhEGSWXhBrn2LLPCuh1OOHDQlKvff\nqIPymQBoF0zFpZdyAbKy7b8/fji7yG0vXceAa3jO4xSn6eYhGPQ=\n-----END RSA PRIVATE KEY-----\n";
 
-	    #[derive(Serialize)]
-	    struct V1TestClaims {
-	        iss: String,
-	        sub: String,
-	        aud: String,
-	        principal_type: String,
-	        client_id: String,
-	        token_use: String,
-	        #[serde(rename = "type")]
-	        token_type: String,
-	        version: String,
-	        scope: String,
-	        #[serde(skip_serializing_if = "Option::is_none")]
-	        agent_id: Option<String>,
-	        jti: String,
-	        iat: usize,
-	        nbf: usize,
-	        exp: usize,
-	    }
+    #[derive(Serialize)]
+    struct V1TestClaims {
+        iss: String,
+        sub: String,
+        aud: String,
+        principal_type: String,
+        client_id: String,
+        token_use: String,
+        #[serde(rename = "type")]
+        token_type: String,
+        version: String,
+        scope: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        agent_id: Option<String>,
+        jti: String,
+        iat: usize,
+        nbf: usize,
+        exp: usize,
+    }
 
-	    fn make_valid_token(config: &AuthV1CanaryConfig) -> String {
-	        let now = std::time::SystemTime::now()
-	            .duration_since(std::time::UNIX_EPOCH)
-	            .unwrap()
-	            .as_secs() as usize;
-	        let claims = V1TestClaims {
-	            iss: config.issuer.clone(),
-	            sub: config.allowed_sub.clone(),
-	            aud: config.audience.clone(),
-	            principal_type: "agent".to_string(),
-	            client_id: config.allowed_client_id.clone(),
-	            token_use: "access".to_string(),
-	            token_type: "access".to_string(),
-	            version: "v1".to_string(),
-	            scope: "workflow.execute workflow.read".to_string(),
-	            agent_id: None,
-	            jti: "canary-jti-00000001".to_string(),
-	            iat: now,
-	            nbf: now,
-	            exp: now + 300,
-	        };
-	        let mut header = Header::new(Algorithm::RS256);
-	        header.kid = Some(TEST_JWKS_KID.to_string());
-	        header.typ = Some("at+jwt".to_string());
-	        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-	        encode(&header, &claims, &key).unwrap()
-	    }
+    fn make_valid_token(config: &AuthV1CanaryConfig) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        let claims = V1TestClaims {
+            iss: config.issuer.clone(),
+            sub: config.allowed_sub.clone(),
+            aud: config.audience.clone(),
+            principal_type: "agent".to_string(),
+            client_id: config.allowed_client_id.clone(),
+            token_use: "access".to_string(),
+            token_type: "access".to_string(),
+            version: "v1".to_string(),
+            scope: "workflow.execute workflow.read".to_string(),
+            agent_id: None,
+            jti: "canary-jti-00000001".to_string(),
+            iat: now,
+            nbf: now,
+            exp: now + 300,
+        };
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_JWKS_KID.to_string());
+        header.typ = Some("at+jwt".to_string());
+        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+        encode(&header, &claims, &key).unwrap()
+    }
 
-	    /// Helper: create a token that includes the optional `agent_id` claim.
-	    fn make_valid_token_with_agent_id(
-	        config: &AuthV1CanaryConfig,
-	        agent_id: &str,
-	    ) -> String {
-	        let now = std::time::SystemTime::now()
-	            .duration_since(std::time::UNIX_EPOCH)
-	            .unwrap()
-	            .as_secs() as usize;
-	        let claims = V1TestClaims {
-	            iss: config.issuer.clone(),
-	            sub: config.allowed_sub.clone(),
-	            aud: config.audience.clone(),
-	            principal_type: "agent".to_string(),
-	            client_id: config.allowed_client_id.clone(),
-	            token_use: "access".to_string(),
-	            token_type: "access".to_string(),
-	            version: "v1".to_string(),
-	            scope: "workflow.execute workflow.read".to_string(),
-	            agent_id: Some(agent_id.to_string()),
-	            jti: "canary-jti-00000002".to_string(),
-	            iat: now,
-	            nbf: now,
-	            exp: now + 300,
-	        };
-	        let mut header = Header::new(Algorithm::RS256);
-	        header.kid = Some(TEST_JWKS_KID.to_string());
-	        header.typ = Some("at+jwt".to_string());
-	        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-	        encode(&header, &claims, &key).unwrap()
-	    }
+    /// Helper: create a token that includes the optional `agent_id` claim.
+    fn make_valid_token_with_agent_id(config: &AuthV1CanaryConfig, agent_id: &str) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        let claims = V1TestClaims {
+            iss: config.issuer.clone(),
+            sub: config.allowed_sub.clone(),
+            aud: config.audience.clone(),
+            principal_type: "agent".to_string(),
+            client_id: config.allowed_client_id.clone(),
+            token_use: "access".to_string(),
+            token_type: "access".to_string(),
+            version: "v1".to_string(),
+            scope: "workflow.execute workflow.read".to_string(),
+            agent_id: Some(agent_id.to_string()),
+            jti: "canary-jti-00000002".to_string(),
+            iat: now,
+            nbf: now,
+            exp: now + 300,
+        };
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_JWKS_KID.to_string());
+        header.typ = Some("at+jwt".to_string());
+        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+        encode(&header, &claims, &key).unwrap()
+    }
 
     fn canary_config() -> AuthV1CanaryConfig {
         AuthV1CanaryConfig {
@@ -1320,206 +1317,207 @@ mod tests {
         assert!(config.is_active());
     }
 
-	    #[test]
-	    fn config_default_is_disabled() {
-	        let config = AuthV1CanaryConfig::default();
-	        assert!(!config.enabled);
-	        assert!(!config.is_active());
-	    }
+    #[test]
+    fn config_default_is_disabled() {
+        let config = AuthV1CanaryConfig::default();
+        assert!(!config.enabled);
+        assert!(!config.is_active());
+    }
 
-	    // -----------------------------------------------------------------------
-	    // V1DirectMachineClaims agent_id contract-conformant tests
-	    // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // V1DirectMachineClaims agent_id contract-conformant tests
+    // -----------------------------------------------------------------------
 
-	    /// 1. Token with `agent_id` deserialises successfully into
-	    ///    `V1DirectMachineClaims` and is identified as an Auth V1 token.
-	    #[test]
-	    fn looks_like_v1_token_with_agent_id() {
-	        let config = canary_config();
-	        let token = make_valid_token_with_agent_id(&config, "agent-reviewer");
-	        assert!(
-	            looks_like_auth_v1_token(&token),
-	            "token with agent_id must be recognised as Auth V1"
-	        );
-	    }
+    /// 1. Token with `agent_id` deserialises successfully into
+    ///    `V1DirectMachineClaims` and is identified as an Auth V1 token.
+    #[test]
+    fn looks_like_v1_token_with_agent_id() {
+        let config = canary_config();
+        let token = make_valid_token_with_agent_id(&config, "agent-reviewer");
+        assert!(
+            looks_like_auth_v1_token(&token),
+            "token with agent_id must be recognised as Auth V1"
+        );
+    }
 
-	    /// 2. Token without `agent_id` still works (backward compatibility).
-	    #[test]
-	    fn looks_like_v1_token_without_agent_id() {
-	        let config = canary_config();
-	        let token = make_valid_token(&config);
-	        assert!(
-	            looks_like_auth_v1_token(&token),
-	            "token without agent_id must still be recognised as Auth V1"
-	        );
-	    }
+    /// 2. Token without `agent_id` still works (backward compatibility).
+    #[test]
+    fn looks_like_v1_token_without_agent_id() {
+        let config = canary_config();
+        let token = make_valid_token(&config);
+        assert!(
+            looks_like_auth_v1_token(&token),
+            "token without agent_id must still be recognised as Auth V1"
+        );
+    }
 
-	    /// 3. `sub` is the sole principal — the deserialised `agent_id` value
-	    ///    does not appear in the canary's `AuthenticatedPrincipal`.
-	    #[test]
-	    fn v1_token_principal_source_is_sub() {
-	        let config = canary_config();
-	        let token = make_valid_token_with_agent_id(&config, "agent-reviewer");
-	        assert!(looks_like_auth_v1_token(&token));
-	    }
+    /// 3. `sub` is the sole principal — the deserialised `agent_id` value
+    ///    does not appear in the canary's `AuthenticatedPrincipal`.
+    #[test]
+    fn v1_token_principal_source_is_sub() {
+        let config = canary_config();
+        let token = make_valid_token_with_agent_id(&config, "agent-reviewer");
+        assert!(looks_like_auth_v1_token(&token));
+    }
 
-	    /// 4. Same `agent_id`, different `sub` — the allow-list on `sub`
-	    ///    prevents cross-permission leakage.
-	    #[test]
-	    fn different_sub_rejected_even_with_same_agent_id() {
-	        let mut config = canary_config();
-	        config.allowed_sub = "20000000-0000-4000-8000-000000000001".to_string();
+    /// 4. Same `agent_id`, different `sub` — the allow-list on `sub`
+    ///    prevents cross-permission leakage.
+    #[test]
+    fn different_sub_rejected_even_with_same_agent_id() {
+        let mut config = canary_config();
+        config.allowed_sub = "20000000-0000-4000-8000-000000000001".to_string();
 
-	        let mut header = Header::new(Algorithm::RS256);
-	        header.kid = Some(TEST_JWKS_KID.to_string());
-	        header.typ = Some("at+jwt".to_string());
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_JWKS_KID.to_string());
+        header.typ = Some("at+jwt".to_string());
 
-	        let now = std::time::SystemTime::now()
-	            .duration_since(std::time::UNIX_EPOCH)
-	            .unwrap()
-	            .as_secs() as usize;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
 
-	        // Same agent_id but different sub (not in allow-list).
-	        let claims = V1TestClaims {
-	            iss: config.issuer.clone(),
-	            sub: "30000000-0000-4000-8000-000000000002".to_string(),
-	            aud: config.audience.clone(),
-	            principal_type: "agent".to_string(),
-	            client_id: config.allowed_client_id.clone(),
-	            token_use: "access".to_string(),
-	            token_type: "access".to_string(),
-	            version: "v1".to_string(),
-	            scope: "workflow.read".to_string(),
-	            agent_id: Some("agent-reviewer".to_string()),
-	            jti: "canary-jti-00000003".to_string(),
-	            iat: now,
-	            nbf: now,
-	            exp: now + 300,
-	        };
-	        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-	        let token = encode(&header, &claims, &key).unwrap();
+        // Same agent_id but different sub (not in allow-list).
+        let claims = V1TestClaims {
+            iss: config.issuer.clone(),
+            sub: "30000000-0000-4000-8000-000000000002".to_string(),
+            aud: config.audience.clone(),
+            principal_type: "agent".to_string(),
+            client_id: config.allowed_client_id.clone(),
+            token_use: "access".to_string(),
+            token_type: "access".to_string(),
+            version: "v1".to_string(),
+            scope: "workflow.read".to_string(),
+            agent_id: Some("agent-reviewer".to_string()),
+            jti: "canary-jti-00000003".to_string(),
+            iat: now,
+            nbf: now,
+            exp: now + 300,
+        };
+        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+        let token = encode(&header, &claims, &key).unwrap();
 
-	        // Deserialisation succeeds (agent_id is allowed by contract).
-	        assert!(looks_like_auth_v1_token(&token));
+        // Deserialisation succeeds (agent_id is allowed by contract).
+        assert!(looks_like_auth_v1_token(&token));
 
-	        // Verification fails on sub allow-list, *not* on agent_id.
-	        // The same-agent_id different-sub scenario is safely rejected.
-	    }
+        // Verification fails on sub allow-list, *not* on agent_id.
+        // The same-agent_id different-sub scenario is safely rejected.
+    }
 
-	    /// 5. Unknown / non-contract fields are still rejected by
-	    ///    `deny_unknown_fields`.
-	    #[test]
-	    fn non_contract_field_still_rejected() {
-	        let mut header = Header::new(Algorithm::RS256);
-	        header.kid = Some(TEST_JWKS_KID.to_string());
+    /// 5. Unknown / non-contract fields are still rejected by
+    ///    `deny_unknown_fields`.
+    #[test]
+    fn non_contract_field_still_rejected() {
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_JWKS_KID.to_string());
 
-	        let now = std::time::SystemTime::now()
-	            .duration_since(std::time::UNIX_EPOCH)
-	            .unwrap()
-	            .as_secs() as usize;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
 
-	        // Build a payload with an extra unknown field.
-	        let payload = serde_json::json!({
-	            "iss": "auth-service",
-	            "sub": "20000000-0000-4000-8000-000000000001",
-	            "aud": "svc-workflow",
-	            "principal_type": "agent",
-	            "client_id": "canary-client",
-	            "token_use": "access",
-	            "type": "access",
-	            "version": "v1",
-	            "scope": "workflow.read",
-	            "agent_id": "agent-reviewer",
-	            "jti": "canary-jti-00000004",
-	            "iat": now,
-	            "nbf": now,
-	            "exp": now + 300,
-	            "extra_forbidden_field": "must_be_rejected"
-	        });
+        // Build a payload with an extra unknown field.
+        let payload = serde_json::json!({
+            "iss": "auth-service",
+            "sub": "20000000-0000-4000-8000-000000000001",
+            "aud": "svc-workflow",
+            "principal_type": "agent",
+            "client_id": "canary-client",
+            "token_use": "access",
+            "type": "access",
+            "version": "v1",
+            "scope": "workflow.read",
+            "agent_id": "agent-reviewer",
+            "jti": "canary-jti-00000004",
+            "iat": now,
+            "nbf": now,
+            "exp": now + 300,
+            "extra_forbidden_field": "must_be_rejected"
+        });
 
-	        // Use base64url encoding to simulate the JWT payload.
-	        fn b64_encode(input: &[u8]) -> String {
-	            use base64::Engine as _;
-	            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(input)
-	        }
+        // Use base64url encoding to simulate the JWT payload.
+        fn b64_encode(input: &[u8]) -> String {
+            use base64::Engine as _;
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(input)
+        }
 
-	        let payload_b64 = b64_encode(
-	            &serde_json::to_vec(&payload).unwrap(),
-	        );
-	        let token = format!("eyJhbGciOiJSUzI1NiIsImtpZCI6ImNhbmFyeS10ZXN0LWtleS12MSIsInR5cCI6ImF0K2p3dCJ9.{payload_b64}.dummy");
+        let payload_b64 = b64_encode(&serde_json::to_vec(&payload).unwrap());
+        let token = format!("eyJhbGciOiJSUzI1NiIsImtpZCI6ImNhbmFyeS10ZXN0LWtleS12MSIsInR5cCI6ImF0K2p3dCJ9.{payload_b64}.dummy");
 
-	        assert!(
-	            !looks_like_auth_v1_token(&token),
-	            "token with extra unknown field must NOT be recognised as Auth V1"
-	        );
-	    }
+        assert!(
+            !looks_like_auth_v1_token(&token),
+            "token with extra unknown field must NOT be recognised as Auth V1"
+        );
+    }
 
-	    /// 6. Wrong issuer is still rejected.
-	    #[test]
-	    fn wrong_issuer_rejected() {
-	        let mut header = Header::new(Algorithm::RS256);
-	        header.kid = Some(TEST_JWKS_KID.to_string());
-	        header.typ = Some("at+jwt".to_string());
+    /// 6. Wrong issuer is still rejected.
+    #[test]
+    fn wrong_issuer_rejected() {
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(TEST_JWKS_KID.to_string());
+        header.typ = Some("at+jwt".to_string());
 
-	        let now = std::time::SystemTime::now()
-	            .duration_since(std::time::UNIX_EPOCH)
-	            .unwrap()
-	            .as_secs() as usize;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
 
-	        let claims = V1TestClaims {
-	            iss: "wrong-issuer".to_string(),
-	            sub: "20000000-0000-4000-8000-000000000001".to_string(),
-	            aud: "svc-workflow".to_string(),
-	            principal_type: "agent".to_string(),
-	            client_id: "canary-client".to_string(),
-	            token_use: "access".to_string(),
-	            token_type: "access".to_string(),
-	            version: "v1".to_string(),
-	            scope: "workflow.read".to_string(),
-	            agent_id: None,
-	            jti: "canary-jti-00000005".to_string(),
-	            iat: now,
-	            nbf: now,
-	            exp: now + 300,
-	        };
-	        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
-	        let token = encode(&header, &claims, &key).unwrap();
+        let claims = V1TestClaims {
+            iss: "wrong-issuer".to_string(),
+            sub: "20000000-0000-4000-8000-000000000001".to_string(),
+            aud: "svc-workflow".to_string(),
+            principal_type: "agent".to_string(),
+            client_id: "canary-client".to_string(),
+            token_use: "access".to_string(),
+            token_type: "access".to_string(),
+            version: "v1".to_string(),
+            scope: "workflow.read".to_string(),
+            agent_id: None,
+            jti: "canary-jti-00000005".to_string(),
+            iat: now,
+            nbf: now,
+            exp: now + 300,
+        };
+        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+        let token = encode(&header, &claims, &key).unwrap();
 
-	        // Deserialisation succeeds (shape is valid)...
-	        assert!(looks_like_auth_v1_token(&token));
+        // Deserialisation succeeds (shape is valid)...
+        assert!(looks_like_auth_v1_token(&token));
 
-	        // ...but signature verification must reject the wrong issuer.
-	        // We cannot perform full verification without a running server,
-	        // but the `looks_like_auth_v1_token` guard correctly lets this
-	        // through for further verification by the canary verifier.
-	    }
+        // ...but signature verification must reject the wrong issuer.
+        // We cannot perform full verification without a running server,
+        // but the `looks_like_auth_v1_token` guard correctly lets this
+        // through for further verification by the canary verifier.
+    }
 
-	    /// 8. Write guard and transition guard remain intact:
-	    ///    `write_active()` returns false when write_enabled is false.
-	    #[test]
-	    fn write_guard_still_blocks() {
-	        let config = AuthV1CanaryConfig {
-	            enabled: true,
-	            write_enabled: false,
-	            allowed_client_id: "client".to_string(),
-	            allowed_sub: "sub".to_string(),
-	            ..Default::default()
-	        };
-	        assert!(config.is_active());
-	        assert!(!config.write_active(), "write guard must block when write_enabled=false");
-	    }
+    /// 8. Write guard and transition guard remain intact:
+    ///    `write_active()` returns false when write_enabled is false.
+    #[test]
+    fn write_guard_still_blocks() {
+        let config = AuthV1CanaryConfig {
+            enabled: true,
+            write_enabled: false,
+            allowed_client_id: "client".to_string(),
+            allowed_sub: "sub".to_string(),
+            ..Default::default()
+        };
+        assert!(config.is_active());
+        assert!(
+            !config.write_active(),
+            "write guard must block when write_enabled=false"
+        );
+    }
 
-	    /// 8b. Transition guard: canary disabled → legacy path.
-	    #[test]
-	    fn transition_guard_falls_to_legacy_when_disabled() {
-	        let config = AuthV1CanaryConfig {
-	            enabled: false,
-	            write_enabled: false,
-	            allowed_client_id: "".to_string(),
-	            allowed_sub: "".to_string(),
-	            ..Default::default()
-	        };
-	        assert!(!config.is_active());
-	        assert!(!config.write_active());
-	    }
-	}
+    /// 8b. Transition guard: canary disabled → legacy path.
+    #[test]
+    fn transition_guard_falls_to_legacy_when_disabled() {
+        let config = AuthV1CanaryConfig {
+            enabled: false,
+            write_enabled: false,
+            allowed_client_id: "".to_string(),
+            allowed_sub: "".to_string(),
+            ..Default::default()
+        };
+        assert!(!config.is_active());
+        assert!(!config.write_active());
+    }
+}
