@@ -35,11 +35,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route("/version", get(handlers::health::version))
         .route(
             "/internal/v1/workflow-instances",
-            post(handlers::instances::create)
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    canary_guard::canary_write_guard,
-                )),
+            post(handlers::instances::create).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}",
@@ -47,11 +46,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
-            post(handlers::transitions::execute)
-                .layer(middleware::from_fn_with_state(
-                    state.clone(),
-                    canary_guard::canary_write_guard,
-                )),
+            post(handlers::transitions::execute).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/timeline",

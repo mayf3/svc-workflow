@@ -10,7 +10,7 @@ use sqlx::PgPool;
 use crate::application::provisioning::ProvisioningConfig;
 use crate::application::workflow_instance::query_service::WorkflowQueryService;
 use crate::auth::{
-    AuthMode, AuthenticatedPrincipal, AuthV1CanaryConfig, AuthV1CanaryVerifier, Hs256Config,
+    AuthMode, AuthV1CanaryConfig, AuthV1CanaryVerifier, AuthenticatedPrincipal, Hs256Config,
     JwksConfig,
 };
 use crate::http::error::ApiError;
@@ -132,7 +132,9 @@ impl AppState {
         };
 
         let auth_v1_canary_verifier = if config.auth_v1_canary_config.is_active() {
-            Some(AuthV1CanaryVerifier::new(config.auth_v1_canary_config.clone()))
+            Some(AuthV1CanaryVerifier::new(
+                config.auth_v1_canary_config.clone(),
+            ))
         } else {
             None
         };

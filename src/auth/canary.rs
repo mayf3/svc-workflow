@@ -96,8 +96,7 @@ impl AuthV1CanaryConfig {
                 .unwrap_or(false),
             allowed_client_id: std::env::var("AUTH_V1_CANARY_ALLOWED_CLIENT_ID")
                 .unwrap_or_default(),
-            allowed_sub: std::env::var("AUTH_V1_CANARY_ALLOWED_SUB")
-                .unwrap_or_default(),
+            allowed_sub: std::env::var("AUTH_V1_CANARY_ALLOWED_SUB").unwrap_or_default(),
             jwks_url: std::env::var("WORKFLOW_JWKS_URL").unwrap_or_default(),
             issuer: std::env::var("WORKFLOW_JWT_ISSUER")
                 .unwrap_or_else(|_| "auth-service".to_string()),
@@ -124,9 +123,7 @@ impl AuthV1CanaryConfig {
 
     /// Quick check: canary is enabled AND both allow-list values are present.
     pub fn is_active(&self) -> bool {
-        self.enabled
-            && !self.allowed_client_id.is_empty()
-            && !self.allowed_sub.is_empty()
+        self.enabled && !self.allowed_client_id.is_empty() && !self.allowed_sub.is_empty()
     }
 }
 
@@ -310,29 +307,29 @@ impl AuthV1CanaryVerifier {
         validation.leeway = self.config.clock_skew_seconds;
 
         // 4. Decode and verify signature + standard claims.
-        let data = decode::<V1DirectMachineClaims>(token, &key, &validation)
-            .map_err(|error| match error.kind() {
-                ErrorKind::ExpiredSignature => {
-                    ApiError::unauthorized("token_expired", "access token has expired")
-                }
-                ErrorKind::MissingRequiredClaim(claim) => {
-                    ApiError::unauthorized_with_details(
+        let data =
+            decode::<V1DirectMachineClaims>(token, &key, &validation).map_err(
+                |error| match error.kind() {
+                    ErrorKind::ExpiredSignature => {
+                        ApiError::unauthorized("token_expired", "access token has expired")
+                    }
+                    ErrorKind::MissingRequiredClaim(claim) => ApiError::unauthorized_with_details(
                         "malformed_token",
                         "access token is missing a required claim",
                         serde_json::json!({ "claim": claim }),
-                    )
-                }
-                ErrorKind::InvalidAlgorithm => {
-                    ApiError::unauthorized("algorithm_not_allowed", "invalid JWT algorithm")
-                }
-                ErrorKind::InvalidIssuer => {
-                    ApiError::unauthorized("wrong_issuer", "token issuer mismatch")
-                }
-                ErrorKind::InvalidAudience => {
-                    ApiError::unauthorized("wrong_audience", "token audience mismatch")
-                }
-                _ => ApiError::unauthorized("malformed_token", "invalid access token"),
-            })?;
+                    ),
+                    ErrorKind::InvalidAlgorithm => {
+                        ApiError::unauthorized("algorithm_not_allowed", "invalid JWT algorithm")
+                    }
+                    ErrorKind::InvalidIssuer => {
+                        ApiError::unauthorized("wrong_issuer", "token issuer mismatch")
+                    }
+                    ErrorKind::InvalidAudience => {
+                        ApiError::unauthorized("wrong_audience", "token audience mismatch")
+                    }
+                    _ => ApiError::unauthorized("malformed_token", "invalid access token"),
+                },
+            )?;
 
         let claims = data.claims;
 
@@ -380,9 +377,8 @@ impl AuthV1CanaryVerifier {
         }
 
         // 6. Validate sub is a valid UUID (contract: $defs/uuid pattern).
-        let sub_uuid = Uuid::parse_str(&claims.sub).map_err(|_| {
-            ApiError::unauthorized("malformed_token", "sub must be a valid UUID")
-        })?;
+        let sub_uuid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| ApiError::unauthorized("malformed_token", "sub must be a valid UUID"))?;
 
         // 7. Validate allow-list.
         // client_id must match the configured allowed client_id.
@@ -422,11 +418,7 @@ impl AuthV1CanaryVerifier {
         )?;
 
         // 10. Build scopes set.
-        let scopes: HashSet<String> = claims
-            .scope
-            .split(' ')
-            .map(str::to_owned)
-            .collect();
+        let scopes: HashSet<String> = claims.scope.split(' ').map(str::to_owned).collect();
 
         // 11. Build auth context.
         let auth_context = AuthContext {
@@ -638,8 +630,9 @@ impl AuthV1CanaryVerifier {
     pub async fn is_ready(&self) -> bool {
         let guard = self.cache.read().await;
         match guard.as_ref() {
-            Some(state) => state.fetched_at.elapsed()
-                <= Duration::from_secs(self.config.max_stale_secs),
+            Some(state) => {
+                state.fetched_at.elapsed() <= Duration::from_secs(self.config.max_stale_secs)
+            }
             None => false,
         }
     }
@@ -724,12 +717,20 @@ fn is_valid_scope_item(item: &str) -> bool {
     if prefix.is_empty() || suffix.is_empty() {
         return false;
     }
-    prefix.as_bytes().first().is_some_and(|b| b.is_ascii_lowercase())
-        && prefix.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && suffix.as_bytes().first().is_some_and(|b| b.is_ascii_lowercase())
-        && suffix
+    prefix
+        .as_bytes()
+        .first()
+        .is_some_and(|b| b.is_ascii_lowercase())
+        && prefix
             .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && suffix
+            .as_bytes()
+            .first()
+            .is_some_and(|b| b.is_ascii_lowercase())
+        && suffix.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+        })
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,7 +1003,12 @@ mod tests {
         // Wrong algorithm (HS256)
         let mut header = Header::new(Algorithm::HS256);
         header.kid = Some(TEST_JWKS_KID.to_string());
-        let token = encode(&header, &claims, &EncodingKey::from_secret("dummy".as_bytes())).unwrap();
+        let token = encode(
+            &header,
+            &claims,
+            &EncodingKey::from_secret("dummy".as_bytes()),
+        )
+        .unwrap();
         // Verifier cannot decode this in an offline test; but we can test header parsing
         let decoded = decode_header(&token).unwrap();
         assert_eq!(decoded.alg, Algorithm::HS256);

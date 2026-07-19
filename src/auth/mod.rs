@@ -21,8 +21,8 @@ mod verifier;
 
 pub use auth_context::AuthContext;
 pub use auth_mode::{validate_mode_gates, AuthMode, Hs256Config, JwksConfig};
-pub use claims::WorkflowClaims;
 pub use canary::{AuthV1CanaryConfig, AuthV1CanaryVerifier, CanaryAuthenticated, CanaryPrincipal};
+pub use claims::WorkflowClaims;
 pub use jwks_verifier::JwksVerifier;
 pub use principal::AuthenticatedPrincipal;
 pub use verifier::{require_legacy_claims, Hs256Verifier};
