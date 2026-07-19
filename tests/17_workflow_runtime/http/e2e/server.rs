@@ -1,80 +1,59 @@
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{AuthMode, Hs256Config};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::http::{self, AppState, HttpConfig};
 
-const JWT_SECRET: &str = "isolated-e2e-secret-that-is-at-least-32-bytes";
-
-#[derive(Serialize)]
-struct Claims {
-    sub: String,
-    iss: &'static str,
-    aud: &'static str,
-    exp: usize,
-    iat: usize,
-    principal_type: &'static str,
-    #[serde(rename = "type")]
-    token_type: &'static str,
-    version: &'static str,
-    scope: String,
-}
-
-pub(super) fn token(principal_id: uuid::Uuid, scope: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    encode(
-        &Header::new(Algorithm::HS256),
-        &Claims {
-            sub: principal_id.to_string(),
-            iss: "auth-service",
-            aud: "svc-workflow",
-            exp: now + 300,
-            iat: now,
-            principal_type: "agent",
-            token_type: "access",
-            version: "v1",
-            scope: scope.to_string(),
-        },
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .expect("sign local E2E token")
-}
-
-fn test_config(bind_addr: std::net::SocketAddr, body_limit: usize) -> HttpConfig {
-    HttpConfig {
-        bind_addr,
-        request_body_max_bytes: body_limit,
-        request_timeout_seconds: 30,
-        auth_mode: AuthMode::TestHs256,
-        hs256_config: Some(Hs256Config {
-            secret: JWT_SECRET.to_string(),
-            issuer: "auth-service".to_string(),
-            audience: "svc-workflow".to_string(),
-            clock_skew_seconds: 0,
-        }),
-        jwks_config: None,
-        provisioning_config: ProvisioningConfig::new(Vec::new()),
-        auth_v1_canary_config: Default::default(),
-    }
-}
+use super::*;
 
 pub(super) struct RunningServer {
     pub(super) base_url: String,
+    pub(super) key_pair: common::RsaTestKeyPair,
+    mock: common::MockJwksServer,
     shutdown: oneshot::Sender<()>,
     task: JoinHandle<Result<(), std::io::Error>>,
 }
 
 impl RunningServer {
-    pub(super) async fn start(pool: sqlx::PgPool, body_limit: usize) -> Self {
+    pub(super) async fn start(pool: sqlx::PgPool, body_limit: usize, allowed_sub: &str) -> Self {
+        let mock = common::MockJwksServer::start().await;
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind real E2E TCP listener");
         let address = listener.local_addr().expect("listener address");
-        let config = test_config(address, body_limit);
+
+        let jwks_url = mock.url.clone();
+
+        let config = HttpConfig {
+            bind_addr: address,
+            request_body_max_bytes: body_limit,
+            request_timeout_seconds: 30,
+            jwks_config: JwksConfig {
+                jwks_url,
+                issuer: "auth-service".to_string(),
+                audience: "svc-workflow".to_string(),
+                cache_ttl_secs: 300,
+                http_timeout_secs: 5,
+                max_stale_secs: 600,
+                clock_skew_seconds: 60,
+            },
+            provisioning_config: ProvisioningConfig::new(Vec::new()),
+            auth_v1_canary_config: AuthV1CanaryConfig {
+                enabled: true,
+                write_enabled: true,
+                allowed_client_id: "e2e-client".to_string(),
+                allowed_sub: allowed_sub.to_string(),
+                jwks_url: mock.url.clone(),
+                issuer: "auth-service".to_string(),
+                audience: "svc-workflow".to_string(),
+                cache_ttl_secs: 300,
+                http_timeout_secs: 5,
+                max_stale_secs: 600,
+                clock_skew_seconds: 60,
+            },
+        };
         let state = AppState::new(pool, &config);
         let app = http::router(state, &config);
         let (shutdown, shutdown_rx) = oneshot::channel();
@@ -85,8 +64,14 @@ impl RunningServer {
                 })
                 .await
         });
+
+        // Wait for eager JWKS fetch
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
         Self {
             base_url: format!("http://{address}"),
+            key_pair: mock.key_pair.clone(),
+            mock,
             shutdown,
             task,
         }

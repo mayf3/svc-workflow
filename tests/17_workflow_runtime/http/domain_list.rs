@@ -6,8 +6,6 @@
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -15,7 +13,7 @@ use uuid::Uuid;
 use svc_workflow::application::provisioning::ProvisioningConfig;
 use svc_workflow::application::workflow_instance::create::create_workflow_instance;
 use svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition;
-use svc_workflow::auth::{AuthMode, Hs256Config};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::domain::ids::*;
 use svc_workflow::domain::workflow_instance::commands::{
     CreateWorkflowInstanceCommand, ExecuteWorkflowTransitionCommand,
@@ -24,59 +22,25 @@ use svc_workflow::http::{self, AppState, HttpConfig};
 
 use super::*;
 
-const JWT_SECRET: &str = "domain-list-secret-at-least-32-bytes";
-
-/// Create a JWT token for the given principal and scope.
-fn token(principal_id: Uuid, scope: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    encode(
-        &Header::new(Algorithm::HS256),
-        &Claims {
-            sub: principal_id.to_string(),
-            iss: "auth-service",
-            aud: "svc-workflow",
-            exp: now + 300,
-            iat: now,
-            principal_type: "agent",
-            token_type: "access",
-            version: "v1",
-            scope: scope.to_string(),
-        },
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .unwrap()
-}
-
-#[derive(Serialize)]
-struct Claims {
-    sub: String,
-    iss: &'static str,
-    aud: &'static str,
-    exp: usize,
-    iat: usize,
-    principal_type: &'static str,
-    #[serde(rename = "type")]
-    token_type: &'static str,
-    version: &'static str,
-    scope: String,
-}
-
-fn app(pool: sqlx::PgPool) -> axum::Router {
-    let hs256 = Hs256Config {
-        secret: JWT_SECRET.to_string(),
-        issuer: "auth-service".to_string(),
-        audience: "svc-workflow".to_string(),
-        clock_skew_seconds: 0,
-    };
+fn app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
     let config = HttpConfig {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        auth_mode: AuthMode::TestHs256,
-        hs256_config: Some(hs256),
-        jwks_config: None,
+        jwks_config: JwksConfig {
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 30,
+            http_timeout_secs: 5,
+            max_stale_secs: 60,
+            clock_skew_seconds: 0,
+        },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
-        auth_v1_canary_config: Default::default(),
+        auth_v1_canary_config: AuthV1CanaryConfig {
+            enabled: true,
+            ..Default::default()
+        },
     };
     http::router(AppState::new(pool, &config), &config)
 }
@@ -243,7 +207,9 @@ fn domain_list_uri(domain_id: Uuid) -> String {
 async fn no_token_returns_401() {
     let pool = create_pool().await;
     let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let resp = app
         .clone()
@@ -258,8 +224,16 @@ async fn missing_workflow_read_scope_returns_403() {
     let pool = create_pool().await;
     let principal_id = seed_second_principal(&pool).await;
     let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let no_read_token = token(principal_id, "workflow.execute");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let no_read_token = common::v1_token(
+        principal_id,
+        "workflow.execute",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let resp = app
         .clone()
@@ -294,8 +268,16 @@ async fn non_domain_owner_returns_404() {
     .await
     .expect("add MEMBER binding");
 
-    let app = app(pool);
-    let stranger_token = token(stranger, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let stranger_token = common::v1_token(
+        stranger,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let resp = app
         .clone()
@@ -330,8 +312,10 @@ async fn domain_owner_can_query() {
         seed_domain_list_definition(&pool, domain_id).await;
     create_dlist_instance(&pool, creator, domain_id, version_id, "test-instance").await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     let resp = app
         .clone()
@@ -367,8 +351,10 @@ async fn disabled_principal_still_authorized_as_owner_but_has_no_items() {
         .await
         .unwrap();
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     let resp = app
         .clone()
@@ -409,8 +395,10 @@ async fn disabled_domain_instances_still_visible_to_owner() {
         seed_domain_list_definition(&pool, domain_id).await;
     create_dlist_instance(&pool, creator, domain_id, version_id, "test").await;
 
-    let app = app(pool.clone());
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool.clone(), &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Owner can see instance initially
     let resp = app
@@ -458,8 +446,10 @@ async fn revoked_domain_owner_role_returns_404() {
         .await
         .unwrap();
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     let resp = app
         .clone()
@@ -513,9 +503,13 @@ async fn domain_isolation_does_not_leak() {
     create_dlist_instance(&pool, creator, domain_a, ver_a, "domain-a-instance").await;
     create_dlist_instance(&pool, creator, domain_b, ver_b, "domain-b-instance").await;
 
-    let app = app(pool);
-    let owner_a_token = token(owner_a, "workflow.read");
-    let owner_b_token = token(owner_b, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_a_token =
+        common::v1_token(owner_a, "workflow.read", "test-client", 300, &mock.key_pair);
+    let owner_b_token =
+        common::v1_token(owner_b, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Owner A should see only domain A's instance
     let resp = app
@@ -595,8 +589,10 @@ async fn filter_by_definition_key() {
     create_dlist_instance(&pool, creator, domain_id, ver1, "from-def1").await;
     create_dlist_instance(&pool, creator, domain_id, ver2, "from-def2").await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Filter by key1
     let uri = format!(
@@ -648,8 +644,10 @@ async fn filter_by_lifecycle_active() {
     advance_to_normal(&pool, creator, terminal_id, draft_advance).await;
     advance_to_terminal(&pool, creator, terminal_id, normal_advance).await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Filter by active lifecycle
     let uri = format!(
@@ -695,8 +693,10 @@ async fn filter_by_lifecycle_terminal() {
     advance_to_normal(&pool, creator, term_id, draft_advance).await;
     advance_to_terminal(&pool, creator, term_id, normal_advance).await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Filter by terminal
     let uri = format!(
@@ -741,8 +741,10 @@ async fn filter_by_lifecycle_all() {
     advance_to_normal(&pool, creator, id3, draft_advance).await;
     advance_to_terminal(&pool, creator, id3, normal_advance).await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let app = app(pool, &mock.url);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock.key_pair);
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&lifecycle=all",
@@ -762,8 +764,16 @@ async fn filter_by_lifecycle_all() {
 async fn invalid_lifecycle_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&lifecycle=nonexistent",
@@ -804,8 +814,16 @@ async fn filter_by_current_node_key() {
     let normal_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "in-review").await;
     advance_to_normal(&pool, creator, normal_id, draft_advance).await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // Filter by currentNodeKey = 'draft'
     let uri = format!(
@@ -912,8 +930,16 @@ async fn filter_by_assignee_principal_id() {
         create_dlist_instance(&pool, creator, domain_id, ver_id, "assigned-to-target").await;
     advance_to_normal(&pool, creator, assigned_id, draft_advance).await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // Filter by target_assignee — should only see the advanced instance
     let uri = format!(
@@ -959,8 +985,16 @@ async fn default_limit_applied_when_omitted() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // Without limit, default of 20 applies
     let uri = domain_list_uri(domain_id);
@@ -994,8 +1028,16 @@ async fn max_limit_is_enforced_as_422() {
     let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
     create_dlist_instance(&pool, creator, domain_id, ver_id, "test-instance").await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // Request limit=200 — current behavior is to reject with 422
     let uri = format!(
@@ -1014,8 +1056,16 @@ async fn max_limit_is_enforced_as_422() {
 async fn zero_limit_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&limit=0",
@@ -1064,8 +1114,16 @@ async fn pagination_first_page_next_page_last_page() {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // First page: limit=1
     let uri = format!(
@@ -1163,8 +1221,16 @@ async fn sort_order_is_created_at_desc() {
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
     let id3 = create_dlist_instance(&pool, creator, domain_id, ver_id, "newest").await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // Fetch all
     let uri = format!(
@@ -1205,8 +1271,16 @@ async fn sort_order_is_created_at_desc() {
 async fn missing_before_id_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&beforeCreatedAt=2024-01-15T10:30:00Z",
@@ -1226,8 +1300,16 @@ async fn missing_before_id_returns_422() {
 async fn missing_before_created_at_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&beforeId=550e8400-e29b-41d4-a716-446655440000",
@@ -1247,8 +1329,16 @@ async fn missing_before_created_at_returns_422() {
 async fn invalid_timestamp_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&beforeCreatedAt=not-a-date&beforeId=550e8400-e29b-41d4-a716-446655440000",
@@ -1268,8 +1358,16 @@ async fn invalid_timestamp_returns_422() {
 async fn invalid_uuid_returns_422() {
     let pool = create_pool().await;
     let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&beforeCreatedAt=2024-01-15T10:30:00Z&beforeId=not-a-uuid",
@@ -1304,8 +1402,16 @@ async fn out_of_range_cursor_returns_empty_page() {
     let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
     create_dlist_instance(&pool, creator, domain_id, ver_id, "test-instance").await;
 
-    let app = app(pool);
-    let owner_token = token(owner, "workflow.read");
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // A cursor before the oldest possible item
     let uri = format!(

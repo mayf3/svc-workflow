@@ -6,14 +6,12 @@
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use serde::Serialize;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{AuthMode, Hs256Config};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::domain::ids::*;
 use svc_workflow::domain::workflow_instance::commands::{
     CreateWorkflowInstanceCommand, ExecuteWorkflowTransitionCommand,
@@ -21,8 +19,6 @@ use svc_workflow::domain::workflow_instance::commands::{
 use svc_workflow::http::{self, AppState, HttpConfig};
 
 use super::*;
-
-const JWT_SECRET: &str = "worklist-smoke-secret-at-least-32-bytes";
 
 /// Add a principal as a MEMBER of a domain.
 async fn domain_membership(pool: &sqlx::PgPool, domain_id: Uuid, principal_id: Uuid) {
@@ -38,58 +34,41 @@ async fn domain_membership(pool: &sqlx::PgPool, domain_id: Uuid, principal_id: U
     .expect("add domain membership");
 }
 
-#[derive(Serialize)]
-struct Claims {
-    sub: String,
-    iss: &'static str,
-    aud: &'static str,
-    exp: usize,
-    iat: usize,
-    principal_type: &'static str,
-    #[serde(rename = "type")]
-    token_type: &'static str,
-    version: &'static str,
-    scope: String,
-}
-
-fn token(principal_id: Uuid, scope: &str) -> String {
-    let now = chrono::Utc::now().timestamp() as usize;
-    encode(
-        &Header::new(Algorithm::HS256),
-        &Claims {
-            sub: principal_id.to_string(),
-            iss: "auth-service",
-            aud: "svc-workflow",
-            exp: now + 300,
-            iat: now,
-            principal_type: "agent",
-            token_type: "access",
-            version: "v1",
-            scope: scope.to_string(),
-        },
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .unwrap()
-}
-
-fn app(pool: sqlx::PgPool) -> axum::Router {
-    let hs256 = Hs256Config {
-        secret: JWT_SECRET.to_string(),
-        issuer: "auth-service".to_string(),
-        audience: "svc-workflow".to_string(),
-        clock_skew_seconds: 0,
-    };
+fn build_config(
+    pool: &sqlx::PgPool,
+    jwks_url: &str,
+    allowed_sub: &str,
+) -> (axum::Router, AppState) {
     let config = HttpConfig {
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
-        auth_mode: AuthMode::TestHs256,
-        hs256_config: Some(hs256),
-        jwks_config: None,
+        jwks_config: JwksConfig {
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
-        auth_v1_canary_config: Default::default(),
+        auth_v1_canary_config: AuthV1CanaryConfig {
+            enabled: true,
+            write_enabled: true,
+            allowed_client_id: "test-client".to_string(),
+            allowed_sub: allowed_sub.to_string(),
+            jwks_url: jwks_url.to_string(),
+            issuer: "auth-service".to_string(),
+            audience: "svc-workflow".to_string(),
+            cache_ttl_secs: 300,
+            http_timeout_secs: 5,
+            max_stale_secs: 600,
+            clock_skew_seconds: 60,
+        },
     };
-    http::router(AppState::new(pool, &config), &config)
+    let state = AppState::new(pool.clone(), &config);
+    (http::router(state.clone(), &config), state)
 }
 
 fn request(method: &str, uri: &str, token: Option<&str>) -> Request<Body> {
@@ -251,7 +230,9 @@ async fn create_draft_only(
 #[tokio::test]
 async fn no_token_returns_401() {
     let pool = create_pool().await;
-    let app = app(pool);
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &Uuid::new_v4().to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let assigned = app
         .clone()
@@ -289,8 +270,16 @@ async fn no_token_returns_401() {
 async fn missing_workflow_read_scope_returns_403() {
     let pool = create_pool().await;
     let principal_id = seed_second_principal(&pool).await;
-    let app = app(pool);
-    let no_read_token = token(principal_id, "workflow.execute");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let no_read_token = common::v1_token(
+        principal_id,
+        "workflow.execute",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let assigned = app
         .clone()
@@ -324,8 +313,16 @@ async fn assigned_to_me_returns_current_assignee_only() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let actor_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Creator needs domain membership
     domain_membership(&pool, domain_id, creator).await;
@@ -378,8 +375,16 @@ async fn historical_assignee_not_returned() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let other_token = token(other_principal, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &other_principal.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let other_token = common::v1_token(
+        other_principal,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     domain_membership(&pool, domain_id, creator).await;
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
@@ -410,8 +415,16 @@ async fn cross_domain_isolation() {
     let (ver1, adv1, _, _) = seed_worklist_definition(&pool, domain1, assignee).await;
     let (ver2, adv2, _, _) = seed_worklist_definition(&pool, domain2, assignee).await;
 
-    let app = app(pool.clone());
-    let assignee_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let assignee_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     domain_membership(&pool, domain1, creator).await;
     domain_membership(&pool, domain2, creator).await;
@@ -462,8 +475,16 @@ async fn direct_agent_token_works() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let agent_token = token(assignee, "workflow.read workflow.execute");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let agent_token = common::v1_token(
+        assignee,
+        "workflow.read workflow.execute",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     domain_membership(&pool, domain_id, creator).await;
     domain_membership(&pool, domain_id, assignee).await;
@@ -493,14 +514,22 @@ async fn actor_comes_from_jwt_sub_not_query() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &outsider.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     domain_membership(&pool, domain_id, creator).await;
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
 
     // An outsider uses a valid token but also includes query params that would
     // try to specify a different actor. The handler must ignore them entirely.
-    let outsider_token = token(outsider, "workflow.read");
+    let outsider_token = common::v1_token(
+        outsider,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Query params that look like they could forge the actor must be rejected
     // (WorklistQuery uses deny_unknown_fields, so extra params cause 422).
@@ -517,8 +546,16 @@ async fn actor_comes_from_jwt_sub_not_query() {
 async fn invalid_cursor_returns_422() {
     let pool = create_pool().await;
     let principal_id = seed_second_principal(&pool).await;
-    let app = app(pool);
-    let actor_token = token(principal_id, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(
+        principal_id,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Missing beforeId
     let uri = "/internal/v1/worklists/assigned-to-me?beforeCreatedAt=2024-01-15T10:30:00Z";
@@ -548,8 +585,16 @@ async fn pagination_cursor_works() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let assignee_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let assignee_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     domain_membership(&pool, domain_id, creator).await;
     domain_membership(&pool, domain_id, assignee).await;
@@ -626,8 +671,16 @@ async fn pagination_cursor_works() {
 async fn empty_results_return_empty_page() {
     let pool = create_pool().await;
     let principal_id = seed_second_principal(&pool).await;
-    let app = app(pool);
-    let actor_token = token(principal_id, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(
+        principal_id,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let resp = app
         .clone()
@@ -669,8 +722,10 @@ async fn no_domain_permission_hides_items() {
     let (ver1, adv1, _, _) = seed_worklist_definition(&pool, domain1, actor).await;
     let (ver2, adv2, _, _) = seed_worklist_definition(&pool, domain2, actor).await;
 
-    let app = app(pool.clone());
-    let actor_token = token(actor, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &actor.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(actor, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Advance instances in both domains, assignee = actor
     create_and_advance(&pool, creator, domain1, ver1, adv1).await;
@@ -707,8 +762,16 @@ async fn domain_disabled_hides_items() {
     domain_membership(&pool, domain_id, creator).await;
     domain_membership(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let assignee_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let assignee_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Create and advance (assignee can see it)
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
@@ -777,8 +840,16 @@ async fn role_binding_revoked_hides_items() {
     domain_membership(&pool, domain_id, creator).await;
     domain_membership(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let assignee_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let assignee_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Create and advance (assignee can see it)
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
@@ -829,8 +900,16 @@ async fn assignee_without_domain_permission_not_returned() {
     domain_membership(&pool, domain_id, creator).await;
     // Assignee deliberately has NO domain membership
 
-    let app = app(pool.clone());
-    let assignee_token = token(assignee, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &assignee.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let assignee_token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     // Advance — assignee becomes current node visit assignee
     create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
@@ -862,8 +941,11 @@ async fn creator_without_domain_permission_drafts_not_returned() {
     // Creator needs membership initially to create the instance
     domain_membership(&pool, domain_id, creator).await;
 
-    let app = app(pool.clone());
-    let creator_token = token(creator, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &creator.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let creator_token =
+        common::v1_token(creator, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Create a draft instance
     create_draft_only(&pool, creator, domain_id, version_id).await;
@@ -923,8 +1005,10 @@ async fn multiple_legal_domains_all_visible() {
     let (ver_b, adv_b, _, _) = seed_worklist_definition(&pool, domain_b, actor).await;
     let (ver_c, adv_c, _, _) = seed_worklist_definition(&pool, domain_c, actor).await;
 
-    let app = app(pool.clone());
-    let actor_token = token(actor, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &actor.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(actor, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Advance instances in all three domains
     create_and_advance(&pool, creator, domain_a, ver_a, adv_a).await;
@@ -971,8 +1055,10 @@ async fn pagination_respects_domain_isolation() {
     let (ver_a, adv_a, _, _) = seed_worklist_definition(&pool, domain_a, actor).await;
     let (ver_b, adv_b, _, _) = seed_worklist_definition(&pool, domain_b, actor).await;
 
-    let app = app(pool.clone());
-    let actor_token = token(actor, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &actor.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(actor, "workflow.read", "test-client", 300, &mock.key_pair);
 
     // Create multiple instances in domain_a with slight timestamp gaps
     for _ in 0..2 {
@@ -1058,8 +1144,10 @@ async fn assigned_to_me_multi_role_no_duplicates() {
     add_second_role(&pool, domain_id, actor).await;
     domain_membership(&pool, domain_id, creator).await;
 
-    let app = app(pool.clone());
-    let actor_token = token(actor, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &actor.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(actor, "workflow.read", "test-client", 300, &mock.key_pair);
 
     for _ in 0..3 {
         create_and_advance(&pool, creator, domain_id, version_id, draft_advance).await;
@@ -1107,8 +1195,11 @@ async fn creator_owned_drafts_returns_only_own_drafts() {
     let (version_id, _draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let creator_token = token(creator, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &creator.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let creator_token =
+        common::v1_token(creator, "workflow.read", "test-client", 300, &mock.key_pair);
 
     domain_membership(&pool, domain_id, creator).await;
 
@@ -1130,7 +1221,13 @@ async fn creator_owned_drafts_returns_only_own_drafts() {
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
 
     // Outsider should not see it
-    let outsider_token = token(outsider, "workflow.read");
+    let outsider_token = common::v1_token(
+        outsider,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
     let resp = app
         .clone()
         .oneshot(request(
@@ -1154,8 +1251,11 @@ async fn non_draft_not_returned_in_creator_drafts() {
     let (version_id, draft_advance, _, _) =
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
-    let app = app(pool.clone());
-    let creator_token = token(creator, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &creator.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let creator_token =
+        common::v1_token(creator, "workflow.read", "test-client", 300, &mock.key_pair);
 
     domain_membership(&pool, domain_id, creator).await;
 
@@ -1181,8 +1281,16 @@ async fn non_draft_not_returned_in_creator_drafts() {
 async fn unknown_path_returns_404() {
     let pool = create_pool().await;
     let principal_id = seed_second_principal(&pool).await;
-    let app = app(pool);
-    let actor_token = token(principal_id, "workflow.read");
+    let mock = common::MockJwksServer::start().await;
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let actor_token = common::v1_token(
+        principal_id,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let resp = app
         .clone()
