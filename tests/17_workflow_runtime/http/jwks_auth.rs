@@ -1033,9 +1033,9 @@ async fn v1_wire_shape_violations_rejected() {
         .unwrap()
         .remove("token_use");
     cases.push(missing_token_use);
-    let mut empty_agent_id = base.clone();
-    empty_agent_id["agent_id"] = json!("");
-    cases.push(empty_agent_id);
+    let mut missing_agent_id = base.clone();
+    missing_agent_id.as_object_mut().unwrap().remove("agent_id");
+    cases.push(missing_agent_id);
     let mut noncanonical_scope = base.clone();
     noncanonical_scope["scope"] = json!("workflow.read  workflow.write");
     cases.push(noncanonical_scope);
@@ -1047,24 +1047,6 @@ async fn v1_wire_shape_violations_rejected() {
         let token = encode(&header, &claims, &key).unwrap();
         assert!(verify_token(&state, &token).await.is_err());
     }
-
-    let optional_agent_id = json!({
-        "sub": Uuid::new_v4().to_string(),
-        "iss": "auth-service",
-        "aud": "svc-workflow",
-        "exp": now + 300,
-        "iat": now,
-        "nbf": now,
-        "principal_type": "agent",
-        "type": "access",
-        "version": "v1",
-        "scope": "workflow.read",
-        "token_use": "access",
-        "jti": "test-direct-jti-06",
-        "client_id": "test-client"
-    });
-    let token = encode(&header, &optional_agent_id, &key).unwrap();
-    assert!(verify_token(&state, &token).await.is_ok());
 }
 
 /// 49. Existing HS256 smoke preserved — this test module coexists with http_smoke.
