@@ -160,7 +160,7 @@ pub(crate) async fn canary_write_guard(
 }
 
 /// Extract Bearer token from the Authorization header.
-fn extract_bearer_token<'a>(headers: &'a axum::http::HeaderMap) -> Option<&'a str> {
+fn extract_bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
     let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
     value.strip_prefix("Bearer ").filter(|t| !t.is_empty())
 }
