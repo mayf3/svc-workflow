@@ -1,6 +1,7 @@
 //! HTTP service configuration and shared state.
 //!
-//! Supports dual auth mode: test_hs256 and jwks.
+//! Supports dual auth mode: test_hs256 and jwks, plus an optional
+//! Auth V1 single-agent read-only canary profile.
 
 use std::net::{IpAddr, SocketAddr};
 
@@ -9,7 +10,8 @@ use sqlx::PgPool;
 use crate::application::provisioning::ProvisioningConfig;
 use crate::application::workflow_instance::query_service::WorkflowQueryService;
 use crate::auth::{
-    AuthMode, AuthenticatedPrincipal, Hs256Config, Hs256Verifier, JwksConfig, JwksVerifier,
+    AuthMode, AuthenticatedPrincipal, AuthV1CanaryConfig, AuthV1CanaryVerifier, Hs256Config,
+    JwksConfig,
 };
 use crate::http::error::ApiError;
 
@@ -36,6 +38,10 @@ impl AuthVerifier {
     }
 }
 
+// Re-export from auth module for use in state.
+use crate::auth::Hs256Verifier;
+use crate::auth::JwksVerifier;
+
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
     pub bind_addr: SocketAddr,
@@ -45,6 +51,8 @@ pub struct HttpConfig {
     pub hs256_config: Option<Hs256Config>,
     pub jwks_config: Option<JwksConfig>,
     pub provisioning_config: ProvisioningConfig,
+    /// Auth V1 single-agent read-only canary config (default-off).
+    pub auth_v1_canary_config: AuthV1CanaryConfig,
 }
 
 impl HttpConfig {
@@ -73,6 +81,7 @@ impl HttpConfig {
         };
 
         let provisioning_config = ProvisioningConfig::from_env()?;
+        let auth_v1_canary_config = AuthV1CanaryConfig::from_env();
 
         Ok(Self {
             bind_addr: SocketAddr::new(ip, port),
@@ -82,6 +91,7 @@ impl HttpConfig {
             hs256_config,
             jwks_config,
             provisioning_config,
+            auth_v1_canary_config,
         })
     }
 }
@@ -102,6 +112,10 @@ pub struct AppState {
     pub(crate) query_service: WorkflowQueryService,
     pub auth_verifier: AuthVerifier,
     pub provisioning_config: ProvisioningConfig,
+    /// Auth V1 canary verifier (only used when enabled and route matches).
+    pub auth_v1_canary_verifier: Option<AuthV1CanaryVerifier>,
+    /// Auth V1 canary config (feature flags, allow-list).
+    pub auth_v1_canary_config: AuthV1CanaryConfig,
 }
 
 impl AppState {
@@ -116,11 +130,20 @@ impl AppState {
                 AuthVerifier::Jwks(JwksVerifier::new(jwks))
             }
         };
+
+        let auth_v1_canary_verifier = if config.auth_v1_canary_config.is_active() {
+            Some(AuthV1CanaryVerifier::new(config.auth_v1_canary_config.clone()))
+        } else {
+            None
+        };
+
         Self {
             query_service: WorkflowQueryService::new(pool.clone()),
             auth_verifier,
             provisioning_config: config.provisioning_config.clone(),
             pool,
+            auth_v1_canary_verifier,
+            auth_v1_canary_config: config.auth_v1_canary_config.clone(),
         }
     }
 }

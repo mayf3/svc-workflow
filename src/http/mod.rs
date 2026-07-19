@@ -1,5 +1,8 @@
 //! Axum adapter for the internal workflow API.
+//!
+//! Includes the Auth V1 single-agent read-only canary middleware.
 
+pub mod canary_guard;
 pub mod dto;
 pub mod error;
 mod handlers;
@@ -10,6 +13,7 @@ use std::time::Duration;
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, StatusCode};
+use axum::middleware;
 use axum::routing::{delete, get, post, put};
 use axum::{BoxError, Router};
 use tower::ServiceBuilder;
@@ -31,7 +35,11 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route("/version", get(handlers::health::version))
         .route(
             "/internal/v1/workflow-instances",
-            post(handlers::instances::create),
+            post(handlers::instances::create)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    canary_guard::canary_write_guard,
+                )),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}",
@@ -39,7 +47,11 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
-            post(handlers::transitions::execute),
+            post(handlers::transitions::execute)
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    canary_guard::canary_write_guard,
+                )),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/timeline",
@@ -51,7 +63,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/worklists/assigned-to-me",
-            get(handlers::worklists::assigned_to_me),
+            get(handlers::worklists::assigned_to_me).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_worklist_guard,
+            )),
         )
         .route(
             "/internal/v1/worklists/creator-owned-drafts",
