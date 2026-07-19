@@ -14,17 +14,19 @@ VALUES (gen_random_uuid(), 'cccccccc-cccc-4ccc-cccc-cccccccccccc', 'aaaaaaaa-aaa
 INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
 VALUES (gen_random_uuid(), 'cccccccc-cccc-4ccc-cccc-cccccccccccc', 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb', 'MEMBER', TRUE);
 
--- Create a simple workflow definition
+-- Create a simple workflow definition (start with DRAFT)
 INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name)
 VALUES ('dddddddd-dddd-4ddd-dddd-dddddddddddd', 'cccccccc-cccc-4ccc-cccc-cccccccccccc', 'canary-review-def', 'Canary Review');
 
 INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema)
-VALUES ('eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'dddddddd-dddd-4ddd-dddd-dddddddddddd', 1, 'PUBLISHED', '{"type":"object"}'::jsonb);
+VALUES ('eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'dddddddd-dddd-4ddd-dddd-dddddddddddd', 1, 'DRAFT', '{"type":"object"}'::jsonb);
 
-INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type)
-VALUES ('ffffffff-ffff-4fff-ffff-ffffffffffff', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'review', 'Review', 0, 'NORMAL', 'FIXED_PRINCIPAL');
+-- Insert node definitions while version is still DRAFT
+INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id)
+VALUES ('ffffffff-ffff-4fff-ffff-ffffffffffff', 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee', 'review', 'Review', 0, 'NORMAL', 'FIXED_PRINCIPAL', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
-UPDATE workflow_node_definitions SET fixed_principal_id = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' WHERE node_id = 'ffffffff-ffff-4fff-ffff-ffffffffffff';
+-- Now publish the version
+UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = 'eeeeeeee-eeee-4eee-eeee-eeeeeeeeeeee';
 
 -- Task visible to canary principal: assigned to 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
 INSERT INTO workflow_instances (workflow_instance_id, domain_id, definition_version_id, created_by_principal_id)
