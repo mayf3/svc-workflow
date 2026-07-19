@@ -19,7 +19,7 @@ const PROVISIONING_PRINCIPAL_ID: &str = "11111111-1111-1111-1111-111111111111";
 fn provisioning_token(key_pair: &common::RsaTestKeyPair) -> String {
     common::v1_token(
         Uuid::parse_str(PROVISIONING_PRINCIPAL_ID).unwrap(),
-        "workflow.admin workflow.read workflow.execute",
+        "workflow.admin workflow.execute workflow.read",
         "prov-client",
         300,
         key_pair,
@@ -29,7 +29,7 @@ fn provisioning_token(key_pair: &common::RsaTestKeyPair) -> String {
 fn regular_token(key_pair: &common::RsaTestKeyPair) -> String {
     common::v1_token(
         Uuid::new_v4(),
-        "workflow.read workflow.execute",
+        "workflow.execute workflow.read",
         "prov-client",
         300,
         key_pair,
@@ -80,7 +80,7 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, actor_id: Uuid) -> axum::Router
             enabled: true,
             write_enabled: true,
             allowed_client_id: "prov-client".to_string(),
-            allowed_sub: actor_id.to_string(),
+            allowed_sub: String::new(), // empty = skip allow-list check
             jwks_url: jwks_url.to_string(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),

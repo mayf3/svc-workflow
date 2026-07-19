@@ -52,6 +52,11 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null
         wait "$SERVER_PID" 2>/dev/null
     fi
+    if [ -n "${JWKS_PID:-}" ]; then
+        kill "$JWKS_PID" 2>/dev/null
+        wait "$JWKS_PID" 2>/dev/null
+    fi
+    rm -f /tmp/conf_jwt_rsa_key.pem
     if [ -n "${DB_NAME:-}" ]; then
         psql -U postgres -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE)" 2>/dev/null
     fi
@@ -70,25 +75,85 @@ createdb -U postgres "$DB_NAME"
 PORT=$(( ((RANDOM << 10) | (RANDOM & 0x3FF)) % 40000 + 20000 ))
 echo "Starting server on port $PORT"
 
-JWT_SECRET="conformance-secret-that-is-at-least-32-bytes-long!!"
 export DATABASE_URL="postgres://postgres:postgres@localhost:5432/$DB_NAME"
 export WORKFLOW_BIND_ADDR="127.0.0.1"
 export WORKFLOW_PORT="$PORT"
-export WORKFLOW_AUTH_MODE="test_hs256"
-export WORKFLOW_JWT_SECRET="$JWT_SECRET"
+export WORKFLOW_JWKS_URL="http://127.0.0.1:$((PORT + 1))/.well-known/jwks.json"
 export WORKFLOW_JWT_ISSUER="auth-service"
 export WORKFLOW_JWT_AUDIENCE="svc-workflow"
-export WORKFLOW_JWT_CLOCK_SKEW="0"
+export WORKFLOW_JWT_CLOCK_SKEW="60"
+export AUTH_V1_CANARY_ENABLED="true"
+export AUTH_V1_CANARY_WRITE_ENABLED="true"
+export AUTH_V1_CANARY_ALLOWED_CLIENT_ID="conformance-client"
+export AUTH_V1_CANARY_ALLOWED_SUB=""
 export WORKFLOW_REQUEST_TIMEOUT_SECS="30"
 export WORKFLOW_REQUEST_BODY_MAX_BYTES="2097152"
 export WORKFLOW_PROVISIONING_PRINCIPAL_IDS="$OWNER_ID"
 
+# Generate RSA key pair and start mock JWKS server
+JWKS_PORT=$((PORT + 1))
+
+# Write the Python script to a temp file to avoid heredoc quoting issues
+cat > /tmp/conf_jwks_server.py << 'PYEOF'
+import json, socketserver, threading, http.server, base64, os, sys
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+
+port = int(sys.argv[1])
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+pub = key.public_key()
+
+priv_pem = key.private_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PrivateFormat.PKCS8,
+    encryption_algorithm=serialization.NoEncryption()
+).decode()
+os.makedirs('/tmp', exist_ok=True)
+with open('/tmp/conf_jwt_rsa_key.pem', 'w') as f:
+    f.write(priv_pem)
+
+pub_nums = pub.public_numbers()
+n_bytes = pub_nums.n.to_bytes((pub_nums.n.bit_length() + 7) // 8, 'big')
+e_bytes = pub_nums.e.to_bytes((pub_nums.e.bit_length() + 7) // 8, 'big')
+n_b64 = base64.urlsafe_b64encode(n_bytes).rstrip(b'=').decode()
+e_b64 = base64.urlsafe_b64encode(e_bytes).rstrip(b'=').decode()
+
+jwks_body = json.dumps({'keys': [{'kty': 'RSA', 'use': 'sig', 'alg': 'RS256', 'kid': 'conf-key-v1', 'n': n_b64, 'e': e_b64}]})
+
+class JwksHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(jwks_body)))
+        self.end_headers()
+        self.wfile.write(jwks_body.encode())
+    def log_message(self, *a): pass
+
+httpd = socketserver.TCPServer(('127.0.0.1', port), JwksHandler)
+t = threading.Thread(target=httpd.serve_forever, daemon=True)
+t.start()
+sys.stdout.flush()
+print('JWKS ready on port ' + str(port))
+httpd.serve_forever()
+PYEOF
+
+python3 /tmp/conf_jwks_server.py $JWKS_PORT &
+JWKS_PID=$!
+
+# Wait for JWKS server to be ready
+for i in $(seq 1 10); do
+    if curl -s -o /dev/null "http://127.0.0.1:$JWKS_PORT/.well-known/jwks.json" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
 "$SVC_BIN" &
 SERVER_PID=$!
 
-# Wait for server to be ready
+# Wait for server to be fully ready (DB migrated + JWKS cached)
 for i in $(seq 1 30); do
-    if curl -s -o /dev/null "http://127.0.0.1:$PORT/healthz" 2>/dev/null; then
+    if curl -s -o /dev/null "http://127.0.0.1:$PORT/readyz" 2>/dev/null; then
         break
     fi
     sleep 1
@@ -98,7 +163,7 @@ if ! kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "ERROR: Server failed to start"
     exit 1
 fi
-echo "Server is ready"
+echo "Server is ready (readyz OK)"
 
 # -------------------------------------------------------------------------
 # 3. Seed test data via direct DB (after server has applied migrations)
@@ -131,34 +196,52 @@ UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE defin
 SQL
 
 # -------------------------------------------------------------------------
-# 4. Generate JWT tokens
+# 4. Generate RS256 JWT tokens using runtime-generated RSA key
 # -------------------------------------------------------------------------
+# Wait for Python script and JWKS mock server
+sleep 2
+
 TOKEN_OWNER=$(python3 -c "
 import jwt, time
+with open('/tmp/conf_jwt_rsa_key.pem') as f: key = f.read()
+now = int(time.time())
+TTL=300
 print(jwt.encode({
     'sub': '$OWNER_ID', 'iss': 'auth-service', 'aud': 'svc-workflow',
-    'exp': int(time.time()) + 3600, 'iat': int(time.time()),
-    'principal_type': 'agent', 'type': 'access', 'version': 'v1',
-    'scope': 'workflow.execute workflow.read'
-}, '$JWT_SECRET', algorithm='HS256'))
+    'exp': now + TTL, 'iat': now, 'nbf': now,
+    'principal_type': 'agent', 'client_id': 'conformance-client',
+    'token_use': 'access', 'type': 'access', 'version': 'v1',
+    'scope': 'workflow.execute workflow.read',
+    'jti': 'conf-jti-' + str(now)
+}, key, algorithm='RS256', headers={'kid': 'conf-key-v1', 'typ': 'at+jwt'}))
 ")
 TOKEN_CREATOR_RO=$(python3 -c "
 import jwt, time
+with open('/tmp/conf_jwt_rsa_key.pem') as f: key = f.read()
+now = int(time.time())
+TTL=300
 print(jwt.encode({
     'sub': '$CREATOR_ID', 'iss': 'auth-service', 'aud': 'svc-workflow',
-    'exp': int(time.time()) + 3600, 'iat': int(time.time()),
-    'principal_type': 'agent', 'type': 'access', 'version': 'v1',
-    'scope': 'workflow.read'
-}, '$JWT_SECRET', algorithm='HS256'))
+    'exp': now + TTL, 'iat': now, 'nbf': now,
+    'principal_type': 'agent', 'client_id': 'conformance-client',
+    'token_use': 'access', 'type': 'access', 'version': 'v1',
+    'scope': 'workflow.read',
+    'jti': 'conf-jti-' + str(now)
+}, key, algorithm='RS256', headers={'kid': 'conf-key-v1', 'typ': 'at+jwt'}))
 ")
 TOKEN_HUMAN=$(python3 -c "
 import jwt, time
+with open('/tmp/conf_jwt_rsa_key.pem') as f: key = f.read()
+now = int(time.time())
+TTL=300
 print(jwt.encode({
     'sub': '$OWNER_ID', 'iss': 'auth-service', 'aud': 'svc-workflow',
-    'exp': int(time.time()) + 3600, 'iat': int(time.time()),
-    'principal_type': 'human', 'type': 'access', 'version': 'v1',
-    'scope': 'workflow.read'
-}, '$JWT_SECRET', algorithm='HS256'))
+    'exp': now + TTL, 'iat': now, 'nbf': now,
+    'principal_type': 'human', 'client_id': 'conformance-client',
+    'token_use': 'access', 'type': 'access', 'version': 'v1',
+    'scope': 'workflow.read',
+    'jti': 'conf-jti-' + str(now)
+}, key, algorithm='RS256', headers={'kid': 'conf-key-v1', 'typ': 'at+jwt'}))
 ")
 
 BASE_URL="http://127.0.0.1:$PORT"

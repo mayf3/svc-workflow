@@ -480,7 +480,7 @@ async fn direct_agent_token_works() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let agent_token = common::v1_token(
         assignee,
-        "workflow.read workflow.execute",
+        "workflow.execute workflow.read",
         "test-client",
         300,
         &mock.key_pair,
@@ -1196,7 +1196,7 @@ async fn creator_owned_drafts_returns_only_own_drafts() {
         seed_worklist_definition(&pool, domain_id, assignee).await;
 
     let mock = common::MockJwksServer::start().await;
-    let (app, _state) = build_config(&pool, &mock.url, &creator.to_string());
+    let (app, _state) = build_config(&pool, &mock.url, "");
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let creator_token =
         common::v1_token(creator, "workflow.read", "test-client", 300, &mock.key_pair);

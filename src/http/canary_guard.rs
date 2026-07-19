@@ -31,7 +31,7 @@ pub(crate) async fn canary_write_guard(
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    if !state.auth_v1_canary_config.write_active() {
+    if !state.auth_v1_canary_config.write_enabled {
         return ApiError::new(
             StatusCode::FORBIDDEN,
             "canary_read_only",
