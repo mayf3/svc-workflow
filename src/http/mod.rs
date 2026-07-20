@@ -68,6 +68,24 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/worklists/creator-owned-drafts",
             get(handlers::worklists::creator_owned_drafts),
         )
+        // Self-projection
+        .route(
+            "/internal/v1/principals/me",
+            put(handlers::self_projection::self_project_handler),
+        )
+        // Domain member management
+        .route(
+            "/internal/v1/domains/{domainId}/members",
+            get(handlers::domain_members::list_members),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/members/{principalId}",
+            put(handlers::domain_members::add_member),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/members/{principalId}",
+            delete(handlers::domain_members::remove_member),
+        )
         // Provisioning endpoints
         .route(
             "/internal/v1/admin/principals",

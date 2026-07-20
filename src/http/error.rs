@@ -7,6 +7,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 
+use crate::application::domain_membership::DomainMembershipError as DMError;
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
 use crate::domain::provisioning::ProvisioningError as PError;
 use crate::domain::workflow_instance::errors::{
@@ -265,6 +266,50 @@ impl ApiError {
                 "principal type is not allowed for this operation",
             ),
             E::InvalidInput(_) => ("invalid_input", "invalid request input"),
+            E::IdempotencyConflict => ("idempotency_conflict", "idempotency key was reused"),
+            E::CommandStillProcessing => {
+                ("command_still_processing", "command is still processing")
+            }
+            E::InternalConsistency(_) => {
+                ("internal_consistency_error", "internal consistency error")
+            }
+            E::StorageError(_) => ("service_unavailable", "storage is unavailable"),
+        };
+        let mut api_error = Self::new(
+            StatusCode::from_u16(status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            code,
+            message,
+        );
+        if let Some(detail) = error.detail() {
+            api_error = api_error.with_details(serde_json::json!({ "detail": detail }));
+        }
+        api_error
+    }
+
+    pub fn from_domain_membership(error: DMError) -> Self {
+        use DMError as E;
+        let status_code = error.status_code();
+        let (code, message) = match &error {
+            E::PrincipalNotRegistered => (
+                "principal_not_registered",
+                "principal has not completed self-projection",
+            ),
+            E::PrincipalDisabled => ("principal_disabled", "principal is disabled"),
+            E::PrincipalProjectionConflict => (
+                "principal_projection_conflict",
+                "principal exists with a different type",
+            ),
+            E::DomainNotFound => ("domain_not_found", "domain not found"),
+            E::NotDomainOwner => ("not_domain_owner", "caller is not a domain owner"),
+            E::PrincipalIsOwner => (
+                "principal_is_owner",
+                "principal is a domain owner and cannot be a member",
+            ),
+            E::MemberNotFound => ("member_not_found", "member binding not found"),
+            E::DirectTokenRequired => (
+                "direct_token_required",
+                "only direct access tokens may perform this operation",
+            ),
             E::IdempotencyConflict => ("idempotency_conflict", "idempotency key was reused"),
             E::CommandStillProcessing => {
                 ("command_still_processing", "command is still processing")

@@ -52,6 +52,49 @@ The service binds to `WORKFLOW_BIND_ADDR:WORKFLOW_PORT` (default `127.0.0.1:8989
 |--------|----------------------------------------------|-----------------|------|---------------------------------|
 | GET    | `/internal/v1/workflow-instances/domain`     | `workflow.read` | yes  | Domain-wide instance list (DOMAIN_OWNER only) |
 
+### 2.5 Agent Self-Projection
+
+| Method | Path                             | Scope              | Auth | Description                                           |
+|--------|----------------------------------|--------------------|------|-------------------------------------------------------|
+| PUT    | `/internal/v1/principals/me`      | `workflow.read`    | yes  | Self-project verified token identity into local principals table |
+
+Agents use this endpoint to project their Auth V1 Direct Machine identity into the workflow service. The projected `principal_id` equals `token.sub`. Only `token_use=access` (Direct) tokens are accepted; OBO tokens are rejected.
+
+The request body is empty — the identity comes exclusively from the verified JWT.
+
+**Responses:**
+- `200` — principal already projected or newly created (`{"principalId": "...", "created": true|false}`)
+- `403` — `direct_token_required` (OBO or delegation detected)
+- `403` — `principal_disabled` (existing projection is disabled)
+- `409` — `principal_projection_conflict` (existing principal has a different type)
+
+### 2.6 Domain Member Management
+
+| Method | Path                                                          | Scope               | Auth | Description                                      |
+|--------|---------------------------------------------------------------|---------------------|------|--------------------------------------------------|
+| GET    | `/internal/v1/domains/{domainId}/members`                     | `workflow.read`     | yes  | List DOMAIN_MEMBER bindings for a domain          |
+| PUT    | `/internal/v1/domains/{domainId}/members/{principalId}`       | `workflow.execute`  | yes  | Add a principal as DOMAIN_MEMBER (must be self-projected first) |
+| DELETE | `/internal/v1/domains/{domainId}/members/{principalId}`       | `workflow.execute`  | yes  | Remove a DOMAIN_MEMBER binding                    |
+
+All endpoints require a Direct Machine Token (`token_use=access`). The caller must be `DOMAIN_OWNER` of the target domain.
+
+The target principal must have completed self-projection (`PUT /internal/v1/principals/me`). Members that have not self-projected return `principal_not_registered`.
+
+**GET Members** uses cursor pagination with `beforeCreatedAt` (RFC 3339) and `beforeId` (UUID) query parameters, same convention as section 2.4.
+
+**PUT Add Member** is idempotent. Re-adding an existing member returns success. Adding a `DOMAIN_OWNER` as a member returns `principal_is_owner`.
+
+**DELETE Remove Member** only affects `DOMAIN_MEMBER` bindings. `DOMAIN_OWNER` bindings cannot be modified. Returns `member_not_found` if no active binding exists.
+
+**Error codes specific to these endpoints:**
+- `direct_token_required` (403) — OBO or delegated token used
+- `principal_not_registered` (404) — target has not self-projected
+- `principal_projection_conflict` (409) — existing principal type conflict
+- `principal_disabled` (403) — principal is disabled
+- `not_domain_owner` (403) — caller is not a domain owner
+- `principal_is_owner` (409) — target is a DOMAIN_OWNER, cannot be a member
+- `member_not_found` (404) — no active DOMAIN_MEMBER binding to remove
+
 ---
 
 ## 3. Authentication
