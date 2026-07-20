@@ -4,16 +4,12 @@
 //! struct (RS256, `deny_unknown_fields`, all fields required).
 //!
 //! OBO tokens use the strict `V1OboMachineClaims` struct (RS256,
-//! `deny_unknown_fields`, `act.sub` required).  The legacy `WorkflowClaims`
-//! struct is retained only for test compatibility — production code never
-//! uses it.
+//! `deny_unknown_fields`, `act.sub` required).
 
 use std::collections::HashSet;
 
 use serde::Deserialize;
-use uuid::Uuid;
 
-use crate::domain::ids::PrincipalId;
 use crate::http::error::ApiError;
 
 // ---------------------------------------------------------------------------
@@ -89,41 +85,6 @@ pub struct V1OboMachineClaims {
     pub nbf: usize,
     pub exp: usize,
     pub act: OboActClaim,
-}
-
-// ---------------------------------------------------------------------------
-// OBSOLETE — legacy OBO types retained only for test compatibility.
-// Production code uses `V1OboMachineClaims` / `OboActClaim`.
-// ---------------------------------------------------------------------------
-
-/// Act claim for OBO delegation (RFC 8693 style).
-#[derive(Debug, Deserialize)]
-pub struct ActClaim {
-    pub sub: Option<String>,
-    /// Detect nested delegation — not allowed in V0.
-    #[serde(rename = "act")]
-    pub nested_act: Option<serde_json::Value>,
-}
-
-/// Lenient claims set for OBO token verification.
-#[derive(Debug, Deserialize)]
-pub struct WorkflowClaims {
-    pub sub: Option<String>,
-    pub iss: Option<String>,
-    pub aud: Option<String>,
-    pub exp: Option<usize>,
-    pub iat: Option<usize>,
-    pub nbf: Option<usize>,
-    pub principal_type: Option<String>,
-    #[serde(rename = "type")]
-    pub token_type: Option<String>,
-    pub version: Option<String>,
-    pub scope: Option<String>,
-    pub token_use: Option<String>,
-    pub act: Option<ActClaim>,
-    pub azp: Option<String>,
-    pub jti: Option<String>,
-    pub client_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -271,85 +232,6 @@ pub fn validate_v1_time_claims(
         ));
     }
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// OBSOLETE — legacy OBO validation helpers retained for test compat.
-// Production OBO validation is in `JwksVerifier::verify_obo()`.
-// ---------------------------------------------------------------------------
-
-/// Validate `principal_type` is exactly `agent`.
-pub fn validate_principal_type(principal_type: &Option<String>) -> Result<(), String> {
-    match principal_type.as_deref() {
-        Some("agent") => Ok(()),
-        Some(other) => Err(format!(
-            "invalid principal_type '{other}': expected 'agent'"
-        )),
-        None => Err("missing principal_type".to_string()),
-    }
-}
-
-/// Validate `token_use` is a known value.
-pub fn validate_token_use(token_use: &Option<String>) -> Result<(), String> {
-    match token_use.as_deref() {
-        Some("access") | Some("workflow_obo") => Ok(()),
-        Some(other) => Err(format!(
-            "invalid token_use '{other}': expected 'access' or 'workflow_obo'"
-        )),
-        None => Ok(()),
-    }
-}
-
-/// Validate Direct token profile.
-pub fn validate_direct_profile(claims: &WorkflowClaims) -> Result<(), String> {
-    if claims.act.is_some() {
-        return Err("direct token must not carry act claim".to_string());
-    }
-    if claims.azp.is_some() {
-        return Err("direct token must not carry azp claim".to_string());
-    }
-    if claims.token_use.as_deref() == Some("workflow_obo") {
-        return Err("direct token must not have token_use=workflow_obo".to_string());
-    }
-    Ok(())
-}
-
-/// Check if an ActClaim contains a nested `act` (delegation chain).
-pub fn has_nested_act(act: &ActClaim) -> bool {
-    act.nested_act.is_some()
-}
-
-/// Validate OBO-specific claims with strict profile enforcement.
-pub fn validate_obo(claims: &WorkflowClaims) -> Result<(), String> {
-    let act = claims.act.as_ref().ok_or("OBO token missing act")?;
-    let act_sub = act.sub.as_deref().ok_or("OBO token missing act.sub")?;
-    Uuid::parse_str(act_sub).map_err(|_| "OBO act.sub must be a valid UUID".to_string())?;
-    if has_nested_act(act) {
-        return Err("OBO token must not contain nested act".to_string());
-    }
-    if claims.azp.as_deref().is_none_or(str::is_empty) {
-        return Err("OBO token missing azp".to_string());
-    }
-    let client_id = claims
-        .client_id
-        .as_deref()
-        .ok_or("OBO token missing client_id")?;
-    if client_id.is_empty() {
-        return Err("OBO token client_id must not be empty".to_string());
-    }
-    let azp = claims.azp.as_deref().unwrap_or("");
-    if client_id != azp {
-        return Err("OBO token client_id must equal azp".to_string());
-    }
-    if claims.jti.as_deref().is_none_or(str::is_empty) {
-        return Err("OBO token missing jti".to_string());
-    }
-    Ok(())
-}
-
-/// Check if the claims indicate an OBO token.
-pub fn is_obo(claims: &WorkflowClaims) -> bool {
-    claims.act.is_some() || matches!(claims.token_use.as_deref(), Some("workflow_obo"))
 }
 
 // ---------------------------------------------------------------------------
@@ -501,62 +383,5 @@ mod tests {
         assert!(!is_valid_scope_item(".read"));
         assert!(!is_valid_scope_item("workflow."));
         assert!(!is_valid_scope_item("Workflow.read"));
-    }
-
-    // --- OBO validation (preserved) ---
-
-    #[test]
-    fn obo_validation_preserved() {
-        let act_sub = Uuid::new_v4();
-        let claims = WorkflowClaims {
-            sub: Some(Uuid::new_v4().to_string()),
-            iss: Some("auth-service".to_string()),
-            aud: Some("svc-workflow".to_string()),
-            exp: Some(9999999999),
-            iat: Some(1000000000),
-            nbf: None,
-            principal_type: Some("agent".to_string()),
-            token_type: Some("access".to_string()),
-            version: Some("v1".to_string()),
-            scope: Some("workflow.execute".to_string()),
-            token_use: Some("workflow_obo".to_string()),
-            act: Some(ActClaim {
-                sub: Some(act_sub.to_string()),
-                nested_act: None,
-            }),
-            azp: Some("test-client".to_string()),
-            jti: Some("unique-token-id".to_string()),
-            client_id: Some("test-client".to_string()),
-        };
-        assert!(validate_obo(&claims).is_ok());
-    }
-
-    #[test]
-    fn has_nested_act_detection() {
-        let no_nest = ActClaim {
-            sub: Some(Uuid::new_v4().to_string()),
-            nested_act: None,
-        };
-        assert!(!has_nested_act(&no_nest));
-        let with_nest = ActClaim {
-            sub: Some(Uuid::new_v4().to_string()),
-            nested_act: Some(serde_json::json!({"sub": "uuid"})),
-        };
-        assert!(has_nested_act(&with_nest));
-    }
-
-    #[test]
-    fn validate_principal_type_works() {
-        assert!(validate_principal_type(&Some("agent".to_string())).is_ok());
-        assert!(validate_principal_type(&Some("human".to_string())).is_err());
-        assert!(validate_principal_type(&None).is_err());
-    }
-
-    #[test]
-    fn validate_token_use_works() {
-        assert!(validate_token_use(&None).is_ok());
-        assert!(validate_token_use(&Some("access".to_string())).is_ok());
-        assert!(validate_token_use(&Some("workflow_obo".to_string())).is_ok());
-        assert!(validate_token_use(&Some("invalid".to_string())).is_err());
     }
 }

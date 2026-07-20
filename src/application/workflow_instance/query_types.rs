@@ -265,7 +265,7 @@ pub struct CreatorDraftItem {
 }
 
 // ---------------------------------------------------------------------------
-// Domain-wide instance list (Efficiency Manager global view)
+// Domain-wide Workflow Domain instance list
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
