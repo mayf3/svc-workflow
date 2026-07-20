@@ -3,7 +3,10 @@
 //! Direct access tokens are validated against the strict `V1DirectMachineClaims`
 //! struct (RS256, `deny_unknown_fields`, all fields required).
 //!
-//! OBO tokens use the lenient `WorkflowClaims` struct (kept for future use).
+//! OBO tokens use the strict `V1OboMachineClaims` struct (RS256,
+//! `deny_unknown_fields`, `act.sub` required).  The legacy `WorkflowClaims`
+//! struct is retained only for test compatibility — production code never
+//! uses it.
 
 use std::collections::HashSet;
 
@@ -44,7 +47,53 @@ pub struct V1DirectMachineClaims {
 }
 
 // ---------------------------------------------------------------------------
-// OBO claims (lenient, kept for future use)
+// OBO claims — production struct (strict, deny_unknown_fields)
+// ---------------------------------------------------------------------------
+
+/// Strict `act` claim for OBO delegation (RFC 8693 style).
+///
+/// `sub` is required.  Nested `act` (chained delegation) is implicitly
+/// rejected by `deny_unknown_fields`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OboActClaim {
+    /// The proxy service principal (e.g. ADC) that initiated the delegation.
+    pub sub: String,
+}
+
+/// Strict claims set matching the Auth V1 `workflow_obo` profile.
+///
+/// Contract: `token_use=workflow_obo`, `act` required, `act.sub` required.
+/// `client_id`, `azp`, and `agent_id` are optional diagnostic fields —
+/// the Auth V1 contract permits them but they never participate in
+/// domain authorization (see spec section 4).
+///
+/// Unknown fields are rejected via `deny_unknown_fields`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct V1OboMachineClaims {
+    pub iss: String,
+    pub sub: String,
+    pub aud: String,
+    pub principal_type: String,
+    pub client_id: Option<String>,
+    pub token_use: String,
+    #[serde(rename = "type")]
+    pub token_type: String,
+    pub version: String,
+    pub scope: String,
+    pub agent_id: Option<String>,
+    pub azp: Option<String>,
+    pub jti: String,
+    pub iat: usize,
+    pub nbf: usize,
+    pub exp: usize,
+    pub act: OboActClaim,
+}
+
+// ---------------------------------------------------------------------------
+// OBSOLETE — legacy OBO types retained only for test compatibility.
+// Production code uses `V1OboMachineClaims` / `OboActClaim`.
 // ---------------------------------------------------------------------------
 
 /// Act claim for OBO delegation (RFC 8693 style).
@@ -225,7 +274,8 @@ pub fn validate_v1_time_claims(
 }
 
 // ---------------------------------------------------------------------------
-// OBO validation helpers (kept for future use)
+// OBSOLETE — legacy OBO validation helpers retained for test compat.
+// Production OBO validation is in `JwksVerifier::verify_obo()`.
 // ---------------------------------------------------------------------------
 
 /// Validate `principal_type` is exactly `agent`.

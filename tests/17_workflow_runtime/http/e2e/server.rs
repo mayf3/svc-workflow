@@ -45,6 +45,7 @@ impl RunningServer {
                 write_enabled: true,
                 allowed_client_id: "e2e-client".to_string(),
                 allowed_sub: allowed_sub.to_string(),
+                allowed_delegating_sub: String::new(),
                 jwks_url: mock.url.clone(),
                 issuer: "auth-service".to_string(),
                 audience: "svc-workflow".to_string(),

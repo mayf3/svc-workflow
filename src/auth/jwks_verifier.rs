@@ -1,10 +1,13 @@
-//! RS256 JWKS verifier with Auth V1 DirectMachineAccess profile enforcement.
+//! RS256 JWKS verifier with Auth V1 profile enforcement.
 //!
 //! This is the sole authentication verifier — service no longer supports
 //! HS256 or legacy claims.  Tokens are validated against the strict
-//! `V1DirectMachineClaims` struct (RS256, `deny_unknown_fields`).
+//! `V1DirectMachineClaims` (Direct, `token_use=access`) or
+//! `V1OboMachineClaims` (OBO, `token_use=workflow_obo`) structs,
+//! both with RS256 / `deny_unknown_fields`.
 //!
-//! OBO token verification code is preserved for future use.
+//! Profile dispatch is based exclusively on `token_use` — no guessing
+//! or fallback between profiles.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,7 +25,7 @@ use crate::http::error::ApiError;
 use super::auth_context::AuthContext;
 use super::auth_mode::JwksConfig;
 use super::canary::AuthV1CanaryConfig;
-use super::claims::{self, V1DirectMachineClaims};
+use super::claims::{self, V1DirectMachineClaims, V1OboMachineClaims};
 use super::AuthenticatedPrincipal;
 
 /// Maximum response body size for JWKS fetch (1 MB).
@@ -115,10 +118,13 @@ impl JwksVerifier {
         }
     }
 
-    /// Verify a JWT against the Auth V1 DirectMachineAccess profile.
+    /// Verify a JWT against the Auth V1 profile.
     ///
     /// Algorithm must be RS256. Token must include a `kid` that maps to
     /// a cached JWKS key. Unknown kids trigger a controlled refresh.
+    ///
+    /// Profile (`Direct` vs `OBO`) is determined exclusively by the
+    /// `token_use` claim — no guessing or fallback.
     ///
     /// Returns `AuthenticatedPrincipal` with `principal_id = token.sub`.
     pub async fn verify(&self, token: &str) -> Result<AuthenticatedPrincipal, ApiError> {
@@ -150,11 +156,12 @@ impl JwksVerifier {
         // 3. Look up the key, optionally refreshing cache.
         let key = self.lookup_key(kid).await?;
 
-        // 4. Build validation.
+        // 4. Build validation — standard JWT checks only.
+        // Profile-specific claims are validated after routing by token_use.
         let mut validation = Validation::new(Algorithm::RS256);
         validation.algorithms = vec![Algorithm::RS256];
-        validation.set_issuer(&[&self.issuer]);
-        validation.set_audience(&[&self.audience]);
+        // We validate iss and aud manually after decode for exact single-string
+        // enforcement, but mark them as required so the crate checks existence.
         for claim in ["exp", "iat", "iss", "aud", "sub"] {
             validation.required_spec_claims.insert(claim.to_string());
         }
@@ -162,8 +169,9 @@ impl JwksVerifier {
         validation.validate_nbf = true;
         validation.leeway = self.clock_skew_seconds;
 
-        // 5. Decode as V1DirectMachineClaims (strict, deny_unknown_fields).
-        let data = decode::<V1DirectMachineClaims>(token, &key, &validation).map_err(|error| {
+        // 5. Decode as serde_json::Value to verify signature + standard claims.
+        // The Value is then used to extract token_use for profile routing.
+        let data = decode::<serde_json::Value>(token, &key, &validation).map_err(|error| {
             match error.kind() {
                 ErrorKind::ExpiredSignature => {
                     ApiError::unauthorized("token_expired", "access token has expired")
@@ -183,50 +191,90 @@ impl JwksVerifier {
                     ApiError::unauthorized("wrong_audience", "token audience mismatch")
                 }
                 _ => {
-                    // Include the serde error detail for debugging (e.g. unknown fields).
-                    let msg = format!("invalid access token: {}", error);
+                    let msg = format!("invalid token: {}", error);
                     ApiError::unauthorized("malformed_token", Box::leak(msg.into_boxed_str()))
                 }
             }
         })?;
 
-        let claims = data.claims;
+        let claims_value = &data.claims;
 
-        // 6. Validate V1 profile claims.
+        // 6. Validate issuer (requires exact match).
+        let iss = claims_value
+            .get("iss")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ApiError::unauthorized("malformed_token", "issuer claim is required"))?;
+        if iss != self.issuer {
+            return Err(ApiError::unauthorized(
+                "wrong_issuer",
+                "token issuer mismatch",
+            ));
+        }
 
-        // principal_type must be "agent" (contract: directMachineAccess.principal_type).
+        // 7. Validate audience — must be a single string (reject arrays).
+        let aud = claims_value
+            .get("aud")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ApiError::unauthorized("wrong_audience", "audience must be a single string")
+            })?;
+        if aud != self.audience {
+            return Err(ApiError::unauthorized(
+                "wrong_audience",
+                "token audience mismatch",
+            ));
+        }
+
+        // 8. Determine profile by token_use — no fallback.
+        let token_use = claims_value
+            .get("token_use")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ApiError::unauthorized("malformed_token", "token_use is required"))?;
+
+        match token_use {
+            "access" => self.verify_direct(claims_value.clone()),
+            "workflow_obo" => self.verify_obo(claims_value.clone()),
+            _ => Err(ApiError::unauthorized(
+                "invalid_token_use",
+                "unknown token_use value",
+            )),
+        }
+    }
+
+    /// Verify a Direct Machine token (`token_use=access`).
+    ///
+    /// Deserializes the verified Value as `V1DirectMachineClaims` (strict,
+    /// `deny_unknown_fields`) and runs the full Direct profile validation.
+    fn verify_direct(
+        &self,
+        claims_value: serde_json::Value,
+    ) -> Result<AuthenticatedPrincipal, ApiError> {
+        // Deserialize as strict Direct claims.
+        let claims: V1DirectMachineClaims =
+            serde_json::from_value(claims_value).map_err(|error| {
+                let msg = format!("invalid access token: {error}");
+                ApiError::unauthorized("malformed_token", Box::leak(msg.into_boxed_str()))
+            })?;
+
+        // Validate V1 profile claims.
         if claims.principal_type != "agent" {
             return Err(ApiError::unauthorized(
                 "invalid_principal_type",
                 "principal_type must be agent",
             ));
         }
-
-        // token_use must be "access" (contract: directMachineAccess.token_use).
-        if claims.token_use != "access" {
-            return Err(ApiError::unauthorized(
-                "invalid_token_use",
-                "token_use must be access",
-            ));
-        }
-
-        // type must be "access" (contract: directMachineAccess.type).
         if claims.token_type != "access" {
             return Err(ApiError::unauthorized(
                 "invalid_token_type",
                 "token type must be access",
             ));
         }
-
-        // version must be "v1" (contract: manifest.token_version).
         if claims.version != "v1" {
             return Err(ApiError::unauthorized(
                 "malformed_token",
                 "token version must be v1",
             ));
         }
-
-        // jti must have at least 16 characters (contract: jti.minLength = 16).
         if claims.jti.len() < 16 {
             return Err(ApiError::unauthorized(
                 "malformed_token",
@@ -234,11 +282,11 @@ impl JwksVerifier {
             ));
         }
 
-        // 7. Validate sub is a valid UUID.
+        // Validate sub is a valid UUID.
         let sub_uuid = Uuid::parse_str(&claims.sub)
             .map_err(|_| ApiError::unauthorized("malformed_token", "sub must be a valid UUID"))?;
 
-        // 8. Validate allow-list.
+        // Validate allow-list.
         if !self.config.allowed_client_id.is_empty()
             && claims.client_id != self.config.allowed_client_id
         {
@@ -254,10 +302,10 @@ impl JwksVerifier {
             ));
         }
 
-        // 9. Validate scope wire format.
+        // Validate scope wire format.
         claims::validate_v1_scope(&claims.scope)?;
 
-        // 10. Validate time claims.
+        // Validate time claims.
         claims::validate_v1_time_claims(
             claims.iat,
             claims.nbf,
@@ -265,16 +313,116 @@ impl JwksVerifier {
             self.clock_skew_seconds,
         )?;
 
-        // 11. Build scopes set.
+        // Build scopes set.
         let scopes: HashSet<String> = claims.scope.split(' ').map(str::to_owned).collect();
 
-        // 12. Build auth context.
+        // Build auth context — Direct profile, no delegation.
         let auth_context = AuthContext {
             subject: PrincipalId::from_uuid(sub_uuid),
             principal_type: "agent".to_string(),
             token_use: "access".to_string(),
             delegating_principal_id: None,
             authorized_party: None,
+            client_id: Some(claims.client_id),
+            token_id: Some(claims.jti),
+            audience: self.audience.clone(),
+            scope: claims.scope,
+        };
+
+        Ok(AuthenticatedPrincipal::new_with_context(
+            PrincipalId::from_uuid(sub_uuid),
+            scopes,
+            auth_context,
+        ))
+    }
+
+    /// Verify an OBO token (`token_use=workflow_obo`).
+    ///
+    /// Deserializes the verified Value as `V1OboMachineClaims` (strict,
+    /// `deny_unknown_fields`, `act.sub` required).  The domain actor is
+    /// always `token.sub` — `act.sub` is used only for audit as the
+    /// delegating principal.
+    fn verify_obo(
+        &self,
+        claims_value: serde_json::Value,
+    ) -> Result<AuthenticatedPrincipal, ApiError> {
+        // Deserialize as strict OBO claims.
+        let claims: V1OboMachineClaims = serde_json::from_value(claims_value).map_err(|error| {
+            let msg = format!("invalid obo token: {error}");
+            ApiError::unauthorized("malformed_token", Box::leak(msg.into_boxed_str()))
+        })?;
+
+        // Validate V1 profile claims (shared with Direct).
+        if claims.principal_type != "agent" {
+            return Err(ApiError::unauthorized(
+                "invalid_principal_type",
+                "principal_type must be agent",
+            ));
+        }
+        if claims.token_type != "access" {
+            return Err(ApiError::unauthorized(
+                "invalid_token_type",
+                "token type must be access",
+            ));
+        }
+        if claims.version != "v1" {
+            return Err(ApiError::unauthorized(
+                "malformed_token",
+                "token version must be v1",
+            ));
+        }
+        if claims.jti.is_empty() {
+            return Err(ApiError::unauthorized("malformed_token", "jti is required"));
+        }
+
+        // Validate sub is a valid UUID.
+        let sub_uuid = Uuid::parse_str(&claims.sub)
+            .map_err(|_| ApiError::unauthorized("malformed_token", "sub must be a valid UUID"))?;
+
+        // Validate act.sub is a valid UUID.
+        let act_sub_uuid = Uuid::parse_str(&claims.act.sub).map_err(|_| {
+            ApiError::unauthorized("malformed_token", "act.sub must be a valid UUID")
+        })?;
+
+        // Validate allow-lists — OBO requires both allowed_sub and
+        // allowed_delegating_sub (when either is configured).
+        if !self.config.allowed_sub.is_empty() && claims.sub != self.config.allowed_sub {
+            return Err(ApiError::unauthorized(
+                "unauthorized_principal",
+                "sub is not authorized",
+            ));
+        }
+        if !self.config.allowed_delegating_sub.is_empty()
+            && claims.act.sub != self.config.allowed_delegating_sub
+        {
+            return Err(ApiError::unauthorized(
+                "unauthorized_delegating_principal",
+                "delegating principal is not authorized",
+            ));
+        }
+
+        // Validate scope wire format.
+        claims::validate_v1_scope(&claims.scope)?;
+
+        // Validate time claims.
+        claims::validate_v1_time_claims(
+            claims.iat,
+            claims.nbf,
+            claims.exp,
+            self.clock_skew_seconds,
+        )?;
+
+        // Build scopes set.
+        let scopes: HashSet<String> = claims.scope.split(' ').map(str::to_owned).collect();
+
+        // Build auth context — OBO profile with delegation audit trail.
+        let auth_context = AuthContext {
+            subject: PrincipalId::from_uuid(sub_uuid),
+            principal_type: "agent".to_string(),
+            token_use: "workflow_obo".to_string(),
+            delegating_principal_id: Some(PrincipalId::from_uuid(act_sub_uuid)),
+            authorized_party: claims.azp.clone(),
+            client_id: claims.client_id.clone(),
             token_id: Some(claims.jti),
             audience: self.audience.clone(),
             scope: claims.scope,

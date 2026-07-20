@@ -33,6 +33,7 @@ fn canary_config(
         write_enabled,
         allowed_client_id: allowed_client_id.to_string(),
         allowed_sub: allowed_sub.to_string(),
+        allowed_delegating_sub: String::new(),
         jwks_url: String::new(), // populated before use
         issuer: "auth-service".to_string(),
         audience: "svc-workflow".to_string(),

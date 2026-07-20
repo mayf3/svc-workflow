@@ -13,6 +13,6 @@ mod principal;
 pub use auth_context::AuthContext;
 pub use auth_mode::{validate_env, JwksConfig};
 pub use canary::AuthV1CanaryConfig;
-pub use claims::V1DirectMachineClaims;
+pub use claims::{V1DirectMachineClaims, V1OboMachineClaims};
 pub use jwks_verifier::JwksVerifier;
 pub use principal::AuthenticatedPrincipal;
