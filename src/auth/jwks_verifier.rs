@@ -156,13 +156,12 @@ impl JwksVerifier {
         // 3. Look up the key, optionally refreshing cache.
         let key = self.lookup_key(kid).await?;
 
-        // 4. Build validation — standard JWT checks only.
-        // Profile-specific claims are validated after routing by token_use.
+        // 4. Build validation — standard JWT checks.
         let mut validation = Validation::new(Algorithm::RS256);
         validation.algorithms = vec![Algorithm::RS256];
-        // We validate iss and aud manually after decode for exact single-string
-        // enforcement, but mark them as required so the crate checks existence.
-        for claim in ["exp", "iat", "iss", "aud", "sub"] {
+        validation.set_issuer(&[&self.issuer]);
+        validation.set_audience(&[&self.audience]);
+        for claim in ["exp", "iat", "nbf", "sub"] {
             validation.required_spec_claims.insert(claim.to_string());
         }
         validation.validate_exp = true;
@@ -171,6 +170,8 @@ impl JwksVerifier {
 
         // 5. Decode as serde_json::Value to verify signature + standard claims.
         // The Value is then used to extract token_use for profile routing.
+        // Note: we let jsonwebtoken validate iss/aud values, but then we enforce
+        // single-string audience via manual check below (rejecting arrays).
         let data = decode::<serde_json::Value>(token, &key, &validation).map_err(|error| {
             match error.kind() {
                 ErrorKind::ExpiredSignature => {
@@ -199,33 +200,17 @@ impl JwksVerifier {
 
         let claims_value = &data.claims;
 
-        // 6. Validate issuer (requires exact match).
-        let iss = claims_value
-            .get("iss")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ApiError::unauthorized("malformed_token", "issuer claim is required"))?;
-        if iss != self.issuer {
-            return Err(ApiError::unauthorized(
-                "wrong_issuer",
-                "token issuer mismatch",
-            ));
-        }
-
-        // 7. Validate audience — must be a single string (reject arrays).
-        let aud = claims_value
-            .get("aud")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ApiError::unauthorized("wrong_audience", "audience must be a single string")
-            })?;
-        if aud != self.audience {
+        // 6. Enforce single-string audience (jsonwebtoken accepts arrays).
+        // jsonwebtoken's set_audience allows both single string and arrays
+        // containing the expected value. We require a single string here.
+        if claims_value.get("aud").and_then(|v| v.as_str()).is_none() {
             return Err(ApiError::unauthorized(
                 "wrong_audience",
-                "token audience mismatch",
+                "audience must be a single string",
             ));
         }
 
-        // 8. Determine profile by token_use — no fallback.
+        // 7. Determine profile by token_use — no fallback.
         let token_use = claims_value
             .get("token_use")
             .and_then(|v| v.as_str())

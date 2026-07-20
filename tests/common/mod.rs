@@ -125,6 +125,118 @@ pub fn v1_token(
     jwt_encode(&header, &claims, &key).unwrap()
 }
 
+/// Create an RS256 JWT matching the Auth V1 workflow_obo profile.
+///
+/// Includes `token_use=workflow_obo` and `act { sub: act_sub }`.
+pub fn v1_obo_token(
+    subject: uuid::Uuid,
+    act_sub: uuid::Uuid,
+    scope: &str,
+    client_id: Option<&str>,
+    exp_offset: i64,
+    key_pair: &RsaTestKeyPair,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let mut claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": subject.to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "token_use": "workflow_obo",
+        "type": "access",
+        "version": "v1",
+        "scope": scope,
+        "jti": format!("test-{}", uuid::Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": (now as i64 + exp_offset) as usize,
+        "act": {
+            "sub": act_sub.to_string()
+        }
+    });
+    if let Some(cid) = client_id {
+        claims["client_id"] = serde_json::json!(cid);
+    }
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key = EncodingKey::from_rsa_pem(key_pair.private_key_pem.as_bytes()).unwrap();
+    jwt_encode(&header, &claims, &key).unwrap()
+}
+
+/// Create an OBO token that is missing the `act` claim entirely.
+pub fn v1_obo_token_missing_act(
+    subject: uuid::Uuid,
+    scope: &str,
+    client_id: Option<&str>,
+    exp_offset: i64,
+    key_pair: &RsaTestKeyPair,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let mut claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": subject.to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "token_use": "workflow_obo",
+        "type": "access",
+        "version": "v1",
+        "scope": scope,
+        "jti": format!("test-{}", uuid::Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": (now as i64 + exp_offset) as usize,
+    });
+    if let Some(cid) = client_id {
+        claims["client_id"] = serde_json::json!(cid);
+    }
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key = EncodingKey::from_rsa_pem(key_pair.private_key_pem.as_bytes()).unwrap();
+    jwt_encode(&header, &claims, &key).unwrap()
+}
+
+/// Create an OBO token with an extra field at the top level.
+pub fn v1_obo_token_with_extra_field(
+    subject: uuid::Uuid,
+    act_sub: uuid::Uuid,
+    scope: &str,
+    client_id: Option<&str>,
+    exp_offset: i64,
+    extra_key: &str,
+    extra_value: &str,
+    key_pair: &RsaTestKeyPair,
+) -> String {
+    let now = chrono::Utc::now().timestamp() as usize;
+    let mut claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": subject.to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "token_use": "workflow_obo",
+        "type": "access",
+        "version": "v1",
+        "scope": scope,
+        "jti": format!("test-{}", uuid::Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": (now as i64 + exp_offset) as usize,
+        "act": {
+            "sub": act_sub.to_string()
+        },
+        extra_key: extra_value,
+    });
+    if let Some(cid) = client_id {
+        claims["client_id"] = serde_json::json!(cid);
+    }
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key = EncodingKey::from_rsa_pem(key_pair.private_key_pem.as_bytes()).unwrap();
+    jwt_encode(&header, &claims, &key).unwrap()
+}
+
 /// Create a V1 token with an extra field (violates deny_unknown_fields).
 pub fn v1_token_with_extra_field(
     subject: uuid::Uuid,

@@ -466,6 +466,8 @@ mod admin_recovery_receipt_reauthorization;
 #[path = "17_workflow_runtime/legacy_import/mod.rs"]
 mod legacy_import;
 
+#[path = "17_workflow_runtime/http/auth_obo_e2e.rs"]
+mod http_auth_obo_e2e;
 #[path = "17_workflow_runtime/http/canary_write.rs"]
 mod http_canary_write;
 #[path = "17_workflow_runtime/http/domain_list.rs"]

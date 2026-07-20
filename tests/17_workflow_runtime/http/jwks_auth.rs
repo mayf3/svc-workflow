@@ -425,3 +425,240 @@ async fn extra_field_rejected() {
     let result = verify_token(&state, &token).await;
     assert!(result.is_err());
 }
+
+// ---------------------------------------------------------------------------
+// OBO token verifier tests
+// ---------------------------------------------------------------------------
+
+/// 12. Valid OBO token accepted.
+#[tokio::test]
+async fn valid_obo_token() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let sub = Uuid::new_v4();
+    let act_sub = Uuid::new_v4();
+    let token = common::v1_obo_token(
+        sub,
+        act_sub,
+        "workflow.read",
+        Some("test-client"),
+        300,
+        &mock.key_pair,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_ok());
+    let principal = result.unwrap();
+    // Domain actor is always token.sub
+    assert_eq!(principal.principal_id.into_uuid(), sub);
+    assert_eq!(principal.auth_context.token_use, "workflow_obo");
+    assert_eq!(
+        principal
+            .auth_context
+            .delegating_principal_id
+            .map(|id| id.into_uuid()),
+        Some(act_sub)
+    );
+    assert_eq!(
+        principal.auth_context.client_id.as_deref(),
+        Some("test-client")
+    );
+    assert_eq!(principal.auth_context.principal_type, "agent");
+}
+
+/// 13. OBO token without `act` claim rejected.
+#[tokio::test]
+async fn obo_token_missing_act_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let token = common::v1_obo_token_missing_act(
+        Uuid::new_v4(),
+        "workflow.read",
+        Some("test-client"),
+        300,
+        &mock.key_pair,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 14. OBO token with extra top-level fields rejected.
+#[tokio::test]
+async fn obo_token_extra_field_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let token = common::v1_obo_token_with_extra_field(
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        "workflow.read",
+        Some("test-client"),
+        300,
+        "extra_field",
+        "rejected",
+        &mock.key_pair,
+    );
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 15. Direct token carrying `act` claim rejected (deny_unknown_fields on V1DirectMachineClaims).
+#[tokio::test]
+async fn direct_token_with_act_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Direct token carrying act claim (should be rejected)
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "access",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+        "act": { "sub": Uuid::new_v4().to_string() }
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 16. OBO token's act.sub must be a valid UUID.
+#[tokio::test]
+async fn obo_token_invalid_act_sub_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "workflow_obo",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+        "act": { "sub": "not-a-uuid" }
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 17. OBO token with nested act (extra field in act) rejected.
+#[tokio::test]
+async fn obo_token_nested_act_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "workflow_obo",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+        "act": { "sub": Uuid::new_v4().to_string(), "act": { "sub": "nested" } }
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
+
+/// 18. Unknown token_use rejected.
+#[tokio::test]
+async fn unknown_token_use_rejected() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let config = jwks_config("127.0.0.1:0".parse().unwrap(), &mock.url);
+    let state = AppState::new(pool, &config);
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let now = chrono::Utc::now().timestamp() as usize;
+    let claims = serde_json::json!({
+        "iss": "auth-service",
+        "sub": Uuid::new_v4().to_string(),
+        "aud": "svc-workflow",
+        "principal_type": "agent",
+        "client_id": "test-client",
+        "token_use": "bogus_use",
+        "type": "access",
+        "version": "v1",
+        "scope": "workflow.read",
+        "jti": format!("test-{}", Uuid::new_v4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + 300,
+    });
+    let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+    header.kid = Some(mock.key_pair.kid.clone());
+    header.typ = Some("at+jwt".to_string());
+    let key =
+        jsonwebtoken::EncodingKey::from_rsa_pem(mock.key_pair.private_key_pem.as_bytes()).unwrap();
+    let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+    let result = verify_token(&state, &token).await;
+    assert!(result.is_err());
+}
