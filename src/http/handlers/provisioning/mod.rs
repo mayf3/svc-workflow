@@ -165,6 +165,7 @@ mod tests {
             token_use: "access".to_string(),
             delegating_principal_id: delegated.then(|| PrincipalId::from_uuid(Uuid::new_v4())),
             authorized_party: delegated.then(|| "adc".to_string()),
+            client_id: delegated.then(|| "adc-client".to_string()),
             token_id: delegated.then(|| "jti".to_string()),
             audience: "svc-workflow".to_string(),
             scope: "workflow.admin".to_string(),

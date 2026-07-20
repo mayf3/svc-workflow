@@ -18,6 +18,8 @@ pub struct AuthV1CanaryConfig {
     pub allowed_client_id: String,
     /// If non-empty, only this `sub` is accepted.
     pub allowed_sub: String,
+    /// If non-empty, OBO tokens must have `act.sub` matching this value.
+    pub allowed_delegating_sub: String,
     /// JWKS URL for RS256 key resolution.
     pub jwks_url: String,
     /// Expected exact issuer (contract: `"auth-service"`).
@@ -41,6 +43,7 @@ impl Default for AuthV1CanaryConfig {
             write_enabled: false,
             allowed_client_id: String::new(),
             allowed_sub: String::new(),
+            allowed_delegating_sub: String::new(),
             jwks_url: String::new(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),
@@ -65,6 +68,8 @@ impl AuthV1CanaryConfig {
             allowed_client_id: std::env::var("AUTH_V1_CANARY_ALLOWED_CLIENT_ID")
                 .unwrap_or_default(),
             allowed_sub: std::env::var("AUTH_V1_CANARY_ALLOWED_SUB").unwrap_or_default(),
+            allowed_delegating_sub: std::env::var("AUTH_V1_CANARY_ALLOWED_DELEGATING_SUB")
+                .unwrap_or_default(),
             jwks_url: std::env::var("WORKFLOW_JWKS_URL").unwrap_or_default(),
             issuer: std::env::var("WORKFLOW_JWT_ISSUER")
                 .unwrap_or_else(|_| "auth-service".to_string()),

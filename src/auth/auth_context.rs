@@ -25,6 +25,8 @@ pub struct AuthContext {
     pub authorized_party: Option<String>,
     /// `jti` for OBO tokens — unique token identifier.
     pub token_id: Option<String>,
+    /// `client_id` — diagnostic/audit only, never domain authorization.
+    pub client_id: Option<String>,
     /// The `aud` claim — intended audience.
     pub audience: String,
     /// Raw scope string (space-separated).
@@ -47,6 +49,7 @@ impl AuthContext {
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| "-".to_string()),
             azp = self.authorized_party.as_deref().unwrap_or("-"),
+            client_id = self.client_id.as_deref().unwrap_or("-"),
             audience = self.audience,
             scope = self.scope,
             endpoint = endpoint,
@@ -68,6 +71,7 @@ mod tests {
             token_use: "access".to_string(),
             delegating_principal_id: None,
             authorized_party: None,
+            client_id: None,
             token_id: None,
             audience: "svc-workflow".to_string(),
             scope: "workflow.execute".to_string(),
@@ -85,6 +89,7 @@ mod tests {
             token_use: "workflow_obo".to_string(),
             delegating_principal_id: Some(PrincipalId::from_uuid(Uuid::new_v4())),
             authorized_party: Some("test-client".to_string()),
+            client_id: Some("test-client-id".to_string()),
             token_id: Some("unique-jti".to_string()),
             audience: "svc-workflow".to_string(),
             scope: "workflow.execute".to_string(),

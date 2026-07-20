@@ -81,6 +81,7 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, actor_id: Uuid) -> axum::Router
             write_enabled: true,
             allowed_client_id: "prov-client".to_string(),
             allowed_sub: String::new(), // empty = skip allow-list check
+            allowed_delegating_sub: String::new(),
             jwks_url: jwks_url.to_string(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),

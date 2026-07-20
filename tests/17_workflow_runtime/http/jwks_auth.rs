@@ -40,6 +40,7 @@ fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
             write_enabled: true,
             allowed_client_id: String::new(),
             allowed_sub: String::new(),
+            allowed_delegating_sub: String::new(),
             jwks_url: String::new(),
             issuer: "auth-service".to_string(),
             audience: "svc-workflow".to_string(),
