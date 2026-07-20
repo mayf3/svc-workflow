@@ -8,6 +8,12 @@ import type {
   domainInstanceQuerySchema,
   executeWorkflowTransitionRequestSchema,
   executeWorkflowTransitionResponseSchema,
+  memberAddResponseSchema,
+  memberItemSchema,
+  memberListPageSchema,
+  memberListQuerySchema,
+  memberRemoveResponseSchema,
+  selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
   workflowInstanceDetailResponseSchema,
@@ -58,3 +64,10 @@ export type WorklistPage = z.infer<typeof worklistPageSchema>;
 export type CreatorDraftPage = z.infer<typeof creatorDraftPageSchema>;
 export type DomainInstanceQuery = z.infer<typeof domainInstanceQuerySchema>;
 export type DomainInstancePage = z.infer<typeof domainInstancePageSchema>;
+
+export type SelfProjectionResponse = z.infer<typeof selfProjectionResponseSchema>;
+export type MemberItem = z.infer<typeof memberItemSchema>;
+export type MemberListPage = z.infer<typeof memberListPageSchema>;
+export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
+export type MemberAddResponse = z.infer<typeof memberAddResponseSchema>;
+export type MemberRemoveResponse = z.infer<typeof memberRemoveResponseSchema>;

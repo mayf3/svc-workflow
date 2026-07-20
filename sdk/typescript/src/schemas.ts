@@ -324,6 +324,70 @@ export const domainInstanceQuerySchema = z
     'beforeCreatedAt and beforeId must be provided together',
   );
 
+// ---------------------------------------------------------------------------
+// Self-Projection & Domain Member schemas
+// ---------------------------------------------------------------------------
+
+export const selfProjectionResponseSchema = z
+  .object({
+    principalId: uuidSchema,
+    created: z.boolean(),
+  })
+  .strict();
+
+export const memberItemSchema = z
+  .object({
+    principalId: uuidSchema,
+    principalType: z.string(),
+    displayName: z.string(),
+    role: z.literal('DOMAIN_MEMBER'),
+    bindingCreatedAt: dateTimeSchema,
+  })
+  .strict();
+
+export const memberListCursorSchema = z
+  .object({
+    created_at: dateTimeSchema,
+    id: uuidSchema,
+  })
+  .strict();
+
+export const memberListPageSchema = z
+  .object({
+    items: z.array(memberItemSchema),
+    next_cursor: memberListCursorSchema.nullable(),
+  })
+  .strict();
+
+export const memberListQuerySchema = z
+  .object({
+    beforeCreatedAt: dateTimeSchema.optional(),
+    beforeId: uuidSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.beforeCreatedAt) === Boolean(query.beforeId),
+    'beforeCreatedAt and beforeId must be provided together',
+  );
+
+export const memberAddResponseSchema = z
+  .object({
+    domainId: uuidSchema,
+    principalId: uuidSchema,
+    role: z.literal('DOMAIN_MEMBER'),
+  })
+  .strict();
+
+export const memberRemoveResponseSchema = z
+  .object({
+    domainId: uuidSchema,
+    principalId: uuidSchema,
+    role: z.literal('DOMAIN_MEMBER'),
+    enabled: z.literal(false),
+  })
+  .strict();
+
 export const errorEnvelopeSchema = z
   .object({
     error: z

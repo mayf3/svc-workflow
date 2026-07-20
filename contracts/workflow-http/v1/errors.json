@@ -32,7 +32,9 @@
       "domain_membership_required": "active domain membership is required",
       "cross_domain_violation": "definition version does not belong to the domain",
       "principal_not_assignee": "principal is not the current assignee",
-      "restricted_history_not_visible": "restricted workflow history is not visible"
+      "restricted_history_not_visible": "restricted workflow history is not visible",
+      "direct_token_required": "only direct access tokens may perform this operation",
+      "not_domain_owner": "caller is not a domain owner"
     },
     "404": {
       "route_not_found": "route not found",
@@ -41,7 +43,9 @@
       "definition_version_not_found": "definition version not found",
       "instance_not_found": "workflow instance not found",
       "current_visit_not_found": "current node visit not found",
-      "workflow_instance_not_found_or_not_visible": "workflow instance not found or not visible"
+      "workflow_instance_not_found_or_not_visible": "workflow instance not found or not visible",
+      "principal_not_registered": "principal has not completed self-projection",
+      "member_not_found": "member binding not found"
     },
     "409": {
       "idempotency_conflict": "idempotency key was reused",
@@ -49,7 +53,9 @@
       "source_node_terminal": "terminal nodes cannot transition",
       "definition_version_revoked": "definition version is revoked",
       "workflow_state_version_conflict": "workflow state version does not match",
-      "transition_not_applicable": "transition is not applicable"
+      "transition_not_applicable": "transition is not applicable",
+      "principal_projection_conflict": "principal exists with a different type",
+      "principal_is_owner": "principal is a domain owner and cannot be a member"
     },
     "413": {
       "size_limit_exceeded": "request field exceeds its size limit"

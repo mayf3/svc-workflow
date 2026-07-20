@@ -12,6 +12,11 @@ import {
   executeWorkflowTransitionResponseSchema,
   healthResponseSchema,
   idempotencyKeySchema,
+  memberAddResponseSchema,
+  memberListPageSchema,
+  memberListQuerySchema,
+  memberRemoveResponseSchema,
+  selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
   versionResponseSchema,
@@ -27,7 +32,12 @@ import type {
   DomainInstanceQuery,
   ExecuteWorkflowTransitionRequest,
   ExecuteWorkflowTransitionResponse,
+  MemberAddResponse,
+  MemberListPage,
+  MemberListQuery,
+  MemberRemoveResponse,
   RequestOptions,
+  SelfProjectionResponse,
   TimelineQuery,
   TimelineResponse,
   WorkflowClientConfig,
@@ -41,7 +51,7 @@ const DEFAULT_TIMEOUT_MS = 35_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAYS_MS = [250, 500] as const;
 
-type HttpMethod = 'GET' | 'POST';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 interface RequestSpec<T> {
   method: HttpMethod;
@@ -224,6 +234,76 @@ export class WorkflowClient {
       path: `/internal/v1/workflow-instances/domain?${params.toString()}`,
       operation: 'domain-list',
       successSchema: domainInstancePageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async selfProject(options: RequestOptions = {}): Promise<SelfProjectionResponse> {
+    return this.request({
+      method: 'PUT',
+      path: '/internal/v1/principals/me',
+      operation: 'self-project',
+      successSchema: selfProjectionResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async listDomainMembers(
+    domainId: string,
+    query: MemberListQuery = {},
+    options: RequestOptions = {},
+  ): Promise<MemberListPage> {
+    const id = parseUuid(domainId, 'list-domain-members');
+    const parsed = parseInput(memberListQuerySchema, query, 'list-domain-members');
+    const params = new URLSearchParams();
+    setString(params, 'beforeCreatedAt', parsed.beforeCreatedAt);
+    setString(params, 'beforeId', parsed.beforeId);
+    setNumber(params, 'limit', parsed.limit);
+    return this.request({
+      method: 'GET',
+      path: withQuery(
+        `/internal/v1/domains/${encodeURIComponent(id)}/members`,
+        params,
+      ),
+      operation: 'list-domain-members',
+      successSchema: memberListPageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async addDomainMember(
+    domainId: string,
+    principalId: string,
+    options: WriteOptions,
+  ): Promise<MemberAddResponse> {
+    const domainUuid = parseUuid(domainId, 'add-domain-member');
+    const principalUuid = parseUuid(principalId, 'add-domain-member');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'add-domain-member');
+    return this.request({
+      method: 'PUT',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/members/${encodeURIComponent(principalUuid)}`,
+      operation: 'add-domain-member',
+      body: {},
+      idempotencyKey,
+      successSchema: memberAddResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async removeDomainMember(
+    domainId: string,
+    principalId: string,
+    options: WriteOptions,
+  ): Promise<MemberRemoveResponse> {
+    const domainUuid = parseUuid(domainId, 'remove-domain-member');
+    const principalUuid = parseUuid(principalId, 'remove-domain-member');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'remove-domain-member');
+    return this.request({
+      method: 'DELETE',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/members/${encodeURIComponent(principalUuid)}`,
+      operation: 'remove-domain-member',
+      idempotencyKey,
+      successSchema: memberRemoveResponseSchema,
       requestId: options.requestId,
     });
   }

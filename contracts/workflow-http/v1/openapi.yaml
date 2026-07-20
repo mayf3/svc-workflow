@@ -325,6 +325,116 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  # ── Agent Self-Projection ─────────────────────────────────────────────
+  /internal/v1/principals/me:
+    put:
+      operationId: selfProject
+      summary: Self-project authenticated agent identity
+      tags: [principals]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Principal projected or already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelfProjectionResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Domain Member Management ──────────────────────────────────────────
+  /internal/v1/domains/{domainId}/members:
+    get:
+      operationId: listDomainMembers
+      summary: List DOMAIN_MEMBER bindings for a domain
+      tags: [domains]
+      parameters:
+        - name: domainId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: beforeCreatedAt
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Paginated member list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberListPage"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/domains/{domainId}/members/{principalId}:
+    put:
+      operationId: addDomainMember
+      summary: Add a principal as DOMAIN_MEMBER (must be self-projected)
+      tags: [domains]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/PrincipalIdPath"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Member added or already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAddResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: removeDomainMember
+      summary: Remove a DOMAIN_MEMBER binding
+      tags: [domains]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/PrincipalIdPath"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberRemoveResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -342,6 +452,20 @@ components:
         minLength: 1
         maxLength: 128
         pattern: "^[\\x21-\\x7e]+$"
+    DomainId:
+      name: domainId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PrincipalIdPath:
+      name: principalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     WorkflowInstanceId:
       name: workflowInstanceId
       in: path
@@ -718,6 +842,95 @@ components:
         - return_feedback_events
         - submissions_truncated
         - return_events_truncated
+
+    # Self-Projection & Domain Members
+    SelfProjectionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        principalId:
+          type: string
+          format: uuid
+        created:
+          type: boolean
+      required: [principalId, created]
+
+    MemberItem:
+      type: object
+      additionalProperties: false
+      properties:
+        principalId:
+          type: string
+          format: uuid
+        principalType:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+        bindingCreatedAt:
+          type: string
+          format: date-time
+      required: [principalId, principalType, displayName, role, bindingCreatedAt]
+
+    MemberListCursor:
+      type: object
+      additionalProperties: false
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+      required: [created_at, id]
+
+    MemberListPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberItem"
+        next_cursor:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MemberListCursor"
+      required: [items, next_cursor]
+
+    MemberAddResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        principalId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+      required: [domainId, principalId, role]
+
+    MemberRemoveResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        principalId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+        enabled:
+          type: boolean
+      required: [domainId, principalId, role, enabled]
 
     CreatorDraftItem:
       type: object
