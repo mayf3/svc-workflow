@@ -185,6 +185,61 @@ impl PgDefinitionRepository {
         Ok(row.and_then(|r| r.0).unwrap_or(0) + 1)
     }
 
+    pub(super) async fn list_definitions_by_domain_inner(
+        &self,
+        domain_id: uuid::Uuid,
+        before_created_at: Option<chrono::DateTime<chrono::Utc>>,
+        before_id: Option<uuid::Uuid>,
+        limit: u32,
+        include_archived: bool,
+    ) -> Result<
+        (
+            Vec<WorkflowDefinition>,
+            Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>,
+        ),
+        DefinitionError,
+    > {
+        let query_limit = limit as i64 + 1;
+        let archived_filter = if include_archived {
+            "TRUE"
+        } else {
+            "archived = FALSE"
+        };
+        let query = format!(
+            r#"SELECT workflow_definition_id, domain_id, definition_key, display_name,
+                      description, metadata, created_at, updated_at,
+                      archived, archived_at, archived_by_principal_id
+               FROM workflow_definitions
+               WHERE domain_id = $1
+                 AND ({archived_filter})
+                 AND ($2::timestamptz IS NULL
+                      OR (created_at, workflow_definition_id) < ($2, $3))
+               ORDER BY created_at DESC, workflow_definition_id DESC
+               LIMIT $4"#
+        );
+        let rows: Vec<WorkflowDefinition> =
+            sqlx::query_as::<_, super::repository_rows::WorkflowDefinitionRow>(&query)
+                .bind(domain_id)
+                .bind(before_created_at)
+                .bind(before_id)
+                .bind(query_limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_db_error)?
+                .into_iter()
+                .map(|r| r.into_domain())
+                .collect();
+
+        let has_more = rows.len() > limit as usize;
+        let items: Vec<WorkflowDefinition> = rows.into_iter().take(limit as usize).collect();
+        let next_cursor = has_more.then(|| {
+            let last = items.last().expect("non-empty page after has_more check");
+            (last.created_at, last.id.into_uuid())
+        });
+
+        Ok((items, next_cursor))
+    }
+
     pub(super) async fn list_versions_inner(
         &self,
         workflow_definition_id: uuid::Uuid,

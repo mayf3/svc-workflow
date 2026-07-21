@@ -19,13 +19,41 @@ use crate::domain::definition::model::{
 };
 use crate::domain::enums::DefinitionVersionStatus;
 
+use sqlx::{Postgres, Transaction};
+
 use super::error_mapping::map_db_error;
 use super::repository_rows::*;
 use super::PgDefinitionRepository;
 
-use sqlx::{Postgres, Transaction};
-
 impl PgDefinitionRepository {
+    /// Archive a workflow definition: set archived=true with timestamp and actor.
+    ///
+    /// Idempotent: re-archiving an already-archived definition returns success.
+    pub(super) async fn archive_definition_inner(
+        &self,
+        id: uuid::Uuid,
+        actor_principal_id: uuid::Uuid,
+    ) -> Result<WorkflowDefinition, DefinitionError> {
+        let affected = sqlx::query(
+            r#"UPDATE workflow_definitions
+               SET archived = TRUE, archived_at = now(),
+                   archived_by_principal_id = $1, updated_at = now()
+               WHERE workflow_definition_id = $2"#,
+        )
+        .bind(actor_principal_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .map_err(map_db_error)?
+        .rows_affected();
+
+        if affected == 0 {
+            return Err(DefinitionError::DefinitionNotFound);
+        }
+
+        self.get_definition_inner(id).await
+    }
+
     /// Lock a version row for update (FOR UPDATE).
     pub(super) async fn lock_version_inner(
         &self,

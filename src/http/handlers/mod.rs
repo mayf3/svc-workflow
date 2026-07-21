@@ -1,3 +1,4 @@
+pub(crate) mod definitions;
 pub(crate) mod domain_members;
 pub(crate) mod health;
 pub(crate) mod instances;

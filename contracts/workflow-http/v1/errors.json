@@ -34,7 +34,8 @@
       "principal_not_assignee": "principal is not the current assignee",
       "restricted_history_not_visible": "restricted workflow history is not visible",
       "direct_token_required": "only direct access tokens may perform this operation",
-      "not_domain_owner": "caller is not a domain owner"
+      "not_domain_owner": "caller is not a domain owner",
+      "definition_not_editable": "workflow definition is not editable"
     },
     "404": {
       "route_not_found": "route not found",
@@ -55,7 +56,10 @@
       "workflow_state_version_conflict": "workflow state version does not match",
       "transition_not_applicable": "transition is not applicable",
       "principal_projection_conflict": "principal exists with a different type",
-      "principal_is_owner": "principal is a domain owner and cannot be a member"
+      "principal_is_owner": "principal is a domain owner and cannot be a member",
+      "definition_key_conflict": "definition key already exists in this domain",
+      "definition_version_immutable": "definition version is not in DRAFT status",
+      "revision_conflict": "concurrent modification detected"
     },
     "413": {
       "size_limit_exceeded": "request field exceeds its size limit"

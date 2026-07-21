@@ -57,3 +57,21 @@ pub struct VersionListResult {
 pub struct GraphQueryResult {
     pub graph: WorkflowGraph,
 }
+
+/// List all definitions in a domain.
+#[derive(Debug, Clone)]
+pub struct ListDomainDefinitions {
+    pub actor_principal_id: uuid::Uuid,
+    pub domain_id: uuid::Uuid,
+    pub before_created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub before_id: Option<uuid::Uuid>,
+    pub limit: u32,
+    pub include_archived: bool,
+}
+
+/// Output of listing domain definitions.
+#[derive(Debug, Clone)]
+pub struct DomainDefinitionListResult {
+    pub definitions: Vec<super::repository::DefinitionData>,
+    pub next_cursor: Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>,
+}

@@ -7,6 +7,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 
+use crate::application::definition_governance::DefinitionGovernanceError as DGError;
 use crate::application::domain_membership::DomainMembershipError as DMError;
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
 use crate::domain::provisioning::ProvisioningError as PError;
@@ -325,6 +326,55 @@ impl ApiError {
             message,
         );
         if let Some(detail) = error.detail() {
+            api_error = api_error.with_details(serde_json::json!({ "detail": detail }));
+        }
+        api_error
+    }
+
+    pub fn from_definition_governance(error: DGError) -> Self {
+        let status_code = error.status_code();
+        let (code, message) = match &error {
+            DGError::NotDomainOwner => ("not_domain_owner", "caller is not a domain owner"),
+            DGError::DomainDisabled => ("domain_disabled", "domain is disabled"),
+            DGError::DefinitionNotFound => {
+                ("definition_not_found", "workflow definition not found")
+            }
+            DGError::DefinitionArchived | DGError::DefinitionNotEditable => {
+                ("definition_not_editable", "workflow definition is not editable")
+            }
+            DGError::DefinitionKeyConflict => (
+                "definition_key_conflict",
+                "definition key already exists in this domain",
+            ),
+            DGError::RevisionConflict => (
+                "revision_conflict",
+                "concurrent modification detected, retry with fresh data",
+            ),
+            DGError::DirectTokenRequired => (
+                "direct_token_required",
+                "only direct access tokens may perform this operation",
+            ),
+            DGError::IdempotencyConflict => {
+                ("idempotency_conflict", "idempotency key was reused")
+            }
+            DGError::CommandStillProcessing => {
+                ("command_still_processing", "command is still processing")
+            }
+            DGError::InternalConsistency(_) => {
+                ("internal_consistency_error", "internal consistency error")
+            }
+            DGError::StorageError(_) => ("service_unavailable", "storage is unavailable"),
+        };
+        let mut api_error = Self::new(
+            StatusCode::from_u16(status_code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            code,
+            message,
+        );
+        if let Some(detail) = match &error {
+            DGError::InternalConsistency(d) => Some(d.as_str()),
+            DGError::StorageError(d) => Some(d.as_str()),
+            _ => None,
+        } {
             api_error = api_error.with_details(serde_json::json!({ "detail": detail }));
         }
         api_error

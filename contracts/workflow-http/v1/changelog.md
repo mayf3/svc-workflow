@@ -1,5 +1,19 @@
 # Changelog
 
+## V1.2.0 (2026-07-21) — Domain Owner Workflow Definition Governance
+
+- Added `GET /internal/v1/domains/{domainId}/definitions` for listing definitions (paginated)
+- Added `GET /internal/v1/domains/{domainId}/definitions/{definitionId}` for detail + versions
+- Added `POST /internal/v1/domains/{domainId}/definitions` for creating definitions (idempotent)
+- Added `POST /internal/v1/domains/{domainId}/definitions/{definitionId}/versions` for draft versions
+- Added `PUT /internal/v1/domains/{domainId}/definitions/{definitionId}/draft` for replacing draft graph
+- Added `POST /internal/v1/domains/{domainId}/definitions/{definitionId}/publish` for publishing versions
+- Added `POST /internal/v1/domains/{domainId}/definitions/{definitionId}/archive` for archiving definitions
+- All write endpoints require `token_use=access` (Direct tokens only, no OBO)
+- Added error codes: `definition_key_conflict`, `definition_version_immutable`, `revision_conflict`, `definition_not_editable`
+- Added migration 0011: `archived`, `archived_at`, `archived_by_principal_id` columns on `workflow_definitions`
+- All existing definition authorization (DOMAIN_OWNER) is unchanged; handlers delegate to DefinitionService
+
 ## V1.1.0 (2026-07-20) — Agent Self-Projection & Domain Member Management
 
 - Added `PUT /internal/v1/principals/me` for Agent self-projection using Direct Machine Tokens
