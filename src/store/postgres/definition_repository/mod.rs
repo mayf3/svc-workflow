@@ -227,9 +227,15 @@ impl DefinitionRepository for PgDefinitionRepository {
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
         precomputed_digest: &str,
+        expected_revision: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
-        self.atomic_publish_inner(version_id, actor_principal_id, precomputed_digest)
-            .await
+        self.atomic_publish_inner(
+            version_id,
+            actor_principal_id,
+            precomputed_digest,
+            expected_revision,
+        )
+        .await
     }
 
     async fn atomic_deprecate(

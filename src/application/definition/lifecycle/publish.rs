@@ -97,23 +97,16 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             &transition_key_map,
         )?;
 
-        // Optimistic concurrency: if the caller supplied expected_revision,
-        // verify it matches the pre-computed digest before committing.
-        if let Some(ref expected) = cmd.expected_revision {
-            if expected != &computed_digest {
-                return Err(DefinitionError::ConcurrentModification(
-                    "expected_revision does not match current definition digest".to_string(),
-                ));
-            }
-        }
-
         // B-1: Atomic publish inside a single transaction.
+        // expected_revision is verified inside the transaction alongside
+        // the digest consistency check, eliminating any race window.
         let published = self
             .repo
             .atomic_publish(
                 cmd.definition_version_id,
                 cmd.actor_principal_id,
                 &computed_digest,
+                cmd.expected_revision.as_deref(),
             )
             .await?;
 

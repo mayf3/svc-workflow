@@ -662,3 +662,162 @@ async fn test_global_admin_not_auto_owner() {
 
     assert!(matches!(err, DefinitionError::PermissionDenied));
 }
+
+// ==========================================================================
+// 15. Concurrent expectedRevision prevents double-publish
+// ==========================================================================
+
+#[tokio::test]
+async fn test_concurrent_publish_expected_revision_race() {
+    let pool = create_pool().await;
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (def_id, ver_id, _, _) = seed_workflow_definition(&pool, domain_id).await;
+
+    // Insert a principal for assignee reference
+    let assignee_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO principals (principal_id, principal_type, display_name, enabled) VALUES ($1, 'HUMAN', 'Tester', TRUE)",
+    )
+    .bind(assignee_id)
+    .execute(&pool)
+    .await
+    .expect("insert assignee");
+
+    let repo = PgDefinitionRepository::new(pool.clone());
+    let service = DefinitionService::new(repo);
+
+    // Replace draft graph with a valid graph (must have TERMINAL)
+    let uid1 = uuid::Uuid::new_v4().to_string();
+    let uid2 = uuid::Uuid::new_v4().to_string();
+    let uid3 = uuid::Uuid::new_v4().to_string();
+    let draft_node_key = format!("draft-{}", &uid1[..8]);
+    let step_node_key = format!("step-{}", &uid2[..8]);
+    let term_node_key = format!("done-{}", &uid3[..8]);
+
+    service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner_id,
+            definition_version_id: ver_id,
+            context_schema: None,
+            nodes: vec![
+                RawNodeDefinition {
+                    node_key: draft_node_key.clone(),
+                    display_name: "Draft".to_string(),
+                    order_index: 0,
+                    node_type: "DRAFT".to_string(),
+                    assignee_ref_type: Some("WORKFLOW_CREATOR".to_string()),
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: Some("advance-step".to_string()),
+                    metadata: None,
+                },
+                RawNodeDefinition {
+                    node_key: step_node_key.clone(),
+                    display_name: "Step".to_string(),
+                    order_index: 1,
+                    node_type: "NORMAL".to_string(),
+                    assignee_ref_type: Some("WORKFLOW_CREATOR".to_string()),
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: Some("advance-done".to_string()),
+                    metadata: None,
+                },
+                RawNodeDefinition {
+                    node_key: term_node_key.clone(),
+                    display_name: "Done".to_string(),
+                    order_index: 2,
+                    node_type: "TERMINAL".to_string(),
+                    assignee_ref_type: None,
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: None,
+                    metadata: None,
+                },
+            ],
+            transitions: vec![
+                RawTransitionDefinition {
+                    transition_key: "advance-step".to_string(),
+                    display_name: "To Step".to_string(),
+                    source_node_key: draft_node_key.clone(),
+                    target_node_key: step_node_key.clone(),
+                    transition_effect: "ADVANCE".to_string(),
+                    submission_schema: None,
+                    metadata: None,
+                },
+                RawTransitionDefinition {
+                    transition_key: "advance-done".to_string(),
+                    display_name: "Complete".to_string(),
+                    source_node_key: step_node_key,
+                    target_node_key: term_node_key,
+                    transition_effect: "ADVANCE".to_string(),
+                    submission_schema: None,
+                    metadata: None,
+                },
+            ],
+        })
+        .await
+        .expect("replace draft graph");
+
+    // Both requests use the SAME version that is still DRAFT.
+    // They race to publish.  The atomic_publish transaction serializes
+    // via FOR UPDATE row lock: the first request publishes,
+    // the second sees PUBLISHED status → VersionNotDraft.
+    let pool_a = pool.clone();
+    let pool_b = pool.clone();
+    let key_a = uuid::Uuid::new_v4().to_string();
+    let key_b = uuid::Uuid::new_v4().to_string();
+
+    let handle_a = tokio::spawn(async move {
+        governance_publish_version(
+            &pool_a, owner_id, &key_a, "req-a", ver_id,
+            None, // no expected_revision - pure race on version lock
+        )
+        .await
+    });
+
+    let handle_b = tokio::spawn(async move {
+        governance_publish_version(&pool_b, owner_id, &key_b, "req-b", ver_id, None).await
+    });
+
+    let (result_a, result_b) = tokio::join!(handle_a, handle_b);
+    let result_a = result_a.expect("join a");
+    let result_b = result_b.expect("join b");
+
+    let success_count = [result_a.is_ok(), result_b.is_ok()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+    let failure_with_conflict = [result_a.as_ref().err(), result_b.as_ref().err()]
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                Some(DefinitionGovernanceError::DefinitionNotEditable)
+                    | Some(DefinitionGovernanceError::IdempotencyConflict)
+            )
+        })
+        .count();
+
+    assert_eq!(
+        success_count, 1,
+        "exactly one concurrent publish must succeed, got {}",
+        success_count
+    );
+    assert!(
+        failure_with_conflict >= 1,
+        "the failing request must return conflict"
+    );
+
+    // Verify exactly one published version
+    let published_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_definition_versions WHERE workflow_definition_id = $1 AND version_status = 'PUBLISHED'",
+    )
+    .bind(def_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count published");
+    assert_eq!(
+        published_count.0, 1,
+        "exactly one published version expected"
+    );
+}
