@@ -37,7 +37,7 @@ pub struct ReplaceDraftGraph {
 }
 
 /// A node in the graph replacement command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RawNodeDefinition {
     pub node_key: String,
     pub display_name: String,
@@ -52,7 +52,7 @@ pub struct RawNodeDefinition {
 }
 
 /// A transition in the graph replacement command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RawTransitionDefinition {
     pub transition_key: String,
     pub display_name: String,
@@ -89,4 +89,11 @@ pub struct DeprecateVersion {
 pub struct RevokeVersion {
     pub actor_principal_id: Uuid,
     pub definition_version_id: Uuid,
+}
+
+/// Archive a workflow definition (soft-disable).
+#[derive(Debug, Clone)]
+pub struct ArchiveDefinition {
+    pub actor_principal_id: Uuid,
+    pub workflow_definition_id: Uuid,
 }

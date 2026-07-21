@@ -26,7 +26,7 @@ pub use state::{AppState, HttpConfig};
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
 pub const SCHEMA_VERSION: &str = "0010";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 10;
+pub const EXPECTED_MIGRATION_VERSION: i64 = 11;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -85,6 +85,50 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/domains/{domainId}/members/{principalId}",
             delete(handlers::domain_members::remove_member),
+        )
+        // Domain Owner Definition management
+        .route(
+            "/internal/v1/domains/{domainId}/definitions",
+            get(handlers::definitions::list_definitions),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}",
+            get(handlers::definitions::get_definition_detail),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions",
+            post(handlers::definitions::create_definition).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/versions",
+            post(handlers::definitions::create_draft_version).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/draft",
+            put(handlers::definitions::replace_draft_graph).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/publish",
+            post(handlers::definitions::publish_version).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/archive",
+            post(handlers::definitions::archive_definition).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
         )
         // Provisioning endpoints
         .route(

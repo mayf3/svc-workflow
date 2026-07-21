@@ -41,6 +41,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .get_definition(version.workflow_definition_id.into_uuid())
             .await?;
 
+        // Check that definition is not archived
+        if def.archived {
+            return Err(DefinitionError::DefinitionArchived);
+        }
+
         // Get complete graph for validation
         let (nodes, transitions) = self
             .repo

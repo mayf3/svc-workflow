@@ -14,7 +14,7 @@ use crate::domain::definition::model::{
 use crate::domain::enums::DefinitionVersionStatus;
 
 /// Data returned from repository queries, combining definition + version info.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DefinitionData {
     pub definition: WorkflowDefinition,
     pub version: Option<WorkflowDefinitionVersion>,
@@ -67,8 +67,25 @@ pub trait DefinitionRepository {
         definition_key: &str,
     ) -> Result<bool, DefinitionError>;
 
+    /// List all workflow definitions in a domain, with cursor pagination.
+    async fn list_definitions_by_domain(
+        &self,
+        domain_id: Uuid,
+        before_created_at: Option<chrono::DateTime<chrono::Utc>>,
+        before_id: Option<Uuid>,
+        limit: u32,
+        include_archived: bool,
+    ) -> Result<(Vec<WorkflowDefinition>, Option<(chrono::DateTime<chrono::Utc>, Uuid)>), DefinitionError>;
+
     /// Get a workflow definition by ID.
     async fn get_definition(&self, id: Uuid) -> Result<WorkflowDefinition, DefinitionError>;
+
+    /// Archive a workflow definition (soft-disable).
+    async fn archive_definition(
+        &self,
+        id: Uuid,
+        actor_principal_id: Uuid,
+    ) -> Result<WorkflowDefinition, DefinitionError>;
 
     /// Get a definition version by ID.
     async fn get_version(

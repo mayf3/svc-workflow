@@ -108,6 +108,15 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
             .await?;
 
+        // Check that definition is not archived
+        let def = self
+            .repo
+            .get_definition(cmd.workflow_definition_id)
+            .await?;
+        if def.archived {
+            return Err(DefinitionError::DefinitionArchived);
+        }
+
         // Get next version number
         let next_ver = self
             .repo
@@ -176,6 +185,36 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             return Err(DefinitionError::PermissionDenied);
         }
         Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // ArchiveDefinition
+    // -----------------------------------------------------------------------
+
+    /// Archive (soft-disable) a workflow definition.
+    ///
+    /// Idempotent: re-archiving an already-archived definition returns success.
+    pub async fn archive_definition(
+        &self,
+        cmd: super::commands::ArchiveDefinition,
+    ) -> Result<WorkflowDefinition, DefinitionError> {
+        self.ensure_principal_enabled(cmd.actor_principal_id)
+            .await?;
+
+        // Verify definition exists and get its domain
+        let def = self
+            .repo
+            .get_definition(cmd.workflow_definition_id)
+            .await?;
+        let domain_id = def.domain_id.into_uuid();
+
+        self.ensure_domain_enabled(domain_id).await?;
+        self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
+            .await?;
+
+        self.repo
+            .archive_definition(cmd.workflow_definition_id, cmd.actor_principal_id)
+            .await
     }
 
     pub(crate) fn parse_assignee_ref(

@@ -7,8 +7,9 @@ use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::WorkflowGraph;
 
 use super::super::queries::{
-    DefinitionQueryResult, GetCompleteVersionGraph, GetDefinition, GetDefinitionVersion,
-    GraphQueryResult, ListDefinitionVersions, VersionListResult, VersionQueryResult,
+    DefinitionQueryResult, DomainDefinitionListResult, GetCompleteVersionGraph, GetDefinition,
+    GetDefinitionVersion, GraphQueryResult, ListDefinitionVersions, ListDomainDefinitions,
+    VersionListResult, VersionQueryResult,
 };
 use super::super::repository::DefinitionData;
 use super::super::repository::DefinitionRepository;
@@ -144,6 +145,46 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                 transitions,
                 context_schema: version.context_schema,
             },
+        })
+    }
+
+    /// List all definitions in a domain (paginated).
+    pub async fn list_domain_definitions(
+        &self,
+        query: ListDomainDefinitions,
+    ) -> Result<DomainDefinitionListResult, DefinitionError> {
+        self.ensure_principal_enabled(query.actor_principal_id)
+            .await?;
+
+        // Domain owner check happens here.
+        self.ensure_domain_owner(query.actor_principal_id, query.domain_id)
+            .await?;
+        self.ensure_domain_enabled(query.domain_id).await?;
+
+        let (definitions, cursor) = self
+            .repo
+            .list_definitions_by_domain(
+                query.domain_id,
+                query.before_created_at,
+                query.before_id,
+                query.limit,
+                query.include_archived,
+            )
+            .await?;
+
+        let results = definitions
+            .into_iter()
+            .map(|d| DefinitionData {
+                definition: d,
+                version: None,
+                nodes: vec![],
+                transitions: vec![],
+            })
+            .collect();
+
+        Ok(DomainDefinitionListResult {
+            definitions: results,
+            next_cursor: cursor,
         })
     }
 }
