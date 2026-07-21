@@ -75,6 +75,10 @@ pub struct ValidateDraftVersion {
 pub struct PublishVersion {
     pub actor_principal_id: Uuid,
     pub definition_version_id: Uuid,
+    /// Expected current digest for optimistic concurrency control.
+    /// If `Some` and does not match the current computed digest,
+    /// the publish is rejected with `ConcurrentModification`.
+    pub expected_revision: Option<String>,
 }
 
 /// Deprecate a PUBLISHED version -> DEPRECATED.

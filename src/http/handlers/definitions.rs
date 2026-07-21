@@ -150,9 +150,9 @@ pub(crate) async fn list_definitions(
 
     let response = serde_json::json!({
         "items": result.definitions,
-        "nextCursor": result.next_cursor.map(|(ts, id)| {
+        "next_cursor": result.next_cursor.map(|(ts, id)| {
             serde_json::json!({
-                "createdAt": ts.to_rfc3339(),
+                "created_at": ts.to_rfc3339(),
                 "id": id,
             })
         }),
@@ -347,6 +347,7 @@ pub(crate) async fn publish_version(
         &key,
         request_id,
         payload.version_id,
+        payload.expected_revision,
     )
     .await
     .map_err(ApiError::from_definition_governance)?;
@@ -403,25 +404,24 @@ pub(crate) async fn archive_definition(
 fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiError {
     use DefinitionError as E;
     match e {
-        E::PermissionDenied => ApiError::new(
-            axum::http::StatusCode::FORBIDDEN,
-            "not_domain_owner",
-            "caller is not a domain owner",
+        // Cross-domain existence leak prevention:
+        // Any permission or existence error is opaque 404 definition_not_found
+        // so callers cannot distinguish "definition exists but not yours"
+        // from "definition does not exist".
+        E::PermissionDenied
+        | E::PrincipalNotFound
+        | E::PrincipalDisabled
+        | E::DomainNotFound
+        | E::DefinitionNotFound
+        | E::DefinitionVersionNotFound => ApiError::new(
+            axum::http::StatusCode::NOT_FOUND,
+            "definition_not_found",
+            "workflow definition not found",
         ),
         E::DomainDisabled => ApiError::new(
             axum::http::StatusCode::FORBIDDEN,
             "domain_disabled",
             "domain is disabled",
-        ),
-        E::DefinitionNotFound => ApiError::new(
-            axum::http::StatusCode::NOT_FOUND,
-            "definition_not_found",
-            "workflow definition not found",
-        ),
-        E::DefinitionVersionNotFound => ApiError::new(
-            axum::http::StatusCode::NOT_FOUND,
-            "definition_version_not_found",
-            "definition version not found",
         ),
         E::DefinitionArchived => ApiError::new(
             axum::http::StatusCode::CONFLICT,
@@ -452,11 +452,6 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             ApiError::unprocessable("schema_validation_failed", "schema validation failed")
                 .with_details(serde_json::json!({"detail": detail}))
         }
-        E::PrincipalNotFound | E::PrincipalDisabled | E::DomainNotFound => ApiError::new(
-            axum::http::StatusCode::FORBIDDEN,
-            "not_domain_owner",
-            "caller is not a domain owner",
-        ),
         E::FixedPrincipalInvalid(detail) => ApiError::unprocessable(
             "fixed_principal_invalid",
             "fixed principal reference is invalid",

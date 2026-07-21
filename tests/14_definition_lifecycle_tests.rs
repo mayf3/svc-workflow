@@ -237,6 +237,7 @@ async fn seed_minimal_and_publish(
     let pub_cmd = PublishVersion {
         actor_principal_id: principal_id,
         definition_version_id: ver_id,
+        expected_revision: None,
     };
     service.publish_version(pub_cmd).await.expect("publish");
 }
