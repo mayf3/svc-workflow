@@ -18,7 +18,9 @@ pub(super) fn compute_receipt_hash(payload: &serde_json::Value) -> String {
 }
 
 /// Map a non-owned receipt outcome to the appropriate error or response.
-pub(super) fn handle_receipt_result<T>(receipt: AcquireReceipt) -> Result<T, DefinitionGovernanceError>
+pub(super) fn handle_receipt_result<T>(
+    receipt: AcquireReceipt,
+) -> Result<T, DefinitionGovernanceError>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -27,13 +29,11 @@ where
             response_status: 200,
             response_body,
             ..
-        } => {
-            serde_json::from_value(response_body).map_err(|_| {
-                DefinitionGovernanceError::InternalConsistency(
-                    "failed to deserialize replayed response".to_string(),
-                )
-            })
-        }
+        } => serde_json::from_value(response_body).map_err(|_| {
+            DefinitionGovernanceError::InternalConsistency(
+                "failed to deserialize replayed response".to_string(),
+            )
+        }),
         AcquireReceipt::Replay { response_body, .. } => {
             Err(error_from_receipt_body(&response_body))
         }
