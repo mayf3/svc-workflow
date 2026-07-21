@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Stable error codes for Workflow Runtime HTTP endpoints",
+  "stable_codes": {
+    "400": {
+      "unknown_field": "request contains an unknown field",
+      "invalid_json": "request body is not valid for this endpoint",
+      "missing_idempotency_key": "Idempotency-Key header is required",
+      "invalid_idempotency_key": "Idempotency-Key must be 1-128 visible ASCII characters",
+      "invalid_path_parameter": "workflowInstanceId must be a UUID"
+    },
+    "401": {
+      "unauthenticated": "Bearer token is missing, malformed, or invalid in test_hs256 mode",
+      "token_expired": "access token has expired",
+      "missing_claim": "access token is missing a required claim in test_hs256 mode",
+      "malformed_token": "JWT or required claims are malformed in jwks mode",
+      "algorithm_not_allowed": "JWT algorithm is not allowed",
+      "wrong_issuer": "token issuer mismatch",
+      "wrong_audience": "token audience mismatch",
+      "invalid_principal_type": "principal_type must be agent",
+      "invalid_token_type": "token type must be access",
+      "invalid_direct_profile": "direct token profile is invalid",
+      "invalid_actor": "OBO actor claim is invalid",
+      "invalid_client_claims": "OBO client claims are invalid",
+      "invalid_obo_profile": "OBO token profile is invalid",
+      "unknown_kid": "JWT key ID remains unknown after refresh"
+    },
+    "403": {
+      "forbidden": "required scope is missing",
+      "principal_disabled": "principal is disabled",
+      "domain_disabled": "domain is disabled",
+      "domain_membership_required": "active domain membership is required",
+      "cross_domain_violation": "definition version does not belong to the domain",
+      "principal_not_assignee": "principal is not the current assignee",
+      "restricted_history_not_visible": "restricted workflow history is not visible",
+      "direct_token_required": "only direct access tokens may perform this operation",
+      "not_domain_owner": "caller is not a domain owner"
+    },
+    "404": {
+      "route_not_found": "route not found",
+      "principal_not_found": "principal not found",
+      "domain_not_found": "domain not found",
+      "definition_version_not_found": "definition version not found",
+      "instance_not_found": "workflow instance not found",
+      "current_visit_not_found": "current node visit not found",
+      "workflow_instance_not_found_or_not_visible": "workflow instance not found or not visible",
+      "principal_not_registered": "principal has not completed self-projection",
+      "member_not_found": "member binding not found"
+    },
+    "409": {
+      "idempotency_conflict": "idempotency key was reused",
+      "version_not_published": "definition version is not published",
+      "source_node_terminal": "terminal nodes cannot transition",
+      "definition_version_revoked": "definition version is revoked",
+      "workflow_state_version_conflict": "workflow state version does not match",
+      "transition_not_applicable": "transition is not applicable",
+      "principal_projection_conflict": "principal exists with a different type",
+      "principal_is_owner": "principal is a domain owner and cannot be a member"
+    },
+    "413": {
+      "size_limit_exceeded": "request field exceeds its size limit"
+    },
+    "405": {
+      "method_not_allowed": "method not allowed"
+    },
+    "422": {
+      "unprocessable_entity": "pagination parameters are invalid",
+      "invalid_cursor": "beforeCreatedAt/beforeId pair is invalid",
+      "invalid_lifecycle": "lifecycle must be 'active', 'terminal', or 'all'",
+      "invalid_pagination": "pagination parameters are invalid",
+      "context_validation_failed": "context payload failed validation",
+      "assignee_resolution_failed": "initial/target assignee could not be resolved",
+      "submission_required": "submission payload is required",
+      "submission_validation_failed": "submission payload failed validation",
+      "invalid_input": "invalid request input",
+      "invalid_return_references": "return references are invalid"
+    },
+    "425": {
+      "command_still_processing": "command is still processing"
+    },
+    "500": {
+      "internal_consistency_error": "internal consistency error",
+      "internal_error": "internal service error"
+    },
+    "503": {
+      "service_unavailable": "storage is unavailable",
+      "migration_version_mismatch": "database migration version mismatch",
+      "auth_verifier_unavailable": "authentication verifier is not ready",
+      "jwks_unavailable": "authentication verifier is currently unavailable"
+    },
+    "504": {
+      "request_timeout": "request timed out"
+    }
+  },
+  "error_envelope": {
+    "type": "object",
+    "properties": {
+      "error": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "string"},
+          "message": {"type": "string"},
+          "details": {
+            "type": "object",
+            "description": "Optional error details, omitted when empty"
+          }
+        },
+        "required": ["code", "message"]
+      }
+    },
+    "required": ["error"]
+  }
+}
