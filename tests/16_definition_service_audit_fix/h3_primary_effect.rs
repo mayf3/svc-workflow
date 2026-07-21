@@ -26,6 +26,7 @@ async fn test_primary_effect_not_advance_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(
@@ -58,6 +59,7 @@ async fn test_primary_advance_allowed() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(

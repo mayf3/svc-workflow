@@ -34,10 +34,10 @@
       "principal_not_assignee": "principal is not the current assignee",
       "restricted_history_not_visible": "restricted workflow history is not visible",
       "direct_token_required": "only direct access tokens may perform this operation",
-      "not_domain_owner": "caller is not a domain owner",
-      "definition_not_editable": "workflow definition is not editable"
+      "not_domain_owner": "caller is not a domain owner"
     },
     "404": {
+      "definition_not_found": "workflow definition not found",
       "route_not_found": "route not found",
       "principal_not_found": "principal not found",
       "domain_not_found": "domain not found",
@@ -59,6 +59,7 @@
       "principal_is_owner": "principal is a domain owner and cannot be a member",
       "definition_key_conflict": "definition key already exists in this domain",
       "definition_version_immutable": "definition version is not in DRAFT status",
+      "definition_not_editable": "workflow definition is not editable",
       "revision_conflict": "concurrent modification detected"
     },
     "413": {

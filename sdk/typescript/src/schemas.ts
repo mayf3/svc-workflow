@@ -394,7 +394,7 @@ export const memberRemoveResponseSchema = z
 
 export const definitionItemSchema = z
   .object({
-    workflow_definition_id: uuidSchema,
+    id: uuidSchema,
     domain_id: uuidSchema,
     definition_key: z.string(),
     display_name: z.string(),
@@ -404,6 +404,7 @@ export const definitionItemSchema = z
     updated_at: dateTimeSchema,
     archived: z.boolean(),
     archived_at: dateTimeSchema.nullable(),
+    archived_by_principal_id: uuidSchema.nullable(),
   })
   .strict();
 
@@ -415,12 +416,18 @@ export const definitionVersionSummarySchema = z
     version_status: z.string(),
     definition_digest: z.string().nullable(),
     json_schema_dialect: z.string().nullable(),
+    validator_version: z.string().nullable(),
     context_schema: jsonValueSchema.nullable(),
+    submission_schema: jsonValueSchema.nullable(),
+    metadata: jsonValueSchema.nullable(),
     created_at: dateTimeSchema,
     updated_at: dateTimeSchema,
     published_at: dateTimeSchema.nullable(),
     deprecated_at: dateTimeSchema.nullable(),
     revoked_at: dateTimeSchema.nullable(),
+    published_by_principal_id: uuidSchema.nullable(),
+    deprecated_by_principal_id: uuidSchema.nullable(),
+    revoked_by_principal_id: uuidSchema.nullable(),
   })
   .strict();
 
@@ -434,7 +441,7 @@ export const definitionDetailResponseSchema = z
 export const definitionListPageSchema = z
   .object({
     items: z.array(definitionItemSchema),
-    nextCursor: cursorSchema.nullable(),
+    next_cursor: cursorSchema.nullable(),
   })
   .strict();
 

@@ -247,8 +247,10 @@ pub async fn governance_publish_version(
     idempotency_key: &str,
     request_id: &str,
     version_id: Uuid,
+    expected_revision: Option<String>,
 ) -> Result<WorkflowDefinitionVersion, DefinitionGovernanceError> {
     let vid = version_id;
+    let exp_for_receipt = expected_revision.clone();
 
     governance_with_receipt(
         pool,
@@ -260,11 +262,12 @@ pub async fn governance_publish_version(
             let cmd = PublishVersion {
                 actor_principal_id: actor_id,
                 definition_version_id: vid,
+                expected_revision,
             };
             let result = service.publish_version(cmd).await?;
             Ok(result)
         },
-        serde_json::json!({"definitionVersionId": vid}),
+        serde_json::json!({"definitionVersionId": vid, "expectedRevision": exp_for_receipt}),
     )
     .await
 }

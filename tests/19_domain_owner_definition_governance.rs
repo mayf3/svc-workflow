@@ -59,6 +59,7 @@ async fn seed_minimal_and_publish(
         .publish_version(PublishVersion {
             actor_principal_id: actor_id,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await
         .expect("should publish");
