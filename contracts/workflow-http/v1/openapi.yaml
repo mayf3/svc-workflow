@@ -1,0 +1,1050 @@
+openapi: "3.0.3"
+info:
+  title: Workflow Runtime HTTP API
+  version: "1.0.0"
+  description: |
+    Current-state freeze of all runtime workflow HTTP endpoints.
+    Based on commit 2dff132.
+
+servers:
+  - url: http://{host}:{port}
+    variables:
+      host:
+        default: 127.0.0.1
+      port:
+        default: "8989"
+
+security:
+  - bearerAuth: []
+
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness check
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /readyz:
+    get:
+      operationId: readyz
+      summary: Readiness check (includes migration check)
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Service not ready (e.g., migration mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /version:
+    get:
+      operationId: version
+      summary: Service version metadata
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+  /internal/v1/workflow-instances:
+    post:
+      operationId: createWorkflowInstance
+      summary: Create a workflow instance
+      tags: [instances]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkflowInstanceRequest"
+      responses:
+        "201":
+          description: Instance created
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: URL of the created instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWorkflowInstanceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}:
+    get:
+      operationId: getWorkflowInstanceDetail
+      summary: Get workflow instance detail
+      tags: [instances]
+      parameters:
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+      responses:
+        "200":
+          description: Instance detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowInstanceDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}/transitions:
+    post:
+      operationId: executeTransition
+      summary: Execute a workflow transition
+      tags: [transitions]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteWorkflowTransitionRequest"
+      responses:
+        "200":
+          description: Transition executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteWorkflowTransitionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}/timeline:
+    get:
+      operationId: getTimeline
+      summary: Get workflow instance event timeline
+      tags: [timeline]
+      parameters:
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+        - name: after
+          in: query
+          schema:
+            type: integer
+            description: Event sequence cursor (numeric)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Timeline events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/workflow-instances/domain:
+    get:
+      operationId: listDomainInstances
+      summary: List all instances in a domain (DOMAIN_OWNER only)
+      tags: [domain-list]
+      parameters:
+        - name: domainId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: definitionKey
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, terminal, all]
+        - name: currentNodeKey
+          in: query
+          schema:
+            type: string
+        - name: assigneePrincipalId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Paginated domain instance list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainInstancePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/worklists/assigned-to-me:
+    get:
+      operationId: listAssignedToMe
+      summary: List work items assigned to the authenticated actor
+      tags: [worklists]
+      parameters:
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated worklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorklistPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /internal/v1/worklists/creator-owned-drafts:
+    get:
+      operationId: listCreatorOwnedDrafts
+      summary: List draft instances created by the authenticated actor
+      tags: [worklists]
+      parameters:
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated creator draft list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatorDraftPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Agent Self-Projection ─────────────────────────────────────────────
+  /internal/v1/principals/me:
+    put:
+      operationId: selfProject
+      summary: Self-project authenticated agent identity
+      tags: [principals]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Principal projected or already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SelfProjectionResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  # ── Domain Member Management ──────────────────────────────────────────
+  /internal/v1/domains/{domainId}/members:
+    get:
+      operationId: listDomainMembers
+      summary: List DOMAIN_MEMBER bindings for a domain
+      tags: [domains]
+      parameters:
+        - name: domainId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: beforeCreatedAt
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Paginated member list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberListPage"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/domains/{domainId}/members/{principalId}:
+    put:
+      operationId: addDomainMember
+      summary: Add a principal as DOMAIN_MEMBER (must be self-projected)
+      tags: [domains]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/PrincipalIdPath"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Member added or already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAddResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: removeDomainMember
+      summary: Remove a DOMAIN_MEMBER binding
+      tags: [domains]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/PrincipalIdPath"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberRemoveResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[\\x21-\\x7e]+$"
+    DomainId:
+      name: domainId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PrincipalIdPath:
+      name: principalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WorkflowInstanceId:
+      name: workflowInstanceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # Error
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+          required: [code, message]
+      required: [error]
+
+    # Health
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    VersionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        service:
+          type: string
+          example: svc-workflow
+        version:
+          type: string
+          example: 0.1.0
+        gitSha:
+          type: string
+        schemaVersion:
+          type: string
+          example: "0010"
+        apiContractVersion:
+          type: string
+          example: internal-v0
+      required: [service, version, gitSha, schemaVersion, apiContractVersion]
+
+    # Request DTOs (camelCase)
+    CreateWorkflowInstanceRequest:
+      type: object
+      additionalProperties: false
+      required: [domainId, definitionVersionId, metadata, contextPayload]
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        definitionVersionId:
+          type: string
+          format: uuid
+        externalReference:
+          type: string
+          maxLength: 512
+        externalUrl:
+          type: string
+          format: uri
+        metadata:
+          type: object
+        contextPayload:
+          type: object
+
+    ExecuteWorkflowTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [transitionDefinitionId, expectedWorkflowStateVersion]
+      properties:
+        transitionDefinitionId:
+          type: string
+          format: uuid
+        expectedWorkflowStateVersion:
+          type: integer
+        submissionPayload:
+          type: object
+
+    # Response DTOs (camelCase)
+    CreateWorkflowInstanceResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        workflowInstanceId:
+          type: string
+          format: uuid
+        workflowStateVersion:
+          type: integer
+        currentContextRevisionId:
+          type: string
+          format: uuid
+        currentNodeVisitId:
+          type: string
+          format: uuid
+        eventSequence:
+          type: integer
+      required:
+        - workflowInstanceId
+        - workflowStateVersion
+        - currentContextRevisionId
+        - currentNodeVisitId
+        - eventSequence
+
+    ExecuteWorkflowTransitionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        workflowInstanceId:
+          type: string
+          format: uuid
+        workflowStateVersion:
+          type: integer
+        currentContextRevisionId:
+          type: string
+          format: uuid
+        sourceNodeVisitId:
+          type: string
+          format: uuid
+        currentNodeVisitId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+          nullable: true
+        eventSequence:
+          type: integer
+      required:
+        - workflowInstanceId
+        - workflowStateVersion
+        - currentContextRevisionId
+        - sourceNodeVisitId
+        - currentNodeVisitId
+        - submissionId
+        - eventSequence
+
+    # Detail (snake_case body in camelCase envelope)
+    WorkflowInstanceDetailResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        visibility:
+          type: string
+          enum: [full, historical_participant]
+        detail:
+          type: object
+      required: [visibility, detail]
+
+    # Timeline (camelCase)
+    TimelineResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEvent"
+        nextCursor:
+          type: integer
+          nullable: true
+      required: [items, nextCursor]
+
+    TimelineEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        workflow_instance_id:
+          type: string
+          format: uuid
+        event_sequence:
+          type: integer
+        event_schema_version:
+          type: string
+        command_id:
+          type: string
+          format: uuid
+          nullable: true
+        causation_id:
+          type: string
+          format: uuid
+          nullable: true
+        correlation_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_type:
+          type: string
+        transition_effect:
+          type: string
+          nullable: true
+        source_node_visit_id:
+          type: string
+          format: uuid
+          nullable: true
+        target_node_visit_id:
+          type: string
+          format: uuid
+          nullable: true
+        context_revision_id:
+          type: string
+          format: uuid
+          nullable: true
+        submission_id:
+          type: string
+          format: uuid
+          nullable: true
+        event_data:
+          type: object
+          nullable: true
+        event_data_digest:
+          type: string
+          nullable: true
+        actor_principal_id:
+          type: string
+          format: uuid
+        from_node_id:
+          type: string
+          format: uuid
+          nullable: true
+        to_node_id:
+          type: string
+          format: uuid
+          nullable: true
+        old_workflow_state_version:
+          type: integer
+        new_workflow_state_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - event_id
+        - workflow_instance_id
+        - event_sequence
+        - event_schema_version
+        - command_id
+        - causation_id
+        - correlation_id
+        - event_type
+        - transition_effect
+        - source_node_visit_id
+        - target_node_visit_id
+        - context_revision_id
+        - submission_id
+        - event_data
+        - event_data_digest
+        - actor_principal_id
+        - from_node_id
+        - to_node_id
+        - old_workflow_state_version
+        - new_workflow_state_version
+        - created_at
+
+    # Domain instance list (snake_case)
+    DomainInstancePage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainInstanceSummary"
+        next_cursor:
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
+
+    DomainInstanceSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        workflow_instance_id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        definition_version_id:
+          type: string
+          format: uuid
+        definition_key:
+          type: string
+        created_by_principal_id:
+          type: string
+          format: uuid
+        current_assignee_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+        current_node:
+          $ref: "#/components/schemas/NodeSummary"
+        is_terminal:
+          type: boolean
+        title:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - workflow_instance_id
+        - domain_id
+        - definition_version_id
+        - definition_key
+        - created_by_principal_id
+        - current_assignee_principal_id
+        - current_node
+        - is_terminal
+        - title
+        - created_at
+        - updated_at
+
+    # Worklist (snake_case)
+    WorklistPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssignedWorkItem"
+        next_cursor:
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
+
+    CreatorDraftPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreatorDraftItem"
+        next_cursor:
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
+
+    AssignedWorkItem:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          $ref: "#/components/schemas/FullWorkflowInstanceDetail"
+        upstream_submissions:
+          type: array
+        return_feedback_events:
+          type: array
+        submissions_truncated:
+          type: boolean
+        return_events_truncated:
+          type: boolean
+      required:
+        - detail
+        - upstream_submissions
+        - return_feedback_events
+        - submissions_truncated
+        - return_events_truncated
+
+    # Self-Projection & Domain Members
+    SelfProjectionResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        principalId:
+          type: string
+          format: uuid
+        created:
+          type: boolean
+      required: [principalId, created]
+
+    MemberItem:
+      type: object
+      additionalProperties: false
+      properties:
+        principalId:
+          type: string
+          format: uuid
+        principalType:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+        bindingCreatedAt:
+          type: string
+          format: date-time
+      required: [principalId, principalType, displayName, role, bindingCreatedAt]
+
+    MemberListCursor:
+      type: object
+      additionalProperties: false
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+      required: [created_at, id]
+
+    MemberListPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberItem"
+        next_cursor:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MemberListCursor"
+      required: [items, next_cursor]
+
+    MemberAddResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        principalId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+      required: [domainId, principalId, role]
+
+    MemberRemoveResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        domainId:
+          type: string
+          format: uuid
+        principalId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER]
+        enabled:
+          type: boolean
+      required: [domainId, principalId, role, enabled]
+
+    CreatorDraftItem:
+      type: object
+      additionalProperties: false
+      properties:
+        detail:
+          $ref: "#/components/schemas/FullWorkflowInstanceDetail"
+        context_editable:
+          type: boolean
+        combined_executable:
+          type: boolean
+      required: [detail, context_editable, combined_executable]
+
+    FullWorkflowInstanceDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        instance:
+          type: object
+        current_context_revision_id:
+          type: string
+          format: uuid
+        current_node_visit_id:
+          type: string
+          format: uuid
+        current_context:
+          type: object
+        current_visit:
+          type: object
+        outgoing_transitions:
+          type: array
+      required:
+        - instance
+        - current_context_revision_id
+        - current_node_visit_id
+        - current_context
+        - current_visit
+        - outgoing_transitions
+
+    # Shared
+    Cursor:
+      type: object
+      nullable: true
+      additionalProperties: false
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+      required: [created_at, id]
+
+    NodeSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          format: uuid
+        node_key:
+          type: string
+        display_name:
+          type: string
+        node_type:
+          type: string
+      required: [node_id, node_key, display_name, node_type]
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict (e.g., idempotency)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request too large
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooEarly:
+      description: Command still processing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
