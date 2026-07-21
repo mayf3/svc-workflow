@@ -1,7 +1,8 @@
 # Workflow Runtime HTTP Contract V1
 
-**Status:** Current-state freeze  
-**Date:** 2026-07-18  
+**Status:** Current-state freeze
+**Date:** 2026-07-21
+**Migration Version:** 11
 **Scope:** Runtime workflow endpoints only (control-plane `/internal/v1/admin/**` excluded)
 
 ---
@@ -94,6 +95,38 @@ The target principal must have completed self-projection (`PUT /internal/v1/prin
 - `not_domain_owner` (403) — caller is not a domain owner
 - `principal_is_owner` (409) — target is a DOMAIN_OWNER, cannot be a member
 - `member_not_found` (404) — no active DOMAIN_MEMBER binding to remove
+
+### 2.7 Domain Definition Management
+
+| Method | Path | Scope | Auth | Description |
+|--------|------|-------|------|-------------|
+| GET | `/internal/v1/domains/{domainId}/definitions` | `workflow.read` | yes | List definitions in domain (paginated) |
+| GET | `/internal/v1/domains/{domainId}/definitions/{definitionId}` | `workflow.read` | yes | Get definition detail + versions |
+| POST | `/internal/v1/domains/{domainId}/definitions` | `workflow.execute` | yes | Create workflow definition (idempotent) |
+| POST | `/internal/v1/domains/{domainId}/definitions/{definitionId}/versions` | `workflow.execute` | yes | Create new draft version (idempotent) |
+| PUT | `/internal/v1/domains/{domainId}/definitions/{definitionId}/draft` | `workflow.execute` | yes | Replace draft graph (idempotent) |
+| POST | `/internal/v1/domains/{domainId}/definitions/{definitionId}/publish` | `workflow.execute` | yes | Publish draft version (idempotent) |
+| POST | `/internal/v1/domains/{domainId}/definitions/{definitionId}/archive` | `workflow.execute` | yes | Archive definition (idempotent) |
+
+All write endpoints require a Direct Machine Token (`token_use=access`). The caller must be `DOMAIN_OWNER` of the target domain.
+
+**List Definitions** uses cursor pagination with `beforeCreatedAt` (RFC 3339) and `beforeId` (UUID) query parameters. Optional `includeArchived` query parameter (default false) controls whether archived definitions are returned.
+
+**Publish** requires `versionId` and `expectedRevision` in the request body.
+`expectedRevision` is the current `definition_digest` of the version. If the digest
+does not match, the request is rejected with `revision_conflict` (409) to prevent
+silent overwrites.
+
+**List Definitions** returns `not_domain_owner` if the caller is not a DOMAIN_OWNER.
+All other definition-specific endpoints return `definition_not_found` for any
+permission or existence failure, preventing cross-domain object existence leaks.
+
+**Error codes specific to these endpoints:**
+- `definition_not_found` (404) — definition does not exist or is not visible
+- `definition_key_conflict` (409) — definition key already exists in the domain
+- `definition_version_immutable` (409) — version is not in DRAFT status
+- `definition_not_editable` (409) — definition is archived
+- `revision_conflict` (409) — expectedRevision does not match current digest
 
 ---
 

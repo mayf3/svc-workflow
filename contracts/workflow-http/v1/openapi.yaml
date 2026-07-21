@@ -435,6 +435,264 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # ── Domain Definition Management ──────────────────────────────────────
+  /internal/v1/domains/{domainId}/definitions:
+    get:
+      operationId: listDomainDefinitions
+      summary: List workflow definitions in a domain (DOMAIN_OWNER only)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Paginated definition list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionListPage"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+    post:
+      operationId: createDomainDefinition
+      summary: Create a workflow definition (idempotent)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDefinitionRequest"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Definition created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDefinitionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/domains/{domainId}/definitions/{definitionId}:
+    get:
+      operationId: getDomainDefinition
+      summary: Get definition detail with all versions
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Definition detail with versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefinitionDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/v1/domains/{domainId}/definitions/{definitionId}/versions:
+    post:
+      operationId: createDefinitionVersion
+      summary: Create a new DRAFT version (idempotent)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDraftVersionRequest"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Draft version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDraftVersionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/domains/{domainId}/definitions/{definitionId}/draft:
+    put:
+      operationId: replaceDefinitionDraft
+      summary: Replace the graph of a DRAFT version (idempotent)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceDraftGraphRequest"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Draft graph replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/domains/{domainId}/definitions/{definitionId}/publish:
+    post:
+      operationId: publishDefinitionVersion
+      summary: Publish a DRAFT version (idempotent)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishVersionRequest"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Version published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishVersionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/domains/{domainId}/definitions/{definitionId}/archive:
+    post:
+      operationId: archiveDomainDefinition
+      summary: Archive a workflow definition (idempotent)
+      tags: [definitions]
+      parameters:
+        - $ref: "#/components/parameters/DomainId"
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Definition archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveDefinitionResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "425":
+          $ref: "#/components/responses/TooEarly"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -931,6 +1189,325 @@ components:
         enabled:
           type: boolean
       required: [domainId, principalId, role, enabled]
+
+    # ── Domain Definition Management ─────────────────────────────────────
+
+    DefinitionItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        definition_key:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived:
+          type: boolean
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_by_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+        - id
+        - domain_id
+        - definition_key
+        - display_name
+        - description
+        - metadata
+        - created_at
+        - updated_at
+        - archived
+        - archived_at
+        - archived_by_principal_id
+
+    DefinitionVersionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflow_definition_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        version_status:
+          type: string
+        definition_digest:
+          type: string
+          nullable: true
+        json_schema_dialect:
+          type: string
+          nullable: true
+        validator_version:
+          type: string
+          nullable: true
+        context_schema:
+          type: object
+          nullable: true
+        submission_schema:
+          type: object
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        deprecated_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        published_by_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+        deprecated_by_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+        revoked_by_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+        - id
+        - workflow_definition_id
+        - version_number
+        - version_status
+        - definition_digest
+        - json_schema_dialect
+        - validator_version
+        - context_schema
+        - submission_schema
+        - metadata
+        - created_at
+        - updated_at
+        - published_at
+        - deprecated_at
+        - revoked_at
+
+    DefinitionListPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DefinitionItem"
+        next_cursor:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Cursor"
+      required:
+        - items
+        - next_cursor
+
+    DefinitionDetailResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        definition:
+          $ref: "#/components/schemas/DefinitionItem"
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DefinitionVersionSummary"
+      required:
+        - definition
+        - versions
+
+    CreateDefinitionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - definitionKey
+        - displayName
+      properties:
+        definitionKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+        metadata:
+          type: object
+
+    CreateDefinitionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workflowDefinitionId
+        - domainId
+        - definitionKey
+        - displayName
+        - createdAt
+      properties:
+        workflowDefinitionId:
+          type: string
+          format: uuid
+        domainId:
+          type: string
+          format: uuid
+        definitionKey:
+          type: string
+        displayName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateDraftVersionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        contextSchema:
+          type: object
+        jsonSchemaDialect:
+          type: string
+        validatorVersion:
+          type: string
+        metadata:
+          type: object
+
+    CreateDraftVersionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - definitionVersionId
+        - workflowDefinitionId
+        - versionNumber
+        - versionStatus
+        - createdAt
+      properties:
+        definitionVersionId:
+          type: string
+          format: uuid
+        workflowDefinitionId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        versionStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReplaceDraftGraphRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - definitionVersionId
+      properties:
+        definitionVersionId:
+          type: string
+          format: uuid
+        contextSchema:
+          type: object
+        nodes:
+          type: array
+          items:
+            type: object
+        transitions:
+          type: array
+          items:
+            type: object
+
+    PublishVersionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - versionId
+      properties:
+        versionId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: string
+
+    PublishVersionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - definitionVersionId
+        - versionNumber
+        - versionStatus
+        - digest
+        - publishedAt
+      properties:
+        definitionVersionId:
+          type: string
+          format: uuid
+        versionNumber:
+          type: integer
+        versionStatus:
+          type: string
+        digest:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ArchiveDefinitionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workflowDefinitionId
+        - definitionKey
+        - archived
+        - archivedAt
+      properties:
+        workflowDefinitionId:
+          type: string
+          format: uuid
+        definitionKey:
+          type: string
+        archived:
+          type: boolean
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     CreatorDraftItem:
       type: object

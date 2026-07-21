@@ -1,10 +1,20 @@
 import { z } from 'zod';
 
+import type { ZodType } from 'zod';
+
 import { WorkflowError } from './error.js';
 import {
+  archiveDefinitionResponseSchema,
+  createDefinitionRequestSchema,
+  createDefinitionResponseSchema,
+  createDraftVersionRequestSchema,
+  createDraftVersionResponseSchema,
   createWorkflowInstanceRequestSchema,
   createWorkflowInstanceResponseSchema,
   creatorDraftPageSchema,
+  definitionDetailResponseSchema,
+  definitionListPageSchema,
+  definitionListQuerySchema,
   domainInstancePageSchema,
   domainInstanceQuerySchema,
   errorEnvelopeSchema,
@@ -16,6 +26,9 @@ import {
   memberListPageSchema,
   memberListQuerySchema,
   memberRemoveResponseSchema,
+  publishVersionRequestSchema,
+  publishVersionResponseSchema,
+  replaceDraftGraphRequestSchema,
   selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
@@ -25,9 +38,17 @@ import {
   worklistQuerySchema,
 } from './schemas.js';
 import type {
+  ArchiveDefinitionResponse,
+  CreateDefinitionRequest,
+  CreateDefinitionResponse,
+  CreateDraftVersionRequest,
+  CreateDraftVersionResponse,
   CreateWorkflowInstanceRequest,
   CreateWorkflowInstanceResponse,
   CreatorDraftPage,
+  DefinitionDetailResponse,
+  DefinitionListPage,
+  DefinitionListQuery,
   DomainInstancePage,
   DomainInstanceQuery,
   ExecuteWorkflowTransitionRequest,
@@ -36,6 +57,9 @@ import type {
   MemberListPage,
   MemberListQuery,
   MemberRemoveResponse,
+  PublishVersionRequest,
+  PublishVersionResponse,
+  ReplaceDraftGraphRequest,
   RequestOptions,
   SelfProjectionResponse,
   TimelineQuery,
@@ -304,6 +328,151 @@ export class WorkflowClient {
       operation: 'remove-domain-member',
       idempotencyKey,
       successSchema: memberRemoveResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Domain Definition Governance
+  // ---------------------------------------------------------------------------
+
+  async listDomainDefinitions(
+    domainId: string,
+    query: DefinitionListQuery = {},
+    options: RequestOptions = {},
+  ): Promise<DefinitionListPage> {
+    const id = parseUuid(domainId, 'list-domain-definitions');
+    const parsed = parseInput(definitionListQuerySchema, query, 'list-domain-definitions');
+    const params = new URLSearchParams();
+    setString(params, 'beforeCreatedAt', parsed.beforeCreatedAt);
+    setString(params, 'beforeId', parsed.beforeId);
+    setNumber(params, 'limit', parsed.limit);
+    if (parsed.includeArchived === true) params.set('includeArchived', 'true');
+    return this.request({
+      method: 'GET',
+      path: withQuery(
+        `/internal/v1/domains/${encodeURIComponent(id)}/definitions`,
+        params,
+      ),
+      operation: 'list-domain-definitions',
+      successSchema: definitionListPageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async getDomainDefinition(
+    domainId: string,
+    definitionId: string,
+    options: RequestOptions = {},
+  ): Promise<DefinitionDetailResponse> {
+    const domainUuid = parseUuid(domainId, 'get-domain-definition');
+    const defUuid = parseUuid(definitionId, 'get-domain-definition');
+    return this.request({
+      method: 'GET',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}`,
+      operation: 'get-domain-definition',
+      successSchema: definitionDetailResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async createDomainDefinition(
+    domainId: string,
+    input: CreateDefinitionRequest,
+    options: WriteOptions,
+  ): Promise<CreateDefinitionResponse> {
+    const id = parseUuid(domainId, 'create-domain-definition');
+    const body = parseInput(createDefinitionRequestSchema, input, 'create-domain-definition');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'create-domain-definition');
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/domains/${encodeURIComponent(id)}/definitions`,
+      operation: 'create-domain-definition',
+      body,
+      idempotencyKey,
+      successSchema: createDefinitionResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async createDefinitionVersion(
+    domainId: string,
+    definitionId: string,
+    input: CreateDraftVersionRequest,
+    options: WriteOptions,
+  ): Promise<CreateDraftVersionResponse> {
+    const domainUuid = parseUuid(domainId, 'create-definition-version');
+    const defUuid = parseUuid(definitionId, 'create-definition-version');
+    const body = parseInput(createDraftVersionRequestSchema, input, 'create-definition-version');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'create-definition-version');
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}/versions`,
+      operation: 'create-definition-version',
+      body,
+      idempotencyKey,
+      successSchema: createDraftVersionResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async replaceDefinitionDraft(
+    domainId: string,
+    definitionId: string,
+    input: ReplaceDraftGraphRequest,
+    options: WriteOptions,
+  ): Promise<{ status: string }> {
+    const domainUuid = parseUuid(domainId, 'replace-definition-draft');
+    const defUuid = parseUuid(definitionId, 'replace-definition-draft');
+    const body = parseInput(replaceDraftGraphRequestSchema, input, 'replace-definition-draft');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'replace-definition-draft');
+    return this.request({
+      method: 'PUT',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}/draft`,
+      operation: 'replace-definition-draft',
+      body,
+      idempotencyKey,
+      successSchema: z.object({ status: z.string() }).strict(),
+      requestId: options.requestId,
+    });
+  }
+
+  async publishDefinitionVersion(
+    domainId: string,
+    definitionId: string,
+    input: PublishVersionRequest,
+    options: WriteOptions,
+  ): Promise<PublishVersionResponse> {
+    const domainUuid = parseUuid(domainId, 'publish-definition-version');
+    const defUuid = parseUuid(definitionId, 'publish-definition-version');
+    const body = parseInput(publishVersionRequestSchema, input, 'publish-definition-version');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'publish-definition-version');
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}/publish`,
+      operation: 'publish-definition-version',
+      body,
+      idempotencyKey,
+      successSchema: publishVersionResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async archiveDomainDefinition(
+    domainId: string,
+    definitionId: string,
+    options: WriteOptions,
+  ): Promise<ArchiveDefinitionResponse> {
+    const domainUuid = parseUuid(domainId, 'archive-domain-definition');
+    const defUuid = parseUuid(definitionId, 'archive-domain-definition');
+    const idempotencyKey = parseIdempotencyKey(options.idempotencyKey, 'archive-domain-definition');
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}/archive`,
+      operation: 'archive-domain-definition',
+      body: {},
+      idempotencyKey,
+      successSchema: archiveDefinitionResponseSchema,
       requestId: options.requestId,
     });
   }

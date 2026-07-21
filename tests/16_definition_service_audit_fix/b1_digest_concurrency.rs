@@ -31,6 +31,7 @@ async fn test_digest_readback_consistency() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await
         .expect("publish should succeed");

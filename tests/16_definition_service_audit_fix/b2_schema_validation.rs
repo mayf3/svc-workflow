@@ -80,6 +80,7 @@ async fn test_valid_context_schema_can_publish() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(
@@ -109,6 +110,7 @@ async fn test_invalid_schema_rejected_during_publish() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(result.is_err(), "invalid schema should be rejected");
@@ -154,6 +156,7 @@ async fn test_https_ref_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(result.is_err(), "https ref should be rejected");
@@ -195,6 +198,7 @@ async fn test_file_ref_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(result.is_err(), "file ref should be rejected");
@@ -228,6 +232,7 @@ async fn test_local_fragment_ref_allowed() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(
@@ -257,6 +262,7 @@ async fn test_invalid_schema_version_stays_draft() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
 

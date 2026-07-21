@@ -28,6 +28,9 @@ pub struct WorkflowDefinition {
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub archived: bool,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub archived_by_principal_id: Option<PrincipalId>,
 }
 
 // ---------------------------------------------------------------------------

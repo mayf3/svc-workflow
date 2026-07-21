@@ -5,6 +5,7 @@
 //! external frameworks.
 
 pub mod definition;
+pub mod definition_governance;
 pub mod domain_membership;
 pub mod provisioning;
 pub mod workflow_instance;
