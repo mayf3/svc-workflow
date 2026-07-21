@@ -26,7 +26,7 @@ use svc_workflow::application::definition::queries::{
 };
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::application::definition_governance::{
-    governance_archive_definition, governance_create_draft_version, governance_create_definition,
+    governance_archive_definition, governance_create_definition, governance_create_draft_version,
     governance_publish_version, governance_replace_draft_graph, DefinitionGovernanceError,
 };
 use svc_workflow::domain::definition::error::DefinitionError;
@@ -179,10 +179,7 @@ async fn test_owner_get_definition_detail() {
         })
         .await
         .expect("owner should get definition");
-    assert_eq!(
-        detail.definition.definition.id.into_uuid(),
-        def_id
-    );
+    assert_eq!(detail.definition.definition.id.into_uuid(), def_id);
 
     let versions = service
         .list_definition_versions(ListDefinitionVersions {
@@ -309,7 +306,10 @@ async fn test_owner_governance_publish() {
         })
         .await
         .expect("should get version");
-    assert_eq!(version.version.version.unwrap().version_status.to_string(), "PUBLISHED");
+    assert_eq!(
+        version.version.version.unwrap().version_status.to_string(),
+        "PUBLISHED"
+    );
 }
 
 // ==========================================================================
@@ -555,7 +555,10 @@ async fn test_idempotency_key_conflict() {
     .await
     .expect_err("second call with same key but different body should fail");
 
-    assert!(matches!(err, DefinitionGovernanceError::IdempotencyConflict));
+    assert!(matches!(
+        err,
+        DefinitionGovernanceError::IdempotencyConflict
+    ));
 }
 
 // ==========================================================================

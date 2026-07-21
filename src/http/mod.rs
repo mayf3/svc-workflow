@@ -104,10 +104,9 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/domains/{domainId}/definitions/{definitionId}/versions",
-            post(handlers::definitions::create_draft_version).layer(middleware::from_fn_with_state(
-                state.clone(),
-                canary_guard::canary_write_guard,
-            )),
+            post(handlers::definitions::create_draft_version).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
         )
         .route(
             "/internal/v1/domains/{domainId}/definitions/{definitionId}/draft",

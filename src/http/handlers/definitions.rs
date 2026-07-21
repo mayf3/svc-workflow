@@ -20,7 +20,7 @@ use crate::application::definition::queries::{
 };
 use crate::application::definition::DefinitionService;
 use crate::application::definition_governance::{
-    governance_archive_definition, governance_create_draft_version, governance_create_definition,
+    governance_archive_definition, governance_create_definition, governance_create_draft_version,
     governance_publish_version, governance_replace_draft_graph,
 };
 use crate::auth::AuthenticatedPrincipal;
@@ -444,16 +444,14 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             "concurrent modification detected",
         )
         .with_details(serde_json::json!({"detail": detail})),
-        E::GraphValidationFailed(errors) => ApiError::unprocessable(
-            "graph_validation_failed",
-            "graph validation failed",
-        )
-        .with_details(serde_json::json!({"errors": errors})),
-        E::SchemaValidationFailed(detail) => ApiError::unprocessable(
-            "schema_validation_failed",
-            "schema validation failed",
-        )
-        .with_details(serde_json::json!({"detail": detail})),
+        E::GraphValidationFailed(errors) => {
+            ApiError::unprocessable("graph_validation_failed", "graph validation failed")
+                .with_details(serde_json::json!({"errors": errors}))
+        }
+        E::SchemaValidationFailed(detail) => {
+            ApiError::unprocessable("schema_validation_failed", "schema validation failed")
+                .with_details(serde_json::json!({"detail": detail}))
+        }
         E::PrincipalNotFound | E::PrincipalDisabled | E::DomainNotFound => ApiError::new(
             axum::http::StatusCode::FORBIDDEN,
             "not_domain_owner",
@@ -464,8 +462,10 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             "fixed principal reference is invalid",
         )
         .with_details(serde_json::json!({"detail": detail})),
-        E::DigestFailure(detail) => ApiError::unprocessable("digest_failure", "digest computation failed")
-            .with_details(serde_json::json!({"detail": detail})),
+        E::DigestFailure(detail) => {
+            ApiError::unprocessable("digest_failure", "digest computation failed")
+                .with_details(serde_json::json!({"detail": detail}))
+        }
         E::InvalidLifecycleTransition => ApiError::new(
             axum::http::StatusCode::CONFLICT,
             "invalid_lifecycle_transition",

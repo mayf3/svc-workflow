@@ -339,9 +339,10 @@ impl ApiError {
             DGError::DefinitionNotFound => {
                 ("definition_not_found", "workflow definition not found")
             }
-            DGError::DefinitionArchived | DGError::DefinitionNotEditable => {
-                ("definition_not_editable", "workflow definition is not editable")
-            }
+            DGError::DefinitionArchived | DGError::DefinitionNotEditable => (
+                "definition_not_editable",
+                "workflow definition is not editable",
+            ),
             DGError::DefinitionKeyConflict => (
                 "definition_key_conflict",
                 "definition key already exists in this domain",
@@ -354,9 +355,7 @@ impl ApiError {
                 "direct_token_required",
                 "only direct access tokens may perform this operation",
             ),
-            DGError::IdempotencyConflict => {
-                ("idempotency_conflict", "idempotency key was reused")
-            }
+            DGError::IdempotencyConflict => ("idempotency_conflict", "idempotency key was reused"),
             DGError::CommandStillProcessing => {
                 ("command_still_processing", "command is still processing")
             }

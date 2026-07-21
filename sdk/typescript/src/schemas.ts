@@ -388,6 +388,142 @@ export const memberRemoveResponseSchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// Domain Definition Governance schemas
+// ---------------------------------------------------------------------------
+
+export const definitionItemSchema = z
+  .object({
+    workflow_definition_id: uuidSchema,
+    domain_id: uuidSchema,
+    definition_key: z.string(),
+    display_name: z.string(),
+    description: z.string().nullable(),
+    metadata: jsonValueSchema.nullable(),
+    created_at: dateTimeSchema,
+    updated_at: dateTimeSchema,
+    archived: z.boolean(),
+    archived_at: dateTimeSchema.nullable(),
+  })
+  .strict();
+
+export const definitionVersionSummarySchema = z
+  .object({
+    id: uuidSchema,
+    workflow_definition_id: uuidSchema,
+    version_number: z.number().int(),
+    version_status: z.string(),
+    definition_digest: z.string().nullable(),
+    json_schema_dialect: z.string().nullable(),
+    context_schema: jsonValueSchema.nullable(),
+    created_at: dateTimeSchema,
+    updated_at: dateTimeSchema,
+    published_at: dateTimeSchema.nullable(),
+    deprecated_at: dateTimeSchema.nullable(),
+    revoked_at: dateTimeSchema.nullable(),
+  })
+  .strict();
+
+export const definitionDetailResponseSchema = z
+  .object({
+    definition: definitionItemSchema,
+    versions: z.array(definitionVersionSummarySchema),
+  })
+  .strict();
+
+export const definitionListPageSchema = z
+  .object({
+    items: z.array(definitionItemSchema),
+    nextCursor: cursorSchema.nullable(),
+  })
+  .strict();
+
+export const definitionListQuerySchema = z
+  .object({
+    beforeCreatedAt: dateTimeSchema.optional(),
+    beforeId: uuidSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    includeArchived: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.beforeCreatedAt) === Boolean(query.beforeId),
+    'beforeCreatedAt and beforeId must be provided together',
+  );
+
+export const createDefinitionRequestSchema = z
+  .object({
+    definitionKey: z.string().min(1).max(128),
+    displayName: z.string().min(1).max(256),
+    description: z.string().optional(),
+    metadata: jsonObjectSchema.optional(),
+  })
+  .strict();
+
+export const createDefinitionResponseSchema = z
+  .object({
+    workflowDefinitionId: uuidSchema,
+    domainId: uuidSchema,
+    definitionKey: z.string(),
+    displayName: z.string(),
+    createdAt: dateTimeSchema,
+  })
+  .strict();
+
+export const createDraftVersionRequestSchema = z
+  .object({
+    contextSchema: jsonValueSchema.optional(),
+    jsonSchemaDialect: z.string().optional(),
+    validatorVersion: z.string().optional(),
+    metadata: jsonObjectSchema.optional(),
+  })
+  .strict();
+
+export const createDraftVersionResponseSchema = z
+  .object({
+    definitionVersionId: uuidSchema,
+    workflowDefinitionId: uuidSchema,
+    versionNumber: z.number().int(),
+    versionStatus: z.string(),
+    createdAt: dateTimeSchema,
+  })
+  .strict();
+
+export const replaceDraftGraphRequestSchema = z
+  .object({
+    definitionVersionId: uuidSchema,
+    contextSchema: jsonValueSchema.optional(),
+    nodes: z.array(z.unknown()),
+    transitions: z.array(z.unknown()),
+  })
+  .strict();
+
+export const publishVersionRequestSchema = z
+  .object({
+    versionId: uuidSchema,
+    expectedRevision: z.string().optional(),
+  })
+  .strict();
+
+export const publishVersionResponseSchema = z
+  .object({
+    definitionVersionId: uuidSchema,
+    versionNumber: z.number().int(),
+    versionStatus: z.string(),
+    digest: z.string().nullable(),
+    publishedAt: dateTimeSchema.nullable(),
+  })
+  .strict();
+
+export const archiveDefinitionResponseSchema = z
+  .object({
+    workflowDefinitionId: uuidSchema,
+    definitionKey: z.string(),
+    archived: z.literal(true),
+    archivedAt: dateTimeSchema.nullable(),
+  })
+  .strict();
+
 export const errorEnvelopeSchema = z
   .object({
     error: z

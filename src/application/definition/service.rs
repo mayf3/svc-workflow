@@ -109,10 +109,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // Check that definition is not archived
-        let def = self
-            .repo
-            .get_definition(cmd.workflow_definition_id)
-            .await?;
+        let def = self.repo.get_definition(cmd.workflow_definition_id).await?;
         if def.archived {
             return Err(DefinitionError::DefinitionArchived);
         }
@@ -202,10 +199,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // Verify definition exists and get its domain
-        let def = self
-            .repo
-            .get_definition(cmd.workflow_definition_id)
-            .await?;
+        let def = self.repo.get_definition(cmd.workflow_definition_id).await?;
         let domain_id = def.domain_id.into_uuid();
 
         self.ensure_domain_enabled(domain_id).await?;

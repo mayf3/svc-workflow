@@ -75,7 +75,13 @@ pub trait DefinitionRepository {
         before_id: Option<Uuid>,
         limit: u32,
         include_archived: bool,
-    ) -> Result<(Vec<WorkflowDefinition>, Option<(chrono::DateTime<chrono::Utc>, Uuid)>), DefinitionError>;
+    ) -> Result<
+        (
+            Vec<WorkflowDefinition>,
+            Option<(chrono::DateTime<chrono::Utc>, Uuid)>,
+        ),
+        DefinitionError,
+    >;
 
     /// Get a workflow definition by ID.
     async fn get_definition(&self, id: Uuid) -> Result<WorkflowDefinition, DefinitionError>;

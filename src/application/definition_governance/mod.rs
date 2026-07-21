@@ -330,8 +330,9 @@ where
         .await
         .map_err(|e| DefinitionGovernanceError::StorageError(e.to_string()))?;
 
-    let request_hash =
-        compute_receipt_hash(&serde_json::json!({ "commandType": command_type, "command": serde_json::to_value(&command).unwrap_or_default() }));
+    let request_hash = compute_receipt_hash(
+        &serde_json::json!({ "commandType": command_type, "command": serde_json::to_value(&command).unwrap_or_default() }),
+    );
 
     let receipt: AcquireReceipt = acquire_receipt(
         &mut tx,
@@ -373,8 +374,8 @@ where
             .await
             .map_err(|e| DefinitionGovernanceError::StorageError(e.to_string()))?;
 
-            let response_json = serde_json::to_value(&response)
-                .unwrap_or(serde_json::json!({"status": "success"}));
+            let response_json =
+                serde_json::to_value(&response).unwrap_or(serde_json::json!({"status": "success"}));
             complete_receipt(&mut tx, receipt.command_id(), 200, &response_json)
                 .await
                 .map_err(|e| DefinitionGovernanceError::StorageError(e.to_string()))?;
