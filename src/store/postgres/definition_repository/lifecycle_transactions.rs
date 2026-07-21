@@ -139,11 +139,18 @@ impl PgDefinitionRepository {
     // -----------------------------------------------------------------------
 
     /// Execute a complete publish inside a single transaction.
+    ///
+    /// `precomputed_digest` is the digest computed by the caller before
+    /// entering the transaction.  `expected_revision` is the client's
+    /// last-known digest (if supplied).  Both are verified against the
+    /// re-computed digest inside the transaction, making optimistic
+    /// concurrency control atomic with the status write.
     pub(super) async fn atomic_publish_inner(
         &self,
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
         precomputed_digest: &str,
+        expected_revision: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let mut tx = self.pool.begin().await.map_err(map_db_error)?;
 
@@ -258,6 +265,16 @@ impl PgDefinitionRepository {
             return Err(DefinitionError::ConcurrentModification(
                 "definition graph changed during publish; retry with fresh data".to_string(),
             ));
+        }
+
+        // 6b. Check expected_revision (client-side optimistic concurrency).
+        //     Must be inside the same transaction as the read + write.
+        if let Some(expected) = expected_revision {
+            if expected != actual_digest {
+                return Err(DefinitionError::ConcurrentModification(
+                    "expected_revision does not match current definition digest".to_string(),
+                ));
+            }
         }
 
         // 7. Write publish status inside tx
