@@ -162,6 +162,7 @@ async fn test_disabled_domain_blocks_write() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     match result.unwrap_err() {

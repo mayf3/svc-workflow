@@ -41,6 +41,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .get_definition(version.workflow_definition_id.into_uuid())
             .await?;
 
+        // Check that definition is not archived
+        if def.archived {
+            return Err(DefinitionError::DefinitionArchived);
+        }
+
         // Get complete graph for validation
         let (nodes, transitions) = self
             .repo
@@ -93,12 +98,15 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         )?;
 
         // B-1: Atomic publish inside a single transaction.
+        // expected_revision is verified inside the transaction alongside
+        // the digest consistency check, eliminating any race window.
         let published = self
             .repo
             .atomic_publish(
                 cmd.definition_version_id,
                 cmd.actor_principal_id,
                 &computed_digest,
+                cmd.expected_revision.as_deref(),
             )
             .await?;
 

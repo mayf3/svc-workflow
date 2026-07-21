@@ -14,7 +14,7 @@ use crate::domain::definition::model::{
 use crate::domain::enums::DefinitionVersionStatus;
 
 /// Data returned from repository queries, combining definition + version info.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DefinitionData {
     pub definition: WorkflowDefinition,
     pub version: Option<WorkflowDefinitionVersion>,
@@ -67,8 +67,31 @@ pub trait DefinitionRepository {
         definition_key: &str,
     ) -> Result<bool, DefinitionError>;
 
+    /// List all workflow definitions in a domain, with cursor pagination.
+    async fn list_definitions_by_domain(
+        &self,
+        domain_id: Uuid,
+        before_created_at: Option<chrono::DateTime<chrono::Utc>>,
+        before_id: Option<Uuid>,
+        limit: u32,
+        include_archived: bool,
+    ) -> Result<
+        (
+            Vec<WorkflowDefinition>,
+            Option<(chrono::DateTime<chrono::Utc>, Uuid)>,
+        ),
+        DefinitionError,
+    >;
+
     /// Get a workflow definition by ID.
     async fn get_definition(&self, id: Uuid) -> Result<WorkflowDefinition, DefinitionError>;
+
+    /// Archive a workflow definition (soft-disable).
+    async fn archive_definition(
+        &self,
+        id: Uuid,
+        actor_principal_id: Uuid,
+    ) -> Result<WorkflowDefinition, DefinitionError>;
 
     /// Get a definition version by ID.
     async fn get_version(
@@ -189,8 +212,10 @@ pub trait DefinitionRepository {
     /// 3. Verify domain enabled + domain owner
     /// 4. Re-read the complete graph inside the tx
     /// 5. Re-compute digest and verify it matches `precomputed_digest`
-    /// 6. Update status to PUBLISHED, set digest + actor
-    /// 7. Commit
+    /// 6. If `expected_revision` is Some, verify it also matches the
+    ///    re-computed digest (optimistic concurrency for the caller)
+    /// 7. Update status to PUBLISHED, set digest + actor
+    /// 8. Commit
     ///
     /// If a concurrent ReplaceDraftGraph changed the graph between when
     /// the service computed `precomputed_digest` and when this method
@@ -201,6 +226,7 @@ pub trait DefinitionRepository {
         version_id: Uuid,
         actor_principal_id: Uuid,
         precomputed_digest: &str,
+        expected_revision: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
     /// Execute a complete deprecation inside a single transaction.

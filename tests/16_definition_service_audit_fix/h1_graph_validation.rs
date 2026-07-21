@@ -28,6 +28,7 @@ async fn test_directed_unreachable_node_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(result.is_err(), "isolated node should be rejected");
@@ -92,6 +93,7 @@ async fn test_node_only_reachable_via_backwards_edge_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(

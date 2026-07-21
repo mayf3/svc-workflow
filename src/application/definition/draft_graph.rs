@@ -43,6 +43,15 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         self.ensure_domain_owner(cmd.actor_principal_id, domain_id)
             .await?;
 
+        // Check that definition is not archived
+        let def = self
+            .repo
+            .get_definition(version.workflow_definition_id.into_uuid())
+            .await?;
+        if def.archived {
+            return Err(DefinitionError::DefinitionArchived);
+        }
+
         // Resolve node keys -> IDs
         let mut node_id_by_key: HashMap<String, NodeId> = HashMap::new();
         let mut node_defs: Vec<NodeDefinition> = Vec::new();

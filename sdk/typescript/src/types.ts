@@ -1,9 +1,19 @@
 import type { z } from 'zod';
 
 import type {
+  archiveDefinitionResponseSchema,
+  createDefinitionRequestSchema,
+  createDefinitionResponseSchema,
+  createDraftVersionRequestSchema,
+  createDraftVersionResponseSchema,
   createWorkflowInstanceRequestSchema,
   createWorkflowInstanceResponseSchema,
   creatorDraftPageSchema,
+  definitionDetailResponseSchema,
+  definitionItemSchema,
+  definitionListPageSchema,
+  definitionListQuerySchema,
+  definitionVersionSummarySchema,
   domainInstancePageSchema,
   domainInstanceQuerySchema,
   executeWorkflowTransitionRequestSchema,
@@ -13,6 +23,9 @@ import type {
   memberListPageSchema,
   memberListQuerySchema,
   memberRemoveResponseSchema,
+  publishVersionRequestSchema,
+  publishVersionResponseSchema,
+  replaceDraftGraphRequestSchema,
   selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
@@ -71,3 +84,17 @@ export type MemberListPage = z.infer<typeof memberListPageSchema>;
 export type MemberListQuery = z.infer<typeof memberListQuerySchema>;
 export type MemberAddResponse = z.infer<typeof memberAddResponseSchema>;
 export type MemberRemoveResponse = z.infer<typeof memberRemoveResponseSchema>;
+
+export type DefinitionItem = z.infer<typeof definitionItemSchema>;
+export type DefinitionVersionSummary = z.infer<typeof definitionVersionSummarySchema>;
+export type DefinitionDetailResponse = z.infer<typeof definitionDetailResponseSchema>;
+export type DefinitionListPage = z.infer<typeof definitionListPageSchema>;
+export type DefinitionListQuery = z.infer<typeof definitionListQuerySchema>;
+export type CreateDefinitionRequest = z.infer<typeof createDefinitionRequestSchema>;
+export type CreateDefinitionResponse = z.infer<typeof createDefinitionResponseSchema>;
+export type CreateDraftVersionRequest = z.infer<typeof createDraftVersionRequestSchema>;
+export type CreateDraftVersionResponse = z.infer<typeof createDraftVersionResponseSchema>;
+export type ReplaceDraftGraphRequest = z.infer<typeof replaceDraftGraphRequestSchema>;
+export type PublishVersionRequest = z.infer<typeof publishVersionRequestSchema>;
+export type PublishVersionResponse = z.infer<typeof publishVersionResponseSchema>;
+export type ArchiveDefinitionResponse = z.infer<typeof archiveDefinitionResponseSchema>;

@@ -25,6 +25,9 @@ pub(super) struct WorkflowDefinitionRow {
     metadata: Option<serde_json::Value>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
+    archived: bool,
+    archived_at: Option<chrono::DateTime<chrono::Utc>>,
+    archived_by_principal_id: Option<Uuid>,
 }
 
 impl WorkflowDefinitionRow {
@@ -38,6 +41,9 @@ impl WorkflowDefinitionRow {
             metadata: self.metadata,
             created_at: self.created_at,
             updated_at: self.updated_at,
+            archived: self.archived,
+            archived_at: self.archived_at,
+            archived_by_principal_id: self.archived_by_principal_id.map(PrincipalId::from_uuid),
         }
     }
 }

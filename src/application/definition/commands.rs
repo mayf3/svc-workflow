@@ -37,7 +37,7 @@ pub struct ReplaceDraftGraph {
 }
 
 /// A node in the graph replacement command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RawNodeDefinition {
     pub node_key: String,
     pub display_name: String,
@@ -52,7 +52,7 @@ pub struct RawNodeDefinition {
 }
 
 /// A transition in the graph replacement command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RawTransitionDefinition {
     pub transition_key: String,
     pub display_name: String,
@@ -75,6 +75,10 @@ pub struct ValidateDraftVersion {
 pub struct PublishVersion {
     pub actor_principal_id: Uuid,
     pub definition_version_id: Uuid,
+    /// Expected current digest for optimistic concurrency control.
+    /// If `Some` and does not match the current computed digest,
+    /// the publish is rejected with `ConcurrentModification`.
+    pub expected_revision: Option<String>,
 }
 
 /// Deprecate a PUBLISHED version -> DEPRECATED.
@@ -89,4 +93,11 @@ pub struct DeprecateVersion {
 pub struct RevokeVersion {
     pub actor_principal_id: Uuid,
     pub definition_version_id: Uuid,
+}
+
+/// Archive a workflow definition (soft-disable).
+#[derive(Debug, Clone)]
+pub struct ArchiveDefinition {
+    pub actor_principal_id: Uuid,
+    pub workflow_definition_id: Uuid,
 }

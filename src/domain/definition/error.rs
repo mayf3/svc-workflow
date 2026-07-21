@@ -29,6 +29,8 @@ pub enum DefinitionError {
     GraphValidationFailed(Vec<GraphValidationError>),
     /// JSON Schema validation failed.
     SchemaValidationFailed(String),
+    /// The definition is archived and cannot be modified.
+    DefinitionArchived,
     /// Fixed principal reference is invalid (missing, not found, or disabled).
     FixedPrincipalInvalid(String),
     /// Digest computation failed.
@@ -60,6 +62,7 @@ impl fmt::Display for DefinitionError {
             Self::SchemaValidationFailed(detail) => {
                 write!(f, "schema validation failed: {}", detail)
             }
+            Self::DefinitionArchived => write!(f, "definition is archived"),
             Self::FixedPrincipalInvalid(detail) => {
                 write!(f, "fixed principal invalid: {}", detail)
             }
@@ -75,7 +78,7 @@ impl fmt::Display for DefinitionError {
 impl std::error::Error for DefinitionError {}
 
 /// A single graph validation error.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct GraphValidationError {
     /// Machine-readable error code.
     pub code: String,

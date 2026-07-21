@@ -227,9 +227,15 @@ impl DefinitionRepository for PgDefinitionRepository {
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
         precomputed_digest: &str,
+        expected_revision: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
-        self.atomic_publish_inner(version_id, actor_principal_id, precomputed_digest)
-            .await
+        self.atomic_publish_inner(
+            version_id,
+            actor_principal_id,
+            precomputed_digest,
+            expected_revision,
+        )
+        .await
     }
 
     async fn atomic_deprecate(
@@ -248,5 +254,39 @@ impl DefinitionRepository for PgDefinitionRepository {
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         self.atomic_revoke_inner(version_id, actor_principal_id)
             .await
+    }
+
+    // -- Domain-owned governance operations --------------------------------------
+
+    async fn list_definitions_by_domain(
+        &self,
+        domain_id: uuid::Uuid,
+        before_created_at: Option<chrono::DateTime<chrono::Utc>>,
+        before_id: Option<uuid::Uuid>,
+        limit: u32,
+        include_archived: bool,
+    ) -> Result<
+        (
+            Vec<WorkflowDefinition>,
+            Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>,
+        ),
+        DefinitionError,
+    > {
+        self.list_definitions_by_domain_inner(
+            domain_id,
+            before_created_at,
+            before_id,
+            limit,
+            include_archived,
+        )
+        .await
+    }
+
+    async fn archive_definition(
+        &self,
+        id: uuid::Uuid,
+        actor_principal_id: uuid::Uuid,
+    ) -> Result<WorkflowDefinition, DefinitionError> {
+        self.archive_definition_inner(id, actor_principal_id).await
     }
 }

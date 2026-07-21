@@ -405,7 +405,7 @@ async fn run() -> Result<(), ProvisioningError> {
     ).bind(def_id).bind(file.version.version_number).fetch_optional(&pool).await?.is_some() {
         println!("Already PUBLISHED");
     } else {
-        svc.publish_version(PublishVersion { actor_principal_id: actor, definition_version_id: ver_id })
+        svc.publish_version(PublishVersion { actor_principal_id: actor, definition_version_id: ver_id, expected_revision: None })
             .await.map_err(|e| ProvisioningError::ServiceError(e.to_string()))?;
         println!("Published version {}", file.version.version_number);
     }

@@ -248,6 +248,7 @@ async fn test_fixed_principal_disabled_rejected() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(result.is_err(), "disabled principal should be rejected");
@@ -271,6 +272,7 @@ async fn test_terminal_without_assignee_allowed() {
         .publish_version(PublishVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            expected_revision: None,
         })
         .await;
     assert!(
