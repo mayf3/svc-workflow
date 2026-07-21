@@ -428,7 +428,10 @@ async fn test_non_owner_cannot_create_via_governance() {
     .await
     .expect_err("non-owner should fail to create");
 
-    assert!(matches!(err, DefinitionGovernanceError::NotDomainOwner));
+    assert!(matches!(
+        &err,
+        &DefinitionGovernanceError::DefinitionNotFound
+    ));
 }
 
 #[tokio::test]
@@ -448,7 +451,10 @@ async fn test_non_owner_cannot_archive() {
     .await
     .expect_err("non-owner should fail to archive");
 
-    assert!(matches!(err, DefinitionGovernanceError::NotDomainOwner));
+    assert!(matches!(
+        &err,
+        &DefinitionGovernanceError::DefinitionNotFound
+    ));
 }
 
 // ==========================================================================
@@ -488,7 +494,10 @@ async fn test_domain_member_cannot_create() {
     .await
     .expect_err("member should fail to create");
 
-    assert!(matches!(err, DefinitionGovernanceError::NotDomainOwner));
+    assert!(matches!(
+        &err,
+        &DefinitionGovernanceError::DefinitionNotFound
+    ));
 }
 
 // ==========================================================================
@@ -592,7 +601,10 @@ async fn test_owner_revoked_before_write() {
     .await
     .expect_err("revoked owner should fail");
 
-    assert!(matches!(err, DefinitionGovernanceError::NotDomainOwner));
+    assert!(matches!(
+        &err,
+        &DefinitionGovernanceError::DefinitionNotFound
+    ));
 }
 
 // ==========================================================================
@@ -792,7 +804,7 @@ async fn test_concurrent_publish_expected_revision_race() {
         .filter(|e| {
             matches!(
                 e,
-                Some(DefinitionGovernanceError::DefinitionNotEditable)
+                Some(DefinitionGovernanceError::DefinitionVersionImmutable)
                     | Some(DefinitionGovernanceError::IdempotencyConflict)
             )
         })
@@ -819,5 +831,352 @@ async fn test_concurrent_publish_expected_revision_race() {
     assert_eq!(
         published_count.0, 1,
         "exactly one published version expected"
+    );
+}
+
+// ==========================================================================
+// 16. Stale expectedRevision returns 409 revision_conflict
+// ==========================================================================
+
+#[tokio::test]
+async fn test_stale_expected_revision_returns_revision_conflict() {
+    let pool = create_pool().await;
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (def_id, ver_id, _, _) = seed_workflow_definition(&pool, domain_id).await;
+
+    let assignee_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO principals (principal_id, principal_type, display_name, enabled) VALUES ($1, 'HUMAN', 'Tester', TRUE)",
+    )
+    .bind(assignee_id)
+    .execute(&pool)
+    .await
+    .expect("insert assignee");
+
+    let repo = PgDefinitionRepository::new(pool.clone());
+    let service = DefinitionService::new(repo);
+
+    // Step 1: Insert graph G1 (initial)
+    let uid1 = uuid::Uuid::new_v4().to_string();
+    let dk1 = format!("draft-{}", &uid1[..8]);
+    let uid2 = uuid::Uuid::new_v4().to_string();
+    let tk1 = format!("done-{}", &uid2[..8]);
+
+    service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner_id,
+            definition_version_id: ver_id,
+            context_schema: None,
+            nodes: vec![
+                RawNodeDefinition {
+                    node_key: dk1.clone(),
+                    display_name: "Draft".into(),
+                    order_index: 0,
+                    node_type: "DRAFT".into(),
+                    assignee_ref_type: Some("WORKFLOW_CREATOR".into()),
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: Some("adv".into()),
+                    metadata: None,
+                },
+                RawNodeDefinition {
+                    node_key: tk1.clone(),
+                    display_name: "Done".into(),
+                    order_index: 1,
+                    node_type: "TERMINAL".into(),
+                    assignee_ref_type: None,
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: None,
+                    metadata: None,
+                },
+            ],
+            transitions: vec![RawTransitionDefinition {
+                transition_key: "adv".into(),
+                display_name: "Adv".into(),
+                source_node_key: dk1.clone(),
+                target_node_key: tk1,
+                transition_effect: "ADVANCE".into(),
+                submission_schema: None,
+                metadata: None,
+            }],
+        })
+        .await
+        .expect("replace G1");
+
+    // Step 2: Replace with G2 (different nodes → different digest)
+    let uid3 = uuid::Uuid::new_v4().to_string();
+    let dk2 = format!("draft2-{}", &uid3[..8]);
+    let uid4 = uuid::Uuid::new_v4().to_string();
+    let tk2 = format!("done2-{}", &uid4[..8]);
+
+    service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner_id,
+            definition_version_id: ver_id,
+            context_schema: None,
+            nodes: vec![
+                RawNodeDefinition {
+                    node_key: dk2.clone(),
+                    display_name: "Draft2".into(),
+                    order_index: 0,
+                    node_type: "DRAFT".into(),
+                    assignee_ref_type: Some("WORKFLOW_CREATOR".into()),
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: Some("adv2".into()),
+                    metadata: None,
+                },
+                RawNodeDefinition {
+                    node_key: tk2.clone(),
+                    display_name: "Done2".into(),
+                    order_index: 1,
+                    node_type: "TERMINAL".into(),
+                    assignee_ref_type: None,
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: None,
+                    metadata: None,
+                },
+            ],
+            transitions: vec![RawTransitionDefinition {
+                transition_key: "adv2".into(),
+                display_name: "Adv2".into(),
+                source_node_key: dk2,
+                target_node_key: tk2,
+                transition_effect: "ADVANCE".into(),
+                submission_schema: None,
+                metadata: None,
+            }],
+        })
+        .await
+        .expect("replace G2");
+
+    // Step 3: Publish with stale expected_revision (does not match G2's digest)
+    let err = governance_publish_version(
+        &pool,
+        owner_id,
+        &uuid::Uuid::new_v4().to_string(),
+        "req-stale",
+        ver_id,
+        Some("stale-digest-that-does-not-match".to_string()),
+    )
+    .await
+    .expect_err("stale expected_revision must fail");
+
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::RevisionConflict),
+        "expected RevisionConflict, got {:?}",
+        err.label()
+    );
+
+    // Step 4: Verify no side effects
+    let version_status: String = sqlx::query_scalar(
+        "SELECT version_status::text FROM workflow_definition_versions WHERE definition_version_id = $1",
+    )
+    .bind(ver_id)
+    .fetch_one(&pool)
+    .await
+    .expect("get status");
+    assert_eq!(version_status, "DRAFT", "must remain DRAFT");
+
+    let pub_count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_definition_versions WHERE workflow_definition_id = $1 AND version_status = 'PUBLISHED'",
+    )
+    .bind(def_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert_eq!(pub_count.0, 0, "no published version");
+}
+
+// ==========================================================================
+// 17-20. Cross-domain write existence leak prevention
+// ==========================================================================
+
+#[tokio::test]
+async fn test_cross_domain_create_draft_returns_404() {
+    let pool = create_pool().await;
+    let (owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (owner_b, _) = seed_principal_domain_with_owner(&pool).await;
+    let (def_a, _, _, _) = seed_workflow_definition(&pool, domain_a).await;
+
+    let err = governance_create_draft_version(
+        &pool,
+        owner_b,
+        &uuid::Uuid::new_v4().to_string(),
+        "cross",
+        def_a,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("cross-domain create draft must fail");
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::DefinitionNotFound),
+        "expected DefinitionNotFound"
+    );
+}
+
+#[tokio::test]
+async fn test_cross_domain_replace_graph_returns_404() {
+    let pool = create_pool().await;
+    let (owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (owner_b, _) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_a, _, _) = seed_workflow_definition(&pool, domain_a).await;
+
+    let uid = uuid::Uuid::new_v4().to_string();
+    let err = governance_replace_draft_graph(
+        &pool,
+        owner_b,
+        &uuid::Uuid::new_v4().to_string(),
+        "cross",
+        ver_a,
+        None,
+        vec![RawNodeDefinition {
+            node_key: format!("dk-{}", &uid[..8]),
+            display_name: "D".into(),
+            order_index: 0,
+            node_type: "DRAFT".into(),
+            assignee_ref_type: Some("WORKFLOW_CREATOR".into()),
+            fixed_principal_id: None,
+            instructions: None,
+            primary_advance_transition_key: Some("adv".into()),
+            metadata: None,
+        }],
+        vec![],
+    )
+    .await
+    .expect_err("cross-domain replace must fail");
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::DefinitionNotFound),
+        "expected DefinitionNotFound"
+    );
+}
+
+#[tokio::test]
+async fn test_cross_domain_publish_returns_404() {
+    let pool = create_pool().await;
+    let (owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (owner_b, _) = seed_principal_domain_with_owner(&pool).await;
+    let (def_a, ver_a, _, _) = seed_workflow_definition(&pool, domain_a).await;
+
+    // Seed a valid graph as owner_a so publish validation passes
+    let repo_a = PgDefinitionRepository::new(pool.clone());
+    let svc_a = DefinitionService::new(repo_a);
+    let uid1 = uuid::Uuid::new_v4().to_string();
+    let uid2 = uuid::Uuid::new_v4().to_string();
+    let dk = format!("d-{}", &uid1[..8]);
+    let tk = format!("t-{}", &uid2[..8]);
+    svc_a
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner_a,
+            definition_version_id: ver_a,
+            context_schema: None,
+            nodes: vec![
+                RawNodeDefinition {
+                    node_key: dk.clone(),
+                    display_name: "D".into(),
+                    order_index: 0,
+                    node_type: "DRAFT".into(),
+                    assignee_ref_type: Some("WORKFLOW_CREATOR".into()),
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: Some("adv".into()),
+                    metadata: None,
+                },
+                RawNodeDefinition {
+                    node_key: tk.clone(),
+                    display_name: "T".into(),
+                    order_index: 1,
+                    node_type: "TERMINAL".into(),
+                    assignee_ref_type: None,
+                    fixed_principal_id: None,
+                    instructions: None,
+                    primary_advance_transition_key: None,
+                    metadata: None,
+                },
+            ],
+            transitions: vec![RawTransitionDefinition {
+                transition_key: "adv".into(),
+                display_name: "A".into(),
+                source_node_key: dk,
+                target_node_key: tk,
+                transition_effect: "ADVANCE".into(),
+                submission_schema: None,
+                metadata: None,
+            }],
+        })
+        .await
+        .expect("replace graph");
+
+    // Now try to publish as owner_b
+    let err = governance_publish_version(
+        &pool,
+        owner_b,
+        &uuid::Uuid::new_v4().to_string(),
+        "cross",
+        ver_a,
+        None,
+    )
+    .await
+    .expect_err("cross-domain publish must fail");
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::DefinitionNotFound),
+        "expected DefinitionNotFound, got {:?}",
+        err.label()
+    );
+}
+
+#[tokio::test]
+async fn test_cross_domain_archive_returns_404() {
+    let pool = create_pool().await;
+    let (owner_a, domain_a) = seed_principal_domain_with_owner(&pool).await;
+    let (owner_b, _) = seed_principal_domain_with_owner(&pool).await;
+    let (def_a, _, _, _) = seed_workflow_definition(&pool, domain_a).await;
+
+    let err = governance_archive_definition(
+        &pool,
+        owner_b,
+        &uuid::Uuid::new_v4().to_string(),
+        "cross",
+        def_a,
+    )
+    .await
+    .expect_err("cross-domain archive must fail");
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::DefinitionNotFound),
+        "expected DefinitionNotFound"
+    );
+}
+
+// ==========================================================================
+// 21. Non-existent definition returns same 404
+// ==========================================================================
+
+#[tokio::test]
+async fn test_nonexistent_id_returns_404() {
+    let pool = create_pool().await;
+    let (owner_id, _) = seed_principal_domain_with_owner(&pool).await;
+    let fake = uuid::Uuid::new_v4();
+
+    let err = governance_create_draft_version(
+        &pool,
+        owner_id,
+        &uuid::Uuid::new_v4().to_string(),
+        "nonexist",
+        fake,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("non-existent must fail");
+    assert!(
+        matches!(&err, &DefinitionGovernanceError::DefinitionNotFound),
+        "expected DefinitionNotFound for non-existent ID"
     );
 }

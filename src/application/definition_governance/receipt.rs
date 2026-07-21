@@ -51,6 +51,9 @@ fn error_from_receipt_body(body: &serde_json::Value) -> DefinitionGovernanceErro
         Some("domain_disabled") => DefinitionGovernanceError::DomainDisabled,
         Some("definition_not_found") => DefinitionGovernanceError::DefinitionNotFound,
         Some("definition_not_editable") => DefinitionGovernanceError::DefinitionNotEditable,
+        Some("definition_version_immutable") => {
+            DefinitionGovernanceError::DefinitionVersionImmutable
+        }
         Some("definition_key_conflict") => DefinitionGovernanceError::DefinitionKeyConflict,
         Some("revision_conflict") => DefinitionGovernanceError::RevisionConflict,
         Some("direct_token_required") => DefinitionGovernanceError::DirectTokenRequired,

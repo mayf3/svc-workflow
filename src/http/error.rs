@@ -343,6 +343,10 @@ impl ApiError {
                 "definition_not_editable",
                 "workflow definition is not editable",
             ),
+            DGError::DefinitionVersionImmutable => (
+                "definition_version_immutable",
+                "definition version is not in DRAFT status",
+            ),
             DGError::DefinitionKeyConflict => (
                 "definition_key_conflict",
                 "definition key already exists in this domain",
