@@ -48,6 +48,7 @@ pub enum DefinitionGovernanceError {
     DefinitionNotFound,
     DefinitionArchived,
     DefinitionNotEditable,
+    DefinitionVersionImmutable,
     DefinitionKeyConflict,
     RevisionConflict,
     DirectTokenRequired,
@@ -65,6 +66,7 @@ impl DefinitionGovernanceError {
             Self::DefinitionNotFound => "definition_not_found",
             Self::DefinitionArchived => "definition_not_editable",
             Self::DefinitionNotEditable => "definition_not_editable",
+            Self::DefinitionVersionImmutable => "definition_version_immutable",
             Self::DefinitionKeyConflict => "definition_key_conflict",
             Self::RevisionConflict => "revision_conflict",
             Self::DirectTokenRequired => "direct_token_required",
@@ -81,6 +83,7 @@ impl DefinitionGovernanceError {
             Self::DefinitionNotFound => 404,
             Self::DefinitionArchived
             | Self::DefinitionNotEditable
+            | Self::DefinitionVersionImmutable
             | Self::DefinitionKeyConflict
             | Self::RevisionConflict
             | Self::IdempotencyConflict => 409,
@@ -94,19 +97,28 @@ impl DefinitionGovernanceError {
 impl From<DefinitionError> for DefinitionGovernanceError {
     fn from(e: DefinitionError) -> Self {
         match e {
-            DefinitionError::PermissionDenied => Self::NotDomainOwner,
+            // Cross-domain existence leak prevention: for all governance
+            // write operations (which target a specific definitionId or
+            // versionId), any permission or existence error is opaque
+            // DefinitionNotFound so callers cannot distinguish
+            // "definition does not exist" from "definition exists but
+            // belongs to another domain".
+            //
+            // List operations (which identify by domainId, not definitionId)
+            // handle NotDomainOwner separately at the handler level.
+            DefinitionError::PermissionDenied
+            | DefinitionError::PrincipalNotFound
+            | DefinitionError::PrincipalDisabled
+            | DefinitionError::DomainNotFound
+            | DefinitionError::FixedPrincipalInvalid(_)
+            | DefinitionError::DefinitionNotFound
+            | DefinitionError::DefinitionVersionNotFound => Self::DefinitionNotFound,
             DefinitionError::DomainDisabled => Self::DomainDisabled,
-            DefinitionError::DefinitionNotFound => Self::DefinitionNotFound,
-            DefinitionError::DefinitionVersionNotFound => Self::DefinitionNotFound,
             DefinitionError::DefinitionArchived => Self::DefinitionArchived,
-            DefinitionError::VersionNotDraft => Self::DefinitionNotEditable,
+            DefinitionError::VersionNotDraft => Self::DefinitionVersionImmutable,
             DefinitionError::DefinitionKeyConflict => Self::DefinitionKeyConflict,
             DefinitionError::ConcurrentModification(_) => Self::RevisionConflict,
             DefinitionError::InvalidLifecycleTransition => Self::DefinitionNotEditable,
-            DefinitionError::PrincipalNotFound
-            | DefinitionError::PrincipalDisabled
-            | DefinitionError::DomainNotFound
-            | DefinitionError::FixedPrincipalInvalid(_) => Self::NotDomainOwner,
             DefinitionError::GraphValidationFailed(_)
             | DefinitionError::SchemaValidationFailed(_)
             | DefinitionError::DigestFailure(_) => {

@@ -25,7 +25,7 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0010";
+pub const SCHEMA_VERSION: &str = "0011";
 pub const EXPECTED_MIGRATION_VERSION: i64 = 11;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
