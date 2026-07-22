@@ -1,5 +1,12 @@
 # Changelog
 
+## V1.3.0 (2026-07-22) — Canary Seed & Schema Repair
+
+- Added migration 0012: restores `workflow_instances_workflow_state_version_check` constraint (CHECK workflow_state_version >= 1), with data integrity gate
+- Fixed canary seed (`seed_canary_test_data.sql`): now creates `WORKFLOW_INSTANCE_CREATED` event for each seed instance, matching runtime event semantics
+- Canary seed made idempotent: re-execution does not produce duplicate rows
+- Updated `SCHEMA_VERSION` to "0012" and `EXPECTED_MIGRATION_VERSION` to 12
+
 ## V1.2.0 (2026-07-21) — Domain Owner Workflow Definition Governance
 
 - Added `GET /internal/v1/domains/{domainId}/definitions` for listing definitions (paginated)

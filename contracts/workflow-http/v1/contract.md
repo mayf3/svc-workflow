@@ -2,7 +2,7 @@
 
 **Status:** Current-state freeze
 **Date:** 2026-07-21
-**Migration Version:** 11
+**Migration Version:** 12
 **Scope:** Runtime workflow endpoints only (control-plane `/internal/v1/admin/**` excluded)
 
 ---
@@ -29,7 +29,7 @@ The service binds to `WORKFLOW_BIND_ADDR:WORKFLOW_PORT` (default `127.0.0.1:8989
 | GET    | `/readyz`  | none          | no   | Returns `{"status":"ready"}` or 503 with `migration_version_mismatch` |
 | GET    | `/version`  | none          | no   | Service version metadata |
 
-**Ready check** verifies the database migration version equals `EXPECTED_MIGRATION_VERSION` (currently `10`). A mismatch returns HTTP 503 with error code `migration_version_mismatch`.
+**Ready check** verifies the database migration version equals `EXPECTED_MIGRATION_VERSION` (currently `12`). A mismatch returns HTTP 503 with error code `migration_version_mismatch`.
 
 ### 2.2 Workflow Instances
 
@@ -282,7 +282,7 @@ Version endpoint:
   "service": "svc-workflow",
   "version": "0.3.1",
   "gitSha": "<git-commit>",
-  "schemaVersion": "0010",
+	  "schemaVersion": "0012",
   "apiContractVersion": "internal-v0"
 }
 ```
