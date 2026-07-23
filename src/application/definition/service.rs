@@ -214,6 +214,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     pub(crate) fn parse_assignee_ref(
         ref_type: &str,
         fixed_principal_id: Option<Uuid>,
+        assignee_input_key: Option<String>,
     ) -> Result<AssigneeRef, DefinitionError> {
         let parsed = ref_type.parse::<AssigneeRefType>().map_err(|_| {
             DefinitionError::StorageError(format!("invalid assignee_ref_type: {}", ref_type))
@@ -226,11 +227,44 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                         "FIXED_PRINCIPAL requires a principal_id".to_string(),
                     ));
                 }
+                if assignee_input_key.is_some() {
+                    return Err(DefinitionError::FixedPrincipalInvalid(
+                        "only INSTANCE_INPUT_PRINCIPAL type should have assignee_input_key"
+                            .to_string(),
+                    ));
+                }
+            }
+            AssigneeRefType::InstanceInputPrincipal => {
+                if fixed_principal_id.is_some() {
+                    return Err(DefinitionError::FixedPrincipalInvalid(
+                        "INSTANCE_INPUT_PRINCIPAL must not carry a fixed_principal_id".to_string(),
+                    ));
+                }
+                match &assignee_input_key {
+                    None => {
+                        return Err(DefinitionError::FixedPrincipalInvalid(
+                            "INSTANCE_INPUT_PRINCIPAL requires an assignee_input_key".to_string(),
+                        ));
+                    }
+                    Some(key) if !is_valid_input_key(key) => {
+                        return Err(DefinitionError::FixedPrincipalInvalid(format!(
+                            "INSTANCE_INPUT_PRINCIPAL assignee_input_key '{}' is invalid: must match ^[A-Za-z_][A-Za-z0-9_]*$ (1-128 chars)",
+                            key
+                        )));
+                    }
+                    _ => {}
+                }
             }
             _ => {
                 if fixed_principal_id.is_some() {
                     return Err(DefinitionError::FixedPrincipalInvalid(
                         "only FIXED_PRINCIPAL type should have fixed_principal_id".to_string(),
+                    ));
+                }
+                if assignee_input_key.is_some() {
+                    return Err(DefinitionError::FixedPrincipalInvalid(
+                        "only INSTANCE_INPUT_PRINCIPAL type should have assignee_input_key"
+                            .to_string(),
                     ));
                 }
             }
@@ -239,6 +273,24 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         Ok(AssigneeRef {
             ref_type: parsed,
             fixed_principal_id: fixed_principal_id.map(PrincipalId::from_uuid),
+            assignee_input_key,
         })
     }
+}
+
+/// Validate that an assignee input key is a safe JSON object property name.
+///
+/// Mirrors the database CHECK constraint and the graph validator so a bad key
+/// is rejected at parse time (before any persistence attempt).
+fn is_valid_input_key(key: &str) -> bool {
+    let len = key.len();
+    if !(1..=128).contains(&len) {
+        return false;
+    }
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

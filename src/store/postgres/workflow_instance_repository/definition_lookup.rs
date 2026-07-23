@@ -23,6 +23,7 @@ pub(super) struct DraftNodeInfo {
     pub node_id: uuid::Uuid,
     pub assignee_ref_type: crate::domain::enums::AssigneeRefType,
     pub fixed_principal_id: Option<uuid::Uuid>,
+    pub assignee_input_key: Option<String>,
 }
 
 /// Look up the definition version, lock it, and validate basic constraints.
@@ -92,7 +93,7 @@ pub(super) async fn read_draft_node(
 ) -> Result<DraftNodeInfo, CreateWorkflowInstanceError> {
     let nodes: Vec<DraftNodeRow> = sqlx::query_as(
         "SELECT node_id, node_type::TEXT AS node_type, \
-         assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id \
+         assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, assignee_input_key \
          FROM workflow_node_definitions \
          WHERE definition_version_id = $1 AND node_type = 'DRAFT'",
     )
@@ -125,5 +126,6 @@ pub(super) async fn read_draft_node(
         node_id: node.node_id,
         assignee_ref_type: node.assignee_ref_type_enum(),
         fixed_principal_id: node.fixed_principal_id,
+        assignee_input_key: node.assignee_input_key.clone(),
     })
 }

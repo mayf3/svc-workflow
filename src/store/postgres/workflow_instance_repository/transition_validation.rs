@@ -165,7 +165,7 @@ pub(super) async fn read_target_node(
     let node: Option<TargetNodeRow> = sqlx::query_as(
         "SELECT node_id, node_type::TEXT AS node_type, \
                 assignee_ref_type::TEXT AS assignee_ref_type, \
-                fixed_principal_id, order_index \
+                fixed_principal_id, assignee_input_key, order_index \
          FROM workflow_node_definitions \
          WHERE node_id = $1 AND definition_version_id = $2",
     )
@@ -186,6 +186,7 @@ pub(super) async fn resolve_assignee(
     target_node: &TargetNodeRow,
     instance: &InstanceLockRow,
     domain_uuid: Uuid,
+    context_payload: Option<&serde_json::Value>,
 ) -> Result<Option<Uuid>, ExecuteWorkflowTransitionError> {
     if target_node.node_type_enum() == NodeType::TERMINAL {
         // Published legacy Terminal definitions can still carry an obsolete
@@ -211,24 +212,9 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            let owner_enabled: Option<(bool,)> =
-                sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
-                    .bind(owner_id)
-                    .fetch_optional(&mut **tx)
-                    .await
-                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-
-            match owner_enabled {
-                None => Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                    "DOMAIN_OWNER principal not found".to_string(),
-                )),
-                Some((enabled,)) if !enabled => {
-                    Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                        "DOMAIN_OWNER principal is disabled".to_string(),
-                    ))
-                }
-                _ => Ok(Some(owner_id)),
-            }
+            verify_principal_enabled_for_transition(tx, owner_id)
+                .await
+                .map(Some)
         }
         Some(AssigneeRefType::FixedPrincipal) => {
             let fixed_id = target_node.fixed_principal_id.ok_or_else(|| {
@@ -237,28 +223,74 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            let fixed_enabled: Option<(bool,)> =
-                sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
-                    .bind(fixed_id)
-                    .fetch_optional(&mut **tx)
-                    .await
-                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-
-            match fixed_enabled {
-                None => Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                    "FIXED_PRINCIPAL not found".to_string(),
-                )),
-                Some((enabled,)) if !enabled => {
-                    Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                        "FIXED_PRINCIPAL is disabled".to_string(),
-                    ))
-                }
-                _ => Ok(Some(fixed_id)),
-            }
+            verify_principal_enabled_for_transition(tx, fixed_id)
+                .await
+                .map(Some)
+        }
+        Some(AssigneeRefType::InstanceInputPrincipal) => {
+            let input_key = target_node.assignee_input_key.as_deref().ok_or_else(|| {
+                ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    "INSTANCE_INPUT_PRINCIPAL node has no assignee_input_key configured"
+                        .to_string(),
+                )
+            })?;
+            let payload = context_payload.ok_or_else(|| {
+                ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    "INSTANCE_INPUT_PRINCIPAL resolution requires the instance context payload"
+                        .to_string(),
+                )
+            })?;
+            let raw = payload.get(input_key).ok_or_else(|| {
+                ExecuteWorkflowTransitionError::AssigneeResolutionFailed(format!(
+                    "instance input is missing required assignee key '{}'",
+                    input_key
+                ))
+            })?;
+            let s = raw.as_str().ok_or_else(|| {
+                ExecuteWorkflowTransitionError::AssigneeResolutionFailed(format!(
+                    "instance input '{}' must be a string UUID (stable principal identifier); \
+                     display name / email / legacy id resolution is forbidden",
+                    input_key
+                ))
+            })?;
+            let candidate = Uuid::parse_str(s).map_err(|_| {
+                ExecuteWorkflowTransitionError::AssigneeResolutionFailed(format!(
+                    "instance input '{}' is not a valid UUID: '{}'",
+                    input_key, s
+                ))
+            })?;
+            verify_principal_enabled_for_transition(tx, candidate)
+                .await
+                .map(Some)
         }
         None => Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
             "non-terminal node has no valid assignee reference".to_string(),
         )),
+    }
+}
+
+/// Verify a principal exists and is enabled, returning its UUID. Fail-closed.
+async fn verify_principal_enabled_for_transition(
+    tx: &mut Transaction<'_, Postgres>,
+    candidate: Uuid,
+) -> Result<Uuid, ExecuteWorkflowTransitionError> {
+    let row: Option<(bool,)> =
+        sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
+            .bind(candidate)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    match row {
+        None => Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+            "resolved principal not found".to_string(),
+        )),
+        Some((enabled,)) if !enabled => {
+            Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                "resolved principal is disabled".to_string(),
+            ))
+        }
+        _ => Ok(candidate),
     }
 }
 

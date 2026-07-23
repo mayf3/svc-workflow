@@ -102,6 +102,7 @@ pub(super) async fn resolve_assignee(
     draft_node: &DraftNodeInfo,
     principal_uuid: Uuid,
     domain_uuid: Uuid,
+    context_payload: &serde_json::Value,
 ) -> Result<Uuid, CreateWorkflowInstanceError> {
     match draft_node.assignee_ref_type {
         AssigneeRefType::WorkflowCreator => Ok(principal_uuid),
@@ -148,25 +149,75 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            let fixed_enabled: Option<(bool,)> =
-                sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
-                    .bind(fixed_id)
-                    .fetch_optional(&mut **tx)
-                    .await
-                    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
-
-            match fixed_enabled {
-                None => Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
-                    "FIXED_PRINCIPAL not found".to_string(),
-                )),
-                Some((enabled,)) if !enabled => {
-                    Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
-                        "FIXED_PRINCIPAL is disabled".to_string(),
-                    ))
-                }
-                _ => Ok(fixed_id),
-            }
+            verify_principal_enabled(tx, fixed_id).await
         }
+        AssigneeRefType::InstanceInputPrincipal => {
+            let input_key = draft_node.assignee_input_key.as_deref().ok_or_else(|| {
+                CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                    "INSTANCE_INPUT_PRINCIPAL node has no assignee_input_key configured"
+                        .to_string(),
+                )
+            })?;
+            let candidate = extract_principal_uuid_from_input(context_payload, input_key)?;
+            verify_principal_enabled(tx, candidate).await
+        }
+    }
+}
+
+/// Extract a stable Principal UUID from an instance input payload by key.
+///
+/// Only accepts a string-form UUID. Anything else (missing key, wrong type,
+/// non-UUID, display name, email, legacy agentId) fails closed with a
+/// deterministic `AssigneeResolutionFailed` error.
+pub(crate) fn extract_principal_uuid_from_input(
+    payload: &serde_json::Value,
+    key: &str,
+) -> Result<Uuid, CreateWorkflowInstanceError> {
+    let raw = payload
+        .get(key)
+        .ok_or_else(|| {
+            CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
+                "instance input is missing required assignee key '{}'",
+                key
+            ))
+        })?;
+    let s = raw.as_str().ok_or_else(|| {
+        CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
+            "instance input '{}' must be a string UUID (stable principal identifier); \
+             display name / email / legacy id resolution is forbidden",
+            key
+        ))
+    })?;
+    Uuid::parse_str(s).map_err(|_| {
+        CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
+            "instance input '{}' is not a valid UUID: '{}'",
+            key, s
+        ))
+    })
+}
+
+/// Verify a principal exists and is enabled, returning its UUID. Fail-closed.
+async fn verify_principal_enabled(
+    tx: &mut Transaction<'_, Postgres>,
+    candidate: Uuid,
+) -> Result<Uuid, CreateWorkflowInstanceError> {
+    let row: Option<(bool,)> =
+        sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
+            .bind(candidate)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    match row {
+        None => Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+            "resolved principal not found".to_string(),
+        )),
+        Some((enabled,)) if !enabled => {
+            Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                "resolved principal is disabled".to_string(),
+            ))
+        }
+        _ => Ok(candidate),
     }
 }
 

@@ -86,6 +86,9 @@ pub struct NodeDefinition {
 pub struct AssigneeRef {
     pub ref_type: AssigneeRefType,
     pub fixed_principal_id: Option<PrincipalId>,
+    /// Key into the instance's context_payload that carries the assignee's
+    /// stable Principal UUID. Required iff `ref_type == InstanceInputPrincipal`.
+    pub assignee_input_key: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

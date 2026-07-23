@@ -60,8 +60,8 @@ impl PgDefinitionRepository {
         for node in nodes {
             sqlx::query(
                 r#"
-                INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, instructions, primary_advance_transition_id, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6::node_type, $7::assignee_ref_type, $8, $9, $10, $11)
+                INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key, instructions, primary_advance_transition_id, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::node_type, $7::assignee_ref_type, $8, $9, $10, $11, $12)
                 "#,
             )
             .bind(node.node_id.into_uuid())
@@ -80,6 +80,11 @@ impl PgDefinitionRepository {
                     .as_ref()
                     .and_then(|reference| reference.fixed_principal_id)
                     .map(|id| id.into_uuid()),
+            )
+            .bind(
+                node.assignee_ref
+                    .as_ref()
+                    .and_then(|reference| reference.assignee_input_key.clone()),
             )
             .bind(&node.instructions)
             .bind(node.primary_advance_transition_id.map(|id| id.into_uuid()))

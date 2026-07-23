@@ -81,6 +81,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                 (Some(ref_type), _) => Some(Self::parse_assignee_ref(
                     ref_type,
                     raw_node.fixed_principal_id,
+                    raw_node.assignee_input_key.clone(),
                 )?),
                 (None, _) => {
                     return Err(DefinitionError::GraphValidationFailed(vec![

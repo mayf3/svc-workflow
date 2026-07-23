@@ -70,6 +70,7 @@ mod tests {
             assignee_ref: Some(crate::domain::definition::model::AssigneeRef {
                 ref_type: crate::domain::enums::AssigneeRefType::WorkflowCreator,
                 fixed_principal_id: None,
+                assignee_input_key: None,
             }),
             instructions: None,
             primary_advance_transition_id: None,

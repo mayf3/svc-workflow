@@ -317,11 +317,14 @@ async fn grandfathered_terminal_assignee_is_history_but_never_current_work() {
         "ALTER TABLE workflow_node_definitions
          ADD CONSTRAINT chk_node_assignee_shape CHECK (
            (node_type = 'TERMINAL' AND assignee_ref_type IS NULL
-             AND fixed_principal_id IS NULL)
+             AND fixed_principal_id IS NULL AND assignee_input_key IS NULL)
            OR (node_type <> 'TERMINAL' AND assignee_ref_type IS NOT NULL AND (
-             (assignee_ref_type = 'FIXED_PRINCIPAL' AND fixed_principal_id IS NOT NULL)
+             (assignee_ref_type = 'FIXED_PRINCIPAL' AND fixed_principal_id IS NOT NULL
+                 AND assignee_input_key IS NULL)
              OR (assignee_ref_type IN ('WORKFLOW_CREATOR', 'DOMAIN_OWNER')
-                 AND fixed_principal_id IS NULL)))) NOT VALID",
+                 AND fixed_principal_id IS NULL AND assignee_input_key IS NULL)
+             OR (assignee_ref_type = 'INSTANCE_INPUT_PRINCIPAL'
+                 AND fixed_principal_id IS NULL AND assignee_input_key IS NOT NULL)))) NOT VALID",
     )
     .execute(&mut *tx)
     .await

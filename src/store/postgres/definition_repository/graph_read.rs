@@ -15,7 +15,7 @@ impl PgDefinitionRepository {
         version_id: uuid::Uuid,
     ) -> Result<(Vec<NodeDefinition>, Vec<TransitionDefinition>), DefinitionError> {
         let nodes: Vec<NodeDefinition> = sqlx::query_as::<_, NodeDefinitionRow>(
-            "SELECT node_id, definition_version_id, node_key, display_name, order_index, node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, instructions, primary_advance_transition_id, metadata, created_at FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
+            "SELECT node_id, definition_version_id, node_key, display_name, order_index, node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, assignee_input_key, instructions, primary_advance_transition_id, metadata, created_at FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
         )
         .bind(version_id)
         .fetch_all(&self.pool)
@@ -44,7 +44,7 @@ impl PgDefinitionRepository {
         version_id: uuid::Uuid,
     ) -> Result<Vec<NodeDefinition>, DefinitionError> {
         let nodes: Vec<NodeDefinition> = sqlx::query_as::<_, NodeDefinitionRow>(
-            "SELECT node_id, definition_version_id, node_key, display_name, order_index, node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, instructions, primary_advance_transition_id, metadata, created_at FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
+            "SELECT node_id, definition_version_id, node_key, display_name, order_index, node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, assignee_input_key, instructions, primary_advance_transition_id, metadata, created_at FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
         )
         .bind(version_id)
         .fetch_all(&self.pool)

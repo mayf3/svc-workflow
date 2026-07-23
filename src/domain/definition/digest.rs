@@ -40,6 +40,7 @@ pub struct CanonicalNode {
     pub node_type: String,
     pub assignee_ref_type: Option<String>,
     pub fixed_principal_id: Option<String>,
+    pub assignee_input_key: Option<String>,
     pub instructions: Option<String>,
     pub primary_advance_transition_key: Option<String>,
     pub metadata: Option<serde_json::Value>,
@@ -107,6 +108,10 @@ pub fn compute_digest(
                     .as_ref()
                     .map(|reference| reference.ref_type.to_string()),
                 fixed_principal_id: fixed_id,
+                assignee_input_key: n
+                    .assignee_ref
+                    .as_ref()
+                    .and_then(|reference| reference.assignee_input_key.clone()),
                 instructions: n.instructions.clone(),
                 primary_advance_transition_key: primary_key,
                 metadata: n.metadata.clone(),

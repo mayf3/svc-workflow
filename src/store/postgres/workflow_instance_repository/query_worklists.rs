@@ -57,11 +57,14 @@ pub async fn list_assigned_to_me(
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
          WHERE v.assignee_principal_id = $1 AND n.node_type <> 'TERMINAL'
-           AND EXISTS (
-             SELECT 1 FROM domain_role_bindings drb
-             WHERE drb.domain_id = wi.domain_id
-               AND drb.principal_id = $1
-               AND drb.enabled = TRUE
+           AND (
+             EXISTS (
+               SELECT 1 FROM domain_role_bindings drb
+               WHERE drb.domain_id = wi.domain_id
+                 AND drb.principal_id = $1
+                 AND drb.enabled = TRUE
+             )
+             OR v.assignee_principal_id = $1
            )
            AND ($2::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($2, $3))
          ORDER BY wi.created_at DESC, wi.workflow_instance_id DESC LIMIT $4",

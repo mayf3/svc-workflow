@@ -63,6 +63,15 @@ pub(super) fn validate_assignee_rules(
                         ),
                     ));
                 }
+                if assignee_ref.assignee_input_key.is_some() {
+                    errors.push(GraphValidationError::new(
+                        "UNEXPECTED_ASSIGNEE_INPUT_KEY",
+                        format!(
+                            "DRAFT node '{}' has assignee_input_key but DRAFT must be WORKFLOW_CREATOR",
+                            node.node_key
+                        ),
+                    ));
+                }
             }
             NodeType::NORMAL => {
                 let Some(assignee_ref) = &node.assignee_ref else {
@@ -83,6 +92,15 @@ pub(super) fn validate_assignee_rules(
                             ),
                             ));
                         }
+                        if assignee_ref.assignee_input_key.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_ASSIGNEE_INPUT_KEY",
+                                format!(
+                                    "NORMAL node '{}' is WORKFLOW_CREATOR but has assignee_input_key",
+                                    node.node_key
+                                ),
+                            ));
+                        }
                     }
                     AssigneeRefType::DomainOwner => {
                         if assignee_ref.fixed_principal_id.is_some() {
@@ -90,6 +108,15 @@ pub(super) fn validate_assignee_rules(
                                 "UNEXPECTED_FIXED_PRINCIPAL",
                                 format!(
                                     "NORMAL node '{}' is DOMAIN_OWNER but has fixed_principal_id",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                        if assignee_ref.assignee_input_key.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_ASSIGNEE_INPUT_KEY",
+                                format!(
+                                    "NORMAL node '{}' is DOMAIN_OWNER but has assignee_input_key",
                                     node.node_key
                                 ),
                             ));
@@ -105,9 +132,68 @@ pub(super) fn validate_assignee_rules(
                             ),
                             ));
                         }
+                        if assignee_ref.assignee_input_key.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_ASSIGNEE_INPUT_KEY",
+                                format!(
+                                    "NORMAL node '{}' is FIXED_PRINCIPAL but has assignee_input_key",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                    }
+                    AssigneeRefType::InstanceInputPrincipal => {
+                        if assignee_ref.fixed_principal_id.is_some() {
+                            errors.push(GraphValidationError::new(
+                                "UNEXPECTED_FIXED_PRINCIPAL",
+                                format!(
+                                    "NORMAL node '{}' is INSTANCE_INPUT_PRINCIPAL but has fixed_principal_id",
+                                    node.node_key
+                                ),
+                            ));
+                        }
+                        match &assignee_ref.assignee_input_key {
+                            None => {
+                                errors.push(GraphValidationError::new(
+                                    "INSTANCE_INPUT_PRINCIPAL_MISSING_KEY",
+                                    format!(
+                                        "NORMAL node '{}' is INSTANCE_INPUT_PRINCIPAL but no assignee_input_key provided",
+                                        node.node_key
+                                    ),
+                                ));
+                            }
+                            Some(key) if !is_valid_input_key(key) => {
+                                errors.push(GraphValidationError::new(
+                                    "INSTANCE_INPUT_PRINCIPAL_INVALID_KEY",
+                                    format!(
+                                        "NORMAL node '{}' has invalid assignee_input_key '{}': must match ^[A-Za-z_][A-Za-z0-9_]*$ (1-128 chars)",
+                                        node.node_key, key
+                                    ),
+                                ));
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/// Validate that an assignee input key is a safe JSON object property name.
+///
+/// Mirrors the database CHECK constraint: ASCII identifier starting with a
+/// letter or underscore, 1-128 chars. This rejects path traversal-style keys
+/// and keeps the key a flat, single-level lookup into the context payload.
+fn is_valid_input_key(key: &str) -> bool {
+    let len = key.len();
+    if !(1..=128).contains(&len) {
+        return false;
+    }
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

@@ -33,6 +33,7 @@ mod tests {
                 assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::WorkflowCreator,
                     fixed_principal_id: None,
+                    assignee_input_key: None,
                 }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_trans_id),
@@ -49,6 +50,7 @@ mod tests {
                 assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::FixedPrincipal,
                     fixed_principal_id: Some(PrincipalId::new()),
+                    assignee_input_key: None,
                 }),
                 instructions: Some("Run tests".to_string()),
                 primary_advance_transition_id: Some(complete_trans_id),
