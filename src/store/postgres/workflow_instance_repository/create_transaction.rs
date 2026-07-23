@@ -235,8 +235,14 @@ pub(crate) async fn create_workflow_instance_atomically(
     }
     let draft_node = validation_result!(read_draft_node(&mut tx, definition_version_uuid).await);
     let resolved_assignee_id = validation_result!(
-        validation_helpers::resolve_assignee(&mut tx, &draft_node, principal_uuid, domain_uuid,)
-            .await
+        validation_helpers::resolve_assignee(
+            &mut tx,
+            &draft_node,
+            principal_uuid,
+            domain_uuid,
+            &cmd.context_payload,
+        )
+        .await
     );
     validation_result!(validation_helpers::validate_context_schema(
         &version_info.context_schema,

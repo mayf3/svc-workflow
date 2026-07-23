@@ -359,8 +359,28 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 13: Resolve target assignee
     // ---------------------------------------------------------------
-    let target_assignee_id =
-        validation_result!(resolve_assignee(&mut tx, &target_node, &instance, domain_uuid).await);
+    // INSTANCE_INPUT_PRINCIPAL nodes resolve their assignee from the instance's
+    // current context payload, so read it before resolution.
+    let current_context_payload: Option<serde_json::Value> = sqlx::query_scalar(
+        "SELECT payload FROM workflow_context_revisions \
+         WHERE context_revision_id = $1 AND workflow_instance_id = $2",
+    )
+    .bind(instance.current_context_revision_id)
+    .bind(instance_uuid)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    let target_assignee_id = validation_result!(
+        resolve_assignee(
+            &mut tx,
+            &target_node,
+            &instance,
+            domain_uuid,
+            current_context_payload.as_ref(),
+        )
+        .await
+    );
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number

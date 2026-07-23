@@ -46,6 +46,10 @@ pub struct RawNodeDefinition {
     /// Must be `None` for TERMINAL and `Some` for every non-terminal node.
     pub assignee_ref_type: Option<String>,
     pub fixed_principal_id: Option<Uuid>,
+    /// Required iff `assignee_ref_type == INSTANCE_INPUT_PRINCIPAL`.
+    /// Names the context_payload key carrying the target Principal UUID.
+    #[serde(default)]
+    pub assignee_input_key: Option<String>,
     pub instructions: Option<String>,
     pub primary_advance_transition_key: Option<String>,
     pub metadata: Option<serde_json::Value>,

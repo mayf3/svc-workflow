@@ -262,7 +262,8 @@ pub(crate) async fn revise_context_and_transition_atomically(
         &mut tx,
         &target_node,
         &instance,
-        domain_id
+        domain_id,
+        Some(&command.context_payload),
     )
     .await
     .map_err(ReviseContextAndTransitionError::from));

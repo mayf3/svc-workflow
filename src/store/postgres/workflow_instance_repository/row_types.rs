@@ -39,6 +39,7 @@ pub(super) struct DraftNodeRow {
     pub(super) node_type: String,
     pub(super) assignee_ref_type: String,
     pub(super) fixed_principal_id: Option<uuid::Uuid>,
+    pub(super) assignee_input_key: Option<String>,
 }
 
 /// Row type for locking and reading a workflow instance.

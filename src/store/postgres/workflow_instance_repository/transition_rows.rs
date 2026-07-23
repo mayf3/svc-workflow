@@ -23,6 +23,7 @@ pub(super) struct TargetNodeRow {
     pub(super) node_type: String,
     pub(super) assignee_ref_type: Option<String>,
     pub(super) fixed_principal_id: Option<uuid::Uuid>,
+    pub(super) assignee_input_key: Option<String>,
     pub(super) order_index: i32,
 }
 

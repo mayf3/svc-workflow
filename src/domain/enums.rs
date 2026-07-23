@@ -144,6 +144,7 @@ make_enum!(
     (WorkflowCreator, "WORKFLOW_CREATOR"),
     (DomainOwner, "DOMAIN_OWNER"),
     (FixedPrincipal, "FIXED_PRINCIPAL"),
+    (InstanceInputPrincipal, "INSTANCE_INPUT_PRINCIPAL"),
 );
 
 make_enum!(

@@ -109,6 +109,7 @@ pub(super) struct NodeDefinitionRow {
     node_type: String,
     assignee_ref_type: Option<String>,
     fixed_principal_id: Option<Uuid>,
+    assignee_input_key: Option<String>,
     instructions: Option<String>,
     primary_advance_transition_id: Option<Uuid>,
     metadata: Option<serde_json::Value>,
@@ -126,6 +127,7 @@ impl NodeDefinitionRow {
                 .parse::<AssigneeRefType>()
                 .unwrap_or(AssigneeRefType::WorkflowCreator),
             fixed_principal_id: self.fixed_principal_id.map(PrincipalId::from_uuid),
+            assignee_input_key: self.assignee_input_key,
         });
 
         NodeDefinition {

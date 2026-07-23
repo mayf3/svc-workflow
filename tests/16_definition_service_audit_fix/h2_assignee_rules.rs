@@ -281,3 +281,233 @@ async fn test_terminal_without_assignee_allowed() {
         result.err()
     );
 }
+
+// ---------------------------------------------------------------------------
+// INSTANCE_INPUT_PRINCIPAL assignee shape (v1).
+// ---------------------------------------------------------------------------
+
+/// Build a valid raw graph whose NORMAL node uses INSTANCE_INPUT_PRINCIPAL
+/// resolving from the `assigneePrincipalId` instance input key.
+fn valid_raw_graph_instance_input_principal() -> (
+    Vec<svc_workflow::application::definition::commands::RawNodeDefinition>,
+    Vec<svc_workflow::application::definition::commands::RawTransitionDefinition>,
+) {
+    use svc_workflow::application::definition::commands::{
+        RawNodeDefinition, RawTransitionDefinition,
+    };
+    let nodes = vec![
+        RawNodeDefinition {
+            node_key: "draft".to_string(),
+            display_name: "Draft".to_string(),
+            order_index: 0,
+            node_type: "DRAFT".to_string(),
+            assignee_ref_type: Some("WORKFLOW_CREATOR".to_string()),
+            fixed_principal_id: None,
+            assignee_input_key: None,
+            instructions: None,
+            primary_advance_transition_key: Some("advance-do".to_string()),
+            metadata: None,
+        },
+        RawNodeDefinition {
+            node_key: "do".to_string(),
+            display_name: "Do".to_string(),
+            order_index: 1,
+            node_type: "NORMAL".to_string(),
+            assignee_ref_type: Some("INSTANCE_INPUT_PRINCIPAL".to_string()),
+            fixed_principal_id: None,
+            assignee_input_key: Some("assigneePrincipalId".to_string()),
+            instructions: None,
+            primary_advance_transition_key: Some("advance-done".to_string()),
+            metadata: None,
+        },
+        RawNodeDefinition {
+            node_key: "done".to_string(),
+            display_name: "Done".to_string(),
+            order_index: 2,
+            node_type: "TERMINAL".to_string(),
+            assignee_ref_type: None,
+            fixed_principal_id: None,
+            assignee_input_key: None,
+            instructions: None,
+            primary_advance_transition_key: None,
+            metadata: None,
+        },
+    ];
+    let transitions = vec![
+        RawTransitionDefinition {
+            transition_key: "advance-do".to_string(),
+            display_name: "To Do".to_string(),
+            source_node_key: "draft".to_string(),
+            target_node_key: "do".to_string(),
+            transition_effect: "ADVANCE".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
+        RawTransitionDefinition {
+            transition_key: "advance-done".to_string(),
+            display_name: "Complete".to_string(),
+            source_node_key: "do".to_string(),
+            target_node_key: "done".to_string(),
+            transition_effect: "ADVANCE".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
+    ];
+    (nodes, transitions)
+}
+
+#[tokio::test]
+async fn instance_input_principal_node_publishes() {
+    let (pool, service) = create_service().await;
+    let (owner, domain_id) = seed_principal_and_domain(&pool).await;
+    seed_domain_owner(&pool, domain_id, owner).await;
+
+    let def_id = uuid::Uuid::new_v4();
+    let def_key = format!("iip-def-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    sqlx::query(
+        "INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Def')",
+    )
+    .bind(def_id)
+    .bind(domain_id)
+    .bind(&def_key)
+    .execute(&pool)
+    .await
+    .expect("insert def");
+
+    let version = service
+        .create_draft_version(CreateDraftVersion {
+            actor_principal_id: owner,
+            workflow_definition_id: def_id,
+            context_schema: Some(serde_json::json!({"type":"object"})),
+            json_schema_dialect: None,
+            validator_version: None,
+            metadata: None,
+        })
+        .await
+        .expect("create draft");
+    let version_id = version.id.into_uuid();
+
+    let (nodes, transitions) = valid_raw_graph_instance_input_principal();
+    service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner,
+            definition_version_id: version_id,
+            context_schema: None,
+            nodes,
+            transitions,
+        })
+        .await
+        .expect("replace graph");
+
+    let result = service
+        .publish_version(PublishVersion {
+            actor_principal_id: owner,
+            definition_version_id: version_id,
+            expected_revision: None,
+        })
+        .await;
+    assert!(
+        result.is_ok(),
+        "INSTANCE_INPUT_PRINCIPAL node with a valid key should publish, got: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn instance_input_principal_missing_key_rejected() {
+    let (pool, service) = create_service().await;
+    let (owner, domain_id) = seed_principal_and_domain(&pool).await;
+    seed_domain_owner(&pool, domain_id, owner).await;
+
+    let def_id = uuid::Uuid::new_v4();
+    let def_key = format!("iip-mk-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    sqlx::query(
+        "INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Def')",
+    )
+    .bind(def_id)
+    .bind(domain_id)
+    .bind(&def_key)
+    .execute(&pool)
+    .await
+    .expect("insert def");
+    let version = service
+        .create_draft_version(CreateDraftVersion {
+            actor_principal_id: owner,
+            workflow_definition_id: def_id,
+            context_schema: Some(serde_json::json!({"type":"object"})),
+            json_schema_dialect: None,
+            validator_version: None,
+            metadata: None,
+        })
+        .await
+        .expect("create draft");
+    let version_id = version.id.into_uuid();
+
+    let (mut nodes, transitions) = valid_raw_graph_instance_input_principal();
+    // Remove the required key.
+    nodes[1].assignee_input_key = None;
+
+    let result = service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner,
+            definition_version_id: version_id,
+            context_schema: None,
+            nodes,
+            transitions,
+        })
+        .await;
+    assert!(
+        result.is_err(),
+        "INSTANCE_INPUT_PRINCIPAL without an input key must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn instance_input_principal_with_fixed_id_rejected() {
+    let (pool, service) = create_service().await;
+    let (owner, domain_id) = seed_principal_and_domain(&pool).await;
+    seed_domain_owner(&pool, domain_id, owner).await;
+    let assignee = seed_assignee_principal(&pool).await;
+
+    let def_id = uuid::Uuid::new_v4();
+    let def_key = format!("iip-fp-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    sqlx::query(
+        "INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Def')",
+    )
+    .bind(def_id)
+    .bind(domain_id)
+    .bind(&def_key)
+    .execute(&pool)
+    .await
+    .expect("insert def");
+    let version = service
+        .create_draft_version(CreateDraftVersion {
+            actor_principal_id: owner,
+            workflow_definition_id: def_id,
+            context_schema: Some(serde_json::json!({"type":"object"})),
+            json_schema_dialect: None,
+            validator_version: None,
+            metadata: None,
+        })
+        .await
+        .expect("create draft");
+    let version_id = version.id.into_uuid();
+
+    let (mut nodes, transitions) = valid_raw_graph_instance_input_principal();
+    // INSTANCE_INPUT_PRINCIPAL must not also carry a fixed principal id.
+    nodes[1].fixed_principal_id = Some(assignee);
+
+    let result = service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner,
+            definition_version_id: version_id,
+            context_schema: None,
+            nodes,
+            transitions,
+        })
+        .await;
+    assert!(
+        result.is_err(),
+        "INSTANCE_INPUT_PRINCIPAL with a fixed_principal_id must be rejected"
+    );
+}

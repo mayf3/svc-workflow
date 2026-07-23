@@ -120,8 +120,125 @@ async fn seed_published_def_inner(
     (domain_id, ver_id)
 }
 
-/// Seed a published definition with a NORMAL (non-DRAFT) node.
-/// Returns (domain_id, definition_version_id, node_id).
+/// Seed a published definition whose NORMAL node resolves its assignee from a
+/// stable Principal UUID supplied in the instance context_payload under
+/// `assigneePrincipalId`. The DRAFT node stays WORKFLOW_CREATOR per graph rules.
+/// Returns (domain_id, version_id, normal_node_id, draft_advance_id).
+pub(crate) async fn seed_published_definition_instance_input_principal(
+    pool: &PgPool,
+    domain_id: Uuid,
+) -> (Uuid, Uuid, Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("iip-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', $3)")
+        .bind(ver_id).bind(def_id).bind(serde_json::json!({"type":"object"}))
+        .execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let normal_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR', NULL, NULL)")
+        .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'do', 'Do', 1, 'NORMAL', 'INSTANCE_INPUT_PRINCIPAL', NULL, 'assigneePrincipalId')")
+        .bind(normal_id).bind(ver_id).execute(pool).await.expect("insert normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    let draft_advance = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-do', 'To Do', $3, $4, 'ADVANCE')")
+        .bind(draft_advance).bind(ver_id).bind(draft_id).bind(normal_id)
+        .execute(pool).await.expect("insert draft advance");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(draft_advance).bind(draft_id).execute(pool).await.expect("set primary on draft");
+
+    let normal_advance = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-done', 'To Done', $3, $4, 'ADVANCE')")
+        .bind(normal_advance).bind(ver_id).bind(normal_id).bind(term_id)
+        .execute(pool).await.expect("insert normal advance");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(normal_advance).bind(normal_id).execute(pool).await.expect("set primary on normal");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id, normal_id, draft_advance)
+}
+
+/// Seed a published definition whose NORMAL node uses INSTANCE_INPUT_PRINCIPAL
+/// with a caller-chosen input key. The DRAFT node stays WORKFLOW_CREATOR.
+/// Returns (domain_id, version_id, normal_node_id, draft_advance_id).
+pub(crate) async fn seed_published_definition_instance_input_principal_key(
+    pool: &PgPool,
+    domain_id: Uuid,
+    input_key: &str,
+) -> (Uuid, Uuid, Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("iipk-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Key Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status) VALUES ($1, $2, 1, 'DRAFT')")
+        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let normal_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR', NULL, NULL)")
+        .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'do', 'Do', 1, 'NORMAL', 'INSTANCE_INPUT_PRINCIPAL', NULL, $3)")
+        .bind(normal_id).bind(ver_id).bind(input_key)
+        .execute(pool).await.expect("insert normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    let draft_advance = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-do', 'To Do', $3, $4, 'ADVANCE')")
+        .bind(draft_advance).bind(ver_id).bind(draft_id).bind(normal_id)
+        .execute(pool).await.expect("insert draft advance");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(draft_advance).bind(draft_id).execute(pool).await.expect("set primary on draft");
+
+    let normal_advance = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-done', 'To Done', $3, $4, 'ADVANCE')")
+        .bind(normal_advance).bind(ver_id).bind(normal_id).bind(term_id)
+        .execute(pool).await.expect("insert normal advance");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(normal_advance).bind(normal_id).execute(pool).await.expect("set primary on normal");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id, normal_id, draft_advance)
+}
+
+/// Build a CreateWorkflowInstanceCommand with a caller-chosen context payload.
+pub(crate) fn make_command_with_payload(
+    principal_id: Uuid,
+    domain_id: Uuid,
+    definition_version_id: Uuid,
+    context_payload: serde_json::Value,
+) -> CreateWorkflowInstanceCommand {
+    CreateWorkflowInstanceCommand {
+        principal_id: PrincipalId::from_uuid(principal_id),
+        idempotency_key: Uuid::new_v4().to_string(),
+        command_schema_version: "v1".to_string(),
+        domain_id: DomainId::from_uuid(domain_id),
+        definition_version_id: DefinitionVersionId::from_uuid(definition_version_id),
+        external_reference: None,
+        external_url: None,
+        metadata: serde_json::json!({"source": "test"}),
+        context_payload,
+    }
+}
 pub(crate) async fn seed_published_definition_normal_node(
     pool: &PgPool,
     domain_id: Uuid,
@@ -372,6 +489,8 @@ mod idempotency;
 mod normal_create;
 #[path = "17_workflow_runtime/instance_create/request_hash_contract.rs"]
 mod request_hash_contract;
+#[path = "17_workflow_runtime/instance_create/instance_input_principal.rs"]
+mod instance_input_principal;
 
 // Sub-modules — Context Revision
 #[path = "17_workflow_runtime/context_revision/atomicity.rs"]

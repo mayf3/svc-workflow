@@ -41,6 +41,7 @@ pub(crate) fn valid_raw_graph() -> (Vec<RawNodeDefinition>, Vec<RawTransitionDef
             node_type: "DRAFT".to_string(),
             assignee_ref_type: Some("WORKFLOW_CREATOR".to_string()),
             fixed_principal_id: None,
+            assignee_input_key: None,
             instructions: None,
             primary_advance_transition_key: Some("advance-dev".to_string()),
             metadata: None,
@@ -52,6 +53,7 @@ pub(crate) fn valid_raw_graph() -> (Vec<RawNodeDefinition>, Vec<RawTransitionDef
             node_type: "NORMAL".to_string(),
             assignee_ref_type: Some("FIXED_PRINCIPAL".to_string()),
             fixed_principal_id: None, // will be set at test time
+            assignee_input_key: None,
             instructions: None,
             primary_advance_transition_key: Some("advance-done".to_string()),
             metadata: None,
@@ -63,6 +65,7 @@ pub(crate) fn valid_raw_graph() -> (Vec<RawNodeDefinition>, Vec<RawTransitionDef
             node_type: "TERMINAL".to_string(),
             assignee_ref_type: None,
             fixed_principal_id: None,
+            assignee_input_key: None,
             instructions: None,
             primary_advance_transition_key: None,
             metadata: None,

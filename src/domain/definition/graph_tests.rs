@@ -26,6 +26,7 @@ fn valid_graph() -> WorkflowGraph {
                 assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::WorkflowCreator,
                     fixed_principal_id: None,
+                    assignee_input_key: None,
                 }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_to_normal),
@@ -42,6 +43,7 @@ fn valid_graph() -> WorkflowGraph {
                 assignee_ref: Some(AssigneeRef {
                     ref_type: AssigneeRefType::FixedPrincipal,
                     fixed_principal_id: Some(PrincipalId::new()),
+                    assignee_input_key: None,
                 }),
                 instructions: None,
                 primary_advance_transition_id: Some(advance_to_terminal),
@@ -126,6 +128,7 @@ fn multiple_draft_nodes() {
         assignee_ref: Some(AssigneeRef {
             ref_type: AssigneeRefType::WorkflowCreator,
             fixed_principal_id: None,
+            assignee_input_key: None,
         }),
         instructions: None,
         primary_advance_transition_id: None,
@@ -197,6 +200,7 @@ fn node_not_reachable_from_draft() {
         assignee_ref: Some(AssigneeRef {
             ref_type: AssigneeRefType::WorkflowCreator,
             fixed_principal_id: None,
+            assignee_input_key: None,
         }),
         instructions: None,
         primary_advance_transition_id: None,
