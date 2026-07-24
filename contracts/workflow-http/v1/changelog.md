@@ -1,5 +1,10 @@
 # Changelog
 
+## V1.4.0 (2026-07-24) — Instance Input Principal Blockers Fix
+
+- Split migration 0013 into 0013 (enum `INSTANCE_INPUT_PRINCIPAL` only) and 0014 (schema: `assignee_input_key` column + updated `chk_node_assignee_shape`), fixing the PostgreSQL 55P04 unsafe-enum-value error on fresh migrations
+- Updated `SCHEMA_VERSION` to "0014" and `EXPECTED_MIGRATION_VERSION` to 14
+
 ## V1.3.0 (2026-07-22) — Canary Seed & Schema Repair
 
 - Added migration 0012: restores `workflow_instances_workflow_state_version_check` constraint (CHECK workflow_state_version >= 1), with data integrity gate
