@@ -55,6 +55,74 @@ async fn test_migration_0012_applied() {
 }
 
 #[tokio::test]
+async fn test_migration_0013_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify migration 13 (INSTANCE_INPUT_PRINCIPAL enum) is in the ledger
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 13 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0013 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_migration_0014_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify migration 14 (assignee_input_key column + constraint) is in the ledger
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 14 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0014 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_instance_input_principal_enum_exists() {
+    let pool = common::create_pool().await;
+
+    // Verify the INSTANCE_INPUT_PRINCIPAL enum value exists after migration 0013
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_enum e JOIN pg_type t ON e.enumtypid = t.oid \
+         WHERE t.typname = 'assignee_ref_type' AND e.enumlabel = 'INSTANCE_INPUT_PRINCIPAL'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(
+        row.0, 1,
+        "enum value 'INSTANCE_INPUT_PRINCIPAL' must exist in assignee_ref_type"
+    );
+}
+
+#[tokio::test]
+async fn test_assignee_input_key_column_exists() {
+    let pool = common::create_pool().await;
+
+    // Verify the assignee_input_key column exists after migration 0014
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM information_schema.columns \
+         WHERE table_name = 'workflow_node_definitions' AND column_name = 'assignee_input_key'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(
+        row.0, 1,
+        "column 'assignee_input_key' must exist on workflow_node_definitions"
+    );
+}
+
+#[tokio::test]
 async fn test_workflow_state_version_constraint_present() {
     let pool = common::create_pool().await;
 
