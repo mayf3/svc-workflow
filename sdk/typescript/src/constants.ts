@@ -4,4 +4,4 @@ export const BUNDLE_DIGEST =
 export const OWNER_HEAD_SHA =
   'c13311812887c97f01984e7cc8a84ff3a28f8fff' as const;
 export const CONTRACT_MAINLINE_HEAD_SHA =
-  'ae81f1e04d41abba3e2cb957da30fbad4607b43d' as const;
+  '5f3046a91c67a50a6099f7c58690b04548070fc9' as const;
