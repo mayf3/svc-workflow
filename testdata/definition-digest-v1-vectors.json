@@ -1,0 +1,395 @@
+{
+  "spec": "definition-digest-v1",
+  "algorithm": "RFC 8785 JCS + SHA-256",
+  "description": "Shared test vectors for definition digest. Rust and TypeScript implementations must compute the same expectedDefinitionDigest for each input.",
+  "vectors": [
+    {
+      "name": "minimal-draft-terminal",
+      "description": "Minimal DRAFT node with WORKFLOW_CREATOR assignee + TERMINAL node + one ADVANCE transition",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "start",
+          "displayName": "Start",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        },
+        {
+          "nodeKey": "end",
+          "displayName": "End",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Advance",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "8eb1671d98aeeb97fdabdbdbdcb6c8fec097d8c7caf209fd9306596283fcfeb2"
+    },
+    {
+      "name": "with-fixed-principal-and-instructions",
+      "description": "NORMAL node with FIXED_PRINCIPAL assignee, instructions, and primary advance transition",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "start",
+          "displayName": "Start Node",
+          "orderIndex": 0,
+          "nodeType": "NORMAL",
+          "assigneeRefType": "FIXED_PRINCIPAL",
+          "fixedPrincipalId": "550e8400-e29b-41d4-a716-446655440000",
+          "assigneeInputKey": null,
+          "instructions": "Execute step one",
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        },
+        {
+          "nodeKey": "end",
+          "displayName": "Final",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Execute",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "b2c8769508e2458919e13a2e80ab684f23ed08eb4ae71841a16a2fd1dd059668"
+    },
+    {
+      "name": "with-node-metadata",
+      "description": "Includes metadata on a node to verify metadata is part of the digest",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "draft",
+          "displayName": "Draft",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "finish",
+          "metadata": {
+            "source": "test",
+            "priority": 1
+          }
+        },
+        {
+          "nodeKey": "done",
+          "displayName": "Done",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "finish",
+          "displayName": "Finish",
+          "sourceNodeKey": "draft",
+          "targetNodeKey": "done",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "236b899b3ca68b596d70e04ecde2e6251c88a6cf8c7b3942f787c9a19b5f1836"
+    },
+    {
+      "name": "with-transition-metadata",
+      "description": "Includes metadata on a transition to verify metadata is part of the digest",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "draft",
+          "displayName": "Draft",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "go",
+          "metadata": null
+        },
+        {
+          "nodeKey": "done",
+          "displayName": "Done",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "go",
+          "displayName": "Go",
+          "sourceNodeKey": "draft",
+          "targetNodeKey": "done",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": {
+            "key": "transition-value"
+          }
+        }
+      ],
+      "expectedDefinitionDigest": "28f9286ce9c876ece08b0b3bac40936763b4925bb5cf5f5826ce80b096d92420"
+    },
+    {
+      "name": "reverse-node-order",
+      "description": "Nodes in reversed order — must produce same digest as minimal-draft-terminal (sorted by key)",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "end",
+          "displayName": "End",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        },
+        {
+          "nodeKey": "start",
+          "displayName": "Start",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Advance",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "8eb1671d98aeeb97fdabdbdbdcb6c8fec097d8c7caf209fd9306596283fcfeb2"
+    },
+    {
+      "name": "with-different-orderindex",
+      "description": "Same structure but different orderIndex values — should produce different digest from minimal-draft-terminal",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "start",
+          "displayName": "Start",
+          "orderIndex": 5,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        },
+        {
+          "nodeKey": "end",
+          "displayName": "End",
+          "orderIndex": 10,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Advance",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "48699318a84d34cf3563135c8d046fa63c2ef11aeca1b29c724c8e484af5b5c9"
+    },
+    {
+      "name": "with-context-schema",
+      "description": "Includes a contextSchema — should produce different digest from minimal-draft-terminal",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+      "validatorVersion": "2.0",
+      "contextSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "nodes": [
+        {
+          "nodeKey": "start",
+          "displayName": "Start",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        },
+        {
+          "nodeKey": "end",
+          "displayName": "End",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Advance",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "4c029152ea5094bed405a2574433fc984785c399d59fad34a936d2230c059b40"
+    },
+    {
+      "name": "description-does-not-affect-digest",
+      "description": "Definition description and displayName are NOT in the canonical doc — digest must match minimal-draft-terminal",
+      "definitionKey": "test-def",
+      "versionNumber": 1,
+      "jsonSchemaDialect": null,
+      "validatorVersion": null,
+      "contextSchema": null,
+      "nodes": [
+        {
+          "nodeKey": "start",
+          "displayName": "Start",
+          "orderIndex": 0,
+          "nodeType": "DRAFT",
+          "assigneeRefType": "WORKFLOW_CREATOR",
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": "adv",
+          "metadata": null
+        },
+        {
+          "nodeKey": "end",
+          "displayName": "End",
+          "orderIndex": 1,
+          "nodeType": "TERMINAL",
+          "assigneeRefType": null,
+          "fixedPrincipalId": null,
+          "assigneeInputKey": null,
+          "instructions": null,
+          "primaryAdvanceTransitionKey": null,
+          "metadata": null
+        }
+      ],
+      "transitions": [
+        {
+          "transitionKey": "adv",
+          "displayName": "Advance",
+          "sourceNodeKey": "start",
+          "targetNodeKey": "end",
+          "transitionEffect": "ADVANCE",
+          "submissionSchema": null,
+          "metadata": null
+        }
+      ],
+      "expectedDefinitionDigest": "8eb1671d98aeeb97fdabdbdbdcb6c8fec097d8c7caf209fd9306596283fcfeb2"
+    }
+  ]
+}
