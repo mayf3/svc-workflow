@@ -1,5 +1,16 @@
 # Changelog
 
+## V1.4.1 (2026-07-26) — Current-State Re-freeze
+
+- Re-frozen Contract Bundle against runtime mainline commit `c133118` (Repository Truth Cleanup)
+- Aligned OpenAPI VersionResponse examples with runtime: `version="0.3.1"`, `schemaVersion="0014"`
+- Updated owner HEAD/Tree to reference the runtime snapshot (`c133118` / `0a12962`)
+- Added `canary_read_only` (403) error code to errors.json — emitted by all write endpoints when canary write guard is active
+- Explicitly excluded 10 provisioning/admin-only error codes from runtime contract scope
+- Updated all version references to Contract Bundle Version `1.4.1`
+- Added `/version` endpoint black-box assertions to conformance suite
+- Fixed digest spec and recomputed SCHEMA_DIGEST / BUNDLE_DIGEST
+
 ## V1.4.0 (2026-07-24) — Instance Input Principal Blockers Fix
 
 - Split migration 0013 into 0013 (enum `INSTANCE_INPUT_PRINCIPAL` only) and 0014 (schema: `assignee_input_key` column + updated `chk_node_assignee_shape`), fixing the PostgreSQL 55P04 unsafe-enum-value error on fresh migrations

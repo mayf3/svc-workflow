@@ -1,8 +1,11 @@
 # Workflow Runtime HTTP Contract V1
 
 **Status:** Current-state freeze
-**Date:** 2026-07-21
-**Migration Version:** 14
+**Date:** 2026-07-26
+**Contract Bundle Version:** 1.4.1
+**Service Version:** 0.3.1
+**Database Schema Version:** 0014
+**Runtime apiContractVersion:** internal-v0
 **Scope:** Runtime workflow endpoints only (control-plane `/internal/v1/admin/**` excluded)
 
 ---
