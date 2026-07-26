@@ -1,7 +1,7 @@
 #![allow(clippy::needless_borrow)]
 //! Test: Canary seed data integrity and re-execution idempotency.
 //!
-//! Verifies that the seed script in deploy-tmp/seed_canary_test_data.sql
+//! Verifies that the seed script in scripts/canary/seed_canary_test_data.sql
 //! creates consistent workflow instances with proper initial events,
 //! and that re-executing the seed does not produce duplicate data.
 
@@ -24,7 +24,7 @@ fn uid(s: &str) -> uuid::Uuid {
 
 /// Run the canary seed SQL against the given pool.
 async fn run_seed(pool: &sqlx::PgPool) {
-    let seed_sql = std::fs::read_to_string("deploy-tmp/seed_canary_test_data.sql")
+    let seed_sql = std::fs::read_to_string("scripts/canary/seed_canary_test_data.sql")
         .expect("failed to read seed_canary_test_data.sql");
 
     // Execute the full seed script.
