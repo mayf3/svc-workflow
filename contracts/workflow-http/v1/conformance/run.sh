@@ -262,8 +262,11 @@ HTTP_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/healthz")
 HTTP_READY=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/readyz")
 [ "$HTTP_READY" = "200" ] && pass "readyz 200" || fail "readyz: $HTTP_READY"
 
-VERSION_JSON=$(curl -s "$BASE_URL/version")
-echo "$VERSION_JSON" | jq -e '.service == "svc-workflow"' >/dev/null 2>&1 && pass "version has service name" || fail "version: $(echo $VERSION_JSON | head -c 100)"
+	VERSION_JSON=$(curl -s "$BASE_URL/version")
+	echo "$VERSION_JSON" | jq -e '.service == "svc-workflow"' >/dev/null 2>&1 && pass "version.service == svc-workflow" || fail "version.service: $(echo $VERSION_JSON | head -c 200)"
+	echo "$VERSION_JSON" | jq -e '.version == "0.3.1"' >/dev/null 2>&1 && pass "version.version == 0.3.1" || fail "version.version: $(echo $VERSION_JSON | head -c 200)"
+	echo "$VERSION_JSON" | jq -e '.schemaVersion == "0014"' >/dev/null 2>&1 && pass "version.schemaVersion == 0014" || fail "version.schemaVersion: $(echo $VERSION_JSON | head -c 200)"
+	echo "$VERSION_JSON" | jq -e '.apiContractVersion == "internal-v0"' >/dev/null 2>&1 && pass "version.apiContractVersion == internal-v0" || fail "version.apiContractVersion: $(echo $VERSION_JSON | head -c 200)"
 
 # 5.2 Create
 echo "--- create ---"

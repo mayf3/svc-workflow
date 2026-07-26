@@ -27,6 +27,7 @@
     },
     "403": {
       "forbidden": "required scope is missing",
+      "canary_read_only": "service is in canary read-only mode, write endpoints are disabled",
       "principal_disabled": "principal is disabled",
       "domain_disabled": "domain is disabled",
       "domain_membership_required": "active domain membership is required",

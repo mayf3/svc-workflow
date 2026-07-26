@@ -1,12 +1,13 @@
 {
-  "serial": "V1-2026-07-18",
+  "serial": "V1-2026-07-26",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.0.0",
+  "contract_version": "1.4.1",
   "contract_scope": "runtime",
-  "title": "Workflow Runtime HTTP Contract V1 (Current-State Freeze)",
+  "title": "Workflow Runtime HTTP Contract V1 (Current-State Re-freeze)",
   "owner_repository": "svc-workflow",
-  "owner_head_sha": "2dff1320d1488ff4d2137795df1622d61d01c00c",
-  "owner_tree_sha": "3fb6d70785daff0d44821a0845389df3c027e8d9",
+  "owner_head_sha": "c13311812887c97f01984e7cc8a84ff3a28f8fff",
+  "owner_tree_sha": "0a12962626272bddc49ecac5dbfaef67bfcaf48a",
+  "owner_semantics": "OWNER_HEAD_SHA and OWNER_TREE_SHA reference the fixed runtime implementation snapshot (commit c133118, tree 0a12962). These are NOT the Contract Bundle delivery commit.",
   "digest_algorithm": "SHA-256",
   "digest_spec_version": "1.0.0",
   "bundle_file_set": [
@@ -19,10 +20,10 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "4e0297f0b4d658fc6fc85fbe5dadc4c48a98395ee02ae41796b6b7e26cac13c9",
-  "bundle_digest": "aff4f35b09b887eb8e83ffcd44eb4d487099d5f8911027cda172fce317dc9715",
+  "schema_digest": "ce7031f7f40801f10f305bfd5f20c9ce794e2f68b83b182bf7cf6074273deaa1",
+  "bundle_digest": "4ae0975894d512fd684ca04d6a966bdd7ce43809e7ec8beb2d97cb0122dc74cc",
   "compatibility_policy": "strict_backward_compatible",
-  "created_at": "2026-07-18T00:00:00Z",
+  "created_at": "2026-07-26T03:15:18Z",
   "author": "IMPLEMENTATION_AGENT",
-  "description": "Current-state freeze of all runtime workflow HTTP endpoints. Records actual wire format, error codes, pagination semantics, and authorization model as implemented at this commit. Not an API redesign."
+  "description": "Current-state re-freeze of all runtime workflow HTTP endpoints aligned with runtime mainline commit c133118. Updates contract version to 1.4.1, aligns OpenAPI examples with runtime SERVICE_VERSION (0.3.1) and SCHEMA_VERSION (0014), adds canary_read_only error code, and excludes provisioning/admin-only error codes. Not an API redesign."
 }

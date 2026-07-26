@@ -45,7 +45,7 @@ shasum -a 256 contracts/workflow-http/v1/openapi.yaml
 ### Current Value
 
 ```
-4e0297f0b4d658fc6fc85fbe5dadc4c48a98395ee02ae41796b6b7e26cac13c9
+(Recomputed — see manifest.json schema_digest)
 ```
 
 ## 4. BUNDLE_DIGEST

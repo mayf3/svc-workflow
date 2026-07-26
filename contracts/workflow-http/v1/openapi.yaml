@@ -1,10 +1,10 @@
 openapi: "3.0.3"
 info:
   title: Workflow Runtime HTTP API
-  version: "1.0.0"
+  version: "1.4.1"
   description: |
     Current-state freeze of all runtime workflow HTTP endpoints.
-    Based on commit 2dff132.
+    Based on commit c133118.
 
 servers:
   - url: http://{host}:{port}
@@ -769,12 +769,12 @@ components:
           example: svc-workflow
         version:
           type: string
-          example: 0.1.0
+          example: "0.3.1"
         gitSha:
           type: string
         schemaVersion:
           type: string
-          example: "0010"
+          example: "0014"
         apiContractVersion:
           type: string
           example: internal-v0
