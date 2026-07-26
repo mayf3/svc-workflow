@@ -4,25 +4,10 @@
 保存权威事实，Context Revision、Node Visit、Submission 与 Event 均不可变，
 Instance 仅保存可重建的当前投影。
 
-## 当前状态
+当前领域版本：`v0.3.1`，Schema 版本：`0014`。
 
-冻结领域版本：`v0.3.1`。
-
-| 切片 | 能力 | 状态 |
-|---|---|---|
-| PR 1 | PostgreSQL Storage Foundation | MERGED |
-| PR 2 | Definition Version Service | MERGED |
-| PR 3A–3D | Create / Revise / Transition / Atomic Combined Command | MERGED |
-| PR 4 | Read Model / Query Service | MERGED |
-| PR 5 | Admin Emergency Commands / Projection Repair | MERGED |
-| PR 6A | Legacy ADC Initial Import | MERGED，`LOCAL_IMPORT_READY` |
-| PR 6B+ | Relay / Shadow / Cutover | BLOCKED，`SHADOW_NOT_READY`、`CUTOVER_NOT_READY` |
-
-PR 6B+ 仍受三个 Legacy 边界阻断：ADC 启动时覆盖模板、非标准 `currentStep`
-写路径绕过 Relay、Domain Owner 不唯一。它们不影响本地导入原语，但必须在 Shadow 或
-Cutover 前关闭，具体边界见 Legacy ADC 迁移文档。
-
-当前尚未提供 HTTP/gRPC 服务；可用入口是 Rust application service。
+当前已提供完整 HTTP API（`/internal/v1/**`），包括工作流实例创建/查询/迁移、
+事件 Timeline、工作清单、域成员管理、Definition 治理、Admin 控制面等端点。
 
 ## 文档入口
 
@@ -32,11 +17,13 @@ Cutover 前关闭，具体边界见 Legacy ADC 迁移文档。
 | 类型 | 文档 |
 |---|---|
 | 冻结领域架构 | [SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md](docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md) |
+| HTTP Contract（OpenAPI） | `contracts/workflow-http/v1/` |
+| TypeScript SDK | `sdk/typescript/` |
 | 实施层总契约 | [IMPLEMENTATION_CONTRACT_V0_1.md](docs/contracts/IMPLEMENTATION_CONTRACT_V0_1.md) |
 | 存储合同 | [POSTGRES_STORAGE_CONTRACT_V0_1.md](docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_1.md) |
 | Definition Service 合同 | [DEFINITION_SERVICE_CONTRACT_V0_1.md](docs/contracts/DEFINITION_SERVICE_CONTRACT_V0_1.md) |
 | Runtime 创建合同 | [WORKFLOW_INSTANCE_CREATE_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_INSTANCE_CREATE_CONTRACT_V0_1.md) |
-| Runtime 流转合同（含 PR 3D） | [WORKFLOW_TRANSITION_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_TRANSITION_CONTRACT_V0_1.md) |
+| Runtime 流转合同 | [WORKFLOW_TRANSITION_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_TRANSITION_CONTRACT_V0_1.md) |
 | Runtime 查询合同 | [WORKFLOW_QUERY_CONTRACT_V0_1.md](docs/contracts/WORKFLOW_QUERY_CONTRACT_V0_1.md) |
 | Admin Recovery 合同 | [ADMIN_RECOVERY_CONTRACT_V0_1.md](docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md) |
 | Legacy Initial Import 合同 | [LEGACY_IMPORT_CONTRACT_V0_1.md](docs/contracts/LEGACY_IMPORT_CONTRACT_V0_1.md) |
