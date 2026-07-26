@@ -11,11 +11,22 @@ import type {
   TimelineQuery,
   WorklistQuery,
 } from './types.js';
+import { validateDefinition, applyDefinitionFromFile } from './cli-definition.js';
+import { applyDefinitionArtifact } from './definition-apply.js';
 
 async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   if (command === undefined || command === '--help' || command === 'help') {
     showUsage();
+    return;
+  }
+
+  // Local-only commands (no server needed)
+  if (command === 'definition' && args[0] === 'validate') {
+    const filePath = requiredValue(args, '--file');
+    const result = await validateDefinition(filePath);
+    writeJson(result);
+    if (!result.valid) process.exitCode = 1;
     return;
   }
 
@@ -98,6 +109,28 @@ async function main(): Promise<void> {
       });
       writeJson(result);
       return;
+    }
+    case 'definition': {
+      const subcommand = args[0];
+      if (subcommand === undefined) {
+        throw new WorkflowError('definition requires a subcommand: apply | validate', {
+          kind: 'input',
+          operation: 'definition',
+        });
+      }
+      switch (subcommand) {
+        case 'apply': {
+          const filePath = requiredValue(args, '--file');
+          const result = await applyDefinitionFromFile(client, filePath, applyDefinitionArtifact);
+          writeJson(result);
+          return;
+        }
+        default:
+          throw new WorkflowError('unknown definition subcommand', {
+            kind: 'input',
+            operation: `definition ${subcommand}`,
+          });
+      }
     }
     default:
       throw new WorkflowError(`unknown command: ${command}`, {
@@ -201,9 +234,12 @@ Commands:
   workflow-cli worklist [--kind assigned|creator-drafts] [--before-created-at <rfc3339> --before-id <uuid>] [--limit <n>]
   workflow-cli detail --instance-id <uuid>
   workflow-cli timeline --instance-id <uuid> [--after <event-sequence>] [--limit <n>]
-  workflow-cli transition --instance-id <uuid> --input <json-file|-> --idempotency-key <key>
+	  workflow-cli transition --instance-id <uuid> --input <json-file|-> --idempotency-key <key>
 
-All commands accept --request-id <value>.
+	  workflow-cli definition validate --file <definition-artifact.json>
+	  workflow-cli definition apply --file <definition-artifact.json>
+
+All commands accept --request-id <value>. Subcommands accept --file <json-file>.
 `);
 }
 
