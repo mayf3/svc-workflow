@@ -245,3 +245,49 @@ describe('canonical document structure aligns with Rust', () => {
     expect(digest).toBe(digest2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shared test vector parity — reads the same file as Rust
+// ---------------------------------------------------------------------------
+
+import { readFileSync } from 'node:fs';
+
+describe('shared digest test vectors (cross-language parity)', () => {
+  const vectorsPath = 'testdata/definition-digest-v1-vectors.json';
+  const content = JSON.parse(readFileSync(vectorsPath, 'utf8'));
+  const vectors: Array<{ name: string; expectedDefinitionDigest: string } & Record<string, unknown>> = content.vectors;
+
+  for (const v of vectors) {
+    it(`parity: ${v.name}`, () => {
+      const digest = computeExpectedDefinitionDigest({
+        definitionKey: v.definitionKey as string,
+        versionNumber: v.versionNumber as number,
+        jsonSchemaDialect: (v.jsonSchemaDialect as string | null) ?? undefined,
+        validatorVersion: (v.validatorVersion as string | null) ?? undefined,
+        contextSchema: v.contextSchema ?? undefined,
+        nodes: (v.nodes as Array<Record<string, unknown>>).map((n: Record<string, unknown>) => ({
+          nodeKey: n.nodeKey as string,
+          displayName: n.displayName as string,
+          orderIndex: n.orderIndex as number,
+          nodeType: n.nodeType as string,
+          assigneeRefType: (n.assigneeRefType as string | null) ?? undefined,
+          fixedPrincipalId: (n.fixedPrincipalId as string | null) ?? undefined,
+          assigneeInputKey: (n.assigneeInputKey as string | null) ?? undefined,
+          instructions: (n.instructions as string | null) ?? undefined,
+          primaryAdvanceTransitionKey: (n.primaryAdvanceTransitionKey as string | null) ?? undefined,
+          metadata: n.metadata ?? undefined,
+        })),
+        transitions: (v.transitions as Array<Record<string, unknown>>).map((t: Record<string, unknown>) => ({
+          transitionKey: t.transitionKey as string,
+          displayName: t.displayName as string,
+          sourceNodeKey: t.sourceNodeKey as string,
+          targetNodeKey: t.targetNodeKey as string,
+          transitionEffect: (t.transitionEffect as string) ?? 'ADVANCE',
+          submissionSchema: t.submissionSchema ?? undefined,
+          metadata: t.metadata ?? undefined,
+        })),
+      });
+      expect(digest).toBe(v.expectedDefinitionDigest);
+    });
+  }
+});
