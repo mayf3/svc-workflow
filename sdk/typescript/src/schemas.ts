@@ -19,7 +19,7 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   ]),
 );
 
-const jsonObjectSchema = z.record(jsonValueSchema);
+export const jsonObjectSchema = z.record(jsonValueSchema);
 const uuidSchema = z.string().uuid();
 const dateTimeSchema = z.string().datetime({ offset: true });
 
@@ -434,13 +434,27 @@ export const definitionVersionSummarySchema = z
 export const definitionDetailResponseSchema = z
   .object({
     definition: definitionItemSchema,
-    versions: z.array(definitionVersionSummarySchema),
+    versions: z.array(
+      z.object({
+        definition: definitionItemSchema,
+        nodes: z.array(z.unknown()),
+        transitions: z.array(z.unknown()),
+        version: definitionVersionSummarySchema.nullable(),
+      }).strict(),
+    ),
   })
   .strict();
 
 export const definitionListPageSchema = z
   .object({
-    items: z.array(definitionItemSchema),
+    items: z.array(
+      z.object({
+        definition: definitionItemSchema,
+        nodes: z.array(z.unknown()),
+        transitions: z.array(z.unknown()),
+        version: z.unknown().nullable(),
+      }).strict(),
+    ),
     next_cursor: cursorSchema.nullable(),
   })
   .strict();
