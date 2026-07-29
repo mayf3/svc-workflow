@@ -558,6 +558,8 @@ mod query_pagination_security;
 mod query_snapshot;
 #[path = "17_workflow_runtime/query/worklists.rs"]
 mod query_worklists;
+#[path = "17_workflow_runtime/query/assignee_types.rs"]
+mod query_assignee_types;
 
 // Sub-modules — Administrative Emergency Recovery
 #[path = "17_workflow_runtime/admin_recovery/helpers.rs"]
