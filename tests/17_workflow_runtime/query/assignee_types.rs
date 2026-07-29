@@ -468,6 +468,116 @@ async fn instance_input_principal_assignee_read_path() {
 }
 
 // ---------------------------------------------------------------------------
+// Original regression: INSTANCE_INPUT_PRINCIPAL on outgoing transition target
+//
+// The instance stays at DRAFT (WORKFLOW_CREATOR). The DRAFT node has an
+// outgoing ADVANCE transition whose TARGET node uses INSTANCE_INPUT_PRINCIPAL.
+// load_outgoing() must resolve the target assignee from the context payload
+// without hitting the wildcard arm that returns internal_consistency_error.
+//
+// This is the exact pattern that was failing in dogfood (instance A's
+// "sourcing" DRAFT node → "authoring" NORMAL with INSTANCE_INPUT_PRINCIPAL).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn outgoing_target_instance_input_principal_from_draft() {
+    let pool = create_pool().await;
+    let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let reviewer_principal = seed_second_principal(&pool).await;
+
+    add_member(&pool, domain_id, creator).await;
+
+    // Graph: DRAFT(WORKFLOW_CREATOR) → NORMAL(INSTANCE_INPUT_PRINCIPAL, "reviewerPrincipalId") → TERMINAL
+    let (ver_id, _normal_id, _draft_advance, _normal_advance) =
+        seed_assignee_type_definition(
+            &pool,
+            domain_id,
+            "INSTANCE_INPUT_PRINCIPAL",
+            None,
+            Some("reviewerPrincipalId"),
+        )
+        .await;
+
+    // Create instance — stays at DRAFT, DO NOT advance.
+    let cmd = make_command_with_payload(
+        creator,
+        domain_id,
+        ver_id,
+        json!({"reviewerPrincipalId": reviewer_principal}),
+    );
+    let created = create_workflow_instance(&pool, cmd)
+        .await
+        .expect("create instance");
+
+    let service = WorkflowQueryService::new(pool.clone());
+
+    // 1. instance detail must succeed (load_outgoing processes the outgoing
+    //    transition whose target has INSTANCE_INPUT_PRINCIPAL).
+    let detail = service
+        .get_workflow_instance_detail(GetWorkflowInstanceDetail {
+            actor_principal_id: creator,
+            workflow_instance_id: created.workflow_instance_id,
+        })
+        .await
+        .expect("instance detail must succeed when outgoing target is INSTANCE_INPUT_PRINCIPAL");
+    let full = expect_full(&detail);
+    assert_eq!(
+        full.instance.current_node.node_key, "draft",
+        "instance must still be at DRAFT node"
+    );
+    // The outgoing transition to the INSTANCE_INPUT_PRINCIPAL target must exist
+    // and be correctly described.
+    let iip_transition = full
+        .outgoing_transitions
+        .iter()
+        .find(|t| t.target_node.node_key == "normal")
+        .expect("must have outgoing transition to 'normal' target");
+    assert_eq!(
+        iip_transition.target_node.node_type, "NORMAL",
+        "target must be a NORMAL node"
+    );
+
+    // 2. assigned-to-me must succeed — creator is the current DRAFT assignee.
+    let page = service
+        .list_assigned_to_me(ListAssignedToMe {
+            actor_principal_id: creator,
+            before: None,
+            limit: None,
+        })
+        .await
+        .expect("assigned-to-me must succeed when outgoing target is INSTANCE_INPUT_PRINCIPAL");
+    assert!(
+        !page.items.is_empty(),
+        "creator must see their draft instance in assigned-to-me"
+    );
+    assert_eq!(
+        page.items[0].detail.instance.workflow_instance_id,
+        created.workflow_instance_id
+    );
+    assert_eq!(
+        page.items[0].detail.instance.current_node.node_key, "draft",
+        "worklist must report DRAFT as current node"
+    );
+
+    // 3. timeline unchanged
+    service
+        .list_workflow_timeline(ListWorkflowTimeline {
+            actor_principal_id: creator,
+            workflow_instance_id: created.workflow_instance_id,
+            after_event_sequence: None,
+            limit: None,
+        })
+        .await
+        .expect("timeline must still work");
+
+    // This test will FAIL if the INSTANCE_INPUT_PRINCIPAL match arm in
+    // load_outgoing() is removed, because the outgoing transition's target
+    // assignee_ref_type would fall through to the wildcard arm and return
+    // Err(internal("unknown target assignee reference type")).
+}
+
+// ---------------------------------------------------------------------------
 // FIXED_PRINCIPAL assignee
 // ---------------------------------------------------------------------------
 
