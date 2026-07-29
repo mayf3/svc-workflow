@@ -37,7 +37,8 @@ async fn load_outgoing(
                 target.display_name AS target_display_name,
                 target.node_type::text AS target_node_type,
                 target.assignee_ref_type::text AS target_assignee_ref_type,
-                target.fixed_principal_id AS target_fixed_principal_id
+                target.fixed_principal_id AS target_fixed_principal_id,
+                target.assignee_input_key AS target_assignee_input_key
          FROM workflow_transition_definitions t
          JOIN workflow_node_definitions target ON target.node_id = t.target_node_id
          WHERE t.source_node_id = $1
@@ -72,6 +73,31 @@ async fn load_outgoing(
             .await
             .map_err(map_storage)?,
             Some("FIXED_PRINCIPAL") => row.target_fixed_principal_id,
+            Some("INSTANCE_INPUT_PRINCIPAL") => {
+                let input_key = row.target_assignee_input_key.as_deref().ok_or_else(|| {
+                    internal("INSTANCE_INPUT_PRINCIPAL node is missing assignee_input_key")
+                })?;
+                let payload = base.context_payload.as_ref().ok_or_else(|| {
+                    internal(
+                        "INSTANCE_INPUT_PRINCIPAL resolution requires the instance context payload",
+                    )
+                })?;
+                let raw = payload.get(input_key).ok_or_else(|| {
+                    WorkflowQueryError::InternalConsistency(format!(
+                        "instance context payload is missing required assignee key '{input_key}'"
+                    ))
+                })?;
+                let s = raw.as_str().ok_or_else(|| {
+                    WorkflowQueryError::InternalConsistency(format!(
+                        "instance context payload key '{input_key}' must be a string UUID"
+                    ))
+                })?;
+                Some(Uuid::parse_str(s).map_err(|_| {
+                    WorkflowQueryError::InternalConsistency(format!(
+                        "instance context payload key '{input_key}' is not a valid UUID: '{s}'"
+                    ))
+                })?)
+            }
             _ => return Err(internal("unknown target assignee reference type")),
         };
         let target_available = if row.target_node_type == "TERMINAL" {

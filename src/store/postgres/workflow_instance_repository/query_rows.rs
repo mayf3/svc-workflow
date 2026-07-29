@@ -141,6 +141,7 @@ pub(crate) struct OutgoingRow {
     pub target_node_type: String,
     pub target_assignee_ref_type: Option<String>,
     pub target_fixed_principal_id: Option<Uuid>,
+    pub target_assignee_input_key: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
