@@ -42,6 +42,7 @@ The service binds to `WORKFLOW_BIND_ADDR:WORKFLOW_PORT` (default `127.0.0.1:8989
 | GET    | `/internal/v1/workflow-instances/{id}`    | `workflow.read`    | yes  | Get instance detail    |
 | POST   | `/internal/v1/workflow-instances/{id}/transitions` | `workflow.execute` | yes | Execute transition |
 | GET    | `/internal/v1/workflow-instances/{id}/timeline`    | `workflow.read`    | yes | Event timeline   |
+| GET    | `/internal/v1/workflow-instances/{id}/submissions` | `workflow.read`    | yes | Submission history |
 
 ### 2.3 Worklists
 
@@ -158,7 +159,7 @@ All runtime endpoints (except health/ready/version) require a Bearer JWT in the 
 | Scope               | Required For                                    |
 |---------------------|-------------------------------------------------|
 | `workflow.execute`  | POST create, POST transition                    |
-| `workflow.read`     | GET detail, GET timeline, GET worklists, GET domain list |
+| `workflow.read`     | GET detail, GET timeline, GET submissions, GET worklists, GET domain list |
 
 Missing scope returns `403` with code `forbidden`.
 

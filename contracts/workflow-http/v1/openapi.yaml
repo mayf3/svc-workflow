@@ -194,6 +194,53 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /internal/v1/workflow-instances/{workflowInstanceId}/submissions:
+    get:
+      operationId: listSubmissionHistory
+      summary: Get workflow instance submission history
+      tags: [submissions]
+      description: >
+        Thin HTTP adapter over the existing list_submission_history query.
+        Visibility (full / actor / historical-participant RETURN feedback) and
+        pagination (TimeUuidCursor keyset) are owned entirely by the reused
+        application query; this endpoint adds no authorization rules.
+      parameters:
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+        - name: afterCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Forward cursor timestamp (must be paired with afterId).
+        - name: afterId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Forward cursor submission id (must be paired with afterCreatedAt).
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Submission history page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionHistoryPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /internal/v1/workflow-instances/domain:
     get:
       operationId: listDomainInstances
@@ -1100,6 +1147,134 @@ components:
         - return_feedback_events
         - submissions_truncated
         - return_events_truncated
+
+    SubmissionHistoryItem:
+      type: object
+      additionalProperties: false
+      description: >
+        A single submission, serialized verbatim from the application type.
+        For restricted viewers, only the actor's own submissions and RETURN
+        submissions whose relatedSubmissionIds reference one of the actor's
+        submissions are present.
+      properties:
+        submission_id:
+          type: string
+          format: uuid
+        workflow_instance_id:
+          type: string
+          format: uuid
+        source_node_visit_id:
+          type: string
+          format: uuid
+        source_node:
+          $ref: "#/components/schemas/PublicNodeSummary"
+        context_revision_id:
+          type: string
+          format: uuid
+        author_principal_id:
+          type: string
+          format: uuid
+        transition_id:
+          type: string
+          format: uuid
+        transition_effect:
+          type: string
+        payload:
+          type: object
+        payload_digest:
+          type: string
+        schema_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - submission_id
+        - workflow_instance_id
+        - source_node_visit_id
+        - source_node
+        - context_revision_id
+        - author_principal_id
+        - transition_id
+        - transition_effect
+        - payload
+        - payload_digest
+        - schema_version
+        - created_at
+
+    PublicNodeSummary:
+      type: object
+      additionalProperties: false
+      description: >
+        Public projection of a workflow node (no internal-only fields).
+      properties:
+        node_id:
+          type: string
+          format: uuid
+        node_key:
+          type: string
+        display_name:
+          type: string
+        node_type:
+          type: string
+      required: [node_id, node_key, display_name, node_type]
+      properties:
+        submission_id:
+          type: string
+          format: uuid
+        workflow_instance_id:
+          type: string
+          format: uuid
+        source_node_visit_id:
+          type: string
+          format: uuid
+        source_node:
+          $ref: "#/components/schemas/PublicNodeSummary"
+        context_revision_id:
+          type: string
+          format: uuid
+        author_principal_id:
+          type: string
+          format: uuid
+        transition_id:
+          type: string
+          format: uuid
+        transition_effect:
+          type: string
+        payload:
+          type: object
+        payload_digest:
+          type: string
+        schema_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - submission_id
+        - workflow_instance_id
+        - source_node_visit_id
+        - source_node
+        - context_revision_id
+        - author_principal_id
+        - transition_id
+        - transition_effect
+        - payload
+        - payload_digest
+        - schema_version
+        - created_at
+
+    SubmissionHistoryPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubmissionHistoryItem"
+        next_cursor:
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
 
     # Self-Projection & Domain Members
     SelfProjectionResponse:

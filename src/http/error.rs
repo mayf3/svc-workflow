@@ -108,7 +108,7 @@ impl ApiError {
     }
 
     pub fn from_query_rejection(rejection: QueryRejection) -> Self {
-        tracing::debug!(error = %rejection.body_text(), "invalid timeline query");
+        tracing::debug!(error = %rejection.body_text(), "invalid query parameters");
         Self::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_pagination",
