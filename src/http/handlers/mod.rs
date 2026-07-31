@@ -4,6 +4,7 @@ pub(crate) mod health;
 pub(crate) mod instances;
 pub(crate) mod provisioning;
 pub(crate) mod self_projection;
+pub(crate) mod submissions;
 pub(crate) mod timeline;
 pub(crate) mod transitions;
 pub(crate) mod worklists;
