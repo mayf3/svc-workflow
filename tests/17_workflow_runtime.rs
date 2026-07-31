@@ -601,6 +601,8 @@ mod http_jwks_auth;
 mod http_provisioning;
 #[path = "17_workflow_runtime/http/smoke.rs"]
 mod http_smoke;
+#[path = "17_workflow_runtime/http/submissions.rs"]
+mod http_submissions;
 #[path = "17_workflow_runtime/http/worklists.rs"]
 mod http_worklists;
 

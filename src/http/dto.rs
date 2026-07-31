@@ -93,6 +93,14 @@ pub struct WorklistQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SubmissionHistoryQuery {
+    pub after_created_at: Option<String>,
+    pub after_id: Option<String>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DomainInstanceQuery {
     pub domain_id: Uuid,
     pub before_created_at: Option<String>,
