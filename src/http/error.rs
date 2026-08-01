@@ -429,6 +429,7 @@ impl ApiError {
             E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
             E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
             E::InstanceNotTerminal => conflict("instance_not_terminal", "instance is not in a terminal state"),
+            E::AlreadyArchived => conflict("already_archived", "instance is already archived"),
             E::WorkflowStateVersionConflict { expected, actual } => conflict(
                 "workflow_state_version_conflict",
                 "workflow state version does not match",

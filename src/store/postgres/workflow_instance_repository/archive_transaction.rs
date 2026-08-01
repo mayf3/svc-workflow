@@ -237,7 +237,7 @@ pub(crate) async fn archive_workflow_instance_atomically(
         .map_err(storage)?;
 
     let (_, domain_id, current_state_version,
-         is_cancelled, node_type, _is_archived_bool, _archived_at) =
+         is_cancelled, node_type, is_archived, _archived_at) =
         instance_row.ok_or(ArchiveWorkflowInstanceError::InstanceNotFound)?;
 
     // Step 4: Validate workflow_state_version.
@@ -276,6 +276,16 @@ pub(crate) async fn archive_workflow_instance_atomically(
     let is_terminal = is_cancelled || node_type.as_deref() == Some("TERMINAL");
     if !is_terminal {
         return Err(ArchiveWorkflowInstanceError::InstanceNotTerminal);
+    }
+
+    // Step 6a: Archive is a one-shot lifecycle change, symmetric with cancel's
+    // InstanceArchived guard. Under the FOR UPDATE row lock, an already
+    // archived instance is rejected: a new idempotency key must not overwrite
+    // archived_at/archive_reason, append a second archive event, or grow
+    // workflow_state_version. The error path rolls back the whole transaction,
+    // so no success receipt is created.
+    if is_archived {
+        return Err(ArchiveWorkflowInstanceError::AlreadyArchived);
     }
 
     // Step 7: Update instance — set archive metadata, increment state version
@@ -387,6 +397,7 @@ fn error_from_body(body: &serde_json::Value) -> ArchiveWorkflowInstanceError {
     {
         "not_domain_owner" => ArchiveWorkflowInstanceError::NotDomainOwner,
         "instance_not_terminal" => ArchiveWorkflowInstanceError::InstanceNotTerminal,
+        "already_archived" => ArchiveWorkflowInstanceError::AlreadyArchived,
         "invalid_reason" => ArchiveWorkflowInstanceError::InvalidReason(detail()),
         "workflow_state_version_conflict" => {
             ArchiveWorkflowInstanceError::WorkflowStateVersionConflict {

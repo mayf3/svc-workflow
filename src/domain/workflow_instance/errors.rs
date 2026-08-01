@@ -244,6 +244,8 @@ pub enum ArchiveWorkflowInstanceError {
     NotDomainOwner,
     /// Instance is not in a terminal state (must be completed, cancelled, or failed).
     InstanceNotTerminal,
+    /// Instance is already archived (archive is a one-shot lifecycle change).
+    AlreadyArchived,
     /// Expected workflow state version does not match current.
     WorkflowStateVersionConflict { expected: i32, actual: i32 },
     /// Reason is invalid.
@@ -269,6 +271,7 @@ impl std::fmt::Display for ArchiveWorkflowInstanceError {
             Self::InstanceNotFound => write!(f, "workflow instance not found"),
             Self::NotDomainOwner => write!(f, "caller is not a domain owner"),
             Self::InstanceNotTerminal => write!(f, "instance is not in a terminal state"),
+            Self::AlreadyArchived => write!(f, "instance is already archived"),
             Self::WorkflowStateVersionConflict { expected, actual } => {
                 write!(f, "workflow state version conflict: expected={}, actual={}", expected, actual)
             }
