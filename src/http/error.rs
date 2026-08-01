@@ -12,7 +12,8 @@ use crate::application::domain_membership::DomainMembershipError as DMError;
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
 use crate::domain::provisioning::ProvisioningError as PError;
 use crate::domain::workflow_instance::errors::{
-    CreateWorkflowInstanceError, ExecuteWorkflowTransitionError,
+    ArchiveWorkflowInstanceError, CancelWorkflowInstanceError, CreateWorkflowInstanceError,
+    ExecuteWorkflowTransitionError,
 };
 
 #[derive(Debug)]
@@ -381,6 +382,77 @@ impl ApiError {
             api_error = api_error.with_details(serde_json::json!({ "detail": detail }));
         }
         api_error
+    }
+
+    pub fn from_cancel(error: CancelWorkflowInstanceError) -> Self {
+        use CancelWorkflowInstanceError as E;
+        match error {
+            E::PrincipalNotFound => not_found("principal_not_found", "principal not found"),
+            E::PrincipalDisabled => forbidden("principal_disabled", "principal is disabled"),
+            E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
+            E::CurrentVisitNotFound => not_found("current_visit_not_found", "current node visit not found"),
+            E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
+            E::SourceNodeTerminal => conflict("source_node_terminal", "instance source node is terminal"),
+            E::AlreadyCancelled => conflict("already_cancelled", "instance is already cancelled"),
+            E::InstanceArchived => conflict("instance_archived", "instance is archived"),
+            E::WorkflowStateVersionConflict { expected, actual } => conflict(
+                "workflow_state_version_conflict",
+                "workflow state version does not match",
+            )
+            .with_details(serde_json::json!({ "expected": expected, "actual": actual })),
+            E::InvalidReason(detail) => unprocessable("invalid_reason", "cancel reason is invalid")
+                .with_details(serde_json::json!({ "detail": detail })),
+            E::InternalConsistency(detail) => {
+                tracing::error!(error = %detail, "cancel consistency failure");
+                internal("internal_consistency_error", "internal consistency error")
+            }
+            E::IdempotencyConflict { .. } => {
+                conflict("idempotency_conflict", "idempotency key was reused")
+            }
+            E::CommandStillProcessing => Self::new(
+                StatusCode::TOO_EARLY,
+                "command_still_processing",
+                "command is still processing",
+            ),
+            E::StorageError(detail) => {
+                tracing::error!(error = %detail, "cancel storage failure");
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
+            }
+        }
+    }
+
+    pub fn from_archive(error: ArchiveWorkflowInstanceError) -> Self {
+        use ArchiveWorkflowInstanceError as E;
+        match error {
+            E::PrincipalNotFound => not_found("principal_not_found", "principal not found"),
+            E::PrincipalDisabled => forbidden("principal_disabled", "principal is disabled"),
+            E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
+            E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
+            E::InstanceNotTerminal => conflict("instance_not_terminal", "instance is not in a terminal state"),
+            E::WorkflowStateVersionConflict { expected, actual } => conflict(
+                "workflow_state_version_conflict",
+                "workflow state version does not match",
+            )
+            .with_details(serde_json::json!({ "expected": expected, "actual": actual })),
+            E::InvalidReason(detail) => unprocessable("invalid_reason", "archive reason is invalid")
+                .with_details(serde_json::json!({ "detail": detail })),
+            E::InternalConsistency(detail) => {
+                tracing::error!(error = %detail, "archive consistency failure");
+                internal("internal_consistency_error", "internal consistency error")
+            }
+            E::IdempotencyConflict { .. } => {
+                conflict("idempotency_conflict", "idempotency key was reused")
+            }
+            E::CommandStillProcessing => Self::new(
+                StatusCode::TOO_EARLY,
+                "command_still_processing",
+                "command is still processing",
+            ),
+            E::StorageError(detail) => {
+                tracing::error!(error = %detail, "archive storage failure");
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
+            }
+        }
     }
 
     pub fn from_query(error: WorkflowQueryError) -> Self {

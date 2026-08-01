@@ -168,6 +168,123 @@ impl fmt::Display for ReviseWorkflowContextError {
 
 impl std::error::Error for ReviseWorkflowContextError {}
 
+/// Error type for workflow instance cancellation operations.
+#[derive(Debug, Clone)]
+pub enum CancelWorkflowInstanceError {
+    /// Principal does not exist.
+    PrincipalNotFound,
+    /// Principal exists but is disabled.
+    PrincipalDisabled,
+    /// Workflow instance not found.
+    InstanceNotFound,
+    /// Current node visit not found for the instance.
+    CurrentVisitNotFound,
+    /// Caller is not the domain owner.
+    NotDomainOwner,
+    /// Instance source node is TERMINAL (already terminal — nothing to cancel).
+    SourceNodeTerminal,
+    /// Instance is already cancelled.
+    AlreadyCancelled,
+    /// Instance is archived (cannot cancel an archived instance).
+    InstanceArchived,
+    /// Expected workflow state version does not match current.
+    WorkflowStateVersionConflict { expected: i32, actual: i32 },
+    /// Reason is invalid.
+    InvalidReason(String),
+    /// Internal consistency error (defensive check failed).
+    InternalConsistency(String),
+    /// Idempotency key conflict.
+    IdempotencyConflict {
+        original_command_id: uuid::Uuid,
+        original_request_hash: String,
+    },
+    /// A previous request with this idempotency key is still processing.
+    CommandStillProcessing,
+    /// Generic storage or infrastructure error.
+    StorageError(String),
+}
+
+impl std::fmt::Display for CancelWorkflowInstanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrincipalNotFound => write!(f, "principal not found"),
+            Self::PrincipalDisabled => write!(f, "principal is disabled"),
+            Self::InstanceNotFound => write!(f, "workflow instance not found"),
+            Self::CurrentVisitNotFound => write!(f, "current node visit not found"),
+            Self::NotDomainOwner => write!(f, "caller is not a domain owner"),
+            Self::SourceNodeTerminal => write!(f, "instance source node is TERMINAL"),
+            Self::AlreadyCancelled => write!(f, "instance is already cancelled"),
+            Self::InstanceArchived => write!(f, "instance is archived"),
+            Self::WorkflowStateVersionConflict { expected, actual } => {
+                write!(f, "workflow state version conflict: expected={}, actual={}", expected, actual)
+            }
+            Self::InvalidReason(detail) => write!(f, "invalid reason: {}", detail),
+            Self::InternalConsistency(detail) => write!(f, "internal consistency error: {}", detail),
+            Self::IdempotencyConflict { original_command_id, original_request_hash } => {
+                write!(f, "idempotency conflict: original command_id={}, request_hash={}", original_command_id, original_request_hash)
+            }
+            Self::CommandStillProcessing => write!(f, "command with this idempotency key is still processing"),
+            Self::StorageError(detail) => write!(f, "storage error: {}", detail),
+        }
+    }
+}
+
+impl std::error::Error for CancelWorkflowInstanceError {}
+
+/// Error type for workflow instance archive operations.
+#[derive(Debug, Clone)]
+pub enum ArchiveWorkflowInstanceError {
+    /// Principal does not exist.
+    PrincipalNotFound,
+    /// Principal exists but is disabled.
+    PrincipalDisabled,
+    /// Workflow instance not found.
+    InstanceNotFound,
+    /// Caller is not the domain owner.
+    NotDomainOwner,
+    /// Instance is not in a terminal state (must be completed, cancelled, or failed).
+    InstanceNotTerminal,
+    /// Expected workflow state version does not match current.
+    WorkflowStateVersionConflict { expected: i32, actual: i32 },
+    /// Reason is invalid.
+    InvalidReason(String),
+    /// Internal consistency error (defensive check failed).
+    InternalConsistency(String),
+    /// Idempotency key conflict.
+    IdempotencyConflict {
+        original_command_id: uuid::Uuid,
+        original_request_hash: String,
+    },
+    /// A previous request with this idempotency key is still processing.
+    CommandStillProcessing,
+    /// Generic storage or infrastructure error.
+    StorageError(String),
+}
+
+impl std::fmt::Display for ArchiveWorkflowInstanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrincipalNotFound => write!(f, "principal not found"),
+            Self::PrincipalDisabled => write!(f, "principal is disabled"),
+            Self::InstanceNotFound => write!(f, "workflow instance not found"),
+            Self::NotDomainOwner => write!(f, "caller is not a domain owner"),
+            Self::InstanceNotTerminal => write!(f, "instance is not in a terminal state"),
+            Self::WorkflowStateVersionConflict { expected, actual } => {
+                write!(f, "workflow state version conflict: expected={}, actual={}", expected, actual)
+            }
+            Self::InvalidReason(detail) => write!(f, "invalid reason: {}", detail),
+            Self::InternalConsistency(detail) => write!(f, "internal consistency error: {}", detail),
+            Self::IdempotencyConflict { original_command_id, original_request_hash } => {
+                write!(f, "idempotency conflict: original command_id={}, request_hash={}", original_command_id, original_request_hash)
+            }
+            Self::CommandStillProcessing => write!(f, "command with this idempotency key is still processing"),
+            Self::StorageError(detail) => write!(f, "storage error: {}", detail),
+        }
+    }
+}
+
+impl std::error::Error for ArchiveWorkflowInstanceError {}
+
 /// Map a ReviseWorkflowContextError to an HTTP-style status code.
 pub fn revise_error_code(err: &ReviseWorkflowContextError) -> i32 {
     match err {

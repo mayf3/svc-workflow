@@ -591,6 +591,8 @@ mod legacy_import;
 mod http_auth_obo_e2e;
 #[path = "17_workflow_runtime/http/canary_write.rs"]
 mod http_canary_write;
+#[path = "17_workflow_runtime/http/cancel_archive.rs"]
+mod http_cancel_archive;
 #[path = "17_workflow_runtime/http/domain_list.rs"]
 mod http_domain_list;
 #[path = "17_workflow_runtime/http/e2e/mod.rs"]

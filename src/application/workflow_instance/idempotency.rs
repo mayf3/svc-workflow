@@ -28,9 +28,13 @@ use crate::domain::ids::{
     DefinitionVersionId, DomainId, PrincipalId, TransitionId, WorkflowInstanceId,
 };
 use crate::domain::workflow_instance::combined_errors::ReviseContextAndTransitionError;
+use crate::domain::workflow_instance::errors::ArchiveWorkflowInstanceError;
+use crate::domain::workflow_instance::errors::CancelWorkflowInstanceError;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
 use crate::domain::workflow_instance::errors::ReviseWorkflowContextError;
+use crate::domain::workflow_instance::events::COMMAND_TYPE_ARCHIVE_WORKFLOW_INSTANCE;
+use crate::domain::workflow_instance::events::COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_CREATE_INSTANCE;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_EXECUTE_TRANSITION;
 use crate::domain::workflow_instance::events::COMMAND_TYPE_REVISE_CONTEXT;
@@ -234,6 +238,92 @@ pub fn compute_combined_request_hash(
         ReviseContextAndTransitionError::StorageError(format!(
             "request hash computation failed: {}",
             error
+        ))
+    })
+}
+
+/// The canonical request envelope for CancelWorkflowInstance.
+#[derive(Debug, Clone, Serialize)]
+struct CancelRequestEnvelope {
+    command_schema_version: String,
+    command_type: String,
+    route_parameters: serde_json::Value,
+    request_body: CancelRequestBody,
+}
+
+/// The body of the CancelWorkflowInstance request without the idempotency key.
+#[derive(Debug, Clone, Serialize)]
+struct CancelRequestBody {
+    principal_id: String,
+    workflow_instance_id: String,
+    reason: String,
+}
+
+/// Compute the canonical request hash for CancelWorkflowInstance idempotency.
+pub fn compute_cancel_request_hash(
+    command_schema_version: &str,
+    principal_id: &PrincipalId,
+    workflow_instance_id: &WorkflowInstanceId,
+    reason: &str,
+) -> Result<String, CancelWorkflowInstanceError> {
+    let envelope = CancelRequestEnvelope {
+        command_schema_version: command_schema_version.to_string(),
+        command_type: COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE.to_string(),
+        route_parameters: serde_json::json!({}),
+        request_body: CancelRequestBody {
+            principal_id: principal_id.to_string(),
+            workflow_instance_id: workflow_instance_id.to_string(),
+            reason: reason.to_string(),
+        },
+    };
+
+    jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
+        CancelWorkflowInstanceError::StorageError(format!(
+            "request hash computation failed: {}",
+            e
+        ))
+    })
+}
+
+/// The canonical request envelope for ArchiveWorkflowInstance.
+#[derive(Debug, Clone, Serialize)]
+struct ArchiveRequestEnvelope {
+    command_schema_version: String,
+    command_type: String,
+    route_parameters: serde_json::Value,
+    request_body: ArchiveRequestBody,
+}
+
+/// The body of the ArchiveWorkflowInstance request without the idempotency key.
+#[derive(Debug, Clone, Serialize)]
+struct ArchiveRequestBody {
+    principal_id: String,
+    workflow_instance_id: String,
+    reason: String,
+}
+
+/// Compute the canonical request hash for ArchiveWorkflowInstance idempotency.
+pub fn compute_archive_request_hash(
+    command_schema_version: &str,
+    principal_id: &PrincipalId,
+    workflow_instance_id: &WorkflowInstanceId,
+    reason: &str,
+) -> Result<String, ArchiveWorkflowInstanceError> {
+    let envelope = ArchiveRequestEnvelope {
+        command_schema_version: command_schema_version.to_string(),
+        command_type: COMMAND_TYPE_ARCHIVE_WORKFLOW_INSTANCE.to_string(),
+        route_parameters: serde_json::json!({}),
+        request_body: ArchiveRequestBody {
+            principal_id: principal_id.to_string(),
+            workflow_instance_id: workflow_instance_id.to_string(),
+            reason: reason.to_string(),
+        },
+    };
+
+    jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
+        ArchiveWorkflowInstanceError::StorageError(format!(
+            "request hash computation failed: {}",
+            e
         ))
     })
 }

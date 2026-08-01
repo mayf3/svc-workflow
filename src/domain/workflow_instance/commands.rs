@@ -97,6 +97,62 @@ pub struct ExecuteWorkflowTransitionCommand {
     pub submission_payload: Option<serde_json::Value>,
 }
 
+/// Command to cancel an active workflow instance.
+///
+/// Only DOMAIN_OWNER may cancel instances in their domain.
+/// Cancellation closes the current work item and prevents further transitions.
+/// Not a Definition transition — no new node visit is created.
+#[derive(Debug, Clone)]
+pub struct CancelWorkflowInstanceCommand {
+    /// The principal initiating the command (must be domain owner).
+    pub principal_id: PrincipalId,
+
+    /// Client-supplied idempotency key, unique per principal.
+    pub idempotency_key: String,
+
+    /// Schema version of this command structure.
+    pub command_schema_version: String,
+
+    /// The target workflow instance to cancel.
+    pub workflow_instance_id: WorkflowInstanceId,
+
+    /// The caller's expected current workflow state version (optimistic
+    /// concurrency). `0` is the HTTP adapter sentinel for "no client-side
+    /// version"; authoritative state checks run atomically under the row lock.
+    pub expected_workflow_state_version: i32,
+
+    /// Human-readable reason for the cancellation.
+    pub reason: String,
+}
+
+/// Command to archive a terminal workflow instance.
+///
+/// Only DOMAIN_OWNER may archive instances in their domain.
+/// Archiving adds metadata (archived_at, archived_by, archive_reason) without
+/// changing the business state of the instance.
+#[derive(Debug, Clone)]
+pub struct ArchiveWorkflowInstanceCommand {
+    /// The principal initiating the command (must be domain owner).
+    pub principal_id: PrincipalId,
+
+    /// Client-supplied idempotency key, unique per principal.
+    pub idempotency_key: String,
+
+    /// Schema version of this command structure.
+    pub command_schema_version: String,
+
+    /// The target workflow instance to archive.
+    pub workflow_instance_id: WorkflowInstanceId,
+
+    /// The caller's expected current workflow state version (optimistic
+    /// concurrency). `0` is the HTTP adapter sentinel for "no client-side
+    /// version"; authoritative state checks run atomically under the row lock.
+    pub expected_workflow_state_version: i32,
+
+    /// Human-readable reason for the archiving.
+    pub reason: String,
+}
+
 /// Atomically revise the DRAFT context and execute its primary ADVANCE transition.
 ///
 /// The caller must be both the workflow creator and the current visit assignee.

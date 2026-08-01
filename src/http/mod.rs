@@ -25,8 +25,8 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0014";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 14;
+pub const SCHEMA_VERSION: &str = "0015";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 15;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -48,6 +48,20 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
             post(handlers::transitions::execute).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/cancel",
+            post(handlers::cancel::cancel).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/archive",
+            post(handlers::archive::archive).layer(middleware::from_fn_with_state(
                 state.clone(),
                 canary_guard::canary_write_guard,
             )),
