@@ -222,6 +222,21 @@ async fn domain_owner_cancel_active_via_http() {
     .unwrap();
     assert!(cancelled_flag, "instance should be marked cancelled");
 
+    // Submission history endpoint still readable after cancel (cancel does
+    // not delete submissions or their history).
+    let submissions = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            &format!("/internal/v1/workflow-instances/{instance_id}/submissions"),
+            Some(&full_token),
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(submissions.status(), StatusCode::OK);
+
     // Hidden from the assigned-to-me worklist.
     let worklist = app
         .clone()
@@ -541,6 +556,31 @@ async fn domain_owner_archive_terminal_via_http() {
         .unwrap();
     assert_eq!(replay.status(), StatusCode::OK);
     assert_eq!(json_body(replay).await["replayed"], true);
+
+    // Archived instance is hidden from the default assigned-to-me worklist.
+    let worklist = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/internal/v1/worklists/assigned-to-me?limit=20",
+            Some(&full_token),
+            None,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(worklist.status(), StatusCode::OK);
+    let worklist_body = json_body(worklist).await;
+    let ids: Vec<&str> = worklist_body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["detail"]["instance"]["workflowInstanceId"].as_str())
+        .collect();
+    assert!(
+        !ids.contains(&instance_id.as_str()),
+        "archived instance must not appear in assigned-to-me worklist"
+    );
 }
 
 #[tokio::test]
