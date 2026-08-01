@@ -156,6 +156,13 @@ pub(crate) async fn revise_context_and_transition_atomically(
         );
     }
 
+    // Cancelled instances are closed to any further ADVANCE, exactly like the
+    // plain transition path (transition_transaction.rs). Without this guard the
+    // combined revise+advance command could still move a cancelled instance.
+    if instance.cancelled {
+        deterministic_failure!(ReviseContextAndTransitionError::CurrentNodeNotDraft);
+    }
+
     let current_visit = domain_result!(transition_validation::read_current_visit(
         &mut tx,
         instance_id,

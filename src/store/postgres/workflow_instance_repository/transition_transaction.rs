@@ -166,7 +166,16 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // ---------------------------------------------------------------
-    // Step 4: Read and validate current NodeVisit
+    // Step 4: Check instance is not cancelled
+    // ---------------------------------------------------------------
+    if instance.cancelled {
+        deterministic_failure!(
+            ExecuteWorkflowTransitionError::SourceNodeTerminal
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Step 5: Read and validate current NodeVisit
     // ---------------------------------------------------------------
     let current_visit = validation_result!(
         read_current_visit(&mut tx, instance_uuid, instance.current_node_visit_id).await
