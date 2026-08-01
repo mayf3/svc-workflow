@@ -23,7 +23,7 @@ pub(super) async fn lock_instance(
     let instance: Option<InstanceLockRow> = sqlx::query_as(
         "SELECT workflow_instance_id, created_by_principal_id, \
          definition_version_id, current_context_revision_id, \
-         current_node_visit_id, workflow_state_version \
+         current_node_visit_id, workflow_state_version, cancelled \
          FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE",
     )
     .bind(instance_uuid)

@@ -21,6 +21,12 @@ pub const COMMAND_TYPE_REVISE_CONTEXT_AND_TRANSITION: &str = "REVISE_CONTEXT_AND
 pub const COMMAND_TYPE_IMPORT_LEGACY_INSTANCE: &str = "IMPORT_LEGACY_WORKFLOW_INSTANCE";
 pub const WORKFLOW_INSTANCE_IMPORTED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_IMPORTED";
 
+/// Stable command type string for CancelWorkflowInstance.
+pub const COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE: &str = "CANCEL_WORKFLOW_INSTANCE";
+
+/// Stable command type string for ArchiveWorkflowInstance.
+pub const COMMAND_TYPE_ARCHIVE_WORKFLOW_INSTANCE: &str = "ARCHIVE_WORKFLOW_INSTANCE";
+
 /// Event type for instance creation events.
 pub const INSTANCE_CREATED_EVENT_TYPE: &str = "INSTANCE_CREATED";
 
@@ -37,6 +43,12 @@ pub const CONTEXT_REVISED_AND_TRANSITION_COMMITTED_EVENT_TYPE: &str =
 /// Canonical writer event type for PR5 emergency override.
 pub const ADMIN_EMERGENCY_OVERRIDE_COMMITTED_EVENT_TYPE: &str =
     "ADMIN_EMERGENCY_OVERRIDE_COMMITTED";
+
+/// Event type for workflow instance cancellation events.
+pub const WORKFLOW_INSTANCE_CANCELLED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_CANCELLED";
+
+/// Event type for workflow instance archive events.
+pub const WORKFLOW_INSTANCE_ARCHIVED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_ARCHIVED";
 
 /// Non-sensitive event data embedded in the INSTANCE_CREATED event.
 ///
@@ -94,6 +106,28 @@ pub struct TransitionCommittedEventData {
     pub context_revision_id: String,
     /// SHA-256 digest of the submission payload, or null if no submission.
     pub submission_payload_digest: Option<String>,
+}
+
+/// Event data embedded in the WORKFLOW_INSTANCE_CANCELLED event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowInstanceCancelledEventData {
+    /// The reason provided for cancellation.
+    pub reason: String,
+    /// The principal who cancelled the instance.
+    pub cancelled_by_principal_id: String,
+    /// The node_key of the current node at cancellation time.
+    pub cancelled_from_node_key: String,
+}
+
+/// Event data embedded in the WORKFLOW_INSTANCE_ARCHIVED event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowInstanceArchivedEventData {
+    /// The reason provided for archiving.
+    pub reason: String,
+    /// The principal who archived the instance.
+    pub archived_by_principal_id: String,
+    /// Whether the instance was cancelled at archive time.
+    pub was_cancelled: bool,
 }
 
 /// Non-sensitive event data for an atomic context revision + transition.

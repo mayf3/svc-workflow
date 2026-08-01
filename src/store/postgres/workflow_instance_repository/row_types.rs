@@ -51,6 +51,7 @@ pub(super) struct InstanceLockRow {
     pub(super) current_context_revision_id: uuid::Uuid,
     pub(super) current_node_visit_id: uuid::Uuid,
     pub(super) workflow_state_version: i32,
+    pub(super) cancelled: bool,
 }
 
 /// Row type for reading a node visit with its node definition.
