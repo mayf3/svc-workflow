@@ -886,3 +886,255 @@ async fn cancelled_instance_cannot_advance_via_combined_path(pool: PgPool) {
         err
     );
 }
+
+#[sqlx::test]
+async fn archive_new_key_already_archived_rejected(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    let new_ver = advance_to_terminal(&pool, owner_id, instance_id, state_ver, ver_id).await;
+
+    // First archive with key A succeeds.
+    archive_workflow_instance(
+        &pool,
+        ArchiveWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "archive-once-a".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: new_ver,
+            reason: "cleanup".to_string(),
+        },
+        &req_hash("hash-once-a"),
+    )
+    .await
+    .expect("first archive should succeed");
+
+    // Snapshot invariants after the first archive.
+    let (archived_at_before, reason_before, state_after_first,): (chrono::DateTime<chrono::Utc>, String, i32) =
+        sqlx::query_as(
+            "SELECT archived_at, archive_reason, workflow_state_version
+             FROM workflow_instances WHERE workflow_instance_id = $1",
+        )
+        .bind(instance_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read archive state");
+    let event_count_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count archive events");
+
+    // New idempotency key on the already-archived instance -> rejected.
+    let err = archive_workflow_instance(
+        &pool,
+        ArchiveWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "archive-once-b".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: 0,
+            reason: "another_cleanup".to_string(),
+        },
+        &req_hash("hash-once-b"),
+    )
+    .await
+    .expect_err("second archive with a new key must be rejected");
+
+    assert!(
+        matches!(err, ArchiveWorkflowInstanceError::AlreadyArchived),
+        "expected AlreadyArchived, got {:?}",
+        err
+    );
+
+    // Invariants: nothing changed, no success receipt for key B.
+    let (archived_at_after, reason_after, state_after): (chrono::DateTime<chrono::Utc>, String, i32) =
+        sqlx::query_as(
+            "SELECT archived_at, archive_reason, workflow_state_version
+             FROM workflow_instances WHERE workflow_instance_id = $1",
+        )
+        .bind(instance_id)
+        .fetch_one(&pool)
+        .await
+        .expect("read archive state after rejection");
+    assert_eq!(archived_at_after, archived_at_before, "archived_at must be unchanged");
+    assert_eq!(reason_after, reason_before, "archive_reason must be unchanged");
+    assert_eq!(state_after, state_after_first, "workflow_state_version must be unchanged");
+
+    let event_count_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count archive events after rejection");
+    assert_eq!(event_count_after, event_count_before, "archive event count must be unchanged");
+    assert_eq!(event_count_after, 1, "exactly one archive event total");
+
+    let receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_command_receipts
+         WHERE principal_id = $1 AND idempotency_key = 'archive-once-b'",
+    )
+    .bind(owner_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count receipts for rejected key");
+    assert_eq!(receipt_count, 0, "no success receipt may exist for the rejected key");
+}
+
+#[sqlx::test]
+async fn archive_same_key_different_request_conflicts(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    let new_ver = advance_to_terminal(&pool, owner_id, instance_id, state_ver, ver_id).await;
+
+    // First archive with key X succeeds (request hash H1).
+    archive_workflow_instance(
+        &pool,
+        ArchiveWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "archive-same-key".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: new_ver,
+            reason: "cleanup".to_string(),
+        },
+        &req_hash("hash-same-1"),
+    )
+    .await
+    .expect("first archive should succeed");
+
+    // Same key but a different request hash -> idempotency conflict, not replay.
+    let err = archive_workflow_instance(
+        &pool,
+        ArchiveWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "archive-same-key".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: 0,
+            reason: "different_reason".to_string(),
+        },
+        &req_hash("hash-same-2"),
+    )
+    .await
+    .expect_err("same key with a different request must conflict");
+
+    assert!(
+        matches!(err, ArchiveWorkflowInstanceError::IdempotencyConflict { .. }),
+        "expected IdempotencyConflict, got {:?}",
+        err
+    );
+
+    // Same key with the ORIGINAL hash still replays.
+    let replay = archive_workflow_instance(
+        &pool,
+        ArchiveWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "archive-same-key".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: 0,
+            reason: "cleanup".to_string(),
+        },
+        &req_hash("hash-same-1"),
+    )
+    .await
+    .expect("same key with original request must replay");
+    assert!(replay.replayed, "expected a replayed result");
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count archive events");
+    assert_eq!(event_count, 1, "exactly one archive event after conflict + replay");
+}
+
+#[sqlx::test]
+async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    let new_ver = advance_to_terminal(&pool, owner_id, instance_id, state_ver, ver_id).await;
+
+    // Two different idempotency keys archive the same terminal instance
+    // concurrently. Both use the HTTP adapter sentinel (expected version 0,
+    // server-authoritative), so the loser is rejected by the in-transaction
+    // archived guard rather than a stale-version conflict. The FOR UPDATE row
+    // lock + guard guarantee exactly one success regardless of interleaving.
+    let hash_a = req_hash("hash-concurrent-a");
+    let hash_b = req_hash("hash-concurrent-b");
+    let (result_a, result_b) = tokio::join!(
+        archive_workflow_instance(
+            &pool,
+            ArchiveWorkflowInstanceCommand {
+                principal_id: PrincipalId::from_uuid(owner_id),
+                idempotency_key: "archive-concurrent-a".to_string(),
+                command_schema_version: "v1".to_string(),
+                workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+                expected_workflow_state_version: 0,
+                reason: "cleanup_a".to_string(),
+            },
+            &hash_a,
+        ),
+        archive_workflow_instance(
+            &pool,
+            ArchiveWorkflowInstanceCommand {
+                principal_id: PrincipalId::from_uuid(owner_id),
+                idempotency_key: "archive-concurrent-b".to_string(),
+                command_schema_version: "v1".to_string(),
+                workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+                expected_workflow_state_version: 0,
+                reason: "cleanup_b".to_string(),
+            },
+            &hash_b,
+        ),
+    );
+
+    let success_count = match (&result_a, &result_b) {
+        (Ok(_), Ok(_)) => 2,
+        (Ok(_), Err(_)) | (Err(_), Ok(_)) => 1,
+        (Err(_), Err(_)) => 0,
+    };
+    assert_eq!(success_count, 1, "exactly one concurrent archive must succeed");
+    for result in [&result_a, &result_b] {
+        if let Err(err) = result {
+            assert!(
+                matches!(err, ArchiveWorkflowInstanceError::AlreadyArchived),
+                "the loser must be AlreadyArchived, got {:?}",
+                err
+            );
+        }
+    }
+
+    // Exactly one archive event and a single archived_at write.
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count archive events");
+    assert_eq!(event_count, 1, "exactly one archive event after concurrent archive");
+
+    let archived_at_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_instances
+         WHERE workflow_instance_id = $1 AND archived_at IS NOT NULL",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count archived_at writes");
+    assert_eq!(archived_at_count, 1, "archived_at must be written exactly once");
+}

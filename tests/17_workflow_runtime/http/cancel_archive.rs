@@ -676,3 +676,123 @@ async fn non_owner_archive_denied_via_http() {
     assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     assert_eq!(json_body(denied).await["error"]["code"], "not_domain_owner");
 }
+
+#[tokio::test]
+async fn archive_already_archived_and_conflict_via_http() {
+    let pool = create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, definition_version_id, _) =
+        seed_published_definition_normal_node(&pool, domain_id).await;
+
+    let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let full_token = token(
+        principal_id,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
+
+    let (instance_id, state_version) = create_instance_via_http(
+        &app,
+        &full_token,
+        domain_id,
+        definition_version_id,
+        "archive-once-http",
+    )
+    .await;
+    advance_to_terminal_via_http(
+        &app,
+        &pool,
+        &full_token,
+        &instance_id,
+        definition_version_id,
+        state_version,
+    )
+    .await;
+
+    // First archive with key1 -> 200.
+    let first = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/internal/v1/workflow-instances/{instance_id}/archive"),
+            Some(&full_token),
+            Some("archive-once-http-1"),
+            Some(json!({ "reason": "cleanup" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(json_body(first).await["replayed"], false);
+
+    // New key on the already-archived instance -> 409 already_archived.
+    let again = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/internal/v1/workflow-instances/{instance_id}/archive"),
+            Some(&full_token),
+            Some("archive-once-http-2"),
+            Some(json!({ "reason": "another_cleanup" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::CONFLICT);
+    assert_eq!(json_body(again).await["error"]["code"], "already_archived");
+
+    // Same key + different request body -> 409 idempotency_conflict.
+    let conflicting = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/internal/v1/workflow-instances/{instance_id}/archive"),
+            Some(&full_token),
+            Some("archive-once-http-1"),
+            Some(json!({ "reason": "different_reason" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(conflicting.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        json_body(conflicting).await["error"]["code"],
+        "idempotency_conflict"
+    );
+
+    // Same key + same request body still replays with the original result.
+    let replay = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/internal/v1/workflow-instances/{instance_id}/archive"),
+            Some(&full_token),
+            Some("archive-once-http-1"),
+            Some(json!({ "reason": "cleanup" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(replay.status(), StatusCode::OK);
+    assert_eq!(json_body(replay).await["replayed"], true);
+
+    // Invariants: exactly one archive event, no success receipt for key2.
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
+    )
+    .bind(Uuid::parse_str(&instance_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(event_count, 1, "exactly one archive event after rejected retries");
+
+    let receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_command_receipts
+         WHERE principal_id = $1 AND idempotency_key = 'archive-once-http-2'",
+    )
+    .bind(principal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(receipt_count, 0, "no receipt may exist for the rejected key");
+}
