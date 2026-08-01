@@ -57,6 +57,7 @@ pub async fn list_assigned_to_me(
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
          WHERE v.assignee_principal_id = $1 AND n.node_type <> 'TERMINAL'
+           AND wi.cancelled = FALSE
            AND (
              EXISTS (
                SELECT 1 FROM domain_role_bindings drb
