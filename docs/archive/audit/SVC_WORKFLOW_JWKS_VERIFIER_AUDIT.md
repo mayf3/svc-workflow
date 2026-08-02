@@ -3,7 +3,7 @@
 ```text
 Audit Agent       : independent security audit (ZCode)
 Repository        : svc-workflow
-Audit worktree    : /Users/yanfenma/workspace/project/svc-workflow-jwks-verifier
+Audit worktree    : svc-workflow-jwks-verifier
 Implementation PR : feat/jwks-obo-verifier-v0
 Base SHA          : f3306a5d387aa4159a995b7477e4c9da1a7193b7
 Audited HEAD      : 300818f06efa7b090fcbeca81d9a8919a289df89

@@ -5,7 +5,7 @@ Status: PASS
 Stage: SVC_WORKFLOW_API_SMOKE_READY
 Audit date: 2026-07-16
 Mode: independent read-only implementation review followed by a report-only commit
-Repository: /Users/yanfenma/workspace/project/svc-workflow
+Repository: svc-workflow
 Branch: codex/internal-api-v0
 Base: 8eb9e16e715b26a2c8b77d6c2a44045fb7ddc44f
 Initial implementation: 84bbcbd5286c7f45b50fe94b86df46450721dee8
