@@ -4,7 +4,7 @@
 保存权威事实，Context Revision、Node Visit、Submission 与 Event 均不可变，
 Instance 仅保存可重建的当前投影。
 
-当前领域版本：`v0.3.1`，Schema 版本：`0014`。
+当前领域版本：`v0.3.2`，Schema 版本：`0015`。v0.3.1 冻结架构保持不变，作为历史基线可追溯。
 
 当前已提供完整 HTTP API（`/internal/v1/**`），包括工作流实例创建/查询/迁移、
 事件 Timeline、工作清单、域成员管理、Definition 治理、Admin 控制面等端点。
@@ -17,6 +17,7 @@ Instance 仅保存可重建的当前投影。
 | 类型 | 文档 |
 |---|---|
 | 冻结领域架构 | [SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md](docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md) |
+| Cancel/Archive 治理边界（v0.3.2） | [SVC_WORKFLOW_ARCHITECTURE_V0_3_2.md](docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_2.md) |
 | HTTP Contract（OpenAPI） | `contracts/workflow-http/v1/` |
 | TypeScript SDK | `sdk/typescript/` |
 | 实施层总契约 | [IMPLEMENTATION_CONTRACT_V0_1.md](docs/contracts/IMPLEMENTATION_CONTRACT_V0_1.md) |
