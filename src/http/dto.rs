@@ -107,11 +107,14 @@ pub struct DomainInstanceQuery {
     pub before_id: Option<String>,
     pub limit: Option<u32>,
     pub definition_key: Option<String>,
-    /// One of `active`, `terminal`, `all`. Invalid values produce a 400
+    /// One of `active`, `terminal`, `all`. Invalid values produce a 422
     /// at the handler layer.
     pub lifecycle: Option<String>,
     pub current_node_key: Option<String>,
     pub assignee_principal_id: Option<Uuid>,
+    /// One of `active`, `cancelled`, `archived`, `all`. Invalid values
+    /// produce a 422 at the handler layer.
+    pub status: Option<String>,
 }
 
 impl DomainInstanceQuery {
@@ -137,6 +140,35 @@ impl DomainInstanceQuery {
             Some(_) => Err((
                 "invalid_lifecycle",
                 "lifecycle must be 'active', 'terminal', or 'all'",
+            )),
+        }
+    }
+
+    /// Validate and convert the status string to the strong type.
+    /// Returns an error code + message tuple for invalid values.
+    pub(crate) fn parse_status(
+        &self,
+    ) -> Result<
+        Option<crate::application::workflow_instance::query_types::StatusFilter>,
+        (&'static str, &'static str),
+    > {
+        match self.status.as_deref() {
+            None => Ok(None),
+            Some("active") => Ok(Some(
+                crate::application::workflow_instance::query_types::StatusFilter::Active,
+            )),
+            Some("cancelled") => Ok(Some(
+                crate::application::workflow_instance::query_types::StatusFilter::Cancelled,
+            )),
+            Some("archived") => Ok(Some(
+                crate::application::workflow_instance::query_types::StatusFilter::Archived,
+            )),
+            Some("all") => Ok(Some(
+                crate::application::workflow_instance::query_types::StatusFilter::All,
+            )),
+            Some(_) => Err((
+                "invalid_status",
+                "status must be 'active', 'cancelled', 'archived', or 'all'",
             )),
         }
     }

@@ -317,6 +317,7 @@ export const domainInstanceQuerySchema = z
     lifecycle: z.enum(['active', 'terminal', 'all']).optional(),
     currentNodeKey: z.string().optional(),
     assigneePrincipalId: uuidSchema.optional(),
+    status: z.enum(['active', 'cancelled', 'archived', 'all']).optional(),
   })
   .strict()
   .refine(
