@@ -285,6 +285,20 @@ impl LifecycleFilter {
     }
 }
 
+/// Instance-level status filter for domain-list queries.
+///
+/// - `Active`     → `cancelled = FALSE AND archived_at IS NULL`
+/// - `Cancelled`  → `cancelled = TRUE`
+/// - `Archived`   → `archived_at IS NOT NULL`
+/// - `All`        → no filter
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusFilter {
+    Active,
+    Cancelled,
+    Archived,
+    All,
+}
+
 #[derive(Debug, Clone)]
 pub struct ListDomainInstances {
     pub actor_principal_id: Uuid,
@@ -295,6 +309,7 @@ pub struct ListDomainInstances {
     pub lifecycle: Option<LifecycleFilter>,
     pub current_node_key: Option<String>,
     pub assignee_principal_id: Option<Uuid>,
+    pub status: StatusFilter,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1443,3 +1443,336 @@ fn url_encode(s: &str) -> String {
     // Simple URL encoding that handles common characters
     s.replace(' ', "%20")
 }
+
+// ---------------------------------------------------------------------------
+// Tests: status filter (active / cancelled / archived / all)
+// ---------------------------------------------------------------------------
+
+/// Directly mark an instance as cancelled in the database (bypasses the
+/// command handler, sufficient for query-level tests).
+async fn cancel_instance(pool: &sqlx::PgPool, instance_id: Uuid) {
+    sqlx::query(
+        "UPDATE workflow_instances SET cancelled = TRUE, cancelled_at = NOW() \
+         WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .execute(pool)
+    .await
+    .expect("cancel instance");
+}
+
+/// Directly archive an instance in the database.
+async fn archive_instance(pool: &sqlx::PgPool, instance_id: Uuid) {
+    sqlx::query(
+        "UPDATE workflow_instances SET archived_at = NOW() \
+         WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .execute(pool)
+    .await
+    .expect("archive instance");
+}
+
+#[tokio::test]
+async fn status_default_returns_only_active() {
+    // When neither status nor lifecycle is provided, default status=active
+    // → only non-cancelled, non-archived instances are returned.
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
+
+    // Create 3 instances: one active, one cancelled, one archived
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
+    let cancelled_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await;
+    let archived_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await;
+
+    cancel_instance(&pool, cancelled_id).await;
+    archive_instance(&pool, archived_id).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    // No status param → default active → only 1 instance
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &domain_list_uri(domain_id), Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["title"], json!("active"));
+}
+
+#[tokio::test]
+async fn status_all_returns_everything() {
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
+
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
+    let cancelled_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await;
+    let archived_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await;
+
+    cancel_instance(&pool, cancelled_id).await;
+    archive_instance(&pool, archived_id).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&status=all",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn status_cancelled_returns_only_cancelled() {
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
+
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
+    let cancelled_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await;
+    archive_instance(&pool, create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await).await;
+
+    cancel_instance(&pool, cancelled_id).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&status=cancelled",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["title"], json!("cancelled"));
+}
+
+#[tokio::test]
+async fn status_archived_returns_only_archived() {
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
+
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
+    cancel_instance(&pool, create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await).await;
+    let archived_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await;
+    archive_instance(&pool, archived_id).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&status=archived",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["title"], json!("archived"));
+}
+
+#[tokio::test]
+async fn invalid_status_returns_422() {
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&status=nonexistent",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = json_body(resp).await;
+    assert_eq!(body["error"]["code"], "invalid_status");
+}
+
+#[tokio::test]
+async fn status_omitted_with_lifecycle_defaults_to_all() {
+    // When lifecycle is provided but status is omitted, status defaults to
+    // "all" to preserve existing lifecycle callers' results.
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
+
+    // Create: 1 active + 1 cancelled
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
+    let cancelled_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await;
+    cancel_instance(&pool, cancelled_id).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    // lifecycle=active without status → status defaults to all → cancelled
+    // instance is NOT filtered out (only node_type filtering applies).
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&lifecycle=active",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 2); // both are non-terminal
+}
+
+#[tokio::test]
+async fn status_active_with_lifecycle_all_combines_filters() {
+    // status=active AND lifecycle=all → AND combination:
+    // only non-cancelled, non-archived instances are returned, regardless
+    // of node_type.
+    let pool = create_pool().await;
+    let (owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) \
+         VALUES ($1, $2, $3, 'MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(creator)
+    .execute(&pool)
+    .await
+    .expect("add MEMBER binding");
+
+    let (ver_id, _, _, _, draft_advance, normal_advance) =
+        seed_domain_list_definition(&pool, domain_id).await;
+
+    // 1 active non-terminal (draft)
+    create_dlist_instance(&pool, creator, domain_id, ver_id, "active-draft").await;
+
+    // 1 active terminal (done)
+    let term_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "active-terminal").await;
+    advance_to_normal(&pool, creator, term_id, draft_advance).await;
+    advance_to_terminal(&pool, creator, term_id, normal_advance).await;
+
+    // 1 cancelled terminal
+    let cancelled_term = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled-term").await;
+    advance_to_normal(&pool, creator, cancelled_term, draft_advance).await;
+    advance_to_terminal(&pool, creator, cancelled_term, normal_advance).await;
+    cancel_instance(&pool, cancelled_term).await;
+
+    let mock_dl = common::MockJwksServer::start().await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let app = app(pool, &mock_dl.url);
+    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+
+    // status=active + lifecycle=all → 2 instances (active-draft + active-terminal)
+    let uri = format!(
+        "/internal/v1/workflow-instances/domain?domainId={}&status=active&lifecycle=all",
+        domain_id
+    );
+    let resp = app
+        .clone()
+        .oneshot(request("GET", &uri, Some(&owner_token)))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 2);
+}

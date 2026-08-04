@@ -39,6 +39,22 @@ fn lifecycle_where(lifecycle: Option<LifecycleFilter>) -> &'static str {
     }
 }
 
+/// Map the status filter to a SQL WHERE clause fragment.
+///
+/// Semantics:
+/// - `Active`    → cancelled = FALSE AND archived_at IS NULL
+/// - `Cancelled` → cancelled = TRUE
+/// - `Archived`  → archived_at IS NOT NULL
+/// - `All`       → no filter
+fn status_where(status: StatusFilter) -> &'static str {
+    match status {
+        StatusFilter::Active => " AND wi.cancelled = FALSE AND wi.archived_at IS NULL",
+        StatusFilter::Cancelled => " AND wi.cancelled = TRUE",
+        StatusFilter::Archived => " AND wi.archived_at IS NOT NULL",
+        StatusFilter::All => "",
+    }
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct DomainInstanceRow {
     workflow_instance_id: Uuid,
@@ -107,6 +123,7 @@ pub(crate) async fn list_domain_instances(
     // index shifting.
 
     let lifecycle_clause = lifecycle_where(query.lifecycle);
+    let status_clause = status_where(query.status);
 
     let sql = format!(
         "SELECT wi.workflow_instance_id, wi.domain_id,
@@ -136,6 +153,7 @@ pub(crate) async fn list_domain_instances(
          WHERE wi.domain_id = $1
            AND ($2::text IS NULL OR wd.definition_key = $2)
            {lifecycle_clause}
+           {status_clause}
            AND ($3::text IS NULL OR nd.node_key = $3)
            AND ($4::uuid IS NULL OR v.assignee_principal_id = $4)
            AND ($5::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($5, $6))

@@ -174,7 +174,7 @@ Missing scope returns `403` with code `forbidden`.
 - Transition: `transitionDefinitionId`, `expectedWorkflowStateVersion`, `submissionPayload`
 - Timeline query: `after`, `limit`
 - Worklist query: `beforeCreatedAt`, `beforeId`, `limit`
-- Domain list query: `domainId`, `beforeCreatedAt`, `beforeId`, `limit`, `definitionKey`, `lifecycle`, `currentNodeKey`, `assigneePrincipalId`
+- Domain list query: `domainId`, `beforeCreatedAt`, `beforeId`, `limit`, `definitionKey`, `lifecycle`, `currentNodeKey`, `assigneePrincipalId`, `status`
 
 ### 4.2 Response Body Convention
 

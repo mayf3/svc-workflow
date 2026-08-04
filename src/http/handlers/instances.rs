@@ -8,7 +8,7 @@ use axum::Json;
 
 use crate::application::workflow_instance::create::create_workflow_instance;
 use crate::application::workflow_instance::query_types::{
-    GetWorkflowInstanceDetail, ListDomainInstances, TimeUuidCursor,
+    GetWorkflowInstanceDetail, ListDomainInstances, StatusFilter, TimeUuidCursor,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
@@ -112,10 +112,25 @@ pub(crate) async fn domain_list(
     require_scope(&principal, "workflow.read")?;
     let Query(query) = query.map_err(ApiError::from_query_rejection)?;
 
-    // Validate lifecycle parameter (400 for invalid values)
+    // Validate lifecycle parameter (422 for invalid values)
     let lifecycle = query
         .parse_lifecycle()
         .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
+    // Validate status parameter (422 for invalid values)
+    let status_explicit = query
+        .parse_status()
+        .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
+    // Resolve default status:
+    // - status explicitly provided → use it
+    // - status omitted, lifecycle provided → status=all (keep existing
+    //   lifecycle callers' results unchanged)
+    // - both omitted → status=active (new default: hide cancelled/archived)
+    let status = status_explicit.unwrap_or(match lifecycle {
+        Some(_) => StatusFilter::All,
+        None => StatusFilter::Active,
+    });
 
     // Parse cursor
     let before = parse_domain_cursor(query.before_created_at, query.before_id)?;
@@ -131,6 +146,7 @@ pub(crate) async fn domain_list(
             lifecycle,
             current_node_key: query.current_node_key,
             assignee_principal_id: query.assignee_principal_id,
+            status,
         })
         .await
         .map_err(ApiError::from_query)?;

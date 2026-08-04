@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — domain-list status filter
+
+- **Breaking-ish (internal API):** `GET /internal/v1/workflow-instances/domain` now accepts a `status` query parameter (`active`/`cancelled`/`archived`/`all`).
+- Default behavior change: when `status` is omitted and `lifecycle` is also omitted, only **active** instances are returned (`cancelled = FALSE AND archived_at IS NULL`). Previously, all instances were returned.
+- When `lifecycle` is provided but `status` is omitted, `status` defaults to `all` to preserve backward compatibility for existing `lifecycle` callers.
+- Use `status=all` to restore the previous "return everything" behavior.
+- Added `status` to the TypeScript SDK `DomainInstanceQuery` schema.
+- Invalid `status` values return 422 `invalid_status`.
+
 ## V1.4.1 (2026-07-26) — Current-State Re-freeze
 
 - Re-frozen Contract Bundle against runtime mainline commit `c133118` (Repository Truth Cleanup)

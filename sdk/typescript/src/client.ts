@@ -253,6 +253,7 @@ export class WorkflowClient {
     setString(params, 'lifecycle', parsed.lifecycle);
     setString(params, 'currentNodeKey', parsed.currentNodeKey);
     setString(params, 'assigneePrincipalId', parsed.assigneePrincipalId);
+    setString(params, 'status', parsed.status);
     return this.request({
       method: 'GET',
       path: `/internal/v1/workflow-instances/domain?${params.toString()}`,
