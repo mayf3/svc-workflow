@@ -24,6 +24,8 @@ pub struct CreateDraftVersion {
     pub json_schema_dialect: Option<String>,
     pub validator_version: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    /// 1 = Legacy (default), 2 = Minimal. Fixed for the version's lifetime.
+    pub semantic_model_version: i16,
 }
 
 /// Atomically replace the graph (nodes + transitions) of a DRAFT version.

@@ -195,8 +195,16 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             context_schema: effective_context_schema,
         };
 
-        // Validate the graph
-        let validation_result = graph::validate_graph(&graph);
+        // Validate the graph, dispatching on the version's semantic model:
+        // Legacy (1) uses the Legacy validator, Minimal (2) the Minimal one.
+        let validation_result = match version.semantic_model_version {
+            crate::domain::definition::model::SemanticModelVersion::Legacy => {
+                graph::validate_graph(&graph)
+            }
+            crate::domain::definition::model::SemanticModelVersion::Minimal => {
+                graph::validate_minimal_graph(&graph)
+            }
+        };
 
         // Also validate JSON schemas
         let schema_errors = self.validate_json_schemas(&graph).await;

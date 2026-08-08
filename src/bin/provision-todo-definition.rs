@@ -365,6 +365,7 @@ async fn run() -> Result<(), ProvisioningError> {
         None => { let v = svc.create_draft_version(CreateDraftVersion {
             actor_principal_id: actor, workflow_definition_id: def_id, context_schema: file.version.context_schema.clone(),
             json_schema_dialect: file.version.json_schema_dialect.clone(), validator_version: file.version.validator_version.clone(), metadata: None,
+                semantic_model_version: 1,
         }).await.map_err(|e| ProvisioningError::ServiceError(e.to_string()))?;
             let id = v.id.into_uuid(); println!("Created draft id={}", id); id }
     };

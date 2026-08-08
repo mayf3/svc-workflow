@@ -140,6 +140,7 @@ impl PgDefinitionRepository {
         json_schema_dialect: Option<&str>,
         validator_version: Option<&str>,
         metadata: Option<&serde_json::Value>,
+        semantic_model_version: i16,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         sqlx::query(
             r#"
@@ -150,7 +151,7 @@ impl PgDefinitionRepository {
         .bind(id)
         .bind(workflow_definition_id)
         .bind(version_number)
-        .bind(SemanticModelVersion::DEFAULT.as_i16())
+        .bind(semantic_model_version)
         .bind(context_schema)
         .bind(json_schema_dialect)
         .bind(validator_version)

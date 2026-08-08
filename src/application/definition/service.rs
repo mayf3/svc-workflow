@@ -132,6 +132,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                 cmd.json_schema_dialect.as_deref(),
                 cmd.validator_version.as_deref(),
                 cmd.metadata.as_ref(),
+                cmd.semantic_model_version,
             )
             .await?;
 

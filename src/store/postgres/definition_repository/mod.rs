@@ -121,6 +121,7 @@ impl DefinitionRepository for PgDefinitionRepository {
         json_schema_dialect: Option<&str>,
         validator_version: Option<&str>,
         metadata: Option<&serde_json::Value>,
+        semantic_model_version: i16,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         self.create_draft_version_inner(
             id,
@@ -130,6 +131,7 @@ impl DefinitionRepository for PgDefinitionRepository {
             json_schema_dialect,
             validator_version,
             metadata,
+            semantic_model_version,
         )
         .await
     }
