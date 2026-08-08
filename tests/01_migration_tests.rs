@@ -139,22 +139,18 @@ async fn test_migration_0019_column_not_null_and_backfilled_to_legacy() {
     .expect("query failed");
     assert_eq!(non_legacy.0, 0, "all rows must have semantic_model_version in (1,2)");
 
-    // With rows present, at least one must be Legacy (backfill target).
-    let versions: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*)::int8 FROM workflow_definition_versions",
+    // With rows present, Legacy (1) must exist (0019 backfill target).
+    // NOTE: rows with semantic_model_version = 2 may legitimately exist here —
+    // Minimal runtime tests seed V2 fixture definitions directly. The
+    // backfill guarantee is: no NULLs, no values outside (1,2), and the
+    // pre-0019 population is all 1 (verified on the fresh DB in §5).
+    let legacy: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM workflow_definition_versions WHERE semantic_model_version = 1",
     )
     .fetch_one(&pool)
     .await
     .expect("query failed");
-    if versions.0 > 0 {
-        let legacy: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::int8 FROM workflow_definition_versions WHERE semantic_model_version = 1",
-        )
-        .fetch_one(&pool)
-        .await
-        .expect("query failed");
-        assert_eq!(legacy.0, versions.0, "all pre-0019 rows must be backfilled to 1 (Legacy)");
-    }
+    assert!(legacy.0 > 0, "at least one Legacy (1) row must exist (backfill)");
 }
 
 #[tokio::test]

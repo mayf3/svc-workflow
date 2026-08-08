@@ -485,12 +485,12 @@ mod context_validation;
 mod definition_gates;
 #[path = "17_workflow_runtime/instance_create/idempotency.rs"]
 mod idempotency;
+#[path = "17_workflow_runtime/instance_create/instance_input_principal.rs"]
+mod instance_input_principal;
 #[path = "17_workflow_runtime/instance_create/normal_create.rs"]
 mod normal_create;
 #[path = "17_workflow_runtime/instance_create/request_hash_contract.rs"]
 mod request_hash_contract;
-#[path = "17_workflow_runtime/instance_create/instance_input_principal.rs"]
-mod instance_input_principal;
 
 // Sub-modules — Context Revision
 #[path = "17_workflow_runtime/context_revision/atomicity.rs"]
@@ -544,6 +544,8 @@ mod combined_validation;
 #[path = "17_workflow_runtime/query/helpers.rs"]
 mod _query_helpers;
 pub(crate) use _query_helpers::*;
+#[path = "17_workflow_runtime/query/assignee_types.rs"]
+mod query_assignee_types;
 #[path = "17_workflow_runtime/query/defensive.rs"]
 mod query_defensive;
 #[path = "17_workflow_runtime/query/detail_visibility.rs"]
@@ -558,8 +560,6 @@ mod query_pagination_security;
 mod query_snapshot;
 #[path = "17_workflow_runtime/query/worklists.rs"]
 mod query_worklists;
-#[path = "17_workflow_runtime/query/assignee_types.rs"]
-mod query_assignee_types;
 
 // Sub-modules — Administrative Emergency Recovery
 #[path = "17_workflow_runtime/admin_recovery/helpers.rs"]
@@ -610,3 +610,6 @@ mod http_worklists;
 
 #[path = "17_workflow_runtime/receipt_stability/mod.rs"]
 mod receipt_stability;
+
+#[path = "17_workflow_runtime/minimal_runtime.rs"]
+mod minimal_runtime;

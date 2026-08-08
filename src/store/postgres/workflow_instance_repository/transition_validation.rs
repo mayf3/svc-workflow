@@ -87,6 +87,31 @@ pub(super) async fn validate_definition_version_status(
 }
 
 /// Read the current node visit with node definition details.
+/// Read the semantic model version of an instance's definition version.
+///
+/// 1 = Legacy, 2 = Minimal. Source of truth for runtime dispatch; never
+/// inferred from node shapes.
+pub(super) async fn read_semantic_model_version(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: Uuid,
+) -> Result<i16, ExecuteWorkflowTransitionError> {
+    let value: Option<(i16,)> = sqlx::query_as(
+        "SELECT semantic_model_version FROM workflow_definition_versions \
+         WHERE definition_version_id = $1",
+    )
+    .bind(definition_version_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    match value {
+        Some((v,)) => Ok(v),
+        None => Err(ExecuteWorkflowTransitionError::InternalConsistency(
+            "definition version not found for instance".to_string(),
+        )),
+    }
+}
+
 pub(super) async fn read_current_visit(
     tx: &mut Transaction<'_, Postgres>,
     instance_uuid: Uuid,

@@ -22,7 +22,9 @@ use crate::domain::workflow_instance::events::{
 use super::command_receipt::{
     self, complete_receipt, try_insert_receipt, write_attempt_audit, ReceiptReplayResult,
 };
-use super::definition_lookup::{self, lock_and_validate_version, read_draft_node};
+use super::definition_lookup::{
+    self, lock_and_validate_version, read_draft_node, read_minimal_entry_node,
+};
 use super::validation_helpers;
 
 /// Outcome of an atomic creation attempt.
@@ -233,11 +235,34 @@ pub(crate) async fn create_workflow_instance_atomically(
     ) {
         deterministic_failure!(err);
     }
-    let draft_node = validation_result!(read_draft_node(&mut tx, definition_version_uuid).await);
+    // Semantic model dispatch: entry node comes from the definition's
+    // semantic model, never guessed from node shape.
+    let entry_node = match version_info.semantic_model_version {
+        1 => validation_result!(read_draft_node(&mut tx, definition_version_uuid).await),
+        2 => {
+            let entry =
+                validation_result!(read_minimal_entry_node(&mut tx, definition_version_uuid).await);
+            // Fail closed: Minimal runtime never resolves DOMAIN_OWNER.
+            if entry.assignee_ref_type
+                == crate::domain::enums::AssigneeRefType::DomainOwner
+            {
+                deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                    "Minimal (V2) definition entry uses forbidden DOMAIN_OWNER assignee"
+                        .to_string(),
+                ));
+            }
+            entry
+        }
+        other => {
+            return Err(CreateWorkflowInstanceError::InternalConsistency(format!(
+                "unknown semantic_model_version {other} for definition version"
+            )))
+        }
+    };
     let resolved_assignee_id = validation_result!(
         validation_helpers::resolve_assignee(
             &mut tx,
-            &draft_node,
+            &entry_node,
             principal_uuid,
             domain_uuid,
             &cmd.context_payload,
@@ -332,7 +357,7 @@ pub(crate) async fn create_workflow_instance_atomically(
     )
     .bind(node_visit_id)
     .bind(workflow_instance_id)
-    .bind(draft_node.node_id)
+    .bind(entry_node.node_id)
     .bind(visit_number)
     .bind(resolved_assignee_id)
     .execute(&mut *tx)
@@ -348,8 +373,8 @@ pub(crate) async fn create_workflow_instance_atomically(
     let event_data = InstanceCreatedEventData {
         definition_version_id: definition_version_uuid.to_string(),
         definition_digest: definition_digest_str.to_string(),
-        initial_node_id: draft_node.node_id.to_string(),
-        assignee_resolution_type: draft_node.assignee_ref_type.to_string(),
+        initial_node_id: entry_node.node_id.to_string(),
+        assignee_resolution_type: entry_node.assignee_ref_type.to_string(),
     };
 
     let event_data_json = serde_json::to_value(&event_data)

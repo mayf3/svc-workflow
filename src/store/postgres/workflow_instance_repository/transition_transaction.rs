@@ -26,9 +26,10 @@ use super::transition_receipt::{
 };
 use super::transition_validation;
 use super::transition_validation::{
-    lock_instance, read_current_visit, read_source_node, read_target_node, read_transition,
-    resolve_assignee, validate_definition_version_status, validate_principal_enabled,
-    validate_return_references, validate_submission_schema, validate_submission_size,
+    lock_instance, read_current_visit, read_semantic_model_version, read_source_node,
+    read_target_node, read_transition, resolve_assignee, validate_definition_version_status,
+    validate_principal_enabled, validate_return_references, validate_submission_schema,
+    validate_submission_size,
 };
 
 /// Execute the full atomic transition workflow inside a single transaction.
@@ -169,9 +170,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // Step 4: Check instance is not cancelled
     // ---------------------------------------------------------------
     if instance.cancelled {
-        deterministic_failure!(
-            ExecuteWorkflowTransitionError::SourceNodeTerminal
-        );
+        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
     }
 
     // ---------------------------------------------------------------
@@ -210,6 +209,13 @@ pub(crate) async fn execute_workflow_transition_atomically(
     );
 
     // ---------------------------------------------------------------
+    // Step 8b: Semantic model dispatch (source of truth = definition version)
+    // ---------------------------------------------------------------
+    let semantic_model_version =
+        validation_result!(read_semantic_model_version(&mut tx, instance.definition_version_id).await);
+    let is_minimal = semantic_model_version == 2;
+
+    // ---------------------------------------------------------------
     // Step 9: Read source node definition (for primary check)
     // ---------------------------------------------------------------
     let source_node = validation_result!(
@@ -235,35 +241,51 @@ pub(crate) async fn execute_workflow_transition_atomically(
         ));
     }
 
-    // Validate transition effect and primary constraint
+    // Validate transition effect, dispatching on the semantic model:
+    //  - Legacy (1): primary ADVANCE + orderIndex RETURN rules (unchanged)
+    //  - Minimal (2): any legal outgoing ADVANCE (no primary), RETURN by graph
+    //    ancestor (no orderIndex), TERMINATE forbidden (fail closed)
     let effect = transition.transition_effect.clone();
     match effect.as_str() {
         "ADVANCE" => {
-            // Verify this is the primary ADVANCE transition
-            let primary_id = source_node.primary_advance_transition_id.ok_or_else(|| {
-                ExecuteWorkflowTransitionError::InternalConsistency(
-                    "source node has no primary advance transition".to_string(),
-                )
-            })?;
-            if transition.transition_id != primary_id {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "ADVANCE must use the primary advance transition".to_string(),
-                ));
-            }
-        }
-        "RETURN" => {
-            // Verify it's NOT the primary ADVANCE transition
-            if let Some(primary_id) = source_node.primary_advance_transition_id {
-                if transition.transition_id == primary_id {
+            if !is_minimal {
+                // Verify this is the primary ADVANCE transition
+                let primary_id = source_node.primary_advance_transition_id.ok_or_else(|| {
+                    ExecuteWorkflowTransitionError::InternalConsistency(
+                        "source node has no primary advance transition".to_string(),
+                    )
+                })?;
+                if transition.transition_id != primary_id {
                     deterministic_failure!(
                         ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "RETURN transition must not be the primary advance".to_string(),
+                            "ADVANCE must use the primary advance transition".to_string(),
                         )
                     );
                 }
             }
         }
+        "RETURN" => {
+            if !is_minimal {
+                // Verify it's NOT the primary ADVANCE transition
+                if let Some(primary_id) = source_node.primary_advance_transition_id {
+                    if transition.transition_id == primary_id {
+                        deterministic_failure!(
+                            ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                                "RETURN transition must not be the primary advance".to_string(),
+                            )
+                        );
+                    }
+                }
+            }
+        }
         "TERMINATE" => {
+            if is_minimal {
+                deterministic_failure!(
+                    ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                        "TERMINATE is forbidden in Minimal (V2) semantics".to_string(),
+                    )
+                );
+            }
             // Verify it's NOT the primary ADVANCE transition
             if let Some(primary_id) = source_node.primary_advance_transition_id {
                 if transition.transition_id == primary_id {
@@ -296,25 +318,31 @@ pub(crate) async fn execute_workflow_transition_atomically(
 
     match effect.as_str() {
         "ADVANCE" => {
-            // ADVANCE allows any non-TERMINAL target (including normal completion)
-            // If target is TERMINAL, it's a normal completion via primary ADVANCE
-            // Always allowed for ADVANCE
+            // ADVANCE allows any target: TASK continues, TERMINAL completes
+            // (normal completion contract, shared by Legacy and Minimal).
         }
         "RETURN" => {
-            // Target must be non-TERMINAL and have order_index < source
+            // Target must be non-TERMINAL
             if target_node.node_type_enum() == NodeType::TERMINAL {
                 deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
                     "RETURN target must not be a TERMINAL node".to_string(),
                 ));
             }
-            if target_node.order_index >= source_node.order_index {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "RETURN target must have lower order_index than source".to_string(),
-                ));
+            if !is_minimal {
+                // Legacy: orderIndex ordering rule. Minimal (V2) relies on the
+                // validator-guaranteed strict ADVANCE ancestor relation instead.
+                if target_node.order_index >= source_node.order_index {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                            "RETURN target must have lower order_index than source".to_string(),
+                        )
+                    );
+                }
             }
         }
         "TERMINATE" => {
-            // Target must be TERMINAL
+            // Minimal is rejected earlier (v2 fail-closed); Legacy requires a
+            // TERMINAL target.
             if target_node.node_type_enum() != NodeType::TERMINAL {
                 deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
                     "TERMINATE target must be a TERMINAL node".to_string(),
@@ -380,6 +408,14 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .await
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
+    if is_minimal
+        && target_node.assignee_ref_type_enum()
+            == Some(crate::domain::enums::AssigneeRefType::DomainOwner)
+    {
+        deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+            "Minimal (V2) target uses forbidden DOMAIN_OWNER assignee".to_string(),
+        ));
+    }
     let target_assignee_id = validation_result!(
         resolve_assignee(
             &mut tx,
