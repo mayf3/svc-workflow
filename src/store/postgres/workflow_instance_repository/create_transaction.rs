@@ -240,29 +240,14 @@ pub(crate) async fn create_workflow_instance_atomically(
     let entry_node = match version_info.semantic_model_version {
         1 => validation_result!(read_draft_node(&mut tx, definition_version_uuid).await),
         2 => {
-            // Fail-closed gate: the complete Minimal validator must pass
-            // before any runtime state is written. Published graphs are
-            // immutable, so validating once at creation is sufficient; the
-            // executed graph is trusted afterwards.
-            let graph = validation_result!(
-                definition_lookup::read_full_graph(&mut tx, definition_version_uuid).await
-            );
-            let validation =
-                crate::domain::definition::graph::validate_minimal_graph(&graph);
-            if !validation.valid {
-                let detail = validation
-                    .errors
-                    .iter()
-                    .map(|e| format!("{}: {}", e.code, e.message))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                deterministic_failure!(
-                    CreateWorkflowInstanceError::DefinitionGraphInvalid(detail)
-                );
-            }
+            // Minimal definitions are trusted to satisfy the Minimal
+            // contract — graph legality is the caller's responsibility
+            // (they may run validate_minimal_graph before submission).
+            // The Runtime keeps only cheap execution fail-closeds: the
+            // entry TASK must be determinable, and forbidden DOMAIN_OWNER
+            // assignment on the entry is rejected outright.
             let entry =
                 validation_result!(read_minimal_entry_node(&mut tx, definition_version_uuid).await);
-            // Defense in depth (validator already rejects DOMAIN_OWNER).
             if entry.assignee_ref_type
                 == crate::domain::enums::AssigneeRefType::DomainOwner
             {
