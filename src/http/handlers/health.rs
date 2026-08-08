@@ -103,4 +103,24 @@ mod tests {
         assert!(!migration_ledger_matches(&future, 0));
         assert!(!migration_ledger_matches(&expected, 1));
     }
+
+    /// EXPECTED_MIGRATION_VERSION must stay in lockstep with the highest
+    /// migration file in migrations/ so a release cannot drift from the
+    /// canonical migration set (lineage guard).
+    #[test]
+    fn expected_migration_version_matches_latest_migration_file() {
+        let mut highest = 0i64;
+        for entry in std::fs::read_dir("migrations").expect("migrations dir must exist") {
+            let name = entry.expect("entry").file_name().to_string_lossy().into_owned();
+            let number = name.split('_').next().expect("migration filename prefix");
+            let number: i64 = number.parse().unwrap_or_else(|_| {
+                panic!("migration filename must start with a numeric sequence: {name}")
+            });
+            highest = highest.max(number);
+        }
+        assert_eq!(
+            EXPECTED_MIGRATION_VERSION, highest,
+            "EXPECTED_MIGRATION_VERSION must equal the highest migration number"
+        );
+    }
 }

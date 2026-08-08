@@ -85,6 +85,64 @@ async fn test_migration_0014_applied() {
 }
 
 #[tokio::test]
+async fn test_migration_0016_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify the canonical 0016 (instance assignees & artifact lineage
+    // reconciliation) is in the ledger and successful.
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 16 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0016 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_migration_0016_schema_objects_exist() {
+    let pool = common::create_pool().await;
+
+    // 0016 reconciles the historical B schema: the per-instance node
+    // assignees table plus the artifact-binding columns on workflow_instances.
+    let table_row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_tables \
+         WHERE tablename = 'workflow_instance_node_assignees' AND schemaname = 'public'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(
+        table_row.0, 1,
+        "table 'workflow_instance_node_assignees' must exist after migration 0016"
+    );
+
+    let columns = vec![
+        "require_explicit_node_assignees",
+        "subject_id",
+        "artifact_id",
+        "artifact_version",
+        "artifact_digest",
+        "require_artifact_binding",
+    ];
+    for column in &columns {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::int8 FROM information_schema.columns \
+             WHERE table_name = 'workflow_instances' AND column_name = $1",
+        )
+        .bind(column)
+        .fetch_one(&pool)
+        .await
+        .expect("query failed");
+        assert_eq!(
+            row.0, 1,
+            "column '{column}' must exist on workflow_instances after migration 0016"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_instance_input_principal_enum_exists() {
     let pool = common::create_pool().await;
 
