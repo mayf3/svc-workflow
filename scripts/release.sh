@@ -26,6 +26,7 @@ LEDGER="$SERVICE_DIR/ledger.json"
 BASE_URL="http://127.0.0.1:$PORT"
 GIT=$(command -v git)
 SHASUM=$(command -v shasum)
+RELEASE_WT=""
 
 log() { printf '[release] %s\n' "$*"; }
 fail() { printf '[release] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -44,7 +45,7 @@ load_provenance() {
   local sha="$1"
   local dir="$RELEASES_DIR/$sha"
   [[ -f "$dir/provenance.json" ]] || fail "缺少 provenance: $dir/provenance.json（先运行 build）"
-  [[ -f "$dir/$BINARY" ]] || fail "缺少 artifact: $dir/$BINARY（先运行 build）"
+  [[ -f "$dir/$BINARY" ]] || fail "缺少 artifact: $dir/${BINARY}（先运行 build）"
 
   local tree_state artifact_sha256 built_at
   tree_state="$(jq -r '.treeState' "$dir/provenance.json")"
@@ -80,16 +81,16 @@ build() {
   assert_source_sha "$sha"
 
   # 1) 在全新 detached worktree 构建 → worktree 必然 clean（build.rs 亦强制）
-  local wt
-  wt="$(mktemp -d "${TMPDIR:-/tmp}/svc-workflow-release.XXXXXX")"
-  log "创建 clean worktree: $wt (commit $sha)"
-  "$GIT" -C "$REPO_ROOT" worktree add --detach "$wt" "$sha" >/dev/null
-  trap 'git -C "$REPO_ROOT" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"' EXIT
+  RELEASE_WT="$(mktemp -d "${TMPDIR:-/tmp}/svc-workflow-release.XXXXXX")"
+  log "创建 clean worktree: $RELEASE_WT (commit $sha)"
+  "$GIT" -C "$REPO_ROOT" worktree add --detach "$RELEASE_WT" "$sha" >/dev/null
+  # 全局变量 + EXIT trap：无论成功失败都清理 worktree（local 变量在函数返回后不可用）
+  trap 'git -C "$REPO_ROOT" worktree remove --force "$RELEASE_WT" >/dev/null 2>&1 || rm -rf "$RELEASE_WT"' EXIT
 
   log "release build（独立 CARGO_TARGET_DIR，确保产物只来自该 commit 的干净源码）"
-  (cd "$wt" && cargo build --release --locked)
+  (cd "$RELEASE_WT" && cargo build --release --locked)
 
-  local binary="$wt/target/release/$BINARY"
+  local binary="$RELEASE_WT/target/release/$BINARY"
   [[ -f "$binary" ]] || fail "release build 未产出 $binary"
 
   # 2) 生成 provenance.json
@@ -152,7 +153,7 @@ deploy() {
 
   # 6) restart
   launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 \
-    || fail "launchctl 服务不存在: $LABEL（先加载 plist）"
+    || fail "launchctl 服务不存在: ${LABEL}（先加载 plist）"
   log "restart $LABEL (launchctl kickstart -k)"
   launchctl kickstart -k "gui/$(id -u)/$LABEL"
 }
@@ -191,7 +192,7 @@ verify() {
   bin_path="$(running_binary_path)"
   [[ -n "$bin_path" ]] || fail "无法定位运行中进程的 binary 路径"
   if [[ "$bin_path" == *"(deleted)"* ]]; then
-    fail "VERIFY FAIL: 运行中的 binary 文件已被替换（$bin_path）"
+    fail "VERIFY FAIL: 运行中的 binary 文件已被替换（${bin_path}）"
   fi
   actual_sha256="$("$SHASUM" -a 256 "$bin_path" | awk '{print $1}')"
   [[ "$actual_sha256" == "$artifact_sha256" ]] \
@@ -202,14 +203,15 @@ verify() {
   local healthz readyz auth_code
   healthz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/healthz" || echo 000)"
   readyz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/readyz" || echo 000)"
-  auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/domains" || echo 000)"
+  # 只读认证端点：无 token 应 401；有 AUTH_TOKEN 则期望 200
+  auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
   if [[ -n "${AUTH_TOKEN:-}" ]]; then
-    auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL/internal/v1/domains" || echo 000)"
+    auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
   fi
   log "smoke: healthz=$healthz readyz=$readyz auth(domains)=$auth_code"
   [[ "$healthz" == "200" ]] || fail "VERIFY FAIL: healthz=$healthz"
   if [[ "$readyz" != "200" ]]; then
-    log "注意: readyz=$readyz（已知独立问题：JWKS/auth 缓存，本轮只记录不修）"
+    log "注意: readyz=${readyz}（已知独立问题：JWKS/auth 缓存，本轮只记录不修）"
   fi
 
   # 验收结果并入 ledger 最近一条
@@ -221,7 +223,7 @@ verify() {
     '.verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}' \
     "$LEDGER" > "$LEDGER.tmp" && mv "$LEDGER.tmp" "$LEDGER"
 
-  log "VERIFY PASSED: 运行中的 svc-workflow = clean commit $sha 的产物（sha256 $artifact_sha256）"
+  log "VERIFY PASSED: 运行中的 svc-workflow = clean commit ${sha} 的产物（sha256 ${artifact_sha256}）"
 }
 
 main() {
