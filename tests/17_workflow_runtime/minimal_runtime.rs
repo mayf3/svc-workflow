@@ -21,24 +21,24 @@ use svc_workflow::application::workflow_instance::execute_transition::{
 use super::*;
 
 /// Assignee selector spec for a V2 node.
-enum AssigneeSpec {
+pub(crate) enum AssigneeSpec {
     Creator,
     Fixed(Uuid),
     Context(&'static str),
 }
 
 /// A seeded V2 definition graph.
-struct V2Def {
-    ver_id: Uuid,
-    nodes: HashMap<String, Uuid>,
-    transitions: HashMap<String, Uuid>,
+pub(crate) struct V2Def {
+    pub(crate) ver_id: Uuid,
+    pub(crate) nodes: HashMap<String, Uuid>,
+    pub(crate) transitions: HashMap<String, Uuid>,
 }
 
 /// Seed a V2 (semantic_model_version = 2) PUBLISHED definition.
 ///
 /// `nodes`: (key, NORMAL+assignee spec). `terminals`: TERMINAL keys.
 /// `edges`: (edge key, source key, target key, effect).
-async fn seed_v2_definition(
+pub(crate) async fn seed_v2_definition(
     pool: &PgPool,
     domain_id: Uuid,
     nodes: &[(&str, AssigneeSpec)],
