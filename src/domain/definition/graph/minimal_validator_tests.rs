@@ -456,7 +456,30 @@ fn terminal_with_assignee_rejected() {
 }
 
 #[test]
-fn terminate_to_non_terminal_rejected() {
+fn terminate_effect_rejected_even_to_terminal() {
+    // V2 termination semantics: TERMINATE is forbidden in V2, even when the
+    // target is a TERMINAL node. End state = ADVANCE into TERMINAL.
+    let g = graph(
+        vec![
+            node(1, "start", NodeType::NORMAL, creator()),
+            node(2, "done", NodeType::TERMINAL, None),
+        ],
+        vec![
+            transition(1, "start_to_done", 1, 2, TransitionEffect::Advance),
+            transition(2, "terminate_to_done", 1, 2, TransitionEffect::Terminate),
+        ],
+    );
+    let result = validate_minimal_graph(&g);
+    assert!(!result.valid);
+    assert!(
+        error_codes(&result).contains(&"v2_terminate_effect_forbidden".to_string()),
+        "V2 must reject TERMINATE outright: {:?}",
+        error_codes(&result)
+    );
+}
+
+#[test]
+fn terminate_effect_rejected_to_non_terminal() {
     let g = graph(
         vec![
             node(1, "start", NodeType::NORMAL, creator()),
@@ -471,7 +494,50 @@ fn terminate_to_non_terminal_rejected() {
     );
     let result = validate_minimal_graph(&g);
     assert!(!result.valid);
-    assert!(error_codes(&result).contains(&"v2_terminate_target_not_terminal".to_string()));
+    assert!(error_codes(&result).contains(&"v2_terminate_effect_forbidden".to_string()));
+}
+
+#[test]
+fn advance_to_terminal_allowed() {
+    // TASK --ADVANCE--> TERMINAL is the V2 normal-end expression.
+    let g = graph(
+        vec![
+            node(1, "start", NodeType::NORMAL, creator()),
+            node(2, "done", NodeType::TERMINAL, None),
+        ],
+        vec![transition(1, "finish", 1, 2, TransitionEffect::Advance)],
+    );
+    let result = validate_minimal_graph(&g);
+    assert!(
+        result.valid,
+        "V2 ADVANCE to TERMINAL must be legal: {:?}",
+        error_codes(&result)
+    );
+}
+
+#[test]
+fn diamond_advance_graph_is_legal() {
+    // A -> B -> D, A -> C -> D: converging branches are legal in V2.
+    let g = graph(
+        vec![
+            node(1, "a", NodeType::NORMAL, creator()),
+            node(2, "b", NodeType::NORMAL, creator()),
+            node(3, "c", NodeType::NORMAL, creator()),
+            node(4, "d", NodeType::TERMINAL, None),
+        ],
+        vec![
+            transition(1, "a_to_b", 1, 2, TransitionEffect::Advance),
+            transition(2, "a_to_c", 1, 3, TransitionEffect::Advance),
+            transition(3, "b_to_d", 2, 4, TransitionEffect::Advance),
+            transition(4, "c_to_d", 3, 4, TransitionEffect::Advance),
+        ],
+    );
+    let result = validate_minimal_graph(&g);
+    assert!(
+        result.valid,
+        "diamond ADVANCE graph must be legal: {:?}",
+        error_codes(&result)
+    );
 }
 
 #[test]

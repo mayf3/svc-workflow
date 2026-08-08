@@ -10,8 +10,13 @@
 //!   TERMINAL-> no assignee, no task-execution semantics, no outgoing edges
 //!
 //! Transition:
-//!   key, source, target, effect (ADVANCE | RETURN | TERMINATE),
+//!   key, source, target, effect (ADVANCE | RETURN only),
 //!   submissionSchema?, metadata?
+//!
+//! V2 termination semantics: TERMINATE transitions are FORBIDDEN in V2.
+//! A workflow ends by normal graph progression (ADVANCE) into a TERMINAL
+//! node; instance cancel/archive is instance lifecycle, not a graph
+//! transition. Legacy V1 keeps TERMINATE unchanged.
 //!
 //! Forbidden Legacy concepts in V2:
 //!   DRAFT node type, DOMAIN_OWNER assignee, primary_advance_transition_id,
@@ -25,8 +30,7 @@
 //!     branches). No primary ADVANCE concept.
 //!   * RETURN target must be a strict ADVANCE ancestor of the source; RETURN
 //!     edges do not participate in cycle checks.
-//!   * TERMINATE target must be a TERMINAL node.
-//!
+
 //! This module decides legality only. No V2 runtime, no production V2
 //! creation path, no changes to V1 behavior.
 
@@ -176,7 +180,6 @@ pub fn validate_minimal_graph(graph: &WorkflowGraph) -> ValidationResult {
     let mut advance_out: HashMap<uuid::Uuid, Vec<uuid::Uuid>> = HashMap::new();
     let mut advance_in_degree: HashMap<uuid::Uuid, usize> = HashMap::new();
     let mut returns: Vec<(uuid::Uuid, uuid::Uuid)> = Vec::new();
-    let mut terminates: Vec<(uuid::Uuid, uuid::Uuid)> = Vec::new();
 
     for node in &graph.nodes {
         advance_in_degree.insert(*node.node_id.as_uuid(), 0);
@@ -190,7 +193,18 @@ pub fn validate_minimal_graph(graph: &WorkflowGraph) -> ValidationResult {
                 *advance_in_degree.entry(target).or_default() += 1;
             }
             TransitionEffect::Return => returns.push((source, target)),
-            TransitionEffect::Terminate => terminates.push((source, target)),
+            // V2 termination semantics: TERMINATE transition is forbidden.
+            // Workflows end by reaching a TERMINAL node via ADVANCE; instance
+            // cancel/archive is instance lifecycle, not a graph transition.
+            TransitionEffect::Terminate => errors.push(err(
+                "v2_terminate_effect_forbidden",
+                format!(
+                    "V2 transition '{}' uses TERMINATE; V2 ends workflows by \
+                     ADVANCE into a TERMINAL node (cancel/archive are instance \
+                     lifecycle, not graph transitions)",
+                    trans.transition_key
+                ),
+            )),
         }
     }
 
@@ -270,18 +284,10 @@ pub fn validate_minimal_graph(graph: &WorkflowGraph) -> ValidationResult {
     }
 
     // ---
-    // 5. TERMINATE: target must be a TERMINAL node; TERMINAL nodes have no
-    //    outgoing edges (no task-execution semantics)
+    // 5. TERMINAL nodes: no assignee (checked above), no outgoing edges.
+    //    Workflows end by ADVANCE into a TERMINAL node; TERMINATE itself is
+    //    rejected during transition collection (v2_terminate_effect_forbidden).
     // ---
-    for (source, target) in &terminates {
-        match nodes_by_id.get(&crate::domain::ids::NodeId::from_uuid(*target)) {
-            Some(node) if node.node_type == NodeType::TERMINAL => {}
-            _ => errors.push(err(
-                "v2_terminate_target_not_terminal",
-                format!("V2 TERMINATE from '{source}' must target a TERMINAL node"),
-            )),
-        }
-    }
     for node in &graph.nodes {
         if node.node_type == NodeType::TERMINAL {
             let has_outgoing = graph
