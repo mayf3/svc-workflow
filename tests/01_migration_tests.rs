@@ -101,6 +101,63 @@ async fn test_migration_0016_applied() {
 }
 
 #[tokio::test]
+async fn test_migration_0018_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify the UNIQUE-name reconciliation migration 0018 is in the ledger.
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 18 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0018 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_migration_0018_unique_name_reconciled() {
+    let pool = common::create_pool().await;
+
+    const CANONICAL: &str = "workflow_instance_node_assign_workflow_instance_id_node_key_key";
+    const LEGACY: &str = "workflow_instance_node_assignees_workflow_instance_id_node_key_";
+
+    // Canonical name must exist exactly once on the node assignees table...
+    let canonical: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_constraint \
+         WHERE conrelid = 'workflow_instance_node_assignees'::regclass AND conname = $1",
+    )
+    .bind(CANONICAL)
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(canonical.0, 1, "canonical UNIQUE constraint must exist exactly once");
+
+    // ...and the legacy truncated name must be absent.
+    let legacy: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_constraint \
+         WHERE conrelid = 'workflow_instance_node_assignees'::regclass AND conname = $1",
+    )
+    .bind(LEGACY)
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(legacy.0, 0, "legacy UNIQUE constraint name must be absent");
+
+    // The backing index must carry the canonical name too (RENAME CONSTRAINT
+    // renames the underlying unique index) and remain unique.
+    let index: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_indexes \
+         WHERE tablename = 'workflow_instance_node_assignees' AND indexname = $1",
+    )
+    .bind(CANONICAL)
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(index.0, 1, "canonical UNIQUE index must exist exactly once");
+}
+
+#[tokio::test]
 async fn test_migration_0017_applied() {
     let pool = common::create_pool().await;
 
