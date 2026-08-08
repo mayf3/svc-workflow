@@ -5,8 +5,12 @@
 #![allow(clippy::needless_borrow)]
 
 mod assignee_validation;
+mod minimal_validator;
 mod transition_validation;
 mod validation;
+
+#[cfg(test)]
+mod minimal_validator_tests;
 
 use std::collections::HashMap;
 
@@ -85,4 +89,13 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
         warnings,
         computed_digest: None,
     }
+}
+
+/// Validate a workflow graph under the V2 Minimal semantic model.
+///
+/// Fully separated from [`validate_graph`] (V1 Legacy rules); shares only
+/// the pure structural reference checks. See `minimal_validator` for the
+/// frozen V2 contract.
+pub fn validate_minimal_graph(graph: &WorkflowGraph) -> ValidationResult {
+    minimal_validator::validate_minimal_graph(graph)
 }
