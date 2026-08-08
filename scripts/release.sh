@@ -40,32 +40,60 @@ assert_source_sha() {
     || fail "commit 不存在于本仓库: $sha"
 }
 
+# 计算 migration bundle digest：bundle 内全部 .sql 文件按名排序后逐文件
+# SHA-256，再对汇总列表整体 SHA-256。同内容 -> 同 digest（可机械复核）。
+migration_bundle_digest() {
+  local dir="$1"
+  (cd "$dir" && find migrations -name '*.sql' -type f | sort | xargs "$SHASUM" -a 256) \
+    | "$SHASUM" -a 256 | awk '{print $1}'
+}
+
+# bundle 内最高 migration 版本号（文件名 <NNNN>_*.sql 前缀）
+migration_max_version() {
+  local dir="$1"
+  ls "$dir"/migrations/[0-9]*_*.sql 2>/dev/null | sed -E 's#.*/##; s/_.*//' | sort -n | tail -1
+}
+
 # 校验 provenance.json 与 binary 一致；输出 provenance 字段
 load_provenance() {
   local sha="$1"
   local dir="$RELEASES_DIR/$sha"
   [[ -f "$dir/provenance.json" ]] || fail "缺少 provenance: $dir/provenance.json（先运行 build）"
   [[ -f "$dir/$BINARY" ]] || fail "缺少 artifact: $dir/${BINARY}（先运行 build）"
+  [[ -d "$dir/migrations" ]] || fail "缺少 migration bundle: $dir/migrations（先运行 build）"
 
-  local tree_state artifact_sha256 built_at
+  local tree_state artifact_sha256 built_at migration_max migration_digest
   tree_state="$(jq -r '.treeState' "$dir/provenance.json")"
   artifact_sha256="$(jq -r '.artifactSha256' "$dir/provenance.json")"
   built_at="$(jq -r '.builtAt' "$dir/provenance.json")"
+  migration_max="$(jq -r '.migrationMaxVersion' "$dir/provenance.json")"
+  migration_digest="$(jq -r '.migrationBundleDigest' "$dir/provenance.json")"
 
   [[ "$tree_state" == "clean" ]] || fail "provenance.treeState != clean: $tree_state"
   [[ "$artifact_sha256" =~ ^[0-9a-f]{64}$ ]] || fail "provenance.artifactSha256 非法: $artifact_sha256"
   [[ "$built_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]] || fail "provenance.builtAt 非法: $built_at"
+  [[ "$migration_max" =~ ^[0-9]+$ ]] || fail "provenance.migrationMaxVersion 非法: $migration_max"
+  [[ "$migration_digest" =~ ^[0-9a-f]{64}$ ]] || fail "provenance.migrationBundleDigest 非法: $migration_digest"
 
   local actual
   actual="$("$SHASUM" -a 256 "$dir/$BINARY" | awk '{print $1}')"
   [[ "$actual" == "$artifact_sha256" ]] || fail "artifact 与 provenance 不一致: actual=$actual expected=$artifact_sha256"
+
+  # 回归防线：bundle 内容必须与 provenance 声明一致（缺 N / 缺文件 -> fail）
+  local actual_max actual_digest
+  actual_max="$(migration_max_version "$dir")"
+  actual_digest="$(migration_bundle_digest "$dir")"
+  [[ "$actual_max" == "$migration_max" ]] || fail "bundle 最高版本与 provenance 不一致: actual=$actual_max expected=$migration_max"
+  [[ "$actual_digest" == "$migration_digest" ]] || fail "bundle digest 与 provenance 不一致"
 
   jq -n \
     --arg sourceSha "$sha" \
     --arg treeState "$tree_state" \
     --arg artifactSha256 "$artifact_sha256" \
     --arg builtAt "$built_at" \
-    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt}'
+    --arg migrationMaxVersion "$migration_max" \
+    --arg migrationBundleDigest "$migration_digest" \
+    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'
 }
 
 # 返回运行中 svc-workflow 进程的 txt（可执行）文件路径；进程未运行则返回空
@@ -93,12 +121,25 @@ build() {
   local binary="$RELEASE_WT/target/release/$BINARY"
   [[ -f "$binary" ]] || fail "release build 未产出 $binary"
 
-  # 2) 生成 provenance.json
-  local artifact_sha256 built_at
-  artifact_sha256="$("$SHASUM" -a 256 "$binary" | awk '{print $1}')"
-  built_at="$(now_iso)"
   local dir="$RELEASES_DIR/$sha"
   mkdir -p "$dir"
+
+  # 2) 打包 migration bundle（与 binary 同源：同一 clean worktree = 同一 commit）
+  cp -r "$RELEASE_WT/migrations" "$dir/migrations"
+
+  # 回归防线：bundle 必须与该 commit 的 migration 树完全一致（缺文件/缺 N -> fail）
+  local repo_sql_count bundle_sql_count
+  repo_sql_count="$("$GIT" -C "$REPO_ROOT" ls-tree -r --name-only "$sha" migrations | grep -c '\.sql$')"
+  bundle_sql_count="$(find "$dir/migrations" -name '*.sql' -type f | wc -l | tr -d ' ')"
+  [[ "$bundle_sql_count" == "$repo_sql_count" ]] \
+    || fail "migration bundle 不完整: bundle=$bundle_sql_count repo=$repo_sql_count (必须来自同一 commit)"
+
+  # 3) 生成 provenance.json（含 migration bundle 证据）
+  local artifact_sha256 built_at migration_max migration_digest
+  artifact_sha256="$("$SHASUM" -a 256 "$binary" | awk '{print $1}')"
+  built_at="$(now_iso)"
+  migration_max="$(migration_max_version "$dir")"
+  migration_digest="$(migration_bundle_digest "$dir")"
   cp "$binary" "$dir/$BINARY"
   chmod +x "$dir/$BINARY"
   jq -n \
@@ -107,9 +148,12 @@ build() {
     --arg artifactSha256 "$artifact_sha256" \
     --arg builtAt "$built_at" \
     --arg buildCommand "cargo build --release --locked (clean detached worktree @ $sha)" \
-    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, buildCommand: $buildCommand}' \
+    --arg migrationMaxVersion "$migration_max" \
+    --arg migrationBundleDigest "$migration_digest" \
+    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, buildCommand: $buildCommand, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}' \
     > "$dir/provenance.json"
   log "artifact 已归档: $dir/$BINARY"
+  log "migration bundle 已归档: $dir/migrations (max=$migration_max, digest=$migration_digest)"
   log "provenance 已写入: $dir/provenance.json"
 }
 
@@ -120,25 +164,41 @@ deploy() {
   provenance="$(load_provenance "$sha")"
   dir="$RELEASES_DIR/$sha"
 
-  local artifact_sha256 previous_sha256 deployed_at
+  local artifact_sha256 migration_max migration_digest previous_sha256 deployed_at
   artifact_sha256="$(jq -r '.artifactSha256' <<<"$provenance")"
+  migration_max="$(jq -r '.migrationMaxVersion' <<<"$provenance")"
+  migration_digest="$(jq -r '.migrationBundleDigest' <<<"$provenance")"
   deployed_at="$(now_iso)"
 
-  # 3) 备份当前 binary（记录 previousArtifactSha256）
+  # 3) 备份当前 binary + migrations（记录 previousArtifactSha256）
   previous_sha256=""
   if [[ -f "$SERVICE_DIR/$BINARY" ]]; then
     local backup_path="$SERVICE_DIR/$BINARY.backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$backup_path"
     previous_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
-    cp "$SERVICE_DIR/$BINARY" "$backup_path"
-    log "已备份当前 binary → $backup_path ($previous_sha256)"
+    cp "$SERVICE_DIR/$BINARY" "$backup_path/"
+    if [[ -d "$SERVICE_DIR/migrations" ]]; then
+      cp -r "$SERVICE_DIR/migrations" "$backup_path/"
+    fi
+    log "已备份当前 binary+migrations → $backup_path ($previous_sha256)"
   fi
 
-  # 4) 安装新 binary
+  # 4) 安装新 binary + exact migrations bundle（不可分割）
   install -m 0755 "$dir/$BINARY" "$SERVICE_DIR/$BINARY"
-  local installed_sha256
+  rm -rf "$SERVICE_DIR/migrations"
+  cp -r "$dir/migrations" "$SERVICE_DIR/migrations"
+
+  local installed_sha256 deployed_max deployed_digest
   installed_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
+  deployed_max="$(migration_max_version "$SERVICE_DIR")"
+  deployed_digest="$(migration_bundle_digest "$SERVICE_DIR")"
   [[ "$installed_sha256" == "$artifact_sha256" ]] \
-    || fail "安装后校验失败: installed=$installed_sha256 expected=$artifact_sha256"
+    || fail "DEPLOYMENT_FAIL: 安装后 binary 校验失败: installed=$installed_sha256 expected=$artifact_sha256"
+  [[ "$deployed_max" == "$migration_max" ]] \
+    || fail "DEPLOYMENT_FAIL: 部署目录 migrations 最高版本=$deployed_max != provenance=$migration_max (bundle 缺 migration)"
+  [[ "$deployed_digest" == "$migration_digest" ]] \
+    || fail "DEPLOYMENT_FAIL: 部署目录 migration bundle digest 与 provenance 不一致"
+  log "已安装 binary + migrations bundle (max=$deployed_max, digest=$deployed_digest)"
 
   # 5) deployment ledger（JSONL，追加）
   mkdir -p "$SERVICE_DIR"
@@ -147,7 +207,9 @@ deploy() {
     --arg sourceSha "$sha" \
     --arg artifactSha256 "$artifact_sha256" \
     --arg previousArtifactSha256 "${previous_sha256:-}" \
-    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256}' \
+    --arg migrationMaxVersion "$migration_max" \
+    --arg migrationBundleDigest "$migration_digest" \
+    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}' \
     >> "$LEDGER"
   log "deployment ledger 已追加: $LEDGER"
 
@@ -198,6 +260,18 @@ verify() {
   [[ "$actual_sha256" == "$artifact_sha256" ]] \
     || fail "VERIFY FAIL: 运行中 binary sha256=$actual_sha256 != provenance.artifactSha256=$artifact_sha256"
   log "运行中 binary sha256 == $artifact_sha256 ✓ (path: $bin_path)"
+
+  # 7b) migration bundle 机械验证（部署目录 vs provenance）
+  local migration_max migration_digest deployed_max deployed_digest
+  migration_max="$(jq -r '.migrationMaxVersion' <<<"$provenance")"
+  migration_digest="$(jq -r '.migrationBundleDigest' <<<"$provenance")"
+  deployed_max="$(migration_max_version "$SERVICE_DIR")"
+  deployed_digest="$(migration_bundle_digest "$SERVICE_DIR")"
+  [[ "$deployed_max" == "$migration_max" ]] \
+    || fail "VERIFY FAIL: 部署目录 migrations max=$deployed_max != provenance=$migration_max"
+  [[ "$deployed_digest" == "$migration_digest" ]] \
+    || fail "VERIFY FAIL: 部署目录 migration bundle digest 与 provenance 不一致"
+  log "migration bundle max=$deployed_max, digest=$deployed_digest == provenance ✓"
 
   # 8) 基础只读 HTTP smoke + 记录
   local healthz readyz auth_code
