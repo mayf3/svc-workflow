@@ -339,6 +339,7 @@ pub(super) fn is_deterministic_error(err: &CreateWorkflowInstanceError) -> bool 
             | CreateWorkflowInstanceError::ContextValidationFailed(_)
             | CreateWorkflowInstanceError::SizeLimitExceeded(_)
             | CreateWorkflowInstanceError::AssigneeResolutionFailed(_)
+            | CreateWorkflowInstanceError::DefinitionGraphInvalid(_)
     )
 }
 

@@ -149,6 +149,10 @@ impl ApiError {
                 "assignee_resolution_failed",
                 "initial assignee could not be resolved",
             ),
+            E::DefinitionGraphInvalid(_) => unprocessable(
+                "definition_graph_invalid",
+                "definition graph failed Minimal (V2) validation",
+            ),
             E::IdempotencyConflict { .. } => {
                 conflict("idempotency_conflict", "idempotency key was reused")
             }
@@ -390,9 +394,13 @@ impl ApiError {
             E::PrincipalNotFound => not_found("principal_not_found", "principal not found"),
             E::PrincipalDisabled => forbidden("principal_disabled", "principal is disabled"),
             E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
-            E::CurrentVisitNotFound => not_found("current_visit_not_found", "current node visit not found"),
+            E::CurrentVisitNotFound => {
+                not_found("current_visit_not_found", "current node visit not found")
+            }
             E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
-            E::SourceNodeTerminal => conflict("source_node_terminal", "instance source node is terminal"),
+            E::SourceNodeTerminal => {
+                conflict("source_node_terminal", "instance source node is terminal")
+            }
             E::AlreadyCancelled => conflict("already_cancelled", "instance is already cancelled"),
             E::InstanceArchived => conflict("instance_archived", "instance is archived"),
             E::WorkflowStateVersionConflict { expected, actual } => conflict(
@@ -428,15 +436,20 @@ impl ApiError {
             E::PrincipalDisabled => forbidden("principal_disabled", "principal is disabled"),
             E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
             E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
-            E::InstanceNotTerminal => conflict("instance_not_terminal", "instance is not in a terminal state"),
+            E::InstanceNotTerminal => conflict(
+                "instance_not_terminal",
+                "instance is not in a terminal state",
+            ),
             E::AlreadyArchived => conflict("already_archived", "instance is already archived"),
             E::WorkflowStateVersionConflict { expected, actual } => conflict(
                 "workflow_state_version_conflict",
                 "workflow state version does not match",
             )
             .with_details(serde_json::json!({ "expected": expected, "actual": actual })),
-            E::InvalidReason(detail) => unprocessable("invalid_reason", "archive reason is invalid")
-                .with_details(serde_json::json!({ "detail": detail })),
+            E::InvalidReason(detail) => {
+                unprocessable("invalid_reason", "archive reason is invalid")
+                    .with_details(serde_json::json!({ "detail": detail }))
+            }
             E::InternalConsistency(detail) => {
                 tracing::error!(error = %detail, "archive consistency failure");
                 internal("internal_consistency_error", "internal consistency error")

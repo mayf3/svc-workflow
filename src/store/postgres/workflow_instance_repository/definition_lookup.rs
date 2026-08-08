@@ -133,6 +133,49 @@ pub(super) async fn read_draft_node(
     })
 }
 
+/// Read the complete published graph of a definition version as domain
+/// types (nodes + transitions). Used to run the full Minimal validator
+/// before any V2 instance state is written.
+pub(super) async fn read_full_graph(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: uuid::Uuid,
+) -> Result<crate::domain::definition::model::WorkflowGraph, CreateWorkflowInstanceError> {
+    let nodes: Vec<crate::domain::definition::model::NodeDefinition> = sqlx::query_as::<_, super::row_types::GraphNodeRow>(
+        "SELECT node_id, definition_version_id, node_key, display_name, order_index, \
+         node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, \
+         fixed_principal_id, assignee_input_key, instructions, primary_advance_transition_id, \
+         metadata, created_at \
+         FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
+    )
+    .bind(definition_version_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?
+    .into_iter()
+    .map(|r| r.into_domain())
+    .collect();
+
+    let transitions: Vec<crate::domain::definition::model::TransitionDefinition> = sqlx::query_as::<_, super::row_types::GraphTransitionRow>(
+        "SELECT transition_id, definition_version_id, transition_key, display_name, \
+         source_node_id, target_node_id, transition_effect::TEXT AS transition_effect, \
+         submission_schema, metadata, created_at \
+         FROM workflow_transition_definitions WHERE definition_version_id = $1 ORDER BY transition_key",
+    )
+    .bind(definition_version_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?
+    .into_iter()
+    .map(|r| r.into_domain())
+    .collect();
+
+    Ok(crate::domain::definition::model::WorkflowGraph {
+        nodes,
+        transitions,
+        context_schema: None,
+    })
+}
+
 /// Read the unique Minimal (V2) entry TASK from a definition version.
 ///
 /// The entry is the unique TASK (NORMAL node) with no incoming ADVANCE edge
@@ -186,3 +229,4 @@ pub(super) async fn read_minimal_entry_node(
         assignee_input_key: node.assignee_input_key.clone(),
     })
 }
+
