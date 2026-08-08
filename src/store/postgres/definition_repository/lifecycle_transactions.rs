@@ -60,7 +60,7 @@ impl PgDefinitionRepository {
         version_id: uuid::Uuid,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let row: Option<WorkflowDefinitionVersion> = sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
+            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
         )
         .bind(version_id)
         .fetch_optional(&self.pool)
@@ -157,7 +157,7 @@ impl PgDefinitionRepository {
         // 1. Lock version with FOR UPDATE and verify DRAFT
         let version: Option<WorkflowDefinitionVersion> =
             sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
+                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
             )
             .bind(version_id)
             .fetch_optional(&mut *tx)
@@ -311,7 +311,7 @@ impl PgDefinitionRepository {
         // Lock + verify PUBLISHED status
         let version: Option<WorkflowDefinitionVersion> =
             sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
+                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
             )
             .bind(version_id)
             .fetch_optional(&mut *tx)
@@ -401,7 +401,7 @@ impl PgDefinitionRepository {
         // Lock + verify PUBLISHED or DEPRECATED status
         let version: Option<WorkflowDefinitionVersion> =
             sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
+                "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
             )
             .bind(version_id)
             .fetch_optional(&mut *tx)

@@ -25,8 +25,8 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0018";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 18;
+pub const SCHEMA_VERSION: &str = "0019";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 19;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
