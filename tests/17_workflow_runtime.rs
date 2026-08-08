@@ -613,3 +613,6 @@ mod receipt_stability;
 
 #[path = "17_workflow_runtime/minimal_runtime.rs"]
 mod minimal_runtime;
+
+#[path = "17_workflow_runtime/v2_dogfood.rs"]
+mod v2_dogfood;
