@@ -101,6 +101,85 @@ async fn test_migration_0016_applied() {
 }
 
 #[tokio::test]
+async fn test_migration_0017_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify the constraint reconciliation migration 0017 is in the ledger.
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 17 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0017 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_migration_0017_reconciles_canonical_checks_exactly_once() {
+    let pool = common::create_pool().await;
+
+    // The 4 canonical CHECK constraints must exist exactly once each,
+    // with the canonical names and definitions.
+    let expected = [
+        (
+            "workflow_instances_subject_id_check",
+            "subject_id",
+            "512",
+        ),
+        (
+            "workflow_instances_artifact_id_check",
+            "artifact_id",
+            "512",
+        ),
+        (
+            "workflow_instances_artifact_version_check",
+            "artifact_version",
+            "512",
+        ),
+        (
+            "workflow_instances_artifact_digest_check",
+            "artifact_digest",
+            "64",
+        ),
+    ];
+    for (name, column, limit) in expected {
+        // Exactly one constraint with the canonical name on workflow_instances.
+        let rows: Vec<(bool, String, String)> = sqlx::query_as(
+            "SELECT c.convalidated, \
+                    (SELECT string_agg(a.attname, ',' ORDER BY u.ord) \
+                     FROM unnest(c.conkey) WITH ORDINALITY AS u(attnum, ord) \
+                     JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = u.attnum), \
+                    pg_get_constraintdef(c.oid) \
+             FROM pg_constraint c \
+             WHERE c.conrelid = 'workflow_instances'::regclass AND c.conname = $1",
+        )
+        .bind(name)
+        .fetch_all(&pool)
+        .await
+        .expect("query failed");
+        assert_eq!(rows.len(), 1, "constraint '{name}' must exist exactly once");
+        let (validated, columns, definition) = &rows[0];
+        assert!(
+            *validated,
+            "constraint '{name}' must be validated (not NOT VALID)"
+        );
+        assert_eq!(
+            columns, column,
+            "constraint '{name}' must be attached to column '{column}'"
+        );
+        // pg_get_constraintdef returns the normalized form (extra parens,
+        // explicit ::text casts); check the column and the length/pattern
+        // limit survive in the definition.
+        let normalized: String = definition.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            normalized.contains(column) && normalized.contains(limit),
+            "constraint '{name}' definition mismatch: {definition}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_migration_0016_schema_objects_exist() {
     let pool = common::create_pool().await;
 
