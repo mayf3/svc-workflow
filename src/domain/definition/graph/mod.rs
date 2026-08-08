@@ -42,6 +42,11 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
     assignee_validation::validate_assignee_rules(graph, &nodes_by_id, &mut errors);
 
     // ---
+    // H-2b: Instance-input assignee keys must be covered by context_schema.required
+    // ---
+    assignee_validation::validate_instance_input_schema_coverage(graph, &mut errors);
+
+    // ---
     // Transition uniqueness + reference checks (14.5)
     // ---
     transition_validation::validate_transition_references(graph, &nodes_by_id, &mut errors);

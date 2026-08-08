@@ -457,3 +457,108 @@ fn invalid_json_schema_not_checked_by_graph_validation() {
     // (it would pass even with invalid schema)
     assert!(result.valid);
 }
+
+/// Turn the NORMAL node of a valid graph into INSTANCE_INPUT_PRINCIPAL.
+fn make_iip_graph(schema: Option<serde_json::Value>) -> WorkflowGraph {
+    let mut graph = valid_graph();
+    graph.nodes[1].assignee_ref = Some(AssigneeRef {
+        ref_type: AssigneeRefType::InstanceInputPrincipal,
+        fixed_principal_id: None,
+        assignee_input_key: Some("assigneePrincipalId".to_string()),
+    });
+    graph.context_schema = schema;
+    graph
+}
+
+#[test]
+fn instance_input_key_must_be_covered_by_context_schema() {
+    // A NORMAL INSTANCE_INPUT_PRINCIPAL node whose key is not in
+    // context_schema.required is a self-contradictory definition: instances
+    // could be created without the key and fail on every read later. It must
+    // be rejected at draft/publish validation time.
+    let graph = make_iip_graph(Some(serde_json::json!({"type": "object"})));
+    let result = validate_graph(&graph);
+    assert!(!result.valid);
+    assert!(result
+        .errors
+        .iter()
+        .any(|e| e.code == "CONTEXT_SCHEMA_REQUIRED_MISSING_ASSIGNEE_KEY"));
+}
+
+#[test]
+fn instance_input_key_without_context_schema_rejected() {
+    // INSTANCE_INPUT_PRINCIPAL nodes require a context_schema that declares
+    // their keys; no schema at all is also a contradiction.
+    let graph = make_iip_graph(None);
+    let result = validate_graph(&graph);
+    assert!(!result.valid);
+    assert!(result
+        .errors
+        .iter()
+        .any(|e| e.code == "CONTEXT_SCHEMA_REQUIRED_FOR_INSTANCE_INPUT"));
+}
+
+#[test]
+fn instance_input_key_covered_by_context_schema_passes() {
+    // The definition is self-consistent when required covers the key.
+    let graph = make_iip_graph(Some(serde_json::json!({
+        "type": "object",
+        "required": ["assigneePrincipalId"],
+    })));
+    let result = validate_graph(&graph);
+    assert!(
+        result.valid,
+        "Expected valid graph, got errors: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn every_instance_input_key_must_be_covered() {
+    // Two NORMAL IIP nodes with different keys: required must cover BOTH,
+    // regardless of which node is reached first.
+    let mut graph = make_iip_graph(Some(serde_json::json!({
+        "type": "object",
+        "required": ["assigneePrincipalId"],
+    })));
+    // Add a second NORMAL IIP node with a different key.
+    let extra_node = NodeDefinition {
+        node_id: NodeId::new(),
+        definition_version_id: graph.nodes[0].definition_version_id,
+        node_key: "second".to_string(),
+        display_name: "Second".to_string(),
+        order_index: 3,
+        node_type: NodeType::NORMAL,
+        assignee_ref: Some(AssigneeRef {
+            ref_type: AssigneeRefType::InstanceInputPrincipal,
+            fixed_principal_id: None,
+            assignee_input_key: Some("operatorPrincipalId".to_string()),
+        }),
+        instructions: None,
+        primary_advance_transition_id: None,
+        metadata: None,
+        created_at: chrono::Utc::now(),
+    };
+    graph.nodes.push(extra_node);
+
+    let result = validate_graph(&graph);
+    assert!(result.errors.iter().any(|e| {
+        e.code == "CONTEXT_SCHEMA_REQUIRED_MISSING_ASSIGNEE_KEY"
+            && e.message.contains("operatorPrincipalId")
+    }));
+    assert!(!result
+        .errors
+        .iter()
+        .any(|e| e.message.contains("assigneePrincipalId")));
+
+    // Once both keys are covered, no coverage error remains.
+    graph.context_schema = Some(serde_json::json!({
+        "type": "object",
+        "required": ["assigneePrincipalId", "operatorPrincipalId"],
+    }));
+    let result = validate_graph(&graph);
+    assert!(!result.errors.iter().any(|e| {
+        e.code == "CONTEXT_SCHEMA_REQUIRED_MISSING_ASSIGNEE_KEY"
+            || e.code == "CONTEXT_SCHEMA_REQUIRED_FOR_INSTANCE_INPUT"
+    }));
+}

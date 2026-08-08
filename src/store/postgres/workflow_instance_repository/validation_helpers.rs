@@ -173,14 +173,12 @@ pub(crate) fn extract_principal_uuid_from_input(
     payload: &serde_json::Value,
     key: &str,
 ) -> Result<Uuid, CreateWorkflowInstanceError> {
-    let raw = payload
-        .get(key)
-        .ok_or_else(|| {
-            CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
-                "instance input is missing required assignee key '{}'",
-                key
-            ))
-        })?;
+    let raw = payload.get(key).ok_or_else(|| {
+        CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
+            "instance input is missing required assignee key '{}'",
+            key
+        ))
+    })?;
     let s = raw.as_str().ok_or_else(|| {
         CreateWorkflowInstanceError::AssigneeResolutionFailed(format!(
             "instance input '{}' must be a string UUID (stable principal identifier); \
@@ -212,11 +210,9 @@ async fn verify_principal_enabled(
         None => Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
             "resolved principal not found".to_string(),
         )),
-        Some((enabled,)) if !enabled => {
-            Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
-                "resolved principal is disabled".to_string(),
-            ))
-        }
+        Some((enabled,)) if !enabled => Err(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+            "resolved principal is disabled".to_string(),
+        )),
         _ => Ok(candidate),
     }
 }
@@ -243,6 +239,41 @@ pub(super) fn validate_context_schema(
             })?;
     }
 
+    Ok(())
+}
+
+/// Enforce the context invariant at instance creation.
+///
+/// Every node of the published definition that resolves its assignee from the
+/// instance context (`INSTANCE_INPUT_PRINCIPAL` + `assignee_input_key`) is a
+/// future read dependency: the worklist/detail/transition paths resolve the
+/// outgoing assignee from `context_payload` and fail closed when the key is
+/// missing. Deriving the required keys generically from the definition's real
+/// node definitions (never hardcoded) guarantees that a successfully created
+/// instance can never trip the read-path consistency error later.
+///
+/// Mirrors transition-time resolution exactly (present + string UUID +
+/// principal exists + enabled) so creation can no longer produce a
+/// half-legal instance. Deterministic; runs before any runtime fact write.
+pub(super) async fn validate_instance_input_principal_keys(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_uuid: Uuid,
+    context_payload: &serde_json::Value,
+) -> Result<(), CreateWorkflowInstanceError> {
+    let keys: Vec<String> = sqlx::query_scalar(
+        "SELECT assignee_input_key FROM workflow_node_definitions \
+         WHERE definition_version_id = $1 AND assignee_ref_type = 'INSTANCE_INPUT_PRINCIPAL' \
+         ORDER BY assignee_input_key",
+    )
+    .bind(definition_version_uuid)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    for key in keys {
+        let candidate = extract_principal_uuid_from_input(context_payload, &key)?;
+        verify_principal_enabled(tx, candidate).await?;
+    }
     Ok(())
 }
 

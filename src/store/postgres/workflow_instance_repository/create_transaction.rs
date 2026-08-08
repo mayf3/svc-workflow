@@ -248,6 +248,19 @@ pub(crate) async fn create_workflow_instance_atomically(
         &version_info.context_schema,
         &cmd,
     ));
+    // The definition's real node requirements (INSTANCE_INPUT_PRINCIPAL
+    // assignee keys) are a hard create-time invariant: every future node
+    // that reads its assignee from the context payload must already be
+    // resolvable, or the instance would be created half-legal and the
+    // read path would fail with an internal consistency error later.
+    validation_result!(
+        validation_helpers::validate_instance_input_principal_keys(
+            &mut tx,
+            definition_version_uuid,
+            &cmd.context_payload,
+        )
+        .await
+    );
 
     // ---------------------------------------------------------------
     // Step 9: Insert WorkflowInstance

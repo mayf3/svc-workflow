@@ -180,6 +180,75 @@ pub(super) fn validate_assignee_rules(
     }
 }
 
+/// Validate that every INSTANCE_INPUT_PRINCIPAL assignee key is covered by
+/// `context_schema.required`.
+///
+/// A node that resolves its assignee from the instance context is a hard
+/// dependency of every read/transition path: if the schema does not require
+/// the key, a half-legal instance could be created and fail later with an
+/// internal consistency error. The definition must therefore be
+/// self-consistent already at draft/publish time. Keys are derived
+/// generically from the graph's real node definitions (never hardcoded).
+pub(super) fn validate_instance_input_schema_coverage(
+    graph: &WorkflowGraph,
+    errors: &mut Vec<GraphValidationError>,
+) {
+    let input_keys: Vec<(&str, &str)> = graph
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            if node.node_type != NodeType::NORMAL {
+                return None;
+            }
+            let assignee_ref = node.assignee_ref.as_ref()?;
+            if assignee_ref.ref_type != AssigneeRefType::InstanceInputPrincipal {
+                return None;
+            }
+            Some((
+                node.node_key.as_str(),
+                assignee_ref.assignee_input_key.as_deref()?,
+            ))
+        })
+        .collect();
+
+    if input_keys.is_empty() {
+        return;
+    }
+
+    let Some(schema) = &graph.context_schema else {
+        for (node_key, input_key) in &input_keys {
+            errors.push(GraphValidationError::new(
+                "CONTEXT_SCHEMA_REQUIRED_FOR_INSTANCE_INPUT",
+                format!(
+                    "NORMAL node '{}' is INSTANCE_INPUT_PRINCIPAL (key '{}') but the graph declares \
+                     no context_schema; context_schema.required must cover every assignee_input_key",
+                    node_key, input_key
+                ),
+            ));
+        }
+        return;
+    };
+
+    let required_keys: Vec<&str> = schema
+        .get("required")
+        .and_then(|required| required.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    for (node_key, input_key) in &input_keys {
+        if !required_keys.contains(input_key) {
+            errors.push(GraphValidationError::new(
+                "CONTEXT_SCHEMA_REQUIRED_MISSING_ASSIGNEE_KEY",
+                format!(
+                    "NORMAL node '{}' is INSTANCE_INPUT_PRINCIPAL but context_schema.required \
+                     does not include '{}'",
+                    node_key, input_key
+                ),
+            ));
+        }
+    }
+}
+
 /// Validate that an assignee input key is a safe JSON object property name.
 ///
 /// Mirrors the database CHECK constraint: ASCII identifier starting with a

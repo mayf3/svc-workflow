@@ -16,6 +16,7 @@ pub mod query_domain_instances;
 pub mod query_rows;
 pub mod query_visibility;
 pub mod query_worklists;
+pub mod repair_transaction;
 pub mod revise_transaction;
 pub mod revise_validation;
 pub mod row_types;
