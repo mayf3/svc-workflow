@@ -90,94 +90,6 @@ async fn body_json(response: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-/// Per-instance side-effect snapshot: (visit_count, event_count, submission_count).
-/// A failed transition must not add any of these beyond what existed before.
-async fn instance_side_effects(pool: &PgPool, instance_id: Uuid) -> (i64, i64, i64) {
-    let (visits,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM workflow_node_visits WHERE workflow_instance_id = $1",
-    )
-    .bind(instance_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    let (events,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1",
-    )
-    .bind(instance_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    let (submissions,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM workflow_submissions WHERE workflow_instance_id = $1",
-    )
-    .bind(instance_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    (visits, events, submissions)
-}
-
-/// Create an instance (DRAFT) for the INSTANCE_INPUT_PRINCIPAL definition with
-/// the given payload, as creator A. Returns the instance id.
-async fn create_draft_instance(
-    pool: &PgPool,
-    creator: Uuid,
-    domain_id: Uuid,
-    ver_id: Uuid,
-    payload: serde_json::Value,
-) -> Uuid {
-    let cmd = make_command_with_payload(creator, domain_id, ver_id, payload);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create draft");
-    result.workflow_instance_id
-}
-
-/// Attempt the DRAFT->NORMAL advance as creator A, expecting it to fail closed
-/// because the INSTANCE_INPUT_PRINCIPAL node cannot resolve a valid assignee.
-async fn assert_advance_fails_closed(
-    pool: &PgPool,
-    creator: Uuid,
-    instance_id: Uuid,
-    draft_advance: Uuid,
-) {
-    let before = instance_side_effects(pool, instance_id).await;
-    let transition = ExecuteWorkflowTransitionCommand {
-        principal_id: PrincipalId::from_uuid(creator),
-        idempotency_key: Uuid::new_v4().to_string(),
-        command_schema_version: "v1".to_string(),
-        workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
-        expected_workflow_state_version: 1,
-        transition_definition_id: TransitionId::from_uuid(draft_advance),
-        submission_payload: Some(serde_json::json!({})),
-    };
-    let err = svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        pool, transition,
-    )
-    .await
-    .unwrap_err();
-    assert!(
-        matches!(
-            err,
-            svc_workflow::domain::workflow_instance::errors::ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_)
-        ),
-        "expected AssigneeResolutionFailed, got {:?}",
-        err
-    );
-    let after = instance_side_effects(pool, instance_id).await;
-    assert_eq!(
-        before, after,
-        "FAILED_CREATE_SIDE_EFFECT_COUNT: failed resolution must not persist new visits/events/submissions"
-    );
-    // Instance stays at state version 1 (DRAFT) — the transition did not commit.
-    let (sv,): (i32,) = sqlx::query_as(
-        "SELECT workflow_state_version FROM workflow_instances WHERE workflow_instance_id = $1",
-    )
-    .bind(instance_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    assert_eq!(sv, 1, "instance state version must remain 1 after failed advance");
-}
-
 // ===========================================================================
 // Happy path: A creates for B, B is not a domain member, B sees work.
 // ===========================================================================
@@ -190,7 +102,7 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
     let creator = seed_second_principal(&pool).await; // Principal A
     let assignee = seed_second_principal(&pool).await; // Principal B
     add_member(&pool, domain_id, creator).await; // A is a domain member so it can create
-    // B deliberately has NO domain membership.
+                                                 // B deliberately has NO domain membership.
 
     let (_d, ver_id, normal_node_id, draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
@@ -202,7 +114,9 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
         ver_id,
         serde_json::json!({"assigneePrincipalId": assignee}),
     );
-    let result = create_workflow_instance(&pool, cmd).await.expect("create for B");
+    let result = create_workflow_instance(&pool, cmd)
+        .await
+        .expect("create for B");
     verify_creation(&pool, &result, creator, domain_id, ver_id).await;
 
     // The DRAFT visit is assigned to the creator A (WORKFLOW_CREATOR).
@@ -213,7 +127,10 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(draft_assignee.0, creator, "DRAFT visit is assigned to creator A");
+    assert_eq!(
+        draft_assignee.0, creator,
+        "DRAFT visit is assigned to creator A"
+    );
 
     // Advance DRAFT -> NORMAL. The NORMAL node must resolve to B from the input.
     let transition = ExecuteWorkflowTransitionCommand {
@@ -301,7 +218,13 @@ async fn assignee_b_worklist_visible_without_domain_membership() {
     let state = AppState::new(pool.clone(), &http_config(&mock.url, &assignee.to_string()));
     let app = http::router(state, &http_config(&mock.url, &assignee.to_string()));
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let token = common::v1_token(assignee, "workflow.read", "test-client", 300, &mock.key_pair);
+    let token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let resp = app
         .oneshot(authed_request(
@@ -360,7 +283,13 @@ async fn assignee_b_detail_visible_without_domain_membership() {
     let state = AppState::new(pool.clone(), &cfg);
     let app = http::router(state, &cfg);
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let token = common::v1_token(assignee, "workflow.read", "test-client", 300, &mock.key_pair);
+    let token = common::v1_token(
+        assignee,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/{}",
@@ -379,44 +308,78 @@ async fn assignee_b_detail_visible_without_domain_membership() {
 }
 
 // ===========================================================================
-// Fail-closed: resolution only accepts stable Principal UUIDs.
+// Context invariant: every INSTANCE_INPUT_PRINCIPAL assignee key must be
+// present and resolvable at creation time.
 //
-// The INSTANCE_INPUT_PRINCIPAL assignee is resolved when the workflow enters the
-// NORMAL node (the DRAFT node is always WORKFLOW_CREATOR). So a fail-closed
-// resolution surfaces during the DRAFT -> NORMAL advance, which is itself an
-// atomic transaction: on failure no new visit / event / submission is persisted
-// and the instance stays at state version 1 (DRAFT).
+// The definition's real node requirements (INSTANCE_INPUT_PRINCIPAL +
+// assignee_input_key) are a hard create-time invariant, derived generically
+// from the definition (never hardcoded). Creation fails closed with
+// AssigneeResolutionFailed (422) BEFORE any instance is written, so the read
+// path can never encounter a half-legal instance again.
 // ===========================================================================
 
-#[tokio::test]
-async fn missing_assignee_input_fails_closed() {
-    // MISSING_INPUT_FAILS_CLOSED
-    let pool = create_pool().await;
-    let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
-    let creator = seed_second_principal(&pool).await;
-    add_member(&pool, domain_id, creator).await;
-
-    let (_d, ver_id, _n, draft_advance) =
-        seed_published_definition_instance_input_principal(&pool, domain_id).await;
-
-    // Payload omits the assignee key entirely.
-    let instance_id =
-        create_draft_instance(&pool, creator, domain_id, ver_id, serde_json::json!({})).await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
+/// Attempt to create an instance with the given payload, expecting a
+/// deterministic `AssigneeResolutionFailed` and ZERO rows written for the
+/// definition version.
+async fn assert_create_fails_closed(
+    pool: &PgPool,
+    creator: Uuid,
+    domain_id: Uuid,
+    ver_id: Uuid,
+    payload: serde_json::Value,
+) {
+    let before: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM workflow_instances WHERE definition_version_id = $1")
+            .bind(ver_id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let cmd = make_command_with_payload(creator, domain_id, ver_id, payload);
+    let err = create_workflow_instance(pool, cmd).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CreateWorkflowInstanceError::AssigneeResolutionFailed(_)
+        ),
+        "expected AssigneeResolutionFailed at creation, got {:?}",
+        err
+    );
+    let after: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM workflow_instances WHERE definition_version_id = $1")
+            .bind(ver_id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(before, after, "rejected create must not write an instance");
 }
 
 #[tokio::test]
-async fn non_uuid_assignee_input_fails_closed() {
-    // INVALID_UUID_FAILS_CLOSED
+async fn missing_assignee_input_fails_closed_at_create() {
+    // MISSING_INPUT_FAILS_CLOSED (create time): the payload omits the assignee
+    // key entirely -> creation is rejected before any instance is written.
     let pool = create_pool().await;
     let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
     add_member(&pool, domain_id, creator).await;
 
-    let (_d, ver_id, _n, draft_advance) =
+    let (_d, ver_id, _n, _draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
 
-    let instance_id = create_draft_instance(
+    assert_create_fails_closed(&pool, creator, domain_id, ver_id, serde_json::json!({})).await;
+}
+
+#[tokio::test]
+async fn non_uuid_assignee_input_fails_closed_at_create() {
+    // INVALID_UUID_FAILS_CLOSED (create time).
+    let pool = create_pool().await;
+    let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    add_member(&pool, domain_id, creator).await;
+
+    let (_d, ver_id, _n, _draft_advance) =
+        seed_published_definition_instance_input_principal(&pool, domain_id).await;
+
+    assert_create_fails_closed(
         &pool,
         creator,
         domain_id,
@@ -424,23 +387,22 @@ async fn non_uuid_assignee_input_fails_closed() {
         serde_json::json!({"assigneePrincipalId": "not-a-uuid"}),
     )
     .await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
 }
 
 #[tokio::test]
-async fn display_name_resolution_forbidden() {
+async fn display_name_resolution_forbidden_at_create() {
     // DISPLAY_NAME_RESOLUTION_FORBIDDEN: a display name is never accepted as a
-    // stable Principal identifier.
+    // stable Principal identifier (create time).
     let pool = create_pool().await;
     let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
     let _assignee = seed_second_principal(&pool).await; // exists, but we pass its name
     add_member(&pool, domain_id, creator).await;
 
-    let (_d, ver_id, _n, draft_advance) =
+    let (_d, ver_id, _n, _draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
 
-    let instance_id = create_draft_instance(
+    assert_create_fails_closed(
         &pool,
         creator,
         domain_id,
@@ -448,23 +410,22 @@ async fn display_name_resolution_forbidden() {
         serde_json::json!({"assigneePrincipalId": "Test Agent"}),
     )
     .await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
 }
 
 #[tokio::test]
-async fn email_resolution_forbidden() {
+async fn email_resolution_forbidden_at_create() {
     // EMAIL_RESOLUTION_FORBIDDEN: an email is never accepted as a stable
-    // Principal identifier.
+    // Principal identifier (create time).
     let pool = create_pool().await;
     let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
     let _assignee = seed_second_principal(&pool).await; // exists, but we pass its email
     add_member(&pool, domain_id, creator).await;
 
-    let (_d, ver_id, _n, draft_advance) =
+    let (_d, ver_id, _n, _draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
 
-    let instance_id = create_draft_instance(
+    assert_create_fails_closed(
         &pool,
         creator,
         domain_id,
@@ -472,22 +433,22 @@ async fn email_resolution_forbidden() {
         serde_json::json!({"assigneePrincipalId": "agent@example.com"}),
     )
     .await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
 }
 
 #[tokio::test]
-async fn unknown_principal_fails_closed() {
-    // UNKNOWN_PRINCIPAL_FAILS_CLOSED: a well-formed UUID that is not projected.
+async fn unknown_principal_fails_closed_at_create() {
+    // UNKNOWN_PRINCIPAL_FAILS_CLOSED (create time): a well-formed UUID that is
+    // not projected.
     let pool = create_pool().await;
     let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
     add_member(&pool, domain_id, creator).await;
 
-    let (_d, ver_id, _n, draft_advance) =
+    let (_d, ver_id, _n, _draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
 
     let ghost = Uuid::new_v4();
-    let instance_id = create_draft_instance(
+    assert_create_fails_closed(
         &pool,
         creator,
         domain_id,
@@ -495,12 +456,11 @@ async fn unknown_principal_fails_closed() {
         serde_json::json!({"assigneePrincipalId": ghost}),
     )
     .await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
 }
 
 #[tokio::test]
-async fn disabled_principal_fails_closed() {
-    // DISABLED_PRINCIPAL_FAILS_CLOSED: projected but disabled.
+async fn disabled_principal_fails_closed_at_create() {
+    // DISABLED_PRINCIPAL_FAILS_CLOSED (create time): projected but disabled.
     let pool = create_pool().await;
     let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
@@ -512,10 +472,10 @@ async fn disabled_principal_fails_closed() {
         .await
         .unwrap();
 
-    let (_d, ver_id, _n, draft_advance) =
+    let (_d, ver_id, _n, _draft_advance) =
         seed_published_definition_instance_input_principal(&pool, domain_id).await;
 
-    let instance_id = create_draft_instance(
+    assert_create_fails_closed(
         &pool,
         creator,
         domain_id,
@@ -523,7 +483,6 @@ async fn disabled_principal_fails_closed() {
         serde_json::json!({"assigneePrincipalId": disabled_assignee}),
     )
     .await;
-    assert_advance_fails_closed(&pool, creator, instance_id, draft_advance).await;
 }
 
 // ===========================================================================
@@ -643,6 +602,85 @@ async fn arbitrary_input_key_resolves_correctly() {
     .await
     .unwrap();
     assert_eq!(normal_assignee.0, assignee);
+}
+
+// ===========================================================================
+// Multiple future nodes referencing different instance inputs must ALL be
+// validated at creation: the required key set is derived from the whole
+// definition, not from any single node.
+// ===========================================================================
+
+/// Seed a published definition with TWO NORMAL INSTANCE_INPUT_PRINCIPAL nodes
+/// using different input keys. Returns (domain_id, version_id).
+async fn seed_published_definition_two_input_keys(pool: &PgPool, domain_id: Uuid) -> (Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("iip2-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Two-Key Def')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', $3)")
+        .bind(ver_id).bind(def_id).bind(serde_json::json!({"type":"object"}))
+        .execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let first_normal_id = Uuid::new_v4();
+    let second_normal_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR', NULL, NULL)")
+        .bind(draft_id).bind(ver_id).execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'first', 'First', 1, 'NORMAL', 'INSTANCE_INPUT_PRINCIPAL', NULL, 'assigneePrincipalId')")
+        .bind(first_normal_id).bind(ver_id).execute(pool).await.expect("insert first normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id, assignee_input_key) VALUES ($1, $2, 'second', 'Second', 2, 'NORMAL', 'INSTANCE_INPUT_PRINCIPAL', NULL, 'operatorPrincipalId')")
+        .bind(second_normal_id).bind(ver_id).execute(pool).await.expect("insert second normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 3, 'TERMINAL', NULL)")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (domain_id, ver_id)
+}
+
+#[tokio::test]
+async fn all_future_input_keys_validated_at_create() {
+    // Multiple future nodes reference different instance inputs -> every
+    // required key must be present and resolvable at creation.
+    let pool = create_pool().await;
+    let (_owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let assignee = seed_second_principal(&pool).await;
+    let operator = seed_second_principal(&pool).await;
+    add_member(&pool, domain_id, creator).await;
+
+    let (_d, ver_id) = seed_published_definition_two_input_keys(&pool, domain_id).await;
+
+    // Only one of the two required keys present -> creation rejected.
+    assert_create_fails_closed(
+        &pool,
+        creator,
+        domain_id,
+        ver_id,
+        serde_json::json!({"assigneePrincipalId": assignee}),
+    )
+    .await;
+
+    // Both keys present and resolvable -> creation succeeds.
+    let cmd = make_command_with_payload(
+        creator,
+        domain_id,
+        ver_id,
+        serde_json::json!({
+            "assigneePrincipalId": assignee,
+            "operatorPrincipalId": operator,
+        }),
+    );
+    let result = create_workflow_instance(&pool, cmd)
+        .await
+        .expect("create with all keys");
+    assert_eq!(result.workflow_instance_id.to_string().len(), 36);
 }
 
 // ===========================================================================

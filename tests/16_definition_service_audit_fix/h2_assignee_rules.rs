@@ -392,7 +392,12 @@ async fn instance_input_principal_node_publishes() {
         .replace_draft_graph(ReplaceDraftGraph {
             actor_principal_id: owner,
             definition_version_id: version_id,
-            context_schema: None,
+            // The definition must be self-consistent: context_schema.required
+            // covers the INSTANCE_INPUT_PRINCIPAL key.
+            context_schema: Some(serde_json::json!({
+                "type": "object",
+                "required": ["assigneePrincipalId"],
+            })),
             nodes,
             transitions,
         })
@@ -459,6 +464,58 @@ async fn instance_input_principal_missing_key_rejected() {
     assert!(
         result.is_err(),
         "INSTANCE_INPUT_PRINCIPAL without an input key must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn instance_input_principal_schema_not_covering_key_rejected() {
+    // A contradictory definition (IIP node key not covered by
+    // context_schema.required) must fail at draft/publish time — never after
+    // instances exist.
+    let (pool, service) = create_service().await;
+    let (owner, domain_id) = seed_principal_and_domain(&pool).await;
+    seed_domain_owner(&pool, domain_id, owner).await;
+
+    let def_id = uuid::Uuid::new_v4();
+    let def_key = format!("iip-sc-{}", &uuid::Uuid::new_v4().to_string()[..8]);
+    sqlx::query(
+        "INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'IIP Def')",
+    )
+    .bind(def_id)
+    .bind(domain_id)
+    .bind(&def_key)
+    .execute(&pool)
+    .await
+    .expect("insert def");
+    let version = service
+        .create_draft_version(CreateDraftVersion {
+            actor_principal_id: owner,
+            workflow_definition_id: def_id,
+            context_schema: Some(serde_json::json!({"type":"object"})),
+            json_schema_dialect: None,
+            validator_version: None,
+            metadata: None,
+        })
+        .await
+        .expect("create draft");
+    let version_id = version.id.into_uuid();
+
+    let (nodes, transitions) = valid_raw_graph_instance_input_principal();
+    // Schema exists but does NOT require the assignee key -> the graph
+    // validation must reject the self-contradictory definition already at
+    // draft-replace time (and therefore also at publish time).
+    let result = service
+        .replace_draft_graph(ReplaceDraftGraph {
+            actor_principal_id: owner,
+            definition_version_id: version_id,
+            context_schema: Some(serde_json::json!({"type": "object"})),
+            nodes,
+            transitions,
+        })
+        .await;
+    assert!(
+        result.is_err(),
+        "a graph whose INSTANCE_INPUT_PRINCIPAL key is not in context_schema.required must be rejected"
     );
 }
 

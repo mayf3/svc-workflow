@@ -4,6 +4,7 @@
 //! authorization, and atomic consistency guarantees.
 
 pub mod admin_recovery;
+pub mod admin_repair;
 pub mod archive;
 pub mod cancel;
 pub mod create;
