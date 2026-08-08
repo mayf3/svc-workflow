@@ -11,6 +11,7 @@ pub(super) struct DefinitionVersionStatusRow {
     pub(super) workflow_definition_id: uuid::Uuid,
     pub(super) version_number: i32,
     pub(super) version_status: String,
+    pub(super) semantic_model_version: i16,
     pub(super) definition_digest: Option<String>,
     pub(super) json_schema_dialect: Option<String>,
     pub(super) validator_version: Option<String>,
