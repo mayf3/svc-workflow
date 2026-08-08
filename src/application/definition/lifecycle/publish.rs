@@ -59,7 +59,18 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             context_schema: version.context_schema.clone(),
         };
 
-        let mut validation_result = graph::validate_graph(&graph);
+        // Semantic-model dispatch for publication validation: Legacy (1)
+        // uses the Legacy validator, Minimal (2) the Minimal validator.
+        // Graph legality remains the caller's responsibility; this is the
+        // publication governance check, not runtime validation.
+        let mut validation_result = match version.semantic_model_version {
+            crate::domain::definition::model::SemanticModelVersion::Legacy => {
+                graph::validate_graph(&graph)
+            }
+            crate::domain::definition::model::SemanticModelVersion::Minimal => {
+                graph::validate_minimal_graph(&graph)
+            }
+        };
 
         // Validate JSON schemas
         let schema_errors = self.validate_json_schemas(&graph).await;

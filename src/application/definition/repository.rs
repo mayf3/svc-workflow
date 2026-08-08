@@ -119,6 +119,7 @@ pub trait DefinitionRepository {
         json_schema_dialect: Option<&str>,
         validator_version: Option<&str>,
         metadata: Option<&serde_json::Value>,
+        semantic_model_version: i16,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
     /// Get the next version number for a definition.

@@ -184,6 +184,7 @@ pub async fn governance_create_draft_version(
     json_schema_dialect: Option<String>,
     validator_version: Option<String>,
     metadata: Option<serde_json::Value>,
+    semantic_model_version: i16,
 ) -> Result<WorkflowDefinitionVersion, DefinitionGovernanceError> {
     let def_id = workflow_definition_id;
     let cs = context_schema;
@@ -205,6 +206,7 @@ pub async fn governance_create_draft_version(
                 json_schema_dialect: jsd,
                 validator_version: vv,
                 metadata: md,
+                semantic_model_version,
             };
             let result = service.create_draft_version(cmd).await?;
             Ok(result)

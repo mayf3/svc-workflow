@@ -616,3 +616,6 @@ mod minimal_runtime;
 
 #[path = "17_workflow_runtime/v2_dogfood.rs"]
 mod v2_dogfood;
+
+#[path = "17_workflow_runtime/v2_creation.rs"]
+mod v2_creation;
