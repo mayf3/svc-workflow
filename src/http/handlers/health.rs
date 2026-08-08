@@ -78,6 +78,8 @@ pub(crate) async fn version() -> Json<VersionResponse> {
         service: "svc-workflow",
         version: SERVICE_VERSION,
         git_sha: option_env!("GIT_SHA").unwrap_or("unknown"),
+        git_tree_state: option_env!("GIT_TREE_STATE").unwrap_or("unknown"),
+        build_timestamp: option_env!("BUILD_TIMESTAMP").unwrap_or("unknown"),
         schema_version: SCHEMA_VERSION,
         api_contract_version: API_CONTRACT_VERSION,
     })
