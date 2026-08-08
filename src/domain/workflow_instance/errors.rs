@@ -27,9 +27,6 @@ pub enum CreateWorkflowInstanceError {
     SizeLimitExceeded(String),
     /// Assignee could not be resolved (not found, disabled, or ambiguous).
     AssigneeResolutionFailed(String),
-    /// The definition graph failed Minimal (V2) validation at instance
-    /// creation; no runtime state is written for such definitions.
-    DefinitionGraphInvalid(String),
     /// Idempotency key conflict: same key, different request hash.
     IdempotencyConflict {
         original_command_id: uuid::Uuid,
@@ -67,9 +64,6 @@ impl fmt::Display for CreateWorkflowInstanceError {
             Self::SizeLimitExceeded(detail) => write!(f, "size limit exceeded: {}", detail),
             Self::AssigneeResolutionFailed(detail) => {
                 write!(f, "assignee resolution failed: {}", detail)
-            }
-            Self::DefinitionGraphInvalid(detail) => {
-                write!(f, "definition graph failed Minimal validation: {}", detail)
             }
             Self::IdempotencyConflict {
                 original_command_id,

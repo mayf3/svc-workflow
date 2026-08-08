@@ -149,10 +149,6 @@ impl ApiError {
                 "assignee_resolution_failed",
                 "initial assignee could not be resolved",
             ),
-            E::DefinitionGraphInvalid(_) => unprocessable(
-                "definition_graph_invalid",
-                "definition graph failed Minimal (V2) validation",
-            ),
             E::IdempotencyConflict { .. } => {
                 conflict("idempotency_conflict", "idempotency key was reused")
             }

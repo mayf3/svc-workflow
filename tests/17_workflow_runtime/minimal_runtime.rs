@@ -579,7 +579,7 @@ async fn v2_order_index_irrelevant() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn v2_domain_owner_graph_cannot_start() {
+async fn v2_domain_owner_target_fail_closed() {
     let pool = create_pool().await;
     let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
 
@@ -614,32 +614,24 @@ async fn v2_domain_owner_graph_cannot_start() {
         .await
         .expect("publish after rewire");
 
-    // The full Minimal validator runs at create time: DOMAIN_OWNER must be
-    // rejected before any instance state exists.
-    let result = create_workflow_instance(
-        &pool,
-        CreateWorkflowInstanceCommand {
-            principal_id: PrincipalId::from_uuid(creator),
-            idempotency_key: Uuid::new_v4().to_string(),
-            command_schema_version: "v1".to_string(),
-            domain_id: DomainId::from_uuid(domain_id),
-            definition_version_id: DefinitionVersionId::from_uuid(def.ver_id),
-            external_reference: None,
-            external_url: None,
-            metadata: serde_json::json!({}),
-            context_payload: serde_json::json!({}),
-        },
-    )
-    .await;
+    // Graph legality is the caller's responsibility; the Runtime keeps the
+    // cheap execution fail-closed: resolving a DOMAIN_OWNER target in V2
+    // must fail when the transition executes.
+    let instance = create_v2_instance(&pool, creator, domain_id, def.ver_id, serde_json::json!({}))
+        .await;
+    let result = exec_transition(&pool, creator, instance, 1, def.transitions["entry_to_work"])
+        .await;
     assert!(
-        result.is_err(),
-        "V2 create must fail closed on DOMAIN_OWNER assignee"
+        matches!(
+            result,
+            Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_))
+        ),
+        "V2 runtime must fail closed on DOMAIN_OWNER assignee, got: {result:?}"
     );
-    assert_no_runtime_state(&pool, def.ver_id).await;
 }
 
 #[tokio::test]
-async fn v2_terminate_graph_cannot_start() {
+async fn v2_terminate_fail_closed() {
     let pool = create_pool().await;
     let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
 
@@ -657,184 +649,18 @@ async fn v2_terminate_graph_cannot_start() {
     )
     .await;
 
-    let result = create_workflow_instance(
-        &pool,
-        CreateWorkflowInstanceCommand {
-            principal_id: PrincipalId::from_uuid(creator),
-            idempotency_key: Uuid::new_v4().to_string(),
-            command_schema_version: "v1".to_string(),
-            domain_id: DomainId::from_uuid(domain_id),
-            definition_version_id: DefinitionVersionId::from_uuid(def.ver_id),
-            external_reference: None,
-            external_url: None,
-            metadata: serde_json::json!({}),
-            context_payload: serde_json::json!({}),
-        },
-    )
-    .await;
+    // Create succeeds (graph legality is the caller's responsibility); the
+    // Runtime rejects the TERMINATE effect at execution time.
+    let instance = create_v2_instance(&pool, creator, domain_id, def.ver_id, serde_json::json!({}))
+        .await;
+    let result = exec_transition(&pool, creator, instance, 1, def.transitions["terminate"]).await;
     assert!(
-        result.is_err(),
-        "V2 create must fail closed on TERMINATE transition"
-    );
-    assert_no_runtime_state(&pool, def.ver_id).await;
-}
-// ---------------------------------------------------------------------------
-// V2 create runs the full Minimal validator: invalid graphs cannot start
-// ---------------------------------------------------------------------------
-
-/// Assert no instance or node visit rows exist for a definition version.
-async fn assert_no_runtime_state(pool: &PgPool, ver_id: Uuid) {
-    let instances: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM workflow_instances WHERE definition_version_id = $1",
-    )
-    .bind(ver_id)
-    .fetch_one(pool)
-    .await
-    .expect("count instances");
-    assert_eq!(instances, 0, "invalid V2 graph must create zero instances");
-
-    let visits: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM workflow_node_visits v \
-         JOIN workflow_instances i ON i.workflow_instance_id = v.workflow_instance_id \
-         WHERE i.definition_version_id = $1",
-    )
-    .bind(ver_id)
-    .fetch_one(pool)
-    .await
-    .expect("count visits");
-    assert_eq!(visits, 0, "invalid V2 graph must create zero node visits");
-}
-
-async fn expect_create_rejected(pool: &PgPool, creator: Uuid, domain_id: Uuid, ver_id: Uuid) {
-    let result = create_workflow_instance(
-        pool,
-        CreateWorkflowInstanceCommand {
-            principal_id: PrincipalId::from_uuid(creator),
-            idempotency_key: Uuid::new_v4().to_string(),
-            command_schema_version: "v1".to_string(),
-            domain_id: DomainId::from_uuid(domain_id),
-            definition_version_id: DefinitionVersionId::from_uuid(ver_id),
-            external_reference: None,
-            external_url: None,
-            metadata: serde_json::json!({}),
-            context_payload: serde_json::json!({}),
-        },
-    )
-    .await;
-    assert!(
-        result.is_err(),
-        "V2 create must reject the invalid graph before writing runtime state"
+        matches!(
+            result,
+            Err(ExecuteWorkflowTransitionError::TransitionNotApplicable(_))
+        ),
+        "V2 runtime must fail closed on TERMINATE, got: {result:?}"
     );
 }
 
-#[tokio::test]
-async fn v2_advance_cycle_cannot_start() {
-    let pool = create_pool().await;
-    let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
 
-    // Unique entry A, but a cycle B <-> C behind it.
-    let def = seed_v2_definition(
-        &pool,
-        domain_id,
-        &[
-            ("a", AssigneeSpec::Creator),
-            ("b", AssigneeSpec::Creator),
-            ("c", AssigneeSpec::Creator),
-        ],
-        &["done"],
-        &[
-            ("a_to_b", "a", "b", "ADVANCE"),
-            ("b_to_c", "b", "c", "ADVANCE"),
-            ("c_to_b", "c", "b", "ADVANCE"),
-            ("b_to_done", "b", "done", "ADVANCE"),
-        ],
-        true,
-    )
-    .await;
-
-    expect_create_rejected(&pool, creator, domain_id, def.ver_id).await;
-    assert_no_runtime_state(&pool, def.ver_id).await;
-}
-
-#[tokio::test]
-async fn v2_draft_mixed_graph_cannot_start() {
-    let pool = create_pool().await;
-    let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
-
-    // Normal entry A, but B is a Legacy DRAFT node smuggled into the graph.
-    let def = seed_v2_definition(
-        &pool,
-        domain_id,
-        &[("a", AssigneeSpec::Creator), ("b", AssigneeSpec::Creator)],
-        &["done"],
-        &[
-            ("a_to_b", "a", "b", "ADVANCE"),
-            ("b_to_done", "b", "done", "ADVANCE"),
-        ],
-        false,
-    )
-    .await;
-    sqlx::query("UPDATE workflow_node_definitions SET node_type = 'DRAFT' WHERE node_id = $1")
-        .bind(def.nodes["b"])
-        .execute(&pool)
-        .await
-        .expect("smuggle DRAFT node");
-    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
-        .bind(def.ver_id)
-        .execute(&pool)
-        .await
-        .expect("publish");
-
-    expect_create_rejected(&pool, creator, domain_id, def.ver_id).await;
-    assert_no_runtime_state(&pool, def.ver_id).await;
-}
-
-#[tokio::test]
-async fn v2_invalid_return_cannot_start() {
-    let pool = create_pool().await;
-    let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
-
-    // B RETURN C — C is a descendant of B, not an ancestor.
-    let def = seed_v2_definition(
-        &pool,
-        domain_id,
-        &[
-            ("a", AssigneeSpec::Creator),
-            ("b", AssigneeSpec::Creator),
-            ("c", AssigneeSpec::Creator),
-        ],
-        &["done"],
-        &[
-            ("a_to_b", "a", "b", "ADVANCE"),
-            ("b_to_c", "b", "c", "ADVANCE"),
-            ("c_to_done", "c", "done", "ADVANCE"),
-            ("b_return_c", "b", "c", "RETURN"),
-        ],
-        true,
-    )
-    .await;
-
-    expect_create_rejected(&pool, creator, domain_id, def.ver_id).await;
-    assert_no_runtime_state(&pool, def.ver_id).await;
-}
-
-#[tokio::test]
-async fn v2_unreachable_task_cannot_start() {
-    let pool = create_pool().await;
-    let (creator, domain_id) = seed_principal_domain_with_owner(&pool).await;
-
-    // 'orphan' has no edges: it is an extra ADVANCE root unreachable from
-    // the entry, rejected by the Minimal validator at create time.
-    let def = seed_v2_definition(
-        &pool,
-        domain_id,
-        &[("entry", AssigneeSpec::Creator), ("orphan", AssigneeSpec::Creator)],
-        &["done"],
-        &[("entry_to_done", "entry", "done", "ADVANCE")],
-        true,
-    )
-    .await;
-
-    expect_create_rejected(&pool, creator, domain_id, def.ver_id).await;
-    assert_no_runtime_state(&pool, def.ver_id).await;
-}
