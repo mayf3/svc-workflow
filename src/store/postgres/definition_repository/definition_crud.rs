@@ -4,7 +4,9 @@
 //! (excluding graph nodes/transitions and lifecycle operations).
 
 use crate::domain::definition::error::DefinitionError;
-use crate::domain::definition::model::{WorkflowDefinition, WorkflowDefinitionVersion};
+use crate::domain::definition::model::{
+    SemanticModelVersion, WorkflowDefinition, WorkflowDefinitionVersion,
+};
 
 use super::error_mapping::map_db_error;
 use super::repository_rows::*;
@@ -118,7 +120,7 @@ impl PgDefinitionRepository {
         version_id: uuid::Uuid,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let row: Option<WorkflowDefinitionVersion> = sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1",
+            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1",
         )
         .bind(version_id)
         .fetch_optional(&self.pool)
@@ -141,13 +143,14 @@ impl PgDefinitionRepository {
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         sqlx::query(
             r#"
-            INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema, json_schema_dialect, validator_version, metadata)
-            VALUES ($1, $2, $3, 'DRAFT', $4, $5, $6, $7)
+            INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, semantic_model_version, context_schema, json_schema_dialect, validator_version, metadata)
+            VALUES ($1, $2, $3, 'DRAFT', $4, $5, $6, $7, $8)
             "#,
         )
         .bind(id)
         .bind(workflow_definition_id)
         .bind(version_number)
+        .bind(SemanticModelVersion::DEFAULT.as_i16())
         .bind(context_schema)
         .bind(json_schema_dialect)
         .bind(validator_version)
@@ -245,7 +248,7 @@ impl PgDefinitionRepository {
         workflow_definition_id: uuid::Uuid,
     ) -> Result<Vec<WorkflowDefinitionVersion>, DefinitionError> {
         let rows: Vec<WorkflowDefinitionVersion> = sqlx::query_as::<_, WorkflowDefinitionVersionRow>(
-            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE workflow_definition_id = $1 ORDER BY version_number DESC",
+            "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE workflow_definition_id = $1 ORDER BY version_number DESC",
         )
         .bind(workflow_definition_id)
         .fetch_all(&self.pool)

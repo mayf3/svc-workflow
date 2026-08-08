@@ -3,7 +3,7 @@
 use uuid::Uuid;
 
 use crate::domain::definition::model::{
-    AssigneeRef, NodeDefinition, TransitionDefinition, WorkflowDefinition,
+    AssigneeRef, NodeDefinition, SemanticModelVersion, TransitionDefinition, WorkflowDefinition,
     WorkflowDefinitionVersion,
 };
 use crate::domain::enums::{AssigneeRefType, DefinitionVersionStatus, NodeType, TransitionEffect};
@@ -54,6 +54,7 @@ pub(super) struct WorkflowDefinitionVersionRow {
     workflow_definition_id: Uuid,
     version_number: i32,
     version_status: String,
+    semantic_model_version: i16,
     definition_digest: Option<String>,
     json_schema_dialect: Option<String>,
     validator_version: Option<String>,
@@ -81,6 +82,8 @@ impl WorkflowDefinitionVersionRow {
             workflow_definition_id: WorkflowDefinitionId::from_uuid(self.workflow_definition_id),
             version_number: self.version_number,
             version_status: status,
+            semantic_model_version: SemanticModelVersion::try_from(self.semantic_model_version)
+                .unwrap_or(SemanticModelVersion::DEFAULT),
             definition_digest: self.definition_digest,
             json_schema_dialect: self.json_schema_dialect,
             validator_version: self.validator_version,

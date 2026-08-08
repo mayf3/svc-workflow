@@ -101,6 +101,133 @@ async fn test_migration_0016_applied() {
 }
 
 #[tokio::test]
+async fn test_migration_0019_applied() {
+    let pool = common::create_pool().await;
+
+    // Verify the semantic model version migration 0019 is in the ledger.
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 19 AND success",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+
+    assert_eq!(row.0, 1, "migration 0019 must be applied and successful");
+}
+
+#[tokio::test]
+async fn test_migration_0019_column_not_null_and_backfilled_to_legacy() {
+    let pool = common::create_pool().await;
+
+    // Column exists, NOT NULL, and every existing row was backfilled to 1.
+    let not_null: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM information_schema.columns \
+         WHERE table_name = 'workflow_definition_versions' \
+           AND column_name = 'semantic_model_version' AND is_nullable = 'NO'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(not_null.0, 1, "semantic_model_version must be NOT NULL");
+
+    let non_legacy: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM workflow_definition_versions \
+         WHERE semantic_model_version IS NULL OR semantic_model_version NOT IN (1, 2)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(non_legacy.0, 0, "all rows must have semantic_model_version in (1,2)");
+
+    // With rows present, at least one must be Legacy (backfill target).
+    let versions: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM workflow_definition_versions",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    if versions.0 > 0 {
+        let legacy: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::int8 FROM workflow_definition_versions WHERE semantic_model_version = 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("query failed");
+        assert_eq!(legacy.0, versions.0, "all pre-0019 rows must be backfilled to 1 (Legacy)");
+    }
+}
+
+#[tokio::test]
+async fn test_migration_0019_constraint_enforced() {
+    let pool = common::create_pool().await;
+
+    // 1 and 2 are accepted; NULL and out-of-range values are rejected.
+    let check: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::int8 FROM pg_constraint \
+         WHERE conrelid = 'workflow_definition_versions'::regclass \
+           AND conname = 'workflow_definition_versions_semantic_model_version_check'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("query failed");
+    assert_eq!(check.0, 1, "semantic model version CHECK constraint must exist");
+
+    let (definition_id, version_id) = {
+        let row: (uuid::Uuid, uuid::Uuid) = sqlx::query_as(
+            "SELECT workflow_definition_id, definition_version_id FROM workflow_definition_versions LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("at least one definition version row must exist for constraint tests");
+        row
+    };
+
+    // Out-of-range value rejected.
+    let rejected = sqlx::query(
+        "UPDATE workflow_definition_versions SET semantic_model_version = 3 WHERE definition_version_id = $1",
+    )
+    .bind(version_id)
+    .execute(&pool)
+    .await;
+    assert!(
+        rejected.is_err(),
+        "semantic_model_version = 3 must be rejected by the CHECK constraint"
+    );
+
+    // NULL rejected.
+    let null_rejected = sqlx::query(
+        "UPDATE workflow_definition_versions SET semantic_model_version = NULL WHERE definition_version_id = $1",
+    )
+    .bind(version_id)
+    .execute(&pool)
+    .await;
+    assert!(
+        null_rejected.is_err(),
+        "semantic_model_version = NULL must be rejected by NOT NULL"
+    );
+
+    // 2 accepted (defined value, Minimal semantics not yet implemented).
+    sqlx::query(
+        "UPDATE workflow_definition_versions SET semantic_model_version = 2 WHERE definition_version_id = $1",
+    )
+    .bind(version_id)
+    .execute(&pool)
+    .await
+    .expect("semantic_model_version = 2 must be accepted");
+
+    // 1 accepted (restore Legacy).
+    sqlx::query(
+        "UPDATE workflow_definition_versions SET semantic_model_version = 1 WHERE definition_version_id = $1",
+    )
+    .bind(version_id)
+    .execute(&pool)
+    .await
+    .expect("semantic_model_version = 1 must be accepted");
+
+    let _ = definition_id;
+}
+
+#[tokio::test]
 async fn test_migration_0018_applied() {
     let pool = common::create_pool().await;
 
