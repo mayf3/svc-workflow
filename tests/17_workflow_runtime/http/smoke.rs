@@ -133,6 +133,18 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
     assert_eq!(version_body["service"], "svc-workflow");
     assert_eq!(version_body["schemaVersion"], "0015");
     assert_eq!(version_body["apiContractVersion"], "internal-v0");
+    // Provenance metadata must be present and honest: debug/dev builds may be
+    // "dirty", but the fields must never be empty placeholders.
+    assert!(!version_body["gitSha"].as_str().unwrap_or_default().is_empty());
+    let tree_state = version_body["gitTreeState"].as_str().unwrap_or_default();
+    assert!(
+        matches!(tree_state, "clean" | "dirty" | "unknown"),
+        "unexpected gitTreeState: {tree_state}"
+    );
+    assert!(
+        !version_body["buildTimestamp"].as_str().unwrap_or_default().is_empty(),
+        "buildTimestamp must not be empty"
+    );
 
     let no_auth = app
         .clone()

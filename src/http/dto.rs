@@ -204,6 +204,11 @@ pub struct VersionResponse {
     pub service: &'static str,
     pub version: &'static str,
     pub git_sha: &'static str,
+    /// "clean" | "dirty" | "unknown" — "clean" only if the binary was built
+    /// from a Git tree with no uncommitted/untracked entries.
+    pub git_tree_state: &'static str,
+    /// UTC ISO-8601 build timestamp.
+    pub build_timestamp: &'static str,
     pub schema_version: &'static str,
     pub api_contract_version: &'static str,
 }
