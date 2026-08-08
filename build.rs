@@ -36,8 +36,9 @@ fn main() {
         Err(error) => {
             if is_release {
                 panic!(
-                    "RELEASE BUILD REJECTED: cannot resolve git HEAD ({error}); \
-                     refusing to produce a binary with unknown provenance"
+                    "RELEASE BUILD REJECTED: cannot resolve git HEAD ({}); \
+                     refusing to produce a binary with unknown provenance",
+                    error
                 );
             }
             eprintln!("warning: git HEAD unavailable; embedding treeState=unknown ({error})");
@@ -51,8 +52,9 @@ fn main() {
         Err(error) => {
             if is_release {
                 panic!(
-                    "RELEASE BUILD REJECTED: cannot check worktree cleanliness ({error}); \
-                     refusing to produce a binary from an unverifiable tree"
+                    "RELEASE BUILD REJECTED: cannot check worktree cleanliness ({}); \
+                     refusing to produce a binary from an unverifiable tree",
+                    error
                 );
             }
             eprintln!(
@@ -66,10 +68,11 @@ fn main() {
     if !porcelain.is_empty() && is_release {
         let entries = porcelain.lines().count();
         panic!(
-            "RELEASE BUILD REJECTED: worktree is dirty ({entries} uncommitted/untracked entries).\n\
+            "RELEASE BUILD REJECTED: worktree is dirty ({} uncommitted/untracked entries).\n\
              Formal release builds require a clean Git tree so the artifact maps to exactly one SHA.\n\
              Commit or stash the changes, or build from a pristine checkout.\n\
-             git status --porcelain:\n{porcelain}"
+             git status --porcelain:\n{}",
+            entries, porcelain
         );
     }
 
