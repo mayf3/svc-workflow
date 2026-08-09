@@ -21,6 +21,7 @@ use svc_workflow::application::definition::queries::{
 };
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::domain::definition::error::DefinitionError;
+use svc_workflow::domain::definition::model::SemanticModelVersion;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 // ---------------------------------------------------------------------------
@@ -105,6 +106,7 @@ async fn test_create_draft_version() {
         json_schema_dialect: None,
         validator_version: None,
         metadata: None,
+        semantic_model_version: SemanticModelVersion::Legacy as i16,
     };
 
     let version = service
@@ -132,6 +134,7 @@ async fn test_concurrent_draft_version_numbers() {
         json_schema_dialect: None,
         validator_version: None,
         metadata: None,
+        semantic_model_version: SemanticModelVersion::Legacy as i16,
     };
     let v1 = service
         .create_draft_version(cmd1)
@@ -147,6 +150,7 @@ async fn test_concurrent_draft_version_numbers() {
         json_schema_dialect: None,
         validator_version: None,
         metadata: None,
+        semantic_model_version: SemanticModelVersion::Legacy as i16,
     };
     let v2 = service
         .create_draft_version(cmd2)

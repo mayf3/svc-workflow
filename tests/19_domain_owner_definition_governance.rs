@@ -30,6 +30,7 @@ use svc_workflow::application::definition_governance::{
     governance_publish_version, governance_replace_draft_graph, DefinitionGovernanceError,
 };
 use svc_workflow::domain::definition::error::DefinitionError;
+use svc_workflow::domain::definition::model::SemanticModelVersion;
 use svc_workflow::domain::definition::model::WorkflowDefinition;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
@@ -269,6 +270,7 @@ async fn test_owner_governance_create_draft() {
         None,
         None,
         None,
+        SemanticModelVersion::Legacy as i16,
     )
     .await
     .expect("owner should create draft version via governance");
@@ -643,6 +645,7 @@ async fn test_archived_definition_rejects_new_versions() {
             json_schema_dialect: None,
             validator_version: None,
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         })
         .await
         .expect_err("should reject new version on archived definition");
@@ -1021,6 +1024,7 @@ async fn test_cross_domain_create_draft_returns_404() {
         None,
         None,
         None,
+        SemanticModelVersion::Legacy as i16,
     )
     .await
     .expect_err("cross-domain create draft must fail");
@@ -1185,6 +1189,7 @@ async fn test_nonexistent_id_returns_404() {
         None,
         None,
         None,
+        SemanticModelVersion::Legacy as i16,
     )
     .await
     .expect_err("non-existent must fail");

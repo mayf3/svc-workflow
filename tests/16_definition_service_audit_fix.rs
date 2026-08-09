@@ -16,6 +16,7 @@ use svc_workflow::application::definition::commands::{
 use svc_workflow::application::definition::DefinitionRepository;
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
+use svc_workflow::domain::definition::model::SemanticModelVersion;
 
 // ---------------------------------------------------------------------------
 // Helper: create a pool + service backed by the real DB
@@ -179,6 +180,7 @@ pub(crate) async fn create_draft_version_with_graph(
         json_schema_dialect: Some("https://json-schema.org/draft/2020-12/schema".to_string()),
         validator_version: Some("v1".to_string()),
         metadata: None,
+        semantic_model_version: SemanticModelVersion::Legacy as i16,
     };
     let version = service
         .create_draft_version(create_cmd)
