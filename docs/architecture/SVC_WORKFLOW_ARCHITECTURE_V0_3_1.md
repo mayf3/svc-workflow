@@ -2454,7 +2454,7 @@ svc-workflow
 推荐路径：
 
 ```text
-/Users/yanfenma/workspace/project/svc-workflow
+svc-workflow
 ```
 
 ---

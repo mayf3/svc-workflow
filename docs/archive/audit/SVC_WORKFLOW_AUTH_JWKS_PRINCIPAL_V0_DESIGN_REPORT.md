@@ -11,7 +11,7 @@ Generated: 2026-07-16
 
 ```
 svc-workflow
-Path: /Users/yanfenma/workspace/project/svc-workflow
+Path: svc-workflow
 ```
 
 ---
