@@ -5,6 +5,7 @@ use svc_workflow::application::definition::commands::{
     CreateDraftVersion, PublishVersion, ReplaceDraftGraph,
 };
 use svc_workflow::domain::definition::error::DefinitionError;
+use svc_workflow::domain::definition::model::SemanticModelVersion;
 
 #[tokio::test]
 async fn test_terminal_node_with_fixed_principal_rejected() {
@@ -57,6 +58,7 @@ async fn test_non_terminal_without_assignee_rejected() {
             json_schema_dialect: Some("https://json-schema.org/draft/2020-12/schema".to_string()),
             validator_version: Some("v1".to_string()),
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         };
         let version = service
             .create_draft_version(create_cmd)
@@ -125,6 +127,7 @@ async fn test_workflow_creator_with_fixed_id_rejected() {
             json_schema_dialect: Some("https://json-schema.org/draft/2020-12/schema".to_string()),
             validator_version: Some("v1".to_string()),
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         };
         let version = service
             .create_draft_version(create_cmd)
@@ -192,6 +195,7 @@ async fn test_fixed_principal_missing_id_rejected() {
             json_schema_dialect: Some("https://json-schema.org/draft/2020-12/schema".to_string()),
             validator_version: Some("v1".to_string()),
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         };
         let version = service
             .create_draft_version(create_cmd)
@@ -382,6 +386,7 @@ async fn instance_input_principal_node_publishes() {
             json_schema_dialect: None,
             validator_version: None,
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         })
         .await
         .expect("create draft");
@@ -443,6 +448,7 @@ async fn instance_input_principal_missing_key_rejected() {
             json_schema_dialect: None,
             validator_version: None,
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         })
         .await
         .expect("create draft");
@@ -495,6 +501,7 @@ async fn instance_input_principal_schema_not_covering_key_rejected() {
             json_schema_dialect: None,
             validator_version: None,
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         })
         .await
         .expect("create draft");
@@ -545,6 +552,7 @@ async fn instance_input_principal_with_fixed_id_rejected() {
             json_schema_dialect: None,
             validator_version: None,
             metadata: None,
+            semantic_model_version: SemanticModelVersion::Legacy as i16,
         })
         .await
         .expect("create draft");
