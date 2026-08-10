@@ -9,6 +9,10 @@
 - Added `status` to the TypeScript SDK `DomainInstanceQuery` schema.
 - Invalid `status` values return 422 `invalid_status`.
 
+## Unreleased — agent domain discovery
+
+- **New:** `GET /internal/v1/principals/me/domains` — caller-scoped domain membership discovery. Returns every domain where the verified caller has an enabled `DOMAIN_OWNER` / `DOMAIN_MEMBER` binding (`domain_id` / `domain_key` / `display_name` / `caller_role` / `binding_created_at`). Disabled bindings and disabled domains are excluded. Requires `workflow.read` scope; accepts direct and OBO tokens.
+
 ## V1.4.1 (2026-07-26) — Current-State Re-freeze
 
 - Re-frozen Contract Bundle against runtime mainline commit `c133118` (Repository Truth Cleanup)

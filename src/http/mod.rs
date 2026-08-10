@@ -91,6 +91,11 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/principals/me",
             put(handlers::self_projection::self_project_handler),
         )
+        // Caller-scoped domain discovery
+        .route(
+            "/internal/v1/principals/me/domains",
+            get(handlers::self_projection::list_my_domains_handler),
+        )
         // Domain member management
         .route(
             "/internal/v1/domains/{domainId}/members",
