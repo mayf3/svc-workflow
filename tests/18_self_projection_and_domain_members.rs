@@ -464,3 +464,200 @@ async fn delete_does_not_affect_owner() {
         .fetch_one(&pool).await.unwrap();
     assert!(owner_ok, "owner binding must survive");
 }
+
+// ===========================================================================
+// Caller-scoped domain discovery (GET /internal/v1/principals/me/domains)
+// ===========================================================================
+
+#[tokio::test]
+async fn caller_lists_own_owner_domain() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id) = common::seed_principal_domain_with_owner(&pool).await;
+    let token = direct_token(owner_id, "workflow.read", &mock.key_pair);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200, "my domains: {body:?}");
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]["domain_id"].as_str().unwrap(),
+        &domain_id.to_string()
+    );
+    assert_eq!(items[0]["caller_role"].as_str().unwrap(), "DOMAIN_OWNER");
+    assert!(!items[0]["domain_key"].as_str().unwrap().is_empty());
+    assert!(!items[0]["display_name"].as_str().unwrap().is_empty());
+    assert!(items[0]["binding_created_at"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn caller_lists_owner_and_member_domains() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+
+    // Caller is DOMAIN_MEMBER of a second domain.
+    let (_, domain_b) = common::seed_principal_and_domain(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+         VALUES ($1, $2, $3, 'DOMAIN_MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_b)
+    .bind(owner_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let token = direct_token(owner_id, "workflow.read", &mock.key_pair);
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200, "my domains: {body:?}");
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+
+    let by_domain: std::collections::HashMap<&str, &serde_json::Value> = items
+        .iter()
+        .map(|item| (item["domain_id"].as_str().unwrap(), item))
+        .collect();
+    assert_eq!(
+        by_domain[domain_a.to_string().as_str()]["caller_role"],
+        "DOMAIN_OWNER"
+    );
+    assert_eq!(
+        by_domain[domain_b.to_string().as_str()]["caller_role"],
+        "DOMAIN_MEMBER"
+    );
+}
+
+#[tokio::test]
+async fn my_domains_is_caller_scoped() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_a, _) = common::seed_principal_domain_with_owner(&pool).await;
+    let (owner_b, _) = common::seed_principal_domain_with_owner(&pool).await;
+    assert_ne!(owner_a, owner_b);
+
+    // Caller A sees only their own domain, never B's.
+    let token_a = direct_token(owner_a, "workflow.read", &mock.key_pair);
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token_a).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn caller_with_no_bindings_gets_empty_list() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let stranger = common::seed_second_principal(&pool).await;
+    let token = direct_token(stranger, "workflow.read", &mock.key_pair);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200, "my domains: {body:?}");
+    assert_eq!(body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn disabled_binding_excluded_from_my_domains() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+
+    // A second, disabled binding must not appear.
+    let (_, domain_b) = common::seed_principal_and_domain(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+         VALUES ($1, $2, $3, 'DOMAIN_OWNER', FALSE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_b)
+    .bind(owner_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let token = direct_token(owner_id, "workflow.read", &mock.key_pair);
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200);
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]["domain_id"].as_str().unwrap(),
+        &domain_a.to_string()
+    );
+}
+
+#[tokio::test]
+async fn disabled_domain_excluded_from_my_domains() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+
+    // A second domain that is disabled must not appear even with an active binding.
+    let (_, domain_b) = common::seed_principal_and_domain(&pool).await;
+    sqlx::query(
+        "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+         VALUES ($1, $2, $3, 'DOMAIN_OWNER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_b)
+    .bind(owner_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE domains SET enabled = FALSE WHERE domain_id = $1")
+        .bind(domain_b)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let token = direct_token(owner_id, "workflow.read", &mock.key_pair);
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200);
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]["domain_id"].as_str().unwrap(),
+        &domain_a.to_string()
+    );
+}
+
+#[tokio::test]
+async fn my_domains_requires_workflow_read_scope() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, _) = common::seed_principal_domain_with_owner(&pool).await;
+    let token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(
+        status, 403,
+        "my domains must require workflow.read: {body:?}"
+    );
+}
+
+#[tokio::test]
+async fn my_domains_accepts_obo_token_for_self_scoped_read() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id) = common::seed_principal_domain_with_owner(&pool).await;
+    let delegating = Uuid::new_v4();
+    let token = obo_token(owner_id, delegating, "workflow.read", &mock.key_pair);
+
+    // Read-only self-scoped discovery works with OBO (principal = act.sub).
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) = do_get(app, "/internal/v1/principals/me/domains", &token).await;
+    assert_eq!(status, 200, "my domains via OBO: {body:?}");
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]["domain_id"].as_str().unwrap(),
+        &domain_id.to_string()
+    );
+}

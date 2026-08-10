@@ -392,6 +392,30 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  # ── Caller-scoped domain discovery ────────────────────────────────────
+  /internal/v1/principals/me/domains:
+    get:
+      operationId: listMyDomains
+      summary: List the caller's own domain memberships
+      tags: [principals]
+      description: >
+        Returns every domain where the verified caller has an enabled
+        DOMAIN_OWNER / DOMAIN_MEMBER binding, joined with the domain's
+        basic info.  Caller-scoped: the subject comes exclusively from the
+        bearer token; no path/query input identifies it.  Disabled
+        bindings and disabled domains are excluded.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The caller's domain memberships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyDomainsList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # ── Domain Member Management ──────────────────────────────────────────
   /internal/v1/domains/{domainId}/members:
     get:
@@ -1287,6 +1311,35 @@ components:
         created:
           type: boolean
       required: [principalId, created]
+
+    MyDomainItem:
+      type: object
+      additionalProperties: false
+      properties:
+        domain_id:
+          type: string
+          format: uuid
+        domain_key:
+          type: string
+        display_name:
+          type: string
+        caller_role:
+          type: string
+          enum: [DOMAIN_OWNER, DOMAIN_MEMBER]
+        binding_created_at:
+          type: string
+          format: date-time
+      required: [domain_id, domain_key, display_name, caller_role, binding_created_at]
+
+    MyDomainsList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MyDomainItem"
+      required: [items]
 
     MemberItem:
       type: object

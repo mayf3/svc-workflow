@@ -265,6 +265,54 @@ pub(crate) async fn list_member_bindings(
 }
 
 // ---------------------------------------------------------------------------
+// Caller-scoped domain discovery
+// ---------------------------------------------------------------------------
+
+/// A single caller-scoped domain membership row.
+#[derive(Debug, sqlx::FromRow)]
+pub(crate) struct MyDomainRow {
+    pub domain_id: Uuid,
+    pub domain_key: String,
+    pub display_name: String,
+    pub role_key: String,
+    pub binding_created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// List the enabled role bindings of `principal_id` joined with the
+/// domain's basic info.
+///
+/// Caller-scoped discovery: returns every domain where the principal has an
+/// enabled binding (DOMAIN_OWNER / DOMAIN_MEMBER).  Disabled bindings and
+/// disabled domains are excluded — matching the semantics of
+/// `check_domain_owner` / `check_has_role`, so the list only ever contains
+/// domains the caller can actually act on.
+pub(crate) async fn list_my_domains(
+    pool: &PgPool,
+    principal_id: Uuid,
+) -> Result<Vec<MyDomainRow>, ProvisioningError> {
+    let rows: Vec<MyDomainRow> = sqlx::query_as(
+        r#"
+        SELECT b.domain_id,
+               d.domain_key,
+               d.display_name,
+               b.role_key,
+               b.created_at AS binding_created_at
+        FROM domain_role_bindings b
+        JOIN domains d ON d.domain_id = b.domain_id
+        WHERE b.principal_id = $1
+          AND b.enabled = TRUE
+          AND d.enabled = TRUE
+        ORDER BY d.domain_key ASC, b.role_key ASC
+        "#,
+    )
+    .bind(principal_id)
+    .fetch_all(pool)
+    .await
+    .map_err(storage)?;
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
 // Member binding mutations
 // ---------------------------------------------------------------------------
 

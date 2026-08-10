@@ -142,6 +142,40 @@ pub struct MemberListCursor {
     pub id: Uuid,
 }
 
+/// A domain the caller has an enabled role binding in.
+#[derive(Debug, Serialize)]
+pub struct MyDomainItem {
+    pub domain_id: Uuid,
+    pub domain_key: String,
+    pub display_name: String,
+    pub caller_role: String,
+    pub binding_created_at: DateTime<Utc>,
+}
+
+/// List the caller's own domain memberships.
+///
+/// Caller-scoped discovery: every domain where `principal_id` has an
+/// enabled `DOMAIN_OWNER` / `DOMAIN_MEMBER` binding, joined with the
+/// domain's basic info.  Disabled bindings and disabled domains are
+/// excluded.  The subject comes exclusively from the verified token —
+/// no further authorization check applies.
+pub async fn list_my_domains(
+    pool: &PgPool,
+    principal_id: Uuid,
+) -> Result<Vec<MyDomainItem>, DomainMembershipError> {
+    let rows = domain_role_repository::list_my_domains(pool, principal_id).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| MyDomainItem {
+            domain_id: row.domain_id,
+            domain_key: row.domain_key,
+            display_name: row.display_name,
+            caller_role: row.role_key,
+            binding_created_at: row.binding_created_at,
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // Self-Projection
 // ---------------------------------------------------------------------------
