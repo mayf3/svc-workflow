@@ -117,6 +117,81 @@ pub struct DomainInstanceQuery {
     pub status: Option<String>,
 }
 
+/// Query DTO for the global (cross-domain) instance list. Same filters as
+/// `DomainInstanceQuery` minus `domainId` — the caller's coordinator role
+/// replaces the domain scope.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GlobalInstanceQuery {
+    pub before_created_at: Option<String>,
+    pub before_id: Option<String>,
+    pub limit: Option<u32>,
+    pub definition_key: Option<String>,
+    /// One of `active`, `terminal`, `all`. Invalid values produce a 422
+    /// at the handler layer.
+    pub lifecycle: Option<String>,
+    pub current_node_key: Option<String>,
+    pub assignee_principal_id: Option<Uuid>,
+    /// One of `active`, `cancelled`, `archived`, `all`. Invalid values
+    /// produce a 422 at the handler layer.
+    pub status: Option<String>,
+}
+
+/// Validate and convert a lifecycle string to the strong type.
+/// Returns an error code + message tuple for invalid values.
+pub(crate) fn parse_lifecycle_param(
+    lifecycle: &Option<String>,
+) -> Result<
+    Option<crate::application::workflow_instance::query_types::LifecycleFilter>,
+    (&'static str, &'static str),
+> {
+    match lifecycle.as_deref() {
+        None => Ok(None),
+        Some("active") => Ok(Some(
+            crate::application::workflow_instance::query_types::LifecycleFilter::Active,
+        )),
+        Some("terminal") => Ok(Some(
+            crate::application::workflow_instance::query_types::LifecycleFilter::Terminal,
+        )),
+        Some("all") => Ok(Some(
+            crate::application::workflow_instance::query_types::LifecycleFilter::All,
+        )),
+        Some(_) => Err((
+            "invalid_lifecycle",
+            "lifecycle must be 'active', 'terminal', or 'all'",
+        )),
+    }
+}
+
+/// Validate and convert a status string to the strong type.
+/// Returns an error code + message tuple for invalid values.
+pub(crate) fn parse_status_param(
+    status: &Option<String>,
+) -> Result<
+    Option<crate::application::workflow_instance::query_types::StatusFilter>,
+    (&'static str, &'static str),
+> {
+    match status.as_deref() {
+        None => Ok(None),
+        Some("active") => Ok(Some(
+            crate::application::workflow_instance::query_types::StatusFilter::Active,
+        )),
+        Some("cancelled") => Ok(Some(
+            crate::application::workflow_instance::query_types::StatusFilter::Cancelled,
+        )),
+        Some("archived") => Ok(Some(
+            crate::application::workflow_instance::query_types::StatusFilter::Archived,
+        )),
+        Some("all") => Ok(Some(
+            crate::application::workflow_instance::query_types::StatusFilter::All,
+        )),
+        Some(_) => Err((
+            "invalid_status",
+            "status must be 'active', 'cancelled', 'archived', or 'all'",
+        )),
+    }
+}
+
 impl DomainInstanceQuery {
     /// Validate and convert the lifecycle string to the strong type.
     /// Returns an error code + message tuple for invalid values.
@@ -126,22 +201,7 @@ impl DomainInstanceQuery {
         Option<crate::application::workflow_instance::query_types::LifecycleFilter>,
         (&'static str, &'static str),
     > {
-        match self.lifecycle.as_deref() {
-            None => Ok(None),
-            Some("active") => Ok(Some(
-                crate::application::workflow_instance::query_types::LifecycleFilter::Active,
-            )),
-            Some("terminal") => Ok(Some(
-                crate::application::workflow_instance::query_types::LifecycleFilter::Terminal,
-            )),
-            Some("all") => Ok(Some(
-                crate::application::workflow_instance::query_types::LifecycleFilter::All,
-            )),
-            Some(_) => Err((
-                "invalid_lifecycle",
-                "lifecycle must be 'active', 'terminal', or 'all'",
-            )),
-        }
+        parse_lifecycle_param(&self.lifecycle)
     }
 
     /// Validate and convert the status string to the strong type.
@@ -152,25 +212,7 @@ impl DomainInstanceQuery {
         Option<crate::application::workflow_instance::query_types::StatusFilter>,
         (&'static str, &'static str),
     > {
-        match self.status.as_deref() {
-            None => Ok(None),
-            Some("active") => Ok(Some(
-                crate::application::workflow_instance::query_types::StatusFilter::Active,
-            )),
-            Some("cancelled") => Ok(Some(
-                crate::application::workflow_instance::query_types::StatusFilter::Cancelled,
-            )),
-            Some("archived") => Ok(Some(
-                crate::application::workflow_instance::query_types::StatusFilter::Archived,
-            )),
-            Some("all") => Ok(Some(
-                crate::application::workflow_instance::query_types::StatusFilter::All,
-            )),
-            Some(_) => Err((
-                "invalid_status",
-                "status must be 'active', 'cancelled', 'archived', or 'all'",
-            )),
-        }
+        parse_status_param(&self.status)
     }
 }
 
@@ -273,6 +315,19 @@ pub struct ProvisionDomainResponse {
 pub struct ProvisionRoleBindingRequest {
     pub role_key: String,
     pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProvisionGlobalRoleBindingRequest {
+    pub role_key: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeGlobalRoleBindingRequest {
+    pub role_key: String,
 }
 
 #[derive(Debug, Deserialize)]

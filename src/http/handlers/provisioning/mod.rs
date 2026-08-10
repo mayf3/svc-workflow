@@ -2,6 +2,7 @@
 
 pub(crate) mod definitions;
 pub(crate) mod domains;
+pub(crate) mod global_role_bindings;
 pub(crate) mod principals;
 pub(crate) mod role_bindings;
 

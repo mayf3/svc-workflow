@@ -25,8 +25,8 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0019";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: &str = "0020";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 20;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -77,6 +77,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/workflow-instances/domain",
             get(handlers::instances::domain_list),
+        )
+        .route(
+            "/internal/v1/workflow-instances/global",
+            get(handlers::instances::global_list),
         )
         .route(
             "/internal/v1/worklists/assigned-to-me",
@@ -180,6 +184,15 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/admin/domains/{domainId}/owner",
             put(handlers::provisioning::role_bindings::replace_domain_owner),
+        )
+        // Global (domain-independent) role bindings
+        .route(
+            "/internal/v1/admin/global-role-bindings/{principalId}",
+            put(handlers::provisioning::global_role_bindings::create),
+        )
+        .route(
+            "/internal/v1/admin/global-role-bindings/{principalId}",
+            delete(handlers::provisioning::global_role_bindings::delete),
         )
         .route(
             "/internal/v1/admin/definition-versions/{definitionVersionId}",

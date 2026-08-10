@@ -478,6 +478,10 @@ impl ApiError {
                 "restricted_history_not_visible",
                 "restricted workflow history is not visible",
             ),
+            E::GlobalCoordinatorRequired => forbidden(
+                "global_coordinator_required",
+                "caller must hold the GLOBAL_WORKFLOW_COORDINATOR role",
+            ),
             E::InvalidPagination(_) => {
                 unprocessable("invalid_pagination", "pagination parameters are invalid")
             }
