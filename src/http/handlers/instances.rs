@@ -8,14 +8,15 @@ use axum::Json;
 
 use crate::application::workflow_instance::create::create_workflow_instance;
 use crate::application::workflow_instance::query_types::{
-    GetWorkflowInstanceDetail, ListDomainInstances, StatusFilter, TimeUuidCursor,
+    GetWorkflowInstanceDetail, ListDomainInstances, ListGlobalInstances, StatusFilter,
+    TimeUuidCursor,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::http::dto::{
-    detail_response, CreateWorkflowInstanceRequest, CreateWorkflowInstanceResponse,
-    DomainInstanceQuery,
+    detail_response, parse_lifecycle_param, parse_status_param, CreateWorkflowInstanceRequest,
+    CreateWorkflowInstanceResponse, DomainInstanceQuery, GlobalInstanceQuery,
 };
 use crate::http::error::ApiError;
 use crate::http::AppState;
@@ -140,6 +141,66 @@ pub(crate) async fn domain_list(
         .list_domain_instances(ListDomainInstances {
             actor_principal_id: principal.principal_id.into_uuid(),
             domain_id: query.domain_id,
+            before,
+            limit: query.limit,
+            definition_key: query.definition_key,
+            lifecycle,
+            current_node_key: query.current_node_key,
+            assignee_principal_id: query.assignee_principal_id,
+            status,
+        })
+        .await
+        .map_err(ApiError::from_query)?;
+
+    Ok(Json(result))
+}
+
+/// GET /internal/v1/workflow-instances/global
+///
+/// Returns a paginated, filtered list of instance summaries across ALL
+/// domains. Only callable by principals holding the formal
+/// `GLOBAL_WORKFLOW_COORDINATOR` role (enforced server-side by the query
+/// service). The projection is `DomainInstanceSummary` — instance detail
+/// and submission payloads are never returned.
+pub(crate) async fn global_list(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    query: Result<Query<GlobalInstanceQuery>, QueryRejection>,
+) -> Result<
+    Json<
+        crate::application::workflow_instance::query_types::Page<
+            crate::application::workflow_instance::query_types::DomainInstanceSummary,
+        >,
+    >,
+    ApiError,
+> {
+    require_scope(&principal, "workflow.read")?;
+    let Query(query) = query.map_err(ApiError::from_query_rejection)?;
+
+    // Validate lifecycle parameter (422 for invalid values)
+    let lifecycle = parse_lifecycle_param(&query.lifecycle)
+        .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
+    // Validate status parameter (422 for invalid values)
+    let status_explicit = parse_status_param(&query.status)
+        .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
+    // Resolve default status (same semantics as the domain list):
+    // - status explicitly provided → use it
+    // - status omitted, lifecycle provided → status=all
+    // - both omitted → status=active (hide cancelled/archived)
+    let status = status_explicit.unwrap_or(match lifecycle {
+        Some(_) => StatusFilter::All,
+        None => StatusFilter::Active,
+    });
+
+    // Parse cursor
+    let before = parse_domain_cursor(query.before_created_at, query.before_id)?;
+
+    let result = state
+        .query_service
+        .list_global_instances(ListGlobalInstances {
+            actor_principal_id: principal.principal_id.into_uuid(),
             before,
             limit: query.limit,
             definition_key: query.definition_key,

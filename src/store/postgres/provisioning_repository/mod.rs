@@ -365,6 +365,76 @@ pub(crate) async fn disable_role_binding(
     Ok(())
 }
 
+/// Upsert a global (domain-independent) role binding (create or re-enable).
+///
+/// Only the principal existence/enabled state is checked — there is no
+/// domain dimension for global roles.
+pub(crate) async fn upsert_global_role_binding(
+    tx: &mut Transaction<'_, Postgres>,
+    principal_id: Uuid,
+    role_key: &str,
+    enabled: bool,
+) -> Result<Uuid, ProvisioningError> {
+    // Check principal exists and is enabled
+    let principal_enabled: Option<bool> =
+        sqlx::query_scalar("SELECT enabled FROM principals WHERE principal_id = $1 FOR UPDATE")
+            .bind(principal_id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(storage)?;
+
+    match principal_enabled {
+        None => return Err(ProvisioningError::PrincipalNotFound),
+        Some(false) => return Err(ProvisioningError::PrincipalDisabled),
+        Some(true) => {}
+    }
+
+    // UPSERT the binding
+    let binding_id = Uuid::new_v4();
+    let result: Option<(Uuid,)> = sqlx::query_as(
+        r#"
+        INSERT INTO global_role_bindings (binding_id, principal_id, role_key, enabled)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (principal_id, role_key) DO UPDATE
+        SET enabled = $4, disabled_at = CASE WHEN $4 THEN NULL ELSE now() END
+        RETURNING binding_id
+        "#,
+    )
+    .bind(binding_id)
+    .bind(principal_id)
+    .bind(role_key)
+    .bind(enabled)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    Ok(result.map(|r| r.0).unwrap_or(binding_id))
+}
+
+/// Disable a global role binding (soft delete).
+pub(crate) async fn disable_global_role_binding(
+    tx: &mut Transaction<'_, Postgres>,
+    principal_id: Uuid,
+    role_key: &str,
+) -> Result<(), ProvisioningError> {
+    let affected = sqlx::query(
+        "UPDATE global_role_bindings
+         SET enabled = FALSE, disabled_at = now()
+         WHERE principal_id = $1 AND role_key = $2 AND enabled = TRUE",
+    )
+    .bind(principal_id)
+    .bind(role_key)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(ProvisioningError::BindingNotFound);
+    }
+    Ok(())
+}
+
 /// Atomically replace a domain owner.
 ///
 /// In a single transaction:

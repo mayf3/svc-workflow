@@ -49,6 +49,27 @@ pub(crate) async fn check_domain_owner(
     .map_err(storage)
 }
 
+/// Check whether the actor holds the formal cross-domain read-only role.
+///
+/// `GLOBAL_WORKFLOW_COORDINATOR` is a domain-independent binding in
+/// `global_role_bindings`; it grants read access to instance summaries
+/// across all domains and nothing else.
+pub(crate) async fn check_global_workflow_coordinator(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+           SELECT 1 FROM global_role_bindings
+           WHERE principal_id = $1
+             AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND enabled = TRUE)",
+    )
+    .bind(actor)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)
+}
+
 pub async fn begin_snapshot(
     pool: &PgPool,
 ) -> Result<Transaction<'_, Postgres>, WorkflowQueryError> {

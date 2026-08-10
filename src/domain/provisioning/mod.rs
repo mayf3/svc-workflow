@@ -23,8 +23,20 @@ pub const COMMAND_TYPE_PROVISION_ROLE_BINDING: &str = "PROVISION_ROLE_BINDING";
 pub const COMMAND_TYPE_REVOKE_ROLE_BINDING: &str = "REVOKE_ROLE_BINDING";
 /// Command type for atomic owner replacement.
 pub const COMMAND_TYPE_REPLACE_OWNER: &str = "PROVISION_REPLACE_OWNER";
+/// Command type for upserting a global (domain-independent) role binding.
+pub const COMMAND_TYPE_PROVISION_GLOBAL_ROLE_BINDING: &str = "PROVISION_GLOBAL_ROLE_BINDING";
+/// Command type for revoking a global (domain-independent) role binding.
+pub const COMMAND_TYPE_REVOKE_GLOBAL_ROLE_BINDING: &str = "REVOKE_GLOBAL_ROLE_BINDING";
 /// Command schema version.
 pub const PROVISIONING_SCHEMA_VERSION: &str = "v1";
+
+/// The formal cross-domain read-only workflow role.
+///
+/// Holders may read workflow instance summaries across all domains via
+/// `GET /internal/v1/workflow-instances/global`. It grants no write
+/// powers: transitions stay assignee-gated, cancel/archive stay
+/// DOMAIN_OWNER-gated, provisioning stays admin-gated.
+pub const GLOBAL_WORKFLOW_COORDINATOR_ROLE: &str = "GLOBAL_WORKFLOW_COORDINATOR";
 
 // ---------------------------------------------------------------------------
 // Commands
@@ -62,6 +74,21 @@ pub struct ProvisionRoleBindingCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RevokeRoleBindingCommand {
     pub domain_id: DomainId,
+    pub principal_id: PrincipalId,
+    pub role_key: String,
+}
+
+/// Upsert a global (domain-independent) role binding.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvisionGlobalRoleBindingCommand {
+    pub principal_id: PrincipalId,
+    pub role_key: String,
+    pub enabled: bool,
+}
+
+/// Revoke a global role binding (set enabled=false).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevokeGlobalRoleBindingCommand {
     pub principal_id: PrincipalId,
     pub role_key: String,
 }

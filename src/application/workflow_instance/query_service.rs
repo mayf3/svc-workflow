@@ -4,7 +4,7 @@ use sqlx::PgPool;
 
 use super::query_types::*;
 use crate::store::postgres::workflow_instance_repository::{
-    query_detail, query_domain_instances, query_worklists,
+    query_detail, query_domain_instances, query_global_instances, query_worklists,
 };
 
 #[derive(Clone)]
@@ -96,5 +96,35 @@ impl WorkflowQueryService {
 
         // Delegate to the repository for the actual query
         query_domain_instances::list_domain_instances(&self.pool, query).await
+    }
+
+    /// List instance summaries across ALL domains (global coordinators only).
+    ///
+    /// Performs the GLOBAL_WORKFLOW_COORDINATOR authorization check before
+    /// querying. Returns `WorkflowQueryError::GlobalCoordinatorRequired`
+    /// (mapped to 403 by the HTTP handler) when the actor does not hold the
+    /// role. The projection is identical to `DomainInstanceSummary` — no
+    /// detail / submission payload is ever exposed.
+    pub async fn list_global_instances(
+        &self,
+        query: ListGlobalInstances,
+    ) -> Result<Page<DomainInstanceSummary>, WorkflowQueryError> {
+        use crate::store::postgres::workflow_instance_repository::query_visibility;
+
+        let mut tx = query_visibility::begin_snapshot(&self.pool).await?;
+        let is_coordinator =
+            query_visibility::check_global_workflow_coordinator(&mut tx, query.actor_principal_id)
+                .await?;
+        if !is_coordinator {
+            tx.commit()
+                .await
+                .map_err(|e| WorkflowQueryError::StorageError(e.to_string()))?;
+            return Err(WorkflowQueryError::GlobalCoordinatorRequired);
+        }
+        tx.commit()
+            .await
+            .map_err(|e| WorkflowQueryError::StorageError(e.to_string()))?;
+
+        query_global_instances::list_global_instances(&self.pool, query).await
     }
 }
