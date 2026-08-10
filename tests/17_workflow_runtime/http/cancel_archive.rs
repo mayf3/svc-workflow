@@ -150,9 +150,7 @@ async fn advance_to_terminal_via_http(
             .clone()
             .oneshot(request(
                 "POST",
-                &format!(
-                    "/internal/v1/workflow-instances/{workflow_instance_id}/transitions"
-                ),
+                &format!("/internal/v1/workflow-instances/{workflow_instance_id}/transitions"),
                 Some(token),
                 Some(&format!("advance-{node_key}")),
                 Some(json!({
@@ -209,7 +207,10 @@ async fn domain_owner_cancel_active_via_http() {
         .unwrap();
     assert_eq!(cancelled.status(), StatusCode::OK);
     let cancel_body = json_body(cancelled).await;
-    assert_eq!(cancel_body["workflowInstanceId"].as_str().unwrap(), instance_id);
+    assert_eq!(
+        cancel_body["workflowInstanceId"].as_str().unwrap(),
+        instance_id
+    );
     assert_eq!(cancel_body["replayed"], false);
 
     // DB flag is set.
@@ -436,7 +437,10 @@ async fn cancel_terminal_instance_denied_via_http() {
         .await
         .unwrap();
     assert_eq!(denied.status(), StatusCode::CONFLICT);
-    assert_eq!(json_body(denied).await["error"]["code"], "source_node_terminal");
+    assert_eq!(
+        json_body(denied).await["error"]["code"],
+        "source_node_terminal"
+    );
 }
 
 #[tokio::test]
@@ -488,7 +492,10 @@ async fn domain_owner_archive_terminal_via_http() {
         .unwrap();
     assert_eq!(archived.status(), StatusCode::OK);
     let archive_body = json_body(archived).await;
-    assert_eq!(archive_body["workflowInstanceId"].as_str().unwrap(), instance_id);
+    assert_eq!(
+        archive_body["workflowInstanceId"].as_str().unwrap(),
+        instance_id
+    );
     assert_eq!(archive_body["replayed"], false);
 
     // Detail still readable.
@@ -594,11 +601,7 @@ async fn archive_active_instance_denied_via_http() {
     let (app, _state) = build_config(&pool, &mock.url, &principal_id.to_string());
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    let full_token = token(
-        principal_id,
-        "workflow.execute",
-        &mock.key_pair,
-    );
+    let full_token = token(principal_id, "workflow.execute", &mock.key_pair);
 
     let (instance_id, _) = create_instance_via_http(
         &app,
@@ -784,7 +787,10 @@ async fn archive_already_archived_and_conflict_via_http() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(event_count, 1, "exactly one archive event after rejected retries");
+    assert_eq!(
+        event_count, 1,
+        "exactly one archive event after rejected retries"
+    );
 
     let receipt_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_command_receipts
@@ -794,5 +800,8 @@ async fn archive_already_archived_and_conflict_via_http() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(receipt_count, 0, "no receipt may exist for the rejected key");
+    assert_eq!(
+        receipt_count, 0,
+        "no receipt may exist for the rejected key"
+    );
 }

@@ -1504,12 +1504,22 @@ async fn status_default_returns_only_active() {
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // No status param → default active → only 1 instance
     let resp = app
         .clone()
-        .oneshot(request("GET", &domain_list_uri(domain_id), Some(&owner_token)))
+        .oneshot(request(
+            "GET",
+            &domain_list_uri(domain_id),
+            Some(&owner_token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1547,7 +1557,13 @@ async fn status_all_returns_everything() {
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&status=all",
@@ -1583,14 +1599,24 @@ async fn status_cancelled_returns_only_cancelled() {
 
     create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
     let cancelled_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await;
-    archive_instance(&pool, create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await).await;
+    archive_instance(
+        &pool,
+        create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await,
+    )
+    .await;
 
     cancel_instance(&pool, cancelled_id).await;
 
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&status=cancelled",
@@ -1627,14 +1653,24 @@ async fn status_archived_returns_only_archived() {
     let (ver_id, _, _, _, _, _) = seed_domain_list_definition(&pool, domain_id).await;
 
     create_dlist_instance(&pool, creator, domain_id, ver_id, "active").await;
-    cancel_instance(&pool, create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await).await;
+    cancel_instance(
+        &pool,
+        create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled").await,
+    )
+    .await;
     let archived_id = create_dlist_instance(&pool, creator, domain_id, ver_id, "archived").await;
     archive_instance(&pool, archived_id).await;
 
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&status=archived",
@@ -1659,7 +1695,13 @@ async fn invalid_status_returns_422() {
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     let uri = format!(
         "/internal/v1/workflow-instances/domain?domainId={}&status=nonexistent",
@@ -1703,7 +1745,13 @@ async fn status_omitted_with_lifecycle_defaults_to_all() {
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // lifecycle=active without status → status defaults to all → cancelled
     // instance is NOT filtered out (only node_type filtering applies).
@@ -1752,7 +1800,8 @@ async fn status_active_with_lifecycle_all_combines_filters() {
     advance_to_terminal(&pool, creator, term_id, normal_advance).await;
 
     // 1 cancelled terminal
-    let cancelled_term = create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled-term").await;
+    let cancelled_term =
+        create_dlist_instance(&pool, creator, domain_id, ver_id, "cancelled-term").await;
     advance_to_normal(&pool, creator, cancelled_term, draft_advance).await;
     advance_to_terminal(&pool, creator, cancelled_term, normal_advance).await;
     cancel_instance(&pool, cancelled_term).await;
@@ -1760,7 +1809,13 @@ async fn status_active_with_lifecycle_all_combines_filters() {
     let mock_dl = common::MockJwksServer::start().await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let app = app(pool, &mock_dl.url);
-    let owner_token = common::v1_token(owner, "workflow.read", "test-client", 300, &mock_dl.key_pair);
+    let owner_token = common::v1_token(
+        owner,
+        "workflow.read",
+        "test-client",
+        300,
+        &mock_dl.key_pair,
+    );
 
     // status=active + lifecycle=all → 2 instances (active-draft + active-terminal)
     let uri = format!(

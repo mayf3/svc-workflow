@@ -16,8 +16,8 @@ use crate::domain::definition::digest;
 use crate::domain::workflow_instance::commands::CancelWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CancelWorkflowInstanceError;
 use crate::domain::workflow_instance::events::{
-    COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE, EVENT_SCHEMA_VERSION,
-    WORKFLOW_INSTANCE_CANCELLED_EVENT_TYPE, WorkflowInstanceCancelledEventData,
+    WorkflowInstanceCancelledEventData, COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE,
+    EVENT_SCHEMA_VERSION, WORKFLOW_INSTANCE_CANCELLED_EVENT_TYPE,
 };
 
 fn storage(error: sqlx::Error) -> CancelWorkflowInstanceError {
@@ -88,11 +88,9 @@ async fn acquire_receipt(
         .await
         .map_err(storage)?;
 
-    let (command_id, status, original_hash, response_status, response_body) = existing
-        .ok_or_else(|| {
-            CancelWorkflowInstanceError::InternalConsistency(
-                "receipt disappeared".to_string(),
-            )
+    let (command_id, status, original_hash, response_status, response_body) =
+        existing.ok_or_else(|| {
+            CancelWorkflowInstanceError::InternalConsistency("receipt disappeared".to_string())
         })?;
 
     if original_hash != request_hash {
@@ -122,8 +120,12 @@ enum AcquireResult {
         response_status: i32,
         response_body: serde_json::Value,
     },
-    Conflict { command_id: Uuid },
-    Processing { command_id: Uuid },
+    Conflict {
+        command_id: Uuid,
+    },
+    Processing {
+        command_id: Uuid,
+    },
 }
 
 async fn complete_receipt(
@@ -132,10 +134,8 @@ async fn complete_receipt(
     response_status: i32,
     response_body: &serde_json::Value,
 ) -> Result<(), CancelWorkflowInstanceError> {
-    let response_digest =
-        digest::compute_json_digest(response_body).map_err(|e| {
-            CancelWorkflowInstanceError::StorageError(e.to_string())
-        })?;
+    let response_digest = digest::compute_json_digest(response_body)
+        .map_err(|e| CancelWorkflowInstanceError::StorageError(e.to_string()))?;
     let affected = sqlx::query(
         "UPDATE workflow_command_receipts
          SET receipt_status = 'COMPLETED', response_status = $2,
@@ -168,10 +168,7 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     let instance_uuid = cmd.workflow_instance_id.into_uuid();
     let event_id = Uuid::new_v4();
 
-    let mut tx = pool
-        .begin()
-        .await
-        .map_err(storage)?;
+    let mut tx = pool.begin().await.map_err(storage)?;
 
     // Step 1: Acquire command receipt (idempotency gate)
     let receipt = acquire_receipt(
@@ -195,9 +192,7 @@ pub(crate) async fn cancel_workflow_instance_atomically(
                 return Err(error_from_body(&response_body));
             }
             let mut result: CancelResult = serde_json::from_value(response_body)
-                .map_err(|e| {
-                    CancelWorkflowInstanceError::InternalConsistency(e.to_string())
-                })?;
+                .map_err(|e| CancelWorkflowInstanceError::InternalConsistency(e.to_string()))?;
             result.replayed = true;
             return Ok(result);
         }
@@ -229,9 +224,17 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     validate_reason(&cmd.reason)?;
 
     // Step 3: Load and lock instance FOR UPDATE
-    let instance_row: Option<(Uuid, Uuid, Option<Uuid>, i32, bool, Option<String>, Option<String>, Option<chrono::DateTime<chrono::Utc>>)> =
-        sqlx::query_as(
-            "SELECT wi.workflow_instance_id, wi.domain_id,
+    let instance_row: Option<(
+        Uuid,
+        Uuid,
+        Option<Uuid>,
+        i32,
+        bool,
+        Option<String>,
+        Option<String>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
+        "SELECT wi.workflow_instance_id, wi.domain_id,
                     wi.current_node_visit_id, wi.workflow_state_version,
                     wi.cancelled,
                     nd.node_type::text,
@@ -242,15 +245,22 @@ pub(crate) async fn cancel_workflow_instance_atomically(
              LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
              WHERE wi.workflow_instance_id = $1
              FOR UPDATE OF wi",
-        )
-        .bind(instance_uuid)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(storage)?;
+    )
+    .bind(instance_uuid)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(storage)?;
 
-    let (_, domain_id, current_node_visit_id, current_state_version,
-         is_cancelled, current_node_type, current_node_key, archived_at) =
-        instance_row.ok_or(CancelWorkflowInstanceError::InstanceNotFound)?;
+    let (
+        _,
+        domain_id,
+        current_node_visit_id,
+        current_state_version,
+        is_cancelled,
+        current_node_type,
+        current_node_key,
+        archived_at,
+    ) = instance_row.ok_or(CancelWorkflowInstanceError::InstanceNotFound)?;
 
     // Step 4: Validate workflow_state_version.
     //
@@ -398,9 +408,7 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     complete_receipt(&mut tx, actual_command_id, 200, &response_body).await?;
 
     // Step 11: Commit
-    tx.commit()
-        .await
-        .map_err(storage)?;
+    tx.commit().await.map_err(storage)?;
 
     Ok(result)
 }

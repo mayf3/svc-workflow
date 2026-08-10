@@ -28,7 +28,8 @@ pub async fn archive_workflow_instance(
     cmd: ArchiveWorkflowInstanceCommand,
     request_hash: &str,
 ) -> Result<ArchiveWorkflowInstanceResult, ArchiveWorkflowInstanceError> {
-    let result = archive_transaction::archive_workflow_instance_atomically(pool, cmd, request_hash).await?;
+    let result =
+        archive_transaction::archive_workflow_instance_atomically(pool, cmd, request_hash).await?;
 
     Ok(ArchiveWorkflowInstanceResult {
         workflow_instance_id: result.workflow_instance_id,
