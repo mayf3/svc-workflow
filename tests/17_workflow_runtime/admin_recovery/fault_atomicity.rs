@@ -3,8 +3,6 @@ use super::*;
 use sqlx::Connection;
 use svc_workflow::domain::workflow_instance::recovery::{AdminEmergencyOperation, RecoveryError};
 
-const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-
 struct FaultGuard {
     table: &'static str,
     trigger: String,
@@ -57,7 +55,9 @@ impl Drop for FaultGuard {
                 .build()
                 .unwrap();
             runtime.block_on(async move {
-                let Ok(mut connection) = sqlx::PgConnection::connect(DATABASE_URL).await else {
+                let Ok(mut connection) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
+                else {
                     return;
                 };
                 let _ = sqlx::query(&format!("DROP TRIGGER IF EXISTS {trigger} ON {table}"))
