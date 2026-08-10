@@ -31,8 +31,8 @@
 //!   * RETURN target must be a strict ADVANCE ancestor of the source; RETURN
 //!     edges do not participate in cycle checks.
 
-//! This module decides legality only. No V2 runtime, no production V2
-//! creation path, no changes to V1 behavior.
+//! This module decides legality only — Minimal Definition graph legality
+//! checking, not Runtime execution. V1 behavior is unchanged.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 

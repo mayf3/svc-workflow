@@ -47,9 +47,9 @@ pub struct WorkflowDefinition {
 ///   created until Minimal semantics ships. Legacy rules (DRAFT node type,
 ///   DOMAIN_OWNER assignee, primary ADVANCE transition, orderIndex
 ///   execution) remain frozen and unchanged.
-/// * `2` = Minimal semantics: a defined version number only. Minimal
-///   runtime/validator behavior is NOT implemented yet and must not be
-///   produced by production create paths.
+/// * `2` = Minimal semantics: supported since the Minimal validator and
+///   runtime shipped; production create paths can produce it. Which
+///   semantics apply is decided by this version field alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i16)]
 pub enum SemanticModelVersion {

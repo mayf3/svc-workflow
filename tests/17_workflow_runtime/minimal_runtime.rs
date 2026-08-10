@@ -1,7 +1,8 @@
 //! V2 Minimal semantic model runtime tests.
 //!
 //! These tests construct `semantic_model_version = 2` definition versions
-//! directly (test fixtures only — production APIs cannot create V2) and
+//! directly, so the Minimal Runtime is exercised in isolation and with
+//! precise control (test fixtures, not the production create path), and
 //! exercise the Minimal runtime: entry selection from the ADVANCE graph,
 //! the three V2 assignee selectors, multi-outgoing ADVANCE branches,
 //! ADVANCE to TASK / TERMINAL, RETURN to ancestor, orderIndex irrelevance,
@@ -63,7 +64,8 @@ pub(crate) async fn seed_v2_definition(
 
     // DRAFT first (graph immutability trigger forbids editing PUBLISHED
     // graphs); semantic_model_version = 2 set from the start; published at
-    // the end. Production APIs cannot create V2 — this is a test fixture.
+    // the end. Fixtures seed V2 directly to isolate the Runtime from the
+    // production create path (validator bypass) for precise testing.
     sqlx::query(
         "INSERT INTO workflow_definition_versions \
            (definition_version_id, workflow_definition_id, version_number, version_status, \
