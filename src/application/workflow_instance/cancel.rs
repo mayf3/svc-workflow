@@ -27,7 +27,8 @@ pub async fn cancel_workflow_instance(
     cmd: CancelWorkflowInstanceCommand,
     request_hash: &str,
 ) -> Result<CancelWorkflowInstanceResult, CancelWorkflowInstanceError> {
-    let result = cancel_transaction::cancel_workflow_instance_atomically(pool, cmd, request_hash).await?;
+    let result =
+        cancel_transaction::cancel_workflow_instance_atomically(pool, cmd, request_hash).await?;
 
     Ok(CancelWorkflowInstanceResult {
         workflow_instance_id: result.workflow_instance_id,

@@ -857,8 +857,7 @@ async fn role_binding_revoked_hides_items() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    let normal_advance = normal_advance
-        .expect("normal node has a primary advance transition");
+    let normal_advance = normal_advance.expect("normal node has a primary advance transition");
 
     domain_membership(&pool, domain_id, creator).await;
     domain_membership(&pool, domain_id, assignee).await;

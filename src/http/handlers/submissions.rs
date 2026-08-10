@@ -115,8 +115,7 @@ mod tests {
 
     #[test]
     fn after_cursor_rejects_missing_after_id() {
-        let err =
-            parse_after_cursor(Some("2024-01-15T10:30:00Z".to_string()), None).unwrap_err();
+        let err = parse_after_cursor(Some("2024-01-15T10:30:00Z".to_string()), None).unwrap_err();
         assert_eq!(err.code(), "invalid_cursor");
     }
 

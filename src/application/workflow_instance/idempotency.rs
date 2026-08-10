@@ -278,10 +278,7 @@ pub fn compute_cancel_request_hash(
     };
 
     jcs_canonicalize::sha256_jcs_hex(&envelope).map_err(|e| {
-        CancelWorkflowInstanceError::StorageError(format!(
-            "request hash computation failed: {}",
-            e
-        ))
+        CancelWorkflowInstanceError::StorageError(format!("request hash computation failed: {}", e))
     })
 }
 
