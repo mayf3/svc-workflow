@@ -141,8 +141,8 @@ impl Drop for TriggerGuard {
                 .expect("build cleanup runtime");
 
             rt.block_on(async {
-                let conn_str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-                let Ok(mut conn) = sqlx::PgConnection::connect(conn_str).await else {
+                let conn_str = crate::common::test_database_url();
+                let Ok(mut conn) = sqlx::PgConnection::connect(&conn_str).await else {
                     return;
                 };
 

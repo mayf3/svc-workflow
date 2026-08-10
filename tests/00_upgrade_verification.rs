@@ -11,7 +11,9 @@ use sqlx::migrate::Migrator;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::path::Path;
 
-const ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
+#[path = "common/mod.rs"]
+mod common;
+
 const MIGRATIONS_DIR: &str = "migrations";
 const BASE_MIGRATIONS: &[&str] = &[
     "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012",
@@ -39,14 +41,14 @@ fn setup_base_migrations(tmp_dir: &Path) {
 
 async fn create_temporary_database() -> (String, PgPool) {
     let name = format!("svc_workflow_upgrade_{}", uuid::Uuid::new_v4().simple());
-    let mut admin = PgConnection::connect(ADMIN_URL)
+    let mut admin = PgConnection::connect(&common::admin_database_url())
         .await
         .expect("connect to PostgreSQL administration database");
     admin
         .execute(format!("CREATE DATABASE {name}").as_str())
         .await
         .expect("create upgrade-test database");
-    let url = format!("postgres://postgres:postgres@localhost:5432/{name}");
+    let url = format!("{}/{}", common::test_database_base(), name);
     let pool = PgPool::connect(&url)
         .await
         .expect("connect to upgrade-test database");
@@ -54,7 +56,7 @@ async fn create_temporary_database() -> (String, PgPool) {
 }
 
 async fn drop_database(name: &str) {
-    let mut admin = PgConnection::connect(ADMIN_URL)
+    let mut admin = PgConnection::connect(&common::admin_database_url())
         .await
         .expect("connect for drop");
     admin
@@ -65,7 +67,8 @@ async fn drop_database(name: &str) {
 
 #[tokio::test]
 async fn upgrade_0012_to_0014_succeeds() {
-    let tmp_dir = std::env::temp_dir().join(format!("mig_upgrade_{}", uuid::Uuid::new_v4().simple()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("mig_upgrade_{}", uuid::Uuid::new_v4().simple()));
     setup_base_migrations(&tmp_dir);
 
     let (db_name, pool) = create_temporary_database().await;
@@ -91,20 +94,18 @@ async fn upgrade_0012_to_0014_succeeds() {
         "migration 0012 must be applied after base phase"
     );
 
-    let count_13: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 13",
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("query failed");
+    let count_13: (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 13")
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
     assert_eq!(count_13.0, 0, "migration 0013 must NOT yet be applied");
 
-    let count_14: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 14",
-    )
-    .fetch_one(&pool)
-    .await
-    .expect("query failed");
+    let count_14: (i64,) =
+        sqlx::query_as("SELECT COUNT(*)::int8 FROM _sqlx_migrations WHERE version = 14")
+            .fetch_one(&pool)
+            .await
+            .expect("query failed");
     assert_eq!(count_14.0, 0, "migration 0014 must NOT yet be applied");
 
     // Phase 2: Apply full migrations (0013→0014 will run)

@@ -1,7 +1,5 @@
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 
-const ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
-
 pub(super) struct TemporaryDatabase {
     pub(super) pool: PgPool,
     name: String,
@@ -10,7 +8,7 @@ pub(super) struct TemporaryDatabase {
 impl TemporaryDatabase {
     pub(super) async fn create() -> Self {
         let name = format!("svc_workflow_e2e_{}", uuid::Uuid::new_v4().simple());
-        let mut admin = PgConnection::connect(ADMIN_URL)
+        let mut admin = PgConnection::connect(&crate::common::admin_database_url())
             .await
             .expect("connect to PostgreSQL administration database");
         admin
@@ -36,7 +34,7 @@ impl TemporaryDatabase {
     }
 
     async fn initialize(name: &str) -> Result<PgPool, String> {
-        let url = format!("postgres://postgres:postgres@localhost:5432/{name}");
+        let url = format!("{}/{}", crate::common::test_database_base(), name);
         let pool = PgPool::connect(&url)
             .await
             .map_err(|error| format!("connect: {error}"))?;
@@ -51,7 +49,7 @@ impl TemporaryDatabase {
     }
 
     async fn drop_named(name: &str) -> Result<(), String> {
-        let mut admin = PgConnection::connect(ADMIN_URL)
+        let mut admin = PgConnection::connect(&crate::common::admin_database_url())
             .await
             .map_err(|error| format!("connect for drop: {error}"))?;
         admin
@@ -62,7 +60,7 @@ impl TemporaryDatabase {
     }
 
     pub(super) async fn assert_no_residue() {
-        let mut admin = PgConnection::connect(ADMIN_URL)
+        let mut admin = PgConnection::connect(&crate::common::admin_database_url())
             .await
             .expect("connect for E2E residue check");
         let count: i64 = sqlx::query_scalar(

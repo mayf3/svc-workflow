@@ -13,7 +13,6 @@ use super::*;
 use sqlx::Connection;
 
 /// Test database URL (must match `common/mod.rs`).
-const TEST_DB_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
 
 // ---------------------------------------------------------------------------
 // RAII trigger guard
@@ -147,7 +146,9 @@ impl Drop for TriggerGuard {
                 .build()
                 .expect("build cleanup runtime");
             rt.block_on(async move {
-                let Ok(mut conn) = sqlx::PgConnection::connect(TEST_DB_URL).await else {
+                let Ok(mut conn) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
+                else {
                     return; // best-effort cleanup
                 };
                 if is_receipt {

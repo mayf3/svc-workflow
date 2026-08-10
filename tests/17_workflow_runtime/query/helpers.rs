@@ -3,8 +3,6 @@ use super::*;
 use sqlx::Connection;
 use svc_workflow::application::workflow_instance::query_service::WorkflowQueryService;
 
-const QUERY_TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-
 pub(crate) struct QueryAuditTriggerGuard {
     function_name: String,
     trigger_name: String,
@@ -50,7 +48,8 @@ impl Drop for QueryAuditTriggerGuard {
                 .build()
                 .expect("build query audit cleanup runtime");
             runtime.block_on(async move {
-                let Ok(mut connection) = sqlx::PgConnection::connect(QUERY_TEST_DATABASE_URL).await
+                let Ok(mut connection) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
                 else {
                     return;
                 };
