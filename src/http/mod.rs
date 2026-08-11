@@ -113,6 +113,21 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/domains/{domainId}/members/{principalId}",
             delete(handlers::domain_members::remove_member),
         )
+        // GLOBAL_WORKFLOW_COORDINATOR domain management (agent-facing,
+        // non-admin): create domain / set domain owner. Scope
+        // `workflow.execute` + server-side role verification.
+        .route(
+            "/internal/v1/domains",
+            post(handlers::coordinator_domains::create_domain).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/owner",
+            put(handlers::coordinator_domains::set_domain_owner).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
+        )
         // Domain Owner Definition management
         .route(
             "/internal/v1/domains/{domainId}/definitions",

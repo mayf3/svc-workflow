@@ -71,6 +71,27 @@ pub(crate) async fn validate_provisioning_actor(
     }
 }
 
+/// Check whether the actor holds an enabled `GLOBAL_WORKFLOW_COORDINATOR`
+/// binding. Used by the agent-facing coordinator domain endpoints (create
+/// domain / set domain owner); the role is verified server-side from
+/// `global_role_bindings` — it is never carried in the JWT.
+pub(crate) async fn check_global_coordinator(
+    pool: &PgPool,
+    actor: Uuid,
+) -> Result<bool, ProvisioningError> {
+    let enabled: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS(
+           SELECT 1 FROM global_role_bindings
+           WHERE principal_id = $1
+             AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND enabled = TRUE)",
+    )
+    .bind(actor)
+    .fetch_one(pool)
+    .await
+    .map_err(storage)?;
+    Ok(enabled.unwrap_or(false))
+}
+
 /// Principal row from the database.
 #[derive(Debug, sqlx::FromRow)]
 pub struct PrincipalRow {

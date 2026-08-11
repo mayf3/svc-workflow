@@ -128,6 +128,8 @@ pub enum ProvisioningError {
     // Authorization
     PermissionDenied,
     PrincipalTypeNotAllowed,
+    /// Caller does not hold the enabled `GLOBAL_WORKFLOW_COORDINATOR` binding.
+    GlobalCoordinatorRequired,
     InvalidInput(String),
 
     // Idempotency
@@ -158,6 +160,7 @@ impl ProvisioningError {
             DefinitionVersionNotFound => "definition_version_not_found",
             PermissionDenied => "permission_denied",
             PrincipalTypeNotAllowed => "principal_type_not_allowed",
+            GlobalCoordinatorRequired => "global_coordinator_required",
             InvalidInput(_) => "invalid_input",
             IdempotencyConflict => "idempotency_conflict",
             CommandStillProcessing => "command_still_processing",
@@ -182,7 +185,8 @@ impl ProvisioningError {
         use ProvisioningError::*;
         match self {
             PrincipalNotFound | DomainNotFound | DefinitionVersionNotFound => 404,
-            PrincipalDisabled | DomainDisabled | PermissionDenied | PrincipalTypeNotAllowed => 403,
+            PrincipalDisabled | DomainDisabled | PermissionDenied | PrincipalTypeNotAllowed
+            | GlobalCoordinatorRequired => 403,
             PrincipalTypeConflict
             | DomainIdentityConflict
             | DomainOwnerConflict
