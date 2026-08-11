@@ -267,6 +267,10 @@ impl ApiError {
                 "principal_type_not_allowed",
                 "principal type is not allowed for this operation",
             ),
+            E::GlobalCoordinatorRequired => (
+                "global_coordinator_required",
+                "caller must hold the GLOBAL_WORKFLOW_COORDINATOR role",
+            ),
             E::InvalidInput(_) => ("invalid_input", "invalid request input"),
             E::IdempotencyConflict => ("idempotency_conflict", "idempotency key was reused"),
             E::CommandStillProcessing => {
