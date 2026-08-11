@@ -302,6 +302,71 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /internal/v1/workflow-instances/global:
+    get:
+      operationId: listGlobalInstances
+      summary: List instance summaries across ALL domains (GLOBAL_WORKFLOW_COORDINATOR only)
+      description: >-
+        Cross-domain read-only view for the formal GLOBAL_WORKFLOW_COORDINATOR
+        role. Server-side authorization: callers without the role receive 403
+        global_coordinator_required. Returns the same summary projection as the
+        domain list (DomainInstanceSummary) — never instance detail or
+        submission payload. No domainId parameter; filters mirror the domain
+        list minus domainId.
+      tags: [global-list]
+      parameters:
+        - name: beforeCreatedAt
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: definitionKey
+          in: query
+          schema:
+            type: string
+        - name: lifecycle
+          in: query
+          schema:
+            type: string
+            enum: [active, terminal, all]
+        - name: currentNodeKey
+          in: query
+          schema:
+            type: string
+        - name: assigneePrincipalId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, cancelled, archived, all]
+      responses:
+        "200":
+          description: Paginated global instance list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainInstancePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /internal/v1/worklists/assigned-to-me:
     get:
       operationId: listAssignedToMe
