@@ -1,13 +1,13 @@
 {
-  "serial": "V1-2026-07-26",
+  "serial": "V1-2026-08-12",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.4.1",
+  "contract_version": "1.5.0",
   "contract_scope": "runtime",
   "title": "Workflow Runtime HTTP Contract V1 (Current-State Re-freeze)",
   "owner_repository": "svc-workflow",
-  "owner_head_sha": "c13311812887c97f01984e7cc8a84ff3a28f8fff",
-  "owner_tree_sha": "0a12962626272bddc49ecac5dbfaef67bfcaf48a",
-  "owner_semantics": "OWNER_HEAD_SHA and OWNER_TREE_SHA reference the fixed runtime implementation snapshot (commit c133118, tree 0a12962). These are NOT the Contract Bundle delivery commit.",
+  "owner_head_sha": "efcf0f515ec29600c459e660ce8aa84546c5aee3",
+  "owner_tree_sha": "6e40a8e7cb846983b638c602594cb8315dfa6d68",
+  "owner_semantics": "OWNER_HEAD_SHA and OWNER_TREE_SHA reference the fixed Workflow Assistance V1 implementation snapshot (commit efcf0f5, tree 6e40a8e). These are NOT the Contract Bundle delivery commit.",
   "digest_algorithm": "SHA-256",
   "digest_spec_version": "1.0.0",
   "bundle_file_set": [
@@ -16,14 +16,17 @@
     "conformance/run.sh",
     "contract.md",
     "errors.json",
+    "fixtures/assistance-escalate.json",
+    "fixtures/assistance-request.json",
+    "fixtures/assistance-resolve.json",
     "fixtures/create-request.json",
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "ce7031f7f40801f10f305bfd5f20c9ce794e2f68b83b182bf7cf6074273deaa1",
-  "bundle_digest": "4ae0975894d512fd684ca04d6a966bdd7ce43809e7ec8beb2d97cb0122dc74cc",
+  "schema_digest": "b261f1b3121f2b3dba48dfc4094421503fb75a75572f44b9322048b99b5a9b92",
+  "bundle_digest": "f7ce39b6f053f8665139c4594c4d24322bfbafc35c0284bb18218a21ed834e89",
   "compatibility_policy": "strict_backward_compatible",
-  "created_at": "2026-07-26T03:15:18Z",
+  "created_at": "2026-08-12T02:19:44Z",
   "author": "IMPLEMENTATION_AGENT",
-  "description": "Current-state re-freeze of all runtime workflow HTTP endpoints aligned with runtime mainline commit c133118. Updates contract version to 1.4.1, aligns OpenAPI examples with runtime SERVICE_VERSION (0.3.1) and SCHEMA_VERSION (0014), adds canary_read_only error code, and excludes provisioning/admin-only error codes. Not an API redesign."
+  "description": "Workflow Assistance V1 additive runtime contract: Visit-scoped request, Owner escalate/resolve, caller-scoped inboxes/detail, minimal Coordinator HUMAN_REQUIRED projection, and transition fail-closed semantics."
 }
