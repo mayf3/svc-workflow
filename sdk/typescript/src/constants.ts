@@ -1,7 +1,7 @@
-export const CONTRACT_VERSION = '1.4.1' as const;
+export const CONTRACT_VERSION = '1.5.0' as const;
 export const BUNDLE_DIGEST =
-  '4ae0975894d512fd684ca04d6a966bdd7ce43809e7ec8beb2d97cb0122dc74cc' as const;
+  'f7ce39b6f053f8665139c4594c4d24322bfbafc35c0284bb18218a21ed834e89' as const;
 export const OWNER_HEAD_SHA =
-  'c13311812887c97f01984e7cc8a84ff3a28f8fff' as const;
+  'efcf0f515ec29600c459e660ce8aa84546c5aee3' as const;
 export const CONTRACT_MAINLINE_HEAD_SHA =
   '5f3046a91c67a50a6099f7c58690b04548070fc9' as const;
