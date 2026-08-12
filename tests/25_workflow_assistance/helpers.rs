@@ -351,3 +351,44 @@ pub(crate) async fn case_status(pool: &PgPool, case_id: Uuid) -> (String, Option
     .await
     .unwrap()
 }
+
+/// Test-only **corruption** fixture: force `workflow_instances.current_node_visit_id`
+/// back to `target_visit`, simulating a projection that has drifted from the
+/// immutable event log (historical bug / ops incident).
+///
+/// This is the *only* way to exercise the "stale open case" defensive paths in
+/// archive / projection-rebuild: a legitimate business path can never leave an
+/// open case behind on a non-current visit, because the runtime transition gate
+/// refuses to advance any visit that still has an open case.
+pub(crate) async fn inject_corrupt_projection_for_test(
+    pool: &PgPool,
+    instance: Uuid,
+    target_visit: Uuid,
+) {
+    sqlx::query(
+        "UPDATE workflow_instances SET current_node_visit_id = $2, updated_at = now()
+         WHERE workflow_instance_id = $1",
+    )
+    .bind(instance)
+    .bind(target_visit)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+/// Test-only **corruption** fixture: open a synthetic OWNER_PENDING assistance
+/// case on `visit`.
+///
+/// Must be called while `visit` is the (possibly corrupted) current visit, since
+/// the 0022 INSERT trigger binds every new case to the instance's current visit
+/// and requires that visit to be live and non-terminal. Combined with
+/// [`inject_corrupt_projection_for_test`] this constructs exactly the stale /
+/// corrupted state that archive and rebuild defensively clean up. It is never a
+/// stand-in for the real `request_assistance` write path.
+pub(crate) async fn inject_stale_open_assistance_case_for_test(
+    pool: &PgPool,
+    f: &Fixture,
+    visit: Uuid,
+) -> Uuid {
+    insert_open_case(pool, f, visit).await
+}
