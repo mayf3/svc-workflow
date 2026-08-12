@@ -201,6 +201,21 @@ pub(crate) async fn execute_workflow_transition_atomically(
         deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
     }
 
+    // Assistance is a side-band Visit state, but an open case fail-closes all
+    // normal transitions. This check runs under the same Instance lock and
+    // before any Submission, Visit, or projection write.
+    match super::assistance_transaction::has_open_assistance(&mut tx, current_visit.node_visit_id)
+        .await
+    {
+        Ok(true) => deterministic_failure!(ExecuteWorkflowTransitionError::AssistanceOpen),
+        Ok(false) => {}
+        Err(error) => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(
+                error.to_string(),
+            ))
+        }
+    }
+
     // ---------------------------------------------------------------
     // Step 8: Validate Definition Version status (with FOR UPDATE lock)
     // ---------------------------------------------------------------
@@ -211,8 +226,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 8b: Semantic model dispatch (source of truth = definition version)
     // ---------------------------------------------------------------
-    let semantic_model_version =
-        validation_result!(read_semantic_model_version(&mut tx, instance.definition_version_id).await);
+    let semantic_model_version = validation_result!(
+        read_semantic_model_version(&mut tx, instance.definition_version_id).await
+    );
     let is_minimal = semantic_model_version == 2;
 
     // ---------------------------------------------------------------
@@ -280,11 +296,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
         }
         "TERMINATE" => {
             if is_minimal {
-                deterministic_failure!(
-                    ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                        "TERMINATE is forbidden in Minimal (V2) semantics".to_string(),
-                    )
-                );
+                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
+                    "TERMINATE is forbidden in Minimal (V2) semantics".to_string(),
+                ));
             }
             // Verify it's NOT the primary ADVANCE transition
             if let Some(primary_id) = source_node.primary_advance_transition_id {

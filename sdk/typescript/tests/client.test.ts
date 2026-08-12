@@ -6,6 +6,8 @@ import { WorkflowError } from '../src/error.js';
 const INSTANCE_ID = '11111111-1111-4111-8111-111111111111';
 const DOMAIN_ID = '22222222-2222-4222-8222-222222222222';
 const DEFINITION_ID = '33333333-3333-4333-8333-333333333333';
+const CASE_ID = '44444444-4444-4444-8444-444444444444';
+const VISIT_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 function response(status: number, body: unknown, requestId = 'response-id'): Response {
   return new Response(JSON.stringify(body), {
@@ -202,5 +204,84 @@ describe('WorkflowClient transport', () => {
 
     await expect(client.detail(INSTANCE_ID)).rejects.toBeInstanceOf(WorkflowError);
     expect(fetchImplementation).not.toHaveBeenCalled();
+  });
+
+  it('sends strict assistance commands and parses latest state version', async () => {
+    const fetchImplementation = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      expect(String(input)).toContain(
+        `/internal/v1/workflow-instances/${INSTANCE_ID}/assistance-cases`,
+      );
+      expect(new Headers(init?.headers).get('idempotency-key')).toBe('assist-key');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        currentNodeVisitId: VISIT_ID,
+        expectedWorkflowStateVersion: 12,
+        request: { message: 'Need owner input', supportingPayload: {} },
+      });
+      return response(201, {
+        assistanceCaseId: CASE_ID,
+        workflowInstanceId: INSTANCE_ID,
+        nodeVisitId: VISIT_ID,
+        status: 'OWNER_PENDING',
+        workflowStateVersion: 13,
+        eventSequence: 13,
+        createdAt: '2026-08-12T01:00:00Z',
+      });
+    });
+    const client = new WorkflowClient({
+      baseUrl: 'http://127.0.0.1:8989',
+      tokenProvider: () => 'test-token',
+      maxAttempts: 1,
+      fetchImplementation,
+    });
+    const result = await client.requestAssistance(
+      INSTANCE_ID,
+      {
+        currentNodeVisitId: VISIT_ID,
+        expectedWorkflowStateVersion: 12,
+        request: { message: 'Need owner input', supportingPayload: {} },
+      },
+      { idempotencyKey: 'assist-key' },
+    );
+    expect(result.workflowStateVersion).toBe(13);
+  });
+
+  it('parses the minimal coordinator HUMAN_REQUIRED list and detail projection', async () => {
+    const projected = {
+      assistanceCaseId: CASE_ID,
+      status: 'HUMAN_REQUIRED',
+      createdAt: '2026-08-12T01:00:00Z',
+      escalatedAt: '2026-08-12T01:05:00Z',
+      domainId: DOMAIN_ID,
+      workflowInstanceId: INSTANCE_ID,
+      definitionKey: 'sdk-assistance',
+      node: {
+        nodeId: DEFINITION_ID,
+        nodeKey: 'agent-work',
+        displayName: 'Agent work',
+      },
+      requestedByPrincipalId: VISIT_ID,
+      request: { message: 'Need approval' },
+      escalation: { message: 'External Human decision required' },
+    } as const;
+    const fetchImplementation = vi.fn(async (input: URL | RequestInfo) => {
+      if (String(input).endsWith('/human-required')) {
+        return response(200, { items: [projected], nextCursor: null });
+      }
+      return response(200, projected);
+    });
+    const client = new WorkflowClient({
+      baseUrl: 'http://127.0.0.1:8989',
+      tokenProvider: () => 'test-token',
+      maxAttempts: 1,
+      fetchImplementation,
+    });
+
+    await expect(client.listHumanRequiredAssistanceInbox()).resolves.toEqual({
+      items: [projected],
+      nextCursor: null,
+    });
+    await expect(client.getAssistanceCase(CASE_ID)).resolves.toEqual(projected);
+    expect(projected).not.toHaveProperty('workflowStateVersion');
+    expect(projected).not.toHaveProperty('resolution');
   });
 });

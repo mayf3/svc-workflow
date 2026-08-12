@@ -176,6 +176,17 @@ pub(crate) async fn revise_context_and_transition_atomically(
     if current_visit.assignee_principal_id != Some(principal_id) {
         deterministic_failure!(ReviseContextAndTransitionError::PrincipalNotAssignee);
     }
+    match super::assistance_transaction::has_open_assistance(&mut tx, current_visit.node_visit_id)
+        .await
+    {
+        Ok(true) => deterministic_failure!(ReviseContextAndTransitionError::AssistanceOpen),
+        Ok(false) => {}
+        Err(error) => {
+            return Err(ReviseContextAndTransitionError::StorageError(
+                error.to_string(),
+            ))
+        }
+    }
     if current_visit.node_type_enum() != NodeType::DRAFT {
         deterministic_failure!(ReviseContextAndTransitionError::CurrentNodeNotDraft);
     }

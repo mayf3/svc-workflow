@@ -115,6 +115,7 @@ make_id!(WorkflowInstanceId, "workflow_instance_id");
 make_id!(ContextRevisionId, "context_revision_id");
 make_id!(NodeVisitId, "node_visit_id");
 make_id!(SubmissionId, "submission_id");
+make_id!(AssistanceCaseId, "assistance_case_id");
 
 // ---------------------------------------------------------------------------
 // Events & Commands

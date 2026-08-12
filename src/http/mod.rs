@@ -25,8 +25,8 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0020";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 20;
+pub const SCHEMA_VERSION: &str = "0021";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 21;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -51,6 +51,43 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
                 state.clone(),
                 canary_guard::canary_write_guard,
             )),
+        )
+        .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/assistance-cases",
+            post(handlers::assistance::request).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human",
+            post(handlers::assistance::escalate).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/resolve",
+            post(handlers::assistance::resolve).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/owner-inbox",
+            get(handlers::assistance::owner_inbox),
+        )
+        .route(
+            "/internal/v1/assistance-cases/human-required",
+            get(handlers::assistance::human_required),
+        )
+        .route(
+            "/internal/v1/assistance-cases/requested-by-me",
+            get(handlers::assistance::requested_by_me),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}",
+            get(handlers::assistance::detail),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/cancel",

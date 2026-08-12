@@ -95,6 +95,7 @@ pub(crate) fn replayed_failure_error(
         (403, "principal_disabled") => ExecuteWorkflowTransitionError::PrincipalDisabled,
         (404, "current_visit_not_found") => ExecuteWorkflowTransitionError::CurrentVisitNotFound,
         (403, "principal_not_assignee") => ExecuteWorkflowTransitionError::PrincipalNotAssignee,
+        (409, "assistance_open") => ExecuteWorkflowTransitionError::AssistanceOpen,
         (409, "source_node_terminal") => ExecuteWorkflowTransitionError::SourceNodeTerminal,
         (409, "definition_version_revoked") => {
             ExecuteWorkflowTransitionError::DefinitionVersionRevoked
@@ -218,6 +219,7 @@ mod tests {
             E::InstanceNotFound,
             E::CurrentVisitNotFound,
             E::PrincipalNotAssignee,
+            E::AssistanceOpen,
             E::SourceNodeTerminal,
             E::DefinitionVersionRevoked,
             E::DefinitionVersionDraft,

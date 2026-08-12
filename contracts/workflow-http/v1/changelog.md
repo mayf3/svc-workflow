@@ -1,5 +1,13 @@
 # Changelog
 
+## V1.5.0 (2026-08-12) — Workflow Assistance V1
+
+- Added Visit-scoped Assistance Case commands: request, escalate-to-human, and Owner resolve.
+- Added caller-scoped Owner inbox, requested-by-me, Case detail, and minimal Coordinator-only HUMAN_REQUIRED inbox.
+- Normal transition and atomic revise+transition now fail closed with `assistance_open` while the current Visit has an unresolved Case.
+- Assistance writes advance `workflowStateVersion` and append one Workflow Event; Case detail returns the latest version/current Visit for Agent resume.
+- No Instance status, assignee, Human Principal, HR transition permission, or Auth model changes.
+
 ## Unreleased — domain-list status filter
 
 - **Breaking-ish (internal API):** `GET /internal/v1/workflow-instances/domain` now accepts a `status` query parameter (`active`/`cancelled`/`archived`/`all`).

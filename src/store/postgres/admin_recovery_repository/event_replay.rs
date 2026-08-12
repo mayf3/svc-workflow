@@ -409,6 +409,57 @@ impl<'a> Replay<'a> {
         Ok(())
     }
 
+    fn apply_assistance(&mut self, event: &EventFact) -> Result<(), RecoveryError> {
+        let data = event_data(event)?;
+        let visit = self.visit(event.source_node_visit_id)?;
+        let previous_status = optional_string_field(data, "previousStatus");
+        let new_status = string_field(data, "newStatus");
+        let status_shape_valid = match event.event_type.as_str() {
+            "ASSISTANCE_REQUESTED" => {
+                previous_status == Some(None) && new_status == Some("OWNER_PENDING")
+            }
+            "ASSISTANCE_ESCALATED_TO_HUMAN" => {
+                previous_status == Some(Some("OWNER_PENDING"))
+                    && new_status == Some("HUMAN_REQUIRED")
+            }
+            "ASSISTANCE_RESOLVED" => {
+                matches!(
+                    previous_status,
+                    Some(Some("OWNER_PENDING" | "HUMAN_REQUIRED"))
+                ) && new_status == Some("RESOLVED")
+            }
+            _ => false,
+        };
+        let payload_digest = string_field(data, "payloadDigest");
+        if !exact_keys(
+            data,
+            &[
+                "assistanceCaseId",
+                "previousStatus",
+                "newStatus",
+                "payloadDigest",
+            ],
+        ) || uuid_field(data, "assistanceCaseId").is_none()
+            || !status_shape_valid
+            || payload_digest.is_none_or(|value| {
+                value.len() != 64
+                    || !value
+                        .as_bytes()
+                        .iter()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+            })
+            || event.source_node_visit_id != self.current_visit
+            || event.target_node_visit_id != self.current_visit
+            || event.context_revision_id != self.current_context
+            || event.submission_id.is_some()
+            || event.transition_effect.is_some()
+        {
+            return Err(invalid("assistance event disagrees with replay state"));
+        }
+        self.validate_node_columns(event, Some(visit), Some(visit))?;
+        Ok(())
+    }
+
     fn apply(&mut self, event: &EventFact, expected_sequence: i32) -> Result<(), RecoveryError> {
         if event.workflow_instance_id != self.instance.workflow_instance_id
             || event.event_sequence != expected_sequence
@@ -428,6 +479,9 @@ impl<'a> Replay<'a> {
             "WORKFLOW_TRANSITION_COMMITTED" => self.apply_transition(event)?,
             "WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED" => self.apply_combined(event)?,
             "ADMIN_EMERGENCY_OVERRIDE_COMMITTED" => self.apply_admin(event)?,
+            "ASSISTANCE_REQUESTED" | "ASSISTANCE_ESCALATED_TO_HUMAN" | "ASSISTANCE_RESOLVED" => {
+                self.apply_assistance(event)?
+            }
             _ => return Err(invalid("event type is not supported by recovery replay")),
         }
         self.version = expected_sequence;

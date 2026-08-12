@@ -289,6 +289,16 @@ pub(crate) async fn archive_workflow_instance_atomically(
         return Err(ArchiveWorkflowInstanceError::AlreadyArchived);
     }
 
+    super::assistance_transaction::void_open_cases(
+        &mut tx,
+        instance_uuid,
+        principal_uuid,
+        actual_command_id,
+        "INSTANCE_ARCHIVED",
+    )
+    .await
+    .map_err(|error| ArchiveWorkflowInstanceError::StorageError(error.to_string()))?;
+
     // Step 7: Update instance — set archive metadata, increment state version
     let old_state_version = current_state_version;
     let new_state_version = old_state_version + 1;

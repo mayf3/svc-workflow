@@ -6,6 +6,7 @@
 pub mod admin_recovery;
 pub mod admin_repair;
 pub mod archive;
+pub mod assistance;
 pub mod cancel;
 pub mod create;
 pub mod execute_transition;
