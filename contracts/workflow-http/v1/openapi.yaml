@@ -1,10 +1,11 @@
 openapi: "3.0.3"
 info:
   title: Workflow Runtime HTTP API
-  version: "1.4.1"
+  version: "1.5.0"
   description: |
     Current-state freeze of all runtime workflow HTTP endpoints.
-    Based on commit c133118.
+    Workflow Assistance V1 is an additive Visit-scoped extension; the exact
+    implementation owner SHA is frozen in manifest.json.
 
 servers:
   - url: http://{host}:{port}
@@ -161,6 +162,185 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "425":
           $ref: "#/components/responses/TooEarly"
+
+  /internal/v1/workflow-instances/{workflowInstanceId}/assistance-cases:
+    post:
+      operationId: requestWorkflowAssistance
+      summary: Request Domain Owner assistance for the current Visit
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/WorkflowInstanceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestAssistanceRequest"
+      responses:
+        "200":
+          description: Idempotent replay of an existing Assistance case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceCommandResponse"
+        "201":
+          description: Assistance case created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceCommandResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "425": { $ref: "#/components/responses/TooEarly" }
+
+  /internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human:
+    post:
+      operationId: escalateWorkflowAssistanceToHuman
+      summary: Mark an Owner-owned case as requiring external Human input
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/AssistanceCaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscalateAssistanceRequest"
+      responses:
+        "200":
+          description: Case escalated to HUMAN_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceCommandResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "425": { $ref: "#/components/responses/TooEarly" }
+
+  /internal/v1/assistance-cases/{assistanceCaseId}/resolve:
+    post:
+      operationId: resolveWorkflowAssistance
+      summary: Resolve an open case as the current Domain Owner
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/AssistanceCaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveAssistanceRequest"
+      responses:
+        "200":
+          description: Case resolved; original assignee may transition with the returned version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistanceCommandResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "425": { $ref: "#/components/responses/TooEarly" }
+
+  /internal/v1/assistance-cases/owner-inbox:
+    get:
+      operationId: listOwnerAssistanceInbox
+      summary: List open cases for Domains currently owned by the caller
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/BeforeCreatedAt"
+        - $ref: "#/components/parameters/BeforeId"
+        - $ref: "#/components/parameters/PageLimit"
+      responses:
+        "200":
+          description: Owner assistance page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistanceCasePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /internal/v1/assistance-cases/human-required:
+    get:
+      operationId: listHumanRequiredAssistanceInbox
+      summary: Minimal cross-Domain HUMAN_REQUIRED projection for coordinators
+      description: Does not expose Workflow Context, Submission history, or write capability.
+      tags: [assistance]
+      parameters:
+        - name: beforeEscalatedAt
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/BeforeId"
+        - $ref: "#/components/parameters/PageLimit"
+      responses:
+        "200":
+          description: Human-required assistance page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HumanRequiredAssistancePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /internal/v1/assistance-cases/requested-by-me:
+    get:
+      operationId: listAssistanceRequestedByMe
+      summary: List cases requested by the authenticated caller
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/BeforeCreatedAt"
+        - $ref: "#/components/parameters/BeforeId"
+        - $ref: "#/components/parameters/PageLimit"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/AssistanceCaseStatus" }
+      responses:
+        "200":
+          description: Requester assistance page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssistanceCasePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /internal/v1/assistance-cases/{assistanceCaseId}:
+    get:
+      operationId: getAssistanceCase
+      summary: Get caller-scoped Assistance Case detail
+      description: Requesters and current Domain Owners receive full Case detail with the latest Workflow version/current Visit. A global coordinator may read only the minimal HUMAN_REQUIRED projection.
+      tags: [assistance]
+      parameters:
+        - $ref: "#/components/parameters/AssistanceCaseId"
+      responses:
+        "200":
+          description: Assistance case detail
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AssistanceCaseDetail"
+                  - $ref: "#/components/schemas/HumanRequiredAssistanceCase"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /internal/v1/workflow-instances/{workflowInstanceId}/timeline:
     get:
@@ -867,6 +1047,23 @@ components:
       schema:
         type: string
         format: uuid
+    AssistanceCaseId:
+      name: assistanceCaseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BeforeCreatedAt:
+      name: beforeCreatedAt
+      in: query
+      schema: { type: string, format: date-time }
+    BeforeId:
+      name: beforeId
+      in: query
+      schema: { type: string, format: uuid }
+    PageLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
 
   schemas:
     # Error
@@ -1839,6 +2036,161 @@ components:
         - current_context
         - current_visit
         - outgoing_transitions
+
+    # Workflow Assistance V1
+    AssistanceCaseStatus:
+      type: string
+      enum: [OWNER_PENDING, HUMAN_REQUIRED, RESOLVED, VOIDED]
+
+    AssistancePayload:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Trimmed text without control characters.
+        supportingPayload:
+          type: object
+
+    RequestAssistanceRequest:
+      type: object
+      additionalProperties: false
+      required: [currentNodeVisitId, expectedWorkflowStateVersion, request]
+      properties:
+        currentNodeVisitId: { type: string, format: uuid }
+        expectedWorkflowStateVersion: { type: integer }
+        request: { $ref: "#/components/schemas/AssistancePayload" }
+
+    EscalateAssistanceRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedWorkflowStateVersion, escalation]
+      properties:
+        expectedWorkflowStateVersion: { type: integer }
+        escalation: { $ref: "#/components/schemas/AssistancePayload" }
+
+    ResolveAssistanceRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedWorkflowStateVersion, resolution]
+      properties:
+        expectedWorkflowStateVersion: { type: integer }
+        resolution: { $ref: "#/components/schemas/AssistancePayload" }
+
+    AssistanceCommandResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [assistanceCaseId, workflowInstanceId, nodeVisitId, status,
+         workflowStateVersion, eventSequence, createdAt]
+      properties:
+        assistanceCaseId: { type: string, format: uuid }
+        workflowInstanceId: { type: string, format: uuid }
+        nodeVisitId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/AssistanceCaseStatus" }
+        workflowStateVersion: { type: integer }
+        eventSequence: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    AssistanceNodeSummary:
+      type: object
+      additionalProperties: false
+      required: [nodeId, nodeKey, displayName]
+      properties:
+        nodeId: { type: string, format: uuid }
+        nodeKey: { type: string }
+        displayName: { type: string }
+
+    AssistanceCaseDetail:
+      type: object
+      additionalProperties: false
+      required:
+        [assistanceCaseId, workflowInstanceId, nodeVisitId, status, domainId,
+         definitionKey, node, requestedByPrincipalId, request,
+         escalatedByPrincipalId, escalation, resolvedByPrincipalId, resolution,
+         workflowStateVersion, currentNodeVisitId, createdAt, escalatedAt,
+         resolvedAt, voidedAt]
+      properties:
+        assistanceCaseId: { type: string, format: uuid }
+        workflowInstanceId: { type: string, format: uuid }
+        nodeVisitId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/AssistanceCaseStatus" }
+        domainId: { type: string, format: uuid }
+        definitionKey: { type: string }
+        node: { $ref: "#/components/schemas/AssistanceNodeSummary" }
+        requestedByPrincipalId: { type: string, format: uuid }
+        request: { $ref: "#/components/schemas/AssistancePayload" }
+        escalatedByPrincipalId: { type: string, format: uuid, nullable: true }
+        escalation:
+          allOf: [{ $ref: "#/components/schemas/AssistancePayload" }]
+          nullable: true
+        resolvedByPrincipalId: { type: string, format: uuid, nullable: true }
+        resolution:
+          allOf: [{ $ref: "#/components/schemas/AssistancePayload" }]
+          nullable: true
+        workflowStateVersion: { type: integer }
+        currentNodeVisitId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        escalatedAt: { type: string, format: date-time, nullable: true }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        voidedAt: { type: string, format: date-time, nullable: true }
+
+    AssistanceCursor:
+      type: object
+      additionalProperties: false
+      required: [at, id]
+      properties:
+        at: { type: string, format: date-time }
+        id: { type: string, format: uuid }
+
+    AssistanceCasePage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AssistanceCaseDetail" }
+        nextCursor:
+          allOf: [{ $ref: "#/components/schemas/AssistanceCursor" }]
+          nullable: true
+
+    HumanRequiredAssistanceCase:
+      type: object
+      additionalProperties: false
+      required:
+        [assistanceCaseId, status, createdAt, escalatedAt, domainId,
+         workflowInstanceId, definitionKey, node, requestedByPrincipalId,
+         request, escalation]
+      properties:
+        assistanceCaseId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [HUMAN_REQUIRED]
+        createdAt: { type: string, format: date-time }
+        escalatedAt: { type: string, format: date-time }
+        domainId: { type: string, format: uuid }
+        workflowInstanceId: { type: string, format: uuid }
+        definitionKey: { type: string }
+        node: { $ref: "#/components/schemas/AssistanceNodeSummary" }
+        requestedByPrincipalId: { type: string, format: uuid }
+        request: { $ref: "#/components/schemas/AssistancePayload" }
+        escalation: { $ref: "#/components/schemas/AssistancePayload" }
+
+    HumanRequiredAssistancePage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/HumanRequiredAssistanceCase" }
+        nextCursor:
+          allOf: [{ $ref: "#/components/schemas/AssistanceCursor" }]
+          nullable: true
 
     # Shared
     Cursor:

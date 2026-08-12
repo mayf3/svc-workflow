@@ -1,0 +1,7 @@
+{
+  "expectedWorkflowStateVersion": 13,
+  "escalation": {
+    "message": "External business owner confirmation is required.",
+    "supportingPayload": {}
+  }
+}

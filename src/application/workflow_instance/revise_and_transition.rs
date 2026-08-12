@@ -92,6 +92,7 @@ fn replayed_error(status: i32, body: &serde_json::Value) -> ReviseContextAndTran
         (403, "principal_disabled") => ReviseContextAndTransitionError::PrincipalDisabled,
         (403, "principal_not_creator") => ReviseContextAndTransitionError::PrincipalNotCreator,
         (403, "principal_not_assignee") => ReviseContextAndTransitionError::PrincipalNotAssignee,
+        (409, "assistance_open") => ReviseContextAndTransitionError::AssistanceOpen,
         (409, "current_node_not_draft") => ReviseContextAndTransitionError::CurrentNodeNotDraft,
         (409, "definition_version_revoked") => {
             ReviseContextAndTransitionError::DefinitionVersionRevoked

@@ -11,6 +11,7 @@ use crate::application::definition_governance::DefinitionGovernanceError as DGEr
 use crate::application::domain_membership::DomainMembershipError as DMError;
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
 use crate::domain::provisioning::ProvisioningError as PError;
+use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::errors::{
     ArchiveWorkflowInstanceError, CancelWorkflowInstanceError, CreateWorkflowInstanceError,
     ExecuteWorkflowTransitionError,
@@ -181,6 +182,10 @@ impl ApiError {
                 "principal_not_assignee",
                 "principal is not the current assignee",
             ),
+            E::AssistanceOpen => conflict(
+                "assistance_open",
+                "current visit has an unresolved assistance case",
+            ),
             E::SourceNodeTerminal => {
                 conflict("source_node_terminal", "terminal nodes cannot transition")
             }
@@ -232,6 +237,32 @@ impl ApiError {
                 Self::service_unavailable("service_unavailable", "storage is unavailable")
             }
         }
+    }
+
+    pub fn from_assistance(error: AssistanceError) -> Self {
+        let status = StatusCode::from_u16(error.status_code() as u16)
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let mut mapped = Self::new(status, error.code(), "workflow assistance request failed");
+        match error {
+            AssistanceError::WorkflowStateVersionConflict { expected, actual } => {
+                mapped = mapped.with_details(serde_json::json!({
+                    "expected": expected,
+                    "actual": actual
+                }));
+            }
+            AssistanceError::InvalidPayload(detail)
+            | AssistanceError::InvalidPagination(detail) => {
+                mapped = mapped.with_details(serde_json::json!({"detail": detail}));
+            }
+            AssistanceError::InternalConsistency(detail) => {
+                tracing::error!(error = %detail, "workflow assistance consistency failure");
+            }
+            AssistanceError::StorageError(detail) => {
+                tracing::error!(error = %detail, "workflow assistance storage failure");
+            }
+            _ => {}
+        }
+        mapped
     }
 
     pub fn from_provisioning(error: PError) -> Self {

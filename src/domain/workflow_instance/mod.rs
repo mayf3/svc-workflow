@@ -3,6 +3,7 @@
 //! This module contains the command types, error types, and event
 //! definitions for workflow instance creation and lifecycle.
 
+pub mod assistance;
 pub mod combined_errors;
 pub mod commands;
 pub mod errors;

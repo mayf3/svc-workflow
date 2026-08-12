@@ -1,0 +1,10 @@
+{
+  "currentNodeVisitId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  "expectedWorkflowStateVersion": 12,
+  "request": {
+    "message": "Cannot determine whether the approval condition is satisfied.",
+    "supportingPayload": {
+      "references": []
+    }
+  }
+}

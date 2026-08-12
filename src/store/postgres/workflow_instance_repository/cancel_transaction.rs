@@ -313,6 +313,16 @@ pub(crate) async fn cancel_workflow_instance_atomically(
 
     let node_key = current_node_key.unwrap_or_default();
 
+    super::assistance_transaction::void_open_cases(
+        &mut tx,
+        instance_uuid,
+        principal_uuid,
+        actual_command_id,
+        "INSTANCE_CANCELLED",
+    )
+    .await
+    .map_err(|error| CancelWorkflowInstanceError::StorageError(error.to_string()))?;
+
     // Step 7: Update instance — set cancelled flag, increment state version.
     // Note: we deliberately do NOT null the node visit assignee here because the
     // database enforces a CHECK constraint that non-terminal node visits must have

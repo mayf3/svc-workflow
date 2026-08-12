@@ -12,6 +12,7 @@ pub enum ReviseContextAndTransitionError {
     CurrentVisitNotFound,
     PrincipalNotCreator,
     PrincipalNotAssignee,
+    AssistanceOpen,
     CurrentNodeNotDraft,
     DefinitionVersionRevoked,
     DefinitionVersionDraft,
@@ -42,6 +43,7 @@ impl fmt::Display for ReviseContextAndTransitionError {
             Self::CurrentVisitNotFound => write!(f, "current node visit not found"),
             Self::PrincipalNotCreator => write!(f, "caller is not the workflow creator"),
             Self::PrincipalNotAssignee => write!(f, "caller is not the current assignee"),
+            Self::AssistanceOpen => write!(f, "current visit has an open assistance case"),
             Self::CurrentNodeNotDraft => write!(f, "current node is not DRAFT"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
@@ -94,6 +96,7 @@ pub fn error_code(error: &ReviseContextAndTransitionError) -> i32 {
         | ReviseContextAndTransitionError::PrincipalNotAssignee => 403,
         ReviseContextAndTransitionError::CurrentNodeNotDraft
         | ReviseContextAndTransitionError::DefinitionVersionRevoked
+        | ReviseContextAndTransitionError::AssistanceOpen
         | ReviseContextAndTransitionError::WorkflowStateVersionConflict { .. }
         | ReviseContextAndTransitionError::TransitionNotApplicable(_)
         | ReviseContextAndTransitionError::IdempotencyConflict { .. } => 409,
@@ -116,6 +119,7 @@ pub fn error_label(error: &ReviseContextAndTransitionError) -> &'static str {
         ReviseContextAndTransitionError::CurrentVisitNotFound => "current_visit_not_found",
         ReviseContextAndTransitionError::PrincipalNotCreator => "principal_not_creator",
         ReviseContextAndTransitionError::PrincipalNotAssignee => "principal_not_assignee",
+        ReviseContextAndTransitionError::AssistanceOpen => "assistance_open",
         ReviseContextAndTransitionError::CurrentNodeNotDraft => "current_node_not_draft",
         ReviseContextAndTransitionError::DefinitionVersionRevoked => "definition_version_revoked",
         ReviseContextAndTransitionError::DefinitionVersionDraft => "definition_version_draft",
@@ -146,6 +150,7 @@ impl From<ExecuteWorkflowTransitionError> for ReviseContextAndTransitionError {
             ExecuteWorkflowTransitionError::InstanceNotFound => Self::InstanceNotFound,
             ExecuteWorkflowTransitionError::CurrentVisitNotFound => Self::CurrentVisitNotFound,
             ExecuteWorkflowTransitionError::PrincipalNotAssignee => Self::PrincipalNotAssignee,
+            ExecuteWorkflowTransitionError::AssistanceOpen => Self::AssistanceOpen,
             ExecuteWorkflowTransitionError::SourceNodeTerminal => Self::CurrentNodeNotDraft,
             ExecuteWorkflowTransitionError::DefinitionVersionRevoked => {
                 Self::DefinitionVersionRevoked

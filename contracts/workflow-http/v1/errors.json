@@ -33,6 +33,7 @@
       "domain_membership_required": "active domain membership is required",
       "cross_domain_violation": "definition version does not belong to the domain",
       "principal_not_assignee": "principal is not the current assignee",
+      "global_coordinator_required": "caller must hold the GLOBAL_WORKFLOW_COORDINATOR role",
       "restricted_history_not_visible": "restricted workflow history is not visible",
       "direct_token_required": "only direct access tokens may perform this operation",
       "not_domain_owner": "caller is not a domain owner"
@@ -47,7 +48,8 @@
       "current_visit_not_found": "current node visit not found",
       "workflow_instance_not_found_or_not_visible": "workflow instance not found or not visible",
       "principal_not_registered": "principal has not completed self-projection",
-      "member_not_found": "member binding not found"
+      "member_not_found": "member binding not found",
+      "assistance_case_not_found_or_not_visible": "assistance case not found or not visible"
     },
     "409": {
       "idempotency_conflict": "idempotency key was reused",
@@ -61,7 +63,14 @@
       "definition_key_conflict": "definition key already exists in this domain",
       "definition_version_immutable": "definition version is not in DRAFT status",
       "definition_not_editable": "workflow definition is not editable",
-      "revision_conflict": "concurrent modification detected"
+      "revision_conflict": "concurrent modification detected",
+      "assistance_open": "current visit has an unresolved assistance case",
+      "assistance_already_open": "current visit already has an unresolved assistance case",
+      "assistance_status_conflict": "assistance case is not in the required state",
+      "current_node_visit_mismatch": "current node visit does not match the request",
+      "domain_owner_missing": "domain does not have exactly one effective owner",
+      "instance_cancelled": "workflow instance is cancelled",
+      "instance_archived": "workflow instance is archived"
     },
     "413": {
       "size_limit_exceeded": "request field exceeds its size limit"
@@ -79,7 +88,9 @@
       "submission_required": "submission payload is required",
       "submission_validation_failed": "submission payload failed validation",
       "invalid_input": "invalid request input",
-      "invalid_return_references": "return references are invalid"
+      "invalid_return_references": "return references are invalid",
+      "invalid_assistance_payload": "assistance payload is invalid",
+      "invalid_filter": "query filter is invalid for this assistance view"
     },
     "425": {
       "command_still_processing": "command is still processing"
