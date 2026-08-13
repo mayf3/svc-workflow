@@ -1,5 +1,7 @@
 pub(crate) mod archive;
+pub(crate) mod assistance;
 pub(crate) mod cancel;
+pub(crate) mod coordinator_domains;
 pub(crate) mod definitions;
 pub(crate) mod domain_members;
 pub(crate) mod health;

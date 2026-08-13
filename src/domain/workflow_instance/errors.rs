@@ -351,6 +351,8 @@ pub enum ExecuteWorkflowTransitionError {
     CurrentVisitNotFound,
     /// Caller is not the current node visit's assignee.
     PrincipalNotAssignee,
+    /// Current visit has an unresolved assistance case.
+    AssistanceOpen,
     /// Current source node is TERMINAL (cannot transition from a terminal node).
     SourceNodeTerminal,
     /// Definition version is REVOKED (blocks normal commands).
@@ -394,6 +396,7 @@ impl fmt::Display for ExecuteWorkflowTransitionError {
             Self::InstanceNotFound => write!(f, "workflow instance not found"),
             Self::CurrentVisitNotFound => write!(f, "current node visit not found"),
             Self::PrincipalNotAssignee => write!(f, "caller is not the current assignee"),
+            Self::AssistanceOpen => write!(f, "current visit has an open assistance case"),
             Self::SourceNodeTerminal => write!(f, "cannot transition from a terminal node"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
@@ -450,6 +453,7 @@ pub fn transition_error_code(err: &ExecuteWorkflowTransitionError) -> i32 {
         ExecuteWorkflowTransitionError::InstanceNotFound => 404,
         ExecuteWorkflowTransitionError::CurrentVisitNotFound => 404,
         ExecuteWorkflowTransitionError::PrincipalNotAssignee => 403,
+        ExecuteWorkflowTransitionError::AssistanceOpen => 409,
         ExecuteWorkflowTransitionError::SourceNodeTerminal => 409,
         ExecuteWorkflowTransitionError::DefinitionVersionRevoked => 409,
         ExecuteWorkflowTransitionError::DefinitionVersionDraft => 500,
@@ -476,6 +480,7 @@ pub fn transition_error_label(err: &ExecuteWorkflowTransitionError) -> &'static 
         ExecuteWorkflowTransitionError::InstanceNotFound => "instance_not_found",
         ExecuteWorkflowTransitionError::CurrentVisitNotFound => "current_visit_not_found",
         ExecuteWorkflowTransitionError::PrincipalNotAssignee => "principal_not_assignee",
+        ExecuteWorkflowTransitionError::AssistanceOpen => "assistance_open",
         ExecuteWorkflowTransitionError::SourceNodeTerminal => "source_node_terminal",
         ExecuteWorkflowTransitionError::DefinitionVersionRevoked => "definition_version_revoked",
         ExecuteWorkflowTransitionError::DefinitionVersionDraft => "definition_version_draft",

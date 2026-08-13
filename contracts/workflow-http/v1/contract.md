@@ -1,10 +1,37 @@
 # Workflow Runtime HTTP Contract V1
 
+## Workflow Assistance V1
+
+Assistance is a side-band state bound to the current `NodeVisit`. It does not
+change Workflow Instance lifecycle or assignee. The current assignee requests
+help, the current Domain Owner resolves or escalates, and the original assignee
+uses the existing transition endpoint after resolution.
+
+Write routes require `workflow.execute` and `Idempotency-Key`:
+
+- `POST /internal/v1/workflow-instances/{workflowInstanceId}/assistance-cases`
+- `POST /internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human`
+- `POST /internal/v1/assistance-cases/{assistanceCaseId}/resolve`
+
+Read routes require `workflow.read` and derive the actor from the verified JWT:
+
+- `GET /internal/v1/assistance-cases/owner-inbox`
+- `GET /internal/v1/assistance-cases/human-required`
+- `GET /internal/v1/assistance-cases/requested-by-me`
+- `GET /internal/v1/assistance-cases/{assistanceCaseId}`
+
+The Human-required route additionally requires the database-backed
+`GLOBAL_WORKFLOW_COORDINATOR` binding and returns no Workflow Context,
+Submission history, resolution data, current state-version/Visit pointers, or
+transition/write capability. The same minimal projection is returned when a
+Coordinator reads an individual `HUMAN_REQUIRED` Case; Requesters and current
+Domain Owners receive the full Case detail.
+
 **Status:** Current-state freeze
-**Date:** 2026-07-26
-**Contract Bundle Version:** 1.4.1
+**Date:** 2026-08-12
+**Contract Bundle Version:** 1.5.0
 **Service Version:** 0.3.1
-**Database Schema Version:** 0014
+**Database Schema Version:** 0021
 **Runtime apiContractVersion:** internal-v0
 **Scope:** Runtime workflow endpoints only (control-plane `/internal/v1/admin/**` excluded)
 
@@ -32,7 +59,7 @@ The service binds to `WORKFLOW_BIND_ADDR:WORKFLOW_PORT` (default `127.0.0.1:8989
 | GET    | `/readyz`  | none          | no   | Returns `{"status":"ready"}` or 503 with `migration_version_mismatch` |
 | GET    | `/version`  | none          | no   | Service version metadata |
 
-**Ready check** verifies the database migration version equals `EXPECTED_MIGRATION_VERSION` (currently `14`). A mismatch returns HTTP 503 with error code `migration_version_mismatch`.
+**Ready check** verifies the database migration version equals `EXPECTED_MIGRATION_VERSION` (currently `21`). A mismatch returns HTTP 503 with error code `migration_version_mismatch`.
 
 ### 2.2 Workflow Instances
 
@@ -286,7 +313,7 @@ Version endpoint:
   "service": "svc-workflow",
   "version": "0.3.1",
   "gitSha": "<git-commit>",
-	  "schemaVersion": "0014",
+  "schemaVersion": "0021",
   "apiContractVersion": "internal-v0"
 }
 ```

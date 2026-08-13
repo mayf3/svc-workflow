@@ -3,8 +3,6 @@ use super::*;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 
-const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-
 #[derive(Clone, Copy)]
 enum BindingMutation {
     InsertEnabledMigration,
@@ -163,7 +161,7 @@ async fn import_locks_the_complete_migration_authorization_predicate() {
 
     let import_pool = PgPoolOptions::new()
         .max_connections(1)
-        .connect(DATABASE_URL)
+        .connect(&crate::common::test_database_url())
         .await
         .unwrap();
     let import_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")

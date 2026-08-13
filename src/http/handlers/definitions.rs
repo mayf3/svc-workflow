@@ -85,7 +85,7 @@ pub(crate) struct DefinitionListQuery {
 // Direct-token gate (writes only)
 // ---------------------------------------------------------------------------
 
-fn require_direct_token(principal: &AuthenticatedPrincipal) -> Result<(), ApiError> {
+pub(crate) fn require_direct_token(principal: &AuthenticatedPrincipal) -> Result<(), ApiError> {
     if principal.auth_context.token_use != "access"
         || principal.auth_context.delegating_principal_id.is_some()
     {

@@ -1,0 +1,9 @@
+{
+  "expectedWorkflowStateVersion": 14,
+  "resolution": {
+    "message": "Continue with option B.",
+    "supportingPayload": {
+      "humanApprovalReference": "approval-123"
+    }
+  }
+}

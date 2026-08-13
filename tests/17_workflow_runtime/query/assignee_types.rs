@@ -107,8 +107,7 @@ async fn seed_assignee_type_definition(
     // NORMAL node — chosen assignee type
     match assignee_type {
         "INSTANCE_INPUT_PRINCIPAL" => {
-            let input_key = assignee_input_key
-                .unwrap_or("assigneePrincipalId");
+            let input_key = assignee_input_key.unwrap_or("assigneePrincipalId");
             sqlx::query(
                 "INSERT INTO workflow_node_definitions
                  (node_id, definition_version_id, node_key, display_name,
@@ -232,11 +231,10 @@ async fn create_and_advance_to_normal(
     expected_assignee: Uuid,
 ) -> Uuid {
     let cmd = make_command_with_payload(creator, domain_id, ver_id, context_payload);
-    let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
-        pool, cmd,
-    )
-    .await
-    .expect("create instance");
+    let created =
+        svc_workflow::application::workflow_instance::create::create_workflow_instance(pool, cmd)
+            .await
+            .expect("create instance");
 
     let transition = ExecuteWorkflowTransitionCommand {
         principal_id: PrincipalId::from_uuid(creator),
@@ -339,7 +337,10 @@ async fn workflow_creator_assignee_read_path() {
         page.items[0].detail.current_visit.assignee_principal_id,
         Some(creator)
     );
-    assert_eq!(page.items[0].detail.instance.current_node.node_key, "normal");
+    assert_eq!(
+        page.items[0].detail.instance.current_node.node_key,
+        "normal"
+    );
 
     // instance detail returns 200 with correct data
     let detail = service
@@ -378,15 +379,14 @@ async fn instance_input_principal_assignee_read_path() {
 
     add_member(&pool, domain_id, creator).await;
 
-    let (ver_id, _normal_id, draft_advance, _normal_advance) =
-        seed_assignee_type_definition(
-            &pool,
-            domain_id,
-            "INSTANCE_INPUT_PRINCIPAL",
-            None,
-            Some("assigneePrincipalId"),
-        )
-        .await;
+    let (ver_id, _normal_id, draft_advance, _normal_advance) = seed_assignee_type_definition(
+        &pool,
+        domain_id,
+        "INSTANCE_INPUT_PRINCIPAL",
+        None,
+        Some("assigneePrincipalId"),
+    )
+    .await;
 
     let instance_id = create_and_advance_to_normal(
         &pool,
@@ -419,7 +419,10 @@ async fn instance_input_principal_assignee_read_path() {
         page.items[0].detail.current_visit.assignee_principal_id,
         Some(target_assignee)
     );
-    assert_eq!(page.items[0].detail.instance.current_node.node_key, "normal");
+    assert_eq!(
+        page.items[0].detail.instance.current_node.node_key,
+        "normal"
+    );
 
     // instance detail returns 200 with correct data
     let detail = service
@@ -489,15 +492,14 @@ async fn outgoing_target_instance_input_principal_from_draft() {
     add_member(&pool, domain_id, creator).await;
 
     // Graph: DRAFT(WORKFLOW_CREATOR) → NORMAL(INSTANCE_INPUT_PRINCIPAL, "reviewerPrincipalId") → TERMINAL
-    let (ver_id, _normal_id, _draft_advance, _normal_advance) =
-        seed_assignee_type_definition(
-            &pool,
-            domain_id,
-            "INSTANCE_INPUT_PRINCIPAL",
-            None,
-            Some("reviewerPrincipalId"),
-        )
-        .await;
+    let (ver_id, _normal_id, _draft_advance, _normal_advance) = seed_assignee_type_definition(
+        &pool,
+        domain_id,
+        "INSTANCE_INPUT_PRINCIPAL",
+        None,
+        Some("reviewerPrincipalId"),
+    )
+    .await;
 
     // Create instance — stays at DRAFT, DO NOT advance.
     let cmd = make_command_with_payload(
@@ -590,15 +592,14 @@ async fn fixed_principal_assignee_read_path() {
 
     add_member(&pool, domain_id, creator).await;
 
-    let (ver_id, _normal_id, draft_advance, _normal_advance) =
-        seed_assignee_type_definition(
-            &pool,
-            domain_id,
-            "FIXED_PRINCIPAL",
-            Some(target_assignee),
-            None,
-        )
-        .await;
+    let (ver_id, _normal_id, draft_advance, _normal_advance) = seed_assignee_type_definition(
+        &pool,
+        domain_id,
+        "FIXED_PRINCIPAL",
+        Some(target_assignee),
+        None,
+    )
+    .await;
 
     let instance_id = create_and_advance_to_normal(
         &pool,
@@ -631,7 +632,10 @@ async fn fixed_principal_assignee_read_path() {
         page.items[0].detail.current_visit.assignee_principal_id,
         Some(target_assignee)
     );
-    assert_eq!(page.items[0].detail.instance.current_node.node_key, "normal");
+    assert_eq!(
+        page.items[0].detail.instance.current_node.node_key,
+        "normal"
+    );
 
     // instance detail returns 200
     let detail = service

@@ -47,13 +47,9 @@ pub(crate) async fn archive(
 
     // Canonical 64-hex request hash (JCS envelope per the frozen idempotency
     // contract); workflow_command_receipts.request_hash requires ^[0-9a-f]{64}$.
-    let request_hash = compute_archive_request_hash(
-        "v1",
-        &principal.principal_id,
-        &instance_id,
-        &payload.reason,
-    )
-    .map_err(ApiError::from_archive)?;
+    let request_hash =
+        compute_archive_request_hash("v1", &principal.principal_id, &instance_id, &payload.reason)
+            .map_err(ApiError::from_archive)?;
 
     let command = ArchiveWorkflowInstanceCommand {
         principal_id: principal.principal_id,

@@ -8,7 +8,12 @@ import {
   CONTRACT_VERSION,
   OWNER_HEAD_SHA,
 } from '../src/constants.js';
-import { createWorkflowInstanceRequestSchema } from '../src/schemas.js';
+import {
+  createWorkflowInstanceRequestSchema,
+  escalateAssistanceRequestSchema,
+  requestAssistanceRequestSchema,
+  resolveAssistanceRequestSchema,
+} from '../src/schemas.js';
 
 describe('Contract V1 lock and fixture', () => {
   it('matches the committed manifest', async () => {
@@ -48,5 +53,16 @@ describe('Contract V1 lock and fixture', () => {
       contextPayload: {},
     });
     expect(result.success).toBe(false);
+  });
+
+  it('accepts the frozen Workflow Assistance V1 fixtures', async () => {
+    const [request, escalate, resolve] = await Promise.all([
+      readFile('contracts/workflow-http/v1/fixtures/assistance-request.json', 'utf8'),
+      readFile('contracts/workflow-http/v1/fixtures/assistance-escalate.json', 'utf8'),
+      readFile('contracts/workflow-http/v1/fixtures/assistance-resolve.json', 'utf8'),
+    ]);
+    expect(() => requestAssistanceRequestSchema.parse(JSON.parse(request))).not.toThrow();
+    expect(() => escalateAssistanceRequestSchema.parse(JSON.parse(escalate))).not.toThrow();
+    expect(() => resolveAssistanceRequestSchema.parse(JSON.parse(resolve))).not.toThrow();
   });
 });

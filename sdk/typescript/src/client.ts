@@ -4,6 +4,10 @@ import type { ZodType } from 'zod';
 
 import { WorkflowError } from './error.js';
 import {
+  assistanceCaseDetailResponseSchema,
+  assistanceCasePageSchema,
+  assistanceCommandResponseSchema,
+  assistanceInboxQuerySchema,
   archiveDefinitionResponseSchema,
   createDefinitionRequestSchema,
   createDefinitionResponseSchema,
@@ -17,10 +21,13 @@ import {
   definitionListQuerySchema,
   domainInstancePageSchema,
   domainInstanceQuerySchema,
+  escalateAssistanceRequestSchema,
   errorEnvelopeSchema,
   executeWorkflowTransitionRequestSchema,
   executeWorkflowTransitionResponseSchema,
   healthResponseSchema,
+  humanRequiredAssistancePageSchema,
+  humanRequiredAssistanceQuerySchema,
   idempotencyKeySchema,
   memberAddResponseSchema,
   memberListPageSchema,
@@ -29,6 +36,8 @@ import {
   publishVersionRequestSchema,
   publishVersionResponseSchema,
   replaceDraftGraphRequestSchema,
+  requestAssistanceRequestSchema,
+  resolveAssistanceRequestSchema,
   selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
@@ -38,6 +47,10 @@ import {
   worklistQuerySchema,
 } from './schemas.js';
 import type {
+  AssistanceCaseDetailResponse,
+  AssistanceCasePage,
+  AssistanceCommandResponse,
+  AssistanceInboxQuery,
   ArchiveDefinitionResponse,
   CreateDefinitionRequest,
   CreateDefinitionResponse,
@@ -51,8 +64,11 @@ import type {
   DefinitionListQuery,
   DomainInstancePage,
   DomainInstanceQuery,
+  EscalateAssistanceRequest,
   ExecuteWorkflowTransitionRequest,
   ExecuteWorkflowTransitionResponse,
+  HumanRequiredAssistancePage,
+  HumanRequiredAssistanceQuery,
   MemberAddResponse,
   MemberListPage,
   MemberListQuery,
@@ -60,7 +76,9 @@ import type {
   PublishVersionRequest,
   PublishVersionResponse,
   ReplaceDraftGraphRequest,
+  RequestAssistanceRequest,
   RequestOptions,
+  ResolveAssistanceRequest,
   SelfProjectionResponse,
   TimelineQuery,
   TimelineResponse,
@@ -206,6 +224,146 @@ export class WorkflowClient {
       body,
       idempotencyKey,
       successSchema: executeWorkflowTransitionResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async requestAssistance(
+    workflowInstanceId: string,
+    input: RequestAssistanceRequest,
+    options: WriteOptions,
+  ): Promise<AssistanceCommandResponse> {
+    const id = parseUuid(workflowInstanceId, 'request-assistance');
+    const body = parseInput(requestAssistanceRequestSchema, input, 'request-assistance');
+    const idempotencyKey = parseIdempotencyKey(
+      options.idempotencyKey,
+      'request-assistance',
+    );
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/workflow-instances/${encodeURIComponent(id)}/assistance-cases`,
+      operation: 'request-assistance',
+      body,
+      idempotencyKey,
+      successSchema: assistanceCommandResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async escalateAssistanceToHuman(
+    assistanceCaseId: string,
+    input: EscalateAssistanceRequest,
+    options: WriteOptions,
+  ): Promise<AssistanceCommandResponse> {
+    const id = parseUuid(assistanceCaseId, 'escalate-assistance-to-human');
+    const body = parseInput(
+      escalateAssistanceRequestSchema,
+      input,
+      'escalate-assistance-to-human',
+    );
+    const idempotencyKey = parseIdempotencyKey(
+      options.idempotencyKey,
+      'escalate-assistance-to-human',
+    );
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/assistance-cases/${encodeURIComponent(id)}/escalate-to-human`,
+      operation: 'escalate-assistance-to-human',
+      body,
+      idempotencyKey,
+      successSchema: assistanceCommandResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async resolveAssistance(
+    assistanceCaseId: string,
+    input: ResolveAssistanceRequest,
+    options: WriteOptions,
+  ): Promise<AssistanceCommandResponse> {
+    const id = parseUuid(assistanceCaseId, 'resolve-assistance');
+    const body = parseInput(resolveAssistanceRequestSchema, input, 'resolve-assistance');
+    const idempotencyKey = parseIdempotencyKey(
+      options.idempotencyKey,
+      'resolve-assistance',
+    );
+    return this.request({
+      method: 'POST',
+      path: `/internal/v1/assistance-cases/${encodeURIComponent(id)}/resolve`,
+      operation: 'resolve-assistance',
+      body,
+      idempotencyKey,
+      successSchema: assistanceCommandResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async listOwnerAssistanceInbox(
+    query: AssistanceInboxQuery = {},
+    options: RequestOptions = {},
+  ): Promise<AssistanceCasePage> {
+    const parsed = parseInput(assistanceInboxQuerySchema, query, 'owner-assistance-inbox');
+    if (parsed.status !== undefined) {
+      throw configurationError('owner assistance inbox does not accept status');
+    }
+    return this.request({
+      method: 'GET',
+      path: withQuery('/internal/v1/assistance-cases/owner-inbox', assistanceParams(parsed)),
+      operation: 'owner-assistance-inbox',
+      successSchema: assistanceCasePageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async listAssistanceRequestedByMe(
+    query: AssistanceInboxQuery = {},
+    options: RequestOptions = {},
+  ): Promise<AssistanceCasePage> {
+    const parsed = parseInput(assistanceInboxQuerySchema, query, 'assistance-requested-by-me');
+    return this.request({
+      method: 'GET',
+      path: withQuery(
+        '/internal/v1/assistance-cases/requested-by-me',
+        assistanceParams(parsed),
+      ),
+      operation: 'assistance-requested-by-me',
+      successSchema: assistanceCasePageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async listHumanRequiredAssistanceInbox(
+    query: HumanRequiredAssistanceQuery = {},
+    options: RequestOptions = {},
+  ): Promise<HumanRequiredAssistancePage> {
+    const parsed = parseInput(
+      humanRequiredAssistanceQuerySchema,
+      query,
+      'human-required-assistance-inbox',
+    );
+    const params = new URLSearchParams();
+    setString(params, 'beforeEscalatedAt', parsed.beforeEscalatedAt);
+    setString(params, 'beforeId', parsed.beforeId);
+    setNumber(params, 'limit', parsed.limit);
+    return this.request({
+      method: 'GET',
+      path: withQuery('/internal/v1/assistance-cases/human-required', params),
+      operation: 'human-required-assistance-inbox',
+      successSchema: humanRequiredAssistancePageSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  async getAssistanceCase(
+    assistanceCaseId: string,
+    options: RequestOptions = {},
+  ): Promise<AssistanceCaseDetailResponse> {
+    const id = parseUuid(assistanceCaseId, 'get-assistance-case');
+    return this.request({
+      method: 'GET',
+      path: `/internal/v1/assistance-cases/${encodeURIComponent(id)}`,
+      operation: 'get-assistance-case',
+      successSchema: assistanceCaseDetailResponseSchema,
       requestId: options.requestId,
     });
   }
@@ -661,6 +819,15 @@ function worklistParams(query: WorklistQuery): URLSearchParams {
   setString(params, 'beforeCreatedAt', query.beforeCreatedAt);
   setString(params, 'beforeId', query.beforeId);
   setNumber(params, 'limit', query.limit);
+  return params;
+}
+
+function assistanceParams(query: AssistanceInboxQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  setString(params, 'beforeCreatedAt', query.beforeCreatedAt);
+  setString(params, 'beforeId', query.beforeId);
+  setNumber(params, 'limit', query.limit);
+  setString(params, 'status', query.status);
   return params;
 }
 

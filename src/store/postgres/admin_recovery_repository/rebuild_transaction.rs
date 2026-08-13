@@ -190,6 +190,17 @@ pub async fn rebuild_projection(
         Err(error) => return Err(error),
     };
     let changed = before_projection != after_projection;
+    if before_projection.current_node_visit_id != after_projection.current_node_visit_id {
+        crate::store::postgres::workflow_instance_repository::assistance_transaction::void_open_cases(
+            &mut tx,
+            instance_id,
+            actor,
+            command_id,
+            "ADMIN_PROJECTION_REBUILD",
+        )
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    }
     if changed {
         let affected = sqlx::query(
             "UPDATE workflow_instances

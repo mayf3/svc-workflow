@@ -25,8 +25,8 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0019";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: &str = "0022";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 22;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -51,6 +51,43 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
                 state.clone(),
                 canary_guard::canary_write_guard,
             )),
+        )
+        .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/assistance-cases",
+            post(handlers::assistance::request).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human",
+            post(handlers::assistance::escalate).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/resolve",
+            post(handlers::assistance::resolve).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/owner-inbox",
+            get(handlers::assistance::owner_inbox),
+        )
+        .route(
+            "/internal/v1/assistance-cases/human-required",
+            get(handlers::assistance::human_required),
+        )
+        .route(
+            "/internal/v1/assistance-cases/requested-by-me",
+            get(handlers::assistance::requested_by_me),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}",
+            get(handlers::assistance::detail),
         )
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/cancel",
@@ -79,6 +116,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::instances::domain_list),
         )
         .route(
+            "/internal/v1/workflow-instances/global",
+            get(handlers::instances::global_list),
+        )
+        .route(
             "/internal/v1/worklists/assigned-to-me",
             get(handlers::worklists::assigned_to_me),
         )
@@ -90,6 +131,11 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/principals/me",
             put(handlers::self_projection::self_project_handler),
+        )
+        // Caller-scoped domain discovery
+        .route(
+            "/internal/v1/principals/me/domains",
+            get(handlers::self_projection::list_my_domains_handler),
         )
         // Domain member management
         .route(
@@ -103,6 +149,21 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/domains/{domainId}/members/{principalId}",
             delete(handlers::domain_members::remove_member),
+        )
+        // GLOBAL_WORKFLOW_COORDINATOR domain management (agent-facing,
+        // non-admin): create domain / set domain owner. Scope
+        // `workflow.execute` + server-side role verification.
+        .route(
+            "/internal/v1/domains",
+            post(handlers::coordinator_domains::create_domain).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/owner",
+            put(handlers::coordinator_domains::set_domain_owner).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
         )
         // Domain Owner Definition management
         .route(
@@ -175,6 +236,15 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/admin/domains/{domainId}/owner",
             put(handlers::provisioning::role_bindings::replace_domain_owner),
+        )
+        // Global (domain-independent) role bindings
+        .route(
+            "/internal/v1/admin/global-role-bindings/{principalId}",
+            put(handlers::provisioning::global_role_bindings::create),
+        )
+        .route(
+            "/internal/v1/admin/global-role-bindings/{principalId}",
+            delete(handlers::provisioning::global_role_bindings::delete),
         )
         .route(
             "/internal/v1/admin/definition-versions/{definitionVersionId}",

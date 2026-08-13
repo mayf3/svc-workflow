@@ -1,5 +1,13 @@
 # Changelog
 
+## V1.5.0 (2026-08-12) — Workflow Assistance V1
+
+- Added Visit-scoped Assistance Case commands: request, escalate-to-human, and Owner resolve.
+- Added caller-scoped Owner inbox, requested-by-me, Case detail, and minimal Coordinator-only HUMAN_REQUIRED inbox.
+- Normal transition and atomic revise+transition now fail closed with `assistance_open` while the current Visit has an unresolved Case.
+- Assistance writes advance `workflowStateVersion` and append one Workflow Event; Case detail returns the latest version/current Visit for Agent resume.
+- No Instance status, assignee, Human Principal, HR transition permission, or Auth model changes.
+
 ## Unreleased — domain-list status filter
 
 - **Breaking-ish (internal API):** `GET /internal/v1/workflow-instances/domain` now accepts a `status` query parameter (`active`/`cancelled`/`archived`/`all`).
@@ -8,6 +16,10 @@
 - Use `status=all` to restore the previous "return everything" behavior.
 - Added `status` to the TypeScript SDK `DomainInstanceQuery` schema.
 - Invalid `status` values return 422 `invalid_status`.
+
+## Unreleased — agent domain discovery
+
+- **New:** `GET /internal/v1/principals/me/domains` — caller-scoped domain membership discovery. Returns every domain where the verified caller has an enabled `DOMAIN_OWNER` / `DOMAIN_MEMBER` binding (`domain_id` / `domain_key` / `display_name` / `caller_role` / `binding_created_at`). Disabled bindings and disabled domains are excluded. Requires `workflow.read` scope; accepts direct and OBO tokens.
 
 ## V1.4.1 (2026-07-26) — Current-State Re-freeze
 

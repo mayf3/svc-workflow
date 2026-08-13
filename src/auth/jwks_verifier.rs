@@ -110,9 +110,32 @@ impl JwksVerifier {
     }
 
     /// Check whether the verifier has at least one cached key within max-stale.
+    ///
+    /// A stale or missing cache triggers a best-effort JWKS refresh before
+    /// answering, so readiness recovers on its own instead of waiting for the
+    /// next authenticated request (which may never come).
     pub async fn is_ready(&self) -> bool {
-        let guard = self.cache.read().await;
-        match guard.as_ref() {
+        {
+            let guard = self.cache.read().await;
+            if let Some(state) = guard.as_ref() {
+                if state.fetched_at.elapsed() <= self.max_stale {
+                    return true;
+                }
+            }
+        }
+        // Stale or missing — refresh once, serialized with refresh_and_find.
+        // A failed fetch keeps the previous cache state (and previous result).
+        let _lock = self.refresh_lock.lock().await;
+        {
+            let guard = self.cache.read().await;
+            if let Some(state) = guard.as_ref() {
+                if state.fetched_at.elapsed() <= self.max_stale {
+                    return true;
+                }
+            }
+        }
+        let _ = self.fetch_jwks().await;
+        match self.cache.read().await.as_ref() {
             Some(state) => state.fetched_at.elapsed() <= self.max_stale,
             None => false,
         }
@@ -463,12 +486,16 @@ impl JwksVerifier {
     async fn refresh_and_find(&self, kid: &str) -> Result<DecodingKey, ()> {
         let _lock = self.refresh_lock.lock().await;
 
-        // Double-check after acquiring lock.
+        // Double-check after acquiring lock — only a fresh cache may short
+        // circuit. A stale cache must pass through fetch_jwks so fetched_at
+        // advances and readiness (is_ready) can recover.
         {
             let guard = self.cache.read().await;
             if let Some(state) = guard.as_ref() {
-                if let Some(key) = find_key(&state.keys, kid) {
-                    return Ok(key);
+                if state.fetched_at.elapsed() <= self.max_stale {
+                    if let Some(key) = find_key(&state.keys, kid) {
+                        return Ok(key);
+                    }
                 }
             }
         }
