@@ -65,7 +65,8 @@ fn submissions_uri(instance: Uuid) -> String {
 
 /// Assert that two `Value` numbers are equal as i64 (avoids f64 vs int compare).
 fn as_i64(v: &Value) -> i64 {
-    v.as_i64().unwrap_or_else(|| panic!("expected integer, got {v}"))
+    v.as_i64()
+        .unwrap_or_else(|| panic!("expected integer, got {v}"))
 }
 
 // FULL_VISIBILITY_READS_ALL_SUBMISSIONS
@@ -84,7 +85,11 @@ async fn full_visibility_reads_all_submissions() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -93,7 +98,10 @@ async fn full_visibility_reads_all_submissions() {
     // The fixture produces 4 transitions (2 creator submits + RETURN + TERMINATE).
     assert_eq!(items.len(), 4);
     // A full viewer sees every transition effect including RETURN and TERMINATE.
-    let effects: Vec<&str> = items.iter().map(|i| i["transition_effect"].as_str().unwrap()).collect();
+    let effects: Vec<&str> = items
+        .iter()
+        .map(|i| i["transition_effect"].as_str().unwrap())
+        .collect();
     assert!(effects.contains(&"ADVANCE"));
     assert!(effects.contains(&"RETURN"));
     assert!(effects.contains(&"TERMINATE"));
@@ -118,7 +126,11 @@ async fn actor_reads_own_submission() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -169,7 +181,11 @@ async fn historical_participant_reads_related_return_payload() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -229,7 +245,11 @@ async fn historical_participant_cannot_read_unrelated_submission() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -267,12 +287,19 @@ async fn cross_domain_access_denied_is_not_found() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = json_body(resp).await;
-    assert_eq!(body["error"]["code"], "workflow_instance_not_found_or_not_visible");
+    assert_eq!(
+        body["error"]["code"],
+        "workflow_instance_not_found_or_not_visible"
+    );
     // No submission data leaks.
     assert!(body.get("items").is_none());
 }
@@ -298,7 +325,11 @@ async fn unknown_instance_is_not_found_and_indistinguishable() {
     let unknown = Uuid::new_v4();
     let resp_unknown = app
         .clone()
-        .oneshot(request("GET", &submissions_uri(unknown), Some(&owner_token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(unknown),
+            Some(&owner_token),
+        ))
         .await
         .unwrap();
 
@@ -310,7 +341,11 @@ async fn unknown_instance_is_not_found_and_indistinguishable() {
         &mock.key_pair,
     );
     let resp_hidden = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&outsider_token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&outsider_token),
+        ))
         .await
         .unwrap();
 
@@ -320,7 +355,10 @@ async fn unknown_instance_is_not_found_and_indistinguishable() {
     let body_unknown = json_body(resp_unknown).await;
     let body_hidden = json_body(resp_hidden).await;
     assert_eq!(body_unknown, body_hidden);
-    assert_eq!(body_unknown["error"]["code"], "workflow_instance_not_found_or_not_visible");
+    assert_eq!(
+        body_unknown["error"]["code"],
+        "workflow_instance_not_found_or_not_visible"
+    );
 }
 
 // PAYLOAD_AND_DIGEST_RETURNED
@@ -335,15 +373,14 @@ async fn payload_and_digest_returned_verbatim() {
     let completed = complete_query_instance(&pool).await;
 
     // Read the expected payload + digest directly from the store for comparison.
-    let (stored_payload, stored_digest, stored_schema): (Value, String, String) =
-        sqlx::query_as(
-            "SELECT payload, payload_digest, schema_version FROM workflow_submissions
+    let (stored_payload, stored_digest, stored_schema): (Value, String, String) = sqlx::query_as(
+        "SELECT payload, payload_digest, schema_version FROM workflow_submissions
              WHERE submission_id = $1",
-        )
-        .bind(completed.creator_submission)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    )
+    .bind(completed.creator_submission)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
     let token = v1_token(
         completed.seed.owner,
@@ -353,7 +390,11 @@ async fn payload_and_digest_returned_verbatim() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
@@ -365,9 +406,15 @@ async fn payload_and_digest_returned_verbatim() {
         .unwrap();
 
     // Core fields preserved exactly.
-    assert_eq!(item["submission_id"], completed.creator_submission.to_string());
+    assert_eq!(
+        item["submission_id"],
+        completed.creator_submission.to_string()
+    );
     assert_eq!(item["workflow_instance_id"], completed.instance.to_string());
-    assert_eq!(item["author_principal_id"], completed.seed.creator.to_string());
+    assert_eq!(
+        item["author_principal_id"],
+        completed.seed.creator.to_string()
+    );
     assert_eq!(item["transition_effect"], "ADVANCE");
     // Payload object preserved verbatim.
     assert_eq!(item["payload"], stored_payload);
@@ -451,7 +498,10 @@ async fn pagination_reuses_existing_query_semantics() {
     assert!(first_ids.iter().all(|id| !second_ids.contains(id)));
 
     // Union of both pages equals the full set.
-    let mut union: Vec<String> = first_ids.into_iter().chain(second_ids.into_iter()).collect();
+    let mut union: Vec<String> = first_ids
+        .into_iter()
+        .chain(second_ids.into_iter())
+        .collect();
     union.sort();
     let expected_count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM workflow_submissions WHERE workflow_instance_id = $1",
@@ -523,7 +573,11 @@ async fn missing_scope_is_forbidden() {
         &mock.key_pair,
     );
     let resp = app
-        .oneshot(request("GET", &submissions_uri(completed.instance), Some(&token)))
+        .oneshot(request(
+            "GET",
+            &submissions_uri(completed.instance),
+            Some(&token),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
@@ -573,7 +627,11 @@ async fn unknown_query_field_is_rejected() {
     let resp = app
         .oneshot(request(
             "GET",
-            &format!("{}?actorPrincipalId={}", submissions_uri(completed.instance), completed.seed.owner),
+            &format!(
+                "{}?actorPrincipalId={}",
+                submissions_uri(completed.instance),
+                completed.seed.owner
+            ),
             Some(&token),
         ))
         .await

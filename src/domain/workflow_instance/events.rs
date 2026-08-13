@@ -27,6 +27,11 @@ pub const COMMAND_TYPE_CANCEL_WORKFLOW_INSTANCE: &str = "CANCEL_WORKFLOW_INSTANC
 /// Stable command type string for ArchiveWorkflowInstance.
 pub const COMMAND_TYPE_ARCHIVE_WORKFLOW_INSTANCE: &str = "ARCHIVE_WORKFLOW_INSTANCE";
 
+pub const COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE: &str = "REQUEST_WORKFLOW_ASSISTANCE";
+pub const COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN: &str =
+    "ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN";
+pub const COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE: &str = "RESOLVE_WORKFLOW_ASSISTANCE";
+
 /// Event type for instance creation events.
 pub const INSTANCE_CREATED_EVENT_TYPE: &str = "INSTANCE_CREATED";
 
@@ -49,6 +54,19 @@ pub const WORKFLOW_INSTANCE_CANCELLED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_CANC
 
 /// Event type for workflow instance archive events.
 pub const WORKFLOW_INSTANCE_ARCHIVED_EVENT_TYPE: &str = "WORKFLOW_INSTANCE_ARCHIVED";
+
+pub const ASSISTANCE_REQUESTED_EVENT_TYPE: &str = "ASSISTANCE_REQUESTED";
+pub const ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE: &str = "ASSISTANCE_ESCALATED_TO_HUMAN";
+pub const ASSISTANCE_RESOLVED_EVENT_TYPE: &str = "ASSISTANCE_RESOLVED";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistanceEventData {
+    pub assistance_case_id: String,
+    pub previous_status: Option<String>,
+    pub new_status: String,
+    pub payload_digest: String,
+}
 
 /// Non-sensitive event data embedded in the INSTANCE_CREATED event.
 ///

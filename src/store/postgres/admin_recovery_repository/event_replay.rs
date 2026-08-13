@@ -31,6 +31,13 @@ struct Replay<'a> {
     current_context: Option<Uuid>,
     current_visit: Option<Uuid>,
     version: i32,
+    /// Per-case replayed state, keyed by `assistanceCaseId`. Tracks the case's
+    /// current status and the node visit it is bound to, reconstructed purely
+    /// from the assistance event stream. Used to reject histories the runtime
+    /// could never produce: duplicate request/escalate, resolve of an unknown
+    /// case, cross-visit case串线, post-resolution events, and transitions
+    /// attempted while the source visit still has an open case.
+    assistance_cases: HashMap<Uuid, (String, Uuid)>,
 }
 
 impl<'a> Replay<'a> {
@@ -68,12 +75,23 @@ impl<'a> Replay<'a> {
             current_context: None,
             current_visit: None,
             version: 0,
+            assistance_cases: HashMap::new(),
         }
     }
 
     fn visit(&self, id: Option<Uuid>) -> Result<&'a VisitFact, RecoveryError> {
         id.and_then(|value| self.visits.get(&value).copied())
             .ok_or_else(|| invalid("event references an invalid node visit"))
+    }
+
+    /// True if the replayed assistance state has an open case (`OWNER_PENDING`
+    /// or `HUMAN_REQUIRED`) bound to `visit_id`. Mirrors the runtime transition
+    /// gate (`has_open_assistance`) so replay rejects transition events the
+    /// runtime would have refused with `AssistanceOpen`.
+    fn visit_has_open_assistance(&self, visit_id: Uuid) -> bool {
+        self.assistance_cases.values().any(|(status, visit)| {
+            *visit == visit_id && (status == "OWNER_PENDING" || status == "HUMAN_REQUIRED")
+        })
     }
 
     fn context(&self, id: Option<Uuid>) -> Result<&'a ContextFact, RecoveryError> {
@@ -279,6 +297,17 @@ impl<'a> Replay<'a> {
         {
             return Err(invalid("transition event data shape is invalid"));
         }
+        // Reproduce the runtime transition gate: a visit with an open
+        // assistance case cannot be advanced. A legitimate event log can never
+        // contain a transition whose source visit still has an open case, so a
+        // hit here proves the history is forged/corrupted.
+        if let Some(source_visit) = self.current_visit {
+            if self.visit_has_open_assistance(source_visit) {
+                return Err(invalid(
+                    "transition is blocked by an open assistance case on the source visit",
+                ));
+            }
+        }
         let (_, target, transition) = self.transition_and_visits(event, data)?;
         match event.submission_id {
             Some(id) => {
@@ -340,6 +369,17 @@ impl<'a> Replay<'a> {
             return Err(invalid(
                 "combined event context disagrees with replay state",
             ));
+        }
+        // Same open-assistance transition gate as a plain transition
+        // (REVISE_CONTEXT_AND_TRANSITION runs the same `has_open_assistance`
+        // check at runtime). Admin emergency override is intentionally NOT
+        // gated — it legitimately voids open cases.
+        if let Some(source_visit) = self.current_visit {
+            if self.visit_has_open_assistance(source_visit) {
+                return Err(invalid(
+                    "combined transition is blocked by an open assistance case on the source visit",
+                ));
+            }
         }
         let (_, target, transition) = self.transition_and_visits(event, data)?;
         let submission = event
@@ -409,6 +449,120 @@ impl<'a> Replay<'a> {
         Ok(())
     }
 
+    fn apply_assistance(&mut self, event: &EventFact) -> Result<(), RecoveryError> {
+        let data = event_data(event)?;
+        let visit = self.visit(event.source_node_visit_id)?;
+        let case_id = uuid_field(data, "assistanceCaseId")
+            .ok_or_else(|| invalid("assistance event has no valid assistanceCaseId"))?;
+        let previous_status = optional_string_field(data, "previousStatus");
+        let new_status = string_field(data, "newStatus");
+        let status_shape_valid = match event.event_type.as_str() {
+            "ASSISTANCE_REQUESTED" => {
+                previous_status == Some(None) && new_status == Some("OWNER_PENDING")
+            }
+            "ASSISTANCE_ESCALATED_TO_HUMAN" => {
+                previous_status == Some(Some("OWNER_PENDING"))
+                    && new_status == Some("HUMAN_REQUIRED")
+            }
+            "ASSISTANCE_RESOLVED" => {
+                matches!(
+                    previous_status,
+                    Some(Some("OWNER_PENDING" | "HUMAN_REQUIRED"))
+                ) && new_status == Some("RESOLVED")
+            }
+            _ => false,
+        };
+        let payload_digest = string_field(data, "payloadDigest");
+        if !exact_keys(
+            data,
+            &[
+                "assistanceCaseId",
+                "previousStatus",
+                "newStatus",
+                "payloadDigest",
+            ],
+        ) || !status_shape_valid
+            || payload_digest.is_none_or(|value| {
+                value.len() != 64
+                    || !value
+                        .as_bytes()
+                        .iter()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+            })
+            || event.source_node_visit_id != self.current_visit
+            || event.target_node_visit_id != self.current_visit
+            || event.context_revision_id != self.current_context
+            || event.submission_id.is_some()
+            || event.transition_effect.is_some()
+        {
+            return Err(invalid("assistance event disagrees with replay state"));
+        }
+        self.validate_node_columns(event, Some(visit), Some(visit))?;
+
+        // Cross-event state machine. The runtime binds an assistance case to a
+        // single visit for its whole life, and the transition gate refuses to
+        // advance a visit that still has an open case — so the current visit
+        // cannot move while a case on it is open. Replay reconstructs that here
+        // and rejects anything the live system could not have emitted.
+        let current_visit = self
+            .current_visit
+            .ok_or_else(|| invalid("assistance event precedes the initial visit"))?;
+        match event.event_type.as_str() {
+            "ASSISTANCE_REQUESTED" => {
+                if self.assistance_cases.contains_key(&case_id) {
+                    return Err(invalid("assistance case is requested more than once"));
+                }
+                self.assistance_cases
+                    .insert(case_id, ("OWNER_PENDING".to_string(), current_visit));
+            }
+            "ASSISTANCE_ESCALATED_TO_HUMAN" => {
+                let (ref_status, ref_visit) = self
+                    .assistance_cases
+                    .get(&case_id)
+                    .map(|(status, visit)| (status.clone(), *visit))
+                    .ok_or_else(|| invalid("assistance escalation references an unknown case"))?;
+                if ref_visit != current_visit {
+                    return Err(invalid(
+                        "assistance case is escalated on a different visit than it was opened",
+                    ));
+                }
+                if ref_status != "OWNER_PENDING" {
+                    return Err(invalid(
+                        "assistance case is not OWNER_PENDING when it is escalated",
+                    ));
+                }
+                self.assistance_cases
+                    .insert(case_id, ("HUMAN_REQUIRED".to_string(), current_visit));
+            }
+            "ASSISTANCE_RESOLVED" => {
+                let (ref_status, ref_visit) = self
+                    .assistance_cases
+                    .get(&case_id)
+                    .map(|(status, visit)| (status.clone(), *visit))
+                    .ok_or_else(|| invalid("assistance resolution references an unknown case"))?;
+                if ref_visit != current_visit {
+                    return Err(invalid(
+                        "assistance case is resolved on a different visit than it was opened",
+                    ));
+                }
+                if ref_status != "OWNER_PENDING" && ref_status != "HUMAN_REQUIRED" {
+                    return Err(invalid(
+                        "assistance case is resolved after it already reached a terminal state",
+                    ));
+                }
+                if previous_status != Some(Some(ref_status.as_str())) {
+                    return Err(invalid(
+                        "assistance event previousStatus disagrees with replayed case status",
+                    ));
+                }
+                self.assistance_cases
+                    .insert(case_id, ("RESOLVED".to_string(), current_visit));
+            }
+            _ => return Err(invalid("unsupported assistance event type")),
+        }
+        Ok(())
+    }
+
     fn apply(&mut self, event: &EventFact, expected_sequence: i32) -> Result<(), RecoveryError> {
         if event.workflow_instance_id != self.instance.workflow_instance_id
             || event.event_sequence != expected_sequence
@@ -428,6 +582,9 @@ impl<'a> Replay<'a> {
             "WORKFLOW_TRANSITION_COMMITTED" => self.apply_transition(event)?,
             "WORKFLOW_CONTEXT_REVISED_AND_TRANSITION_COMMITTED" => self.apply_combined(event)?,
             "ADMIN_EMERGENCY_OVERRIDE_COMMITTED" => self.apply_admin(event)?,
+            "ASSISTANCE_REQUESTED" | "ASSISTANCE_ESCALATED_TO_HUMAN" | "ASSISTANCE_RESOLVED" => {
+                self.apply_assistance(event)?
+            }
             _ => return Err(invalid("event type is not supported by recovery replay")),
         }
         self.version = expected_sequence;

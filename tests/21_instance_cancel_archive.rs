@@ -48,13 +48,11 @@ use svc_workflow::application::workflow_instance::revise_and_transition::revise_
 use svc_workflow::domain::ids::*;
 use svc_workflow::domain::workflow_instance::combined_errors::ReviseContextAndTransitionError;
 use svc_workflow::domain::workflow_instance::commands::{
-    ArchiveWorkflowInstanceCommand, CancelWorkflowInstanceCommand,
-    CreateWorkflowInstanceCommand, ExecuteWorkflowTransitionCommand,
-    ReviseContextAndTransitionCommand,
+    ArchiveWorkflowInstanceCommand, CancelWorkflowInstanceCommand, CreateWorkflowInstanceCommand,
+    ExecuteWorkflowTransitionCommand, ReviseContextAndTransitionCommand,
 };
 use svc_workflow::domain::workflow_instance::errors::{
-    ArchiveWorkflowInstanceError, CancelWorkflowInstanceError,
-    ExecuteWorkflowTransitionError,
+    ArchiveWorkflowInstanceError, CancelWorkflowInstanceError, ExecuteWorkflowTransitionError,
 };
 
 // ============================================================================
@@ -206,13 +204,12 @@ async fn domain_owner_cancel_active(pool: PgPool) {
     assert!(!result.replayed);
 
     // Verify DB state
-    let row: (bool,) = sqlx::query_as(
-        "SELECT cancelled FROM workflow_instances WHERE workflow_instance_id = $1",
-    )
-    .bind(instance_id)
-    .fetch_one(&pool)
-    .await
-    .expect("find instance");
+    let row: (bool,) =
+        sqlx::query_as("SELECT cancelled FROM workflow_instances WHERE workflow_instance_id = $1")
+            .bind(instance_id)
+            .fetch_one(&pool)
+            .await
+            .expect("find instance");
     assert!(row.0, "instance should be marked cancelled");
 
     // Verify timeline event
@@ -231,7 +228,11 @@ async fn domain_owner_cancel_active(pool: PgPool) {
         .iter()
         .filter(|e| e.event_type == "WORKFLOW_INSTANCE_CANCELLED")
         .collect();
-    assert_eq!(cancel_events.len(), 1, "should have exactly one cancel event");
+    assert_eq!(
+        cancel_events.len(),
+        1,
+        "should have exactly one cancel event"
+    );
     assert_eq!(cancel_events[0].actor_principal_id, owner_id);
     let event_data = cancel_events[0].event_data.as_ref().expect("event data");
     assert_eq!(event_data["reason"], "duplicate_instance");
@@ -306,7 +307,11 @@ async fn cancel_closes_active_work_item(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("find assignee");
-    assert_eq!(assignee_before, Some(owner_id), "assignee should be set before cancel");
+    assert_eq!(
+        assignee_before,
+        Some(owner_id),
+        "assignee should be set before cancel"
+    );
 
     // Cancel
     cancel_workflow_instance(
@@ -334,7 +339,10 @@ async fn cancel_closes_active_work_item(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("find cancelled flag");
-    assert!(cancelled_after, "instance should be marked cancelled after cancel");
+    assert!(
+        cancelled_after,
+        "instance should be marked cancelled after cancel"
+    );
 
     // Verify the instance is excluded from worklists (by cancelled flag)
     let in_worklist: bool = sqlx::query_scalar(
@@ -351,7 +359,10 @@ async fn cancel_closes_active_work_item(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("check worklist");
-    assert!(!in_worklist, "cancelled instance should not appear in worklist");
+    assert!(
+        !in_worklist,
+        "cancelled instance should not appear in worklist"
+    );
 }
 
 #[sqlx::test]
@@ -424,7 +435,10 @@ async fn cancel_terminal_instance_denied(pool: PgPool) {
     .await
     .expect_err("cancel terminal instance should be denied");
 
-    assert!(matches!(err, CancelWorkflowInstanceError::SourceNodeTerminal));
+    assert!(matches!(
+        err,
+        CancelWorkflowInstanceError::SourceNodeTerminal
+    ));
 }
 
 #[sqlx::test]
@@ -492,7 +506,11 @@ async fn domain_owner_archive_terminated_instance(pool: PgPool) {
     .await
     .expect("find instance");
     assert_eq!(row.0, Some(owner_id), "archived_by should be owner");
-    assert_eq!(row.1.as_deref(), Some("test_instance_cleanup"), "archive reason should match");
+    assert_eq!(
+        row.1.as_deref(),
+        Some("test_instance_cleanup"),
+        "archive reason should match"
+    );
 }
 
 #[sqlx::test]
@@ -551,7 +569,11 @@ async fn domain_owner_archive_cancelled_instance(pool: PgPool) {
         .iter()
         .filter(|e| e.event_type == "WORKFLOW_INSTANCE_ARCHIVED")
         .collect();
-    assert_eq!(archive_events.len(), 1, "should have exactly one archive event");
+    assert_eq!(
+        archive_events.len(),
+        1,
+        "should have exactly one archive event"
+    );
 }
 
 #[sqlx::test]
@@ -668,7 +690,11 @@ async fn repeated_archive_idempotent(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("find state version");
-    assert_eq!(current_state_ver, new_ver + 1, "archive should increment state version");
+    assert_eq!(
+        current_state_ver,
+        new_ver + 1,
+        "archive should increment state version"
+    );
 
     // Second archive with same key (idempotent replay)
     let result = archive_workflow_instance(
@@ -703,7 +729,11 @@ async fn repeated_archive_idempotent(pool: PgPool) {
         .iter()
         .filter(|e| e.event_type == "WORKFLOW_INSTANCE_ARCHIVED")
         .collect();
-    assert_eq!(archive_events.len(), 1, "should still have exactly one archive event");
+    assert_eq!(
+        archive_events.len(),
+        1,
+        "should still have exactly one archive event"
+    );
 }
 
 #[sqlx::test]
@@ -741,7 +771,9 @@ async fn archived_detail_still_readable(pool: PgPool) {
 
     // Basic detail checks
     match &detail {
-        svc_workflow::application::workflow_instance::query_types::WorkflowInstanceDetail::Full(f) => {
+        svc_workflow::application::workflow_instance::query_types::WorkflowInstanceDetail::Full(
+            f,
+        ) => {
             assert_eq!(f.instance.workflow_instance_id, instance_id);
         }
         _ => panic!("expected full detail for domain owner"),
@@ -829,7 +861,10 @@ async fn archive_reason_validation(pool: PgPool) {
     )
     .await
     .expect_err("empty reason should be rejected");
-    assert!(matches!(err, ArchiveWorkflowInstanceError::InvalidReason(_)));
+    assert!(matches!(
+        err,
+        ArchiveWorkflowInstanceError::InvalidReason(_)
+    ));
 }
 
 #[sqlx::test]
@@ -911,15 +946,18 @@ async fn archive_new_key_already_archived_rejected(pool: PgPool) {
     .expect("first archive should succeed");
 
     // Snapshot invariants after the first archive.
-    let (archived_at_before, reason_before, state_after_first,): (chrono::DateTime<chrono::Utc>, String, i32) =
-        sqlx::query_as(
-            "SELECT archived_at, archive_reason, workflow_state_version
+    let (archived_at_before, reason_before, state_after_first): (
+        chrono::DateTime<chrono::Utc>,
+        String,
+        i32,
+    ) = sqlx::query_as(
+        "SELECT archived_at, archive_reason, workflow_state_version
              FROM workflow_instances WHERE workflow_instance_id = $1",
-        )
-        .bind(instance_id)
-        .fetch_one(&pool)
-        .await
-        .expect("read archive state");
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read archive state");
     let event_count_before: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_events
          WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_ARCHIVED'",
@@ -952,18 +990,30 @@ async fn archive_new_key_already_archived_rejected(pool: PgPool) {
     );
 
     // Invariants: nothing changed, no success receipt for key B.
-    let (archived_at_after, reason_after, state_after): (chrono::DateTime<chrono::Utc>, String, i32) =
-        sqlx::query_as(
-            "SELECT archived_at, archive_reason, workflow_state_version
+    let (archived_at_after, reason_after, state_after): (
+        chrono::DateTime<chrono::Utc>,
+        String,
+        i32,
+    ) = sqlx::query_as(
+        "SELECT archived_at, archive_reason, workflow_state_version
              FROM workflow_instances WHERE workflow_instance_id = $1",
-        )
-        .bind(instance_id)
-        .fetch_one(&pool)
-        .await
-        .expect("read archive state after rejection");
-    assert_eq!(archived_at_after, archived_at_before, "archived_at must be unchanged");
-    assert_eq!(reason_after, reason_before, "archive_reason must be unchanged");
-    assert_eq!(state_after, state_after_first, "workflow_state_version must be unchanged");
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read archive state after rejection");
+    assert_eq!(
+        archived_at_after, archived_at_before,
+        "archived_at must be unchanged"
+    );
+    assert_eq!(
+        reason_after, reason_before,
+        "archive_reason must be unchanged"
+    );
+    assert_eq!(
+        state_after, state_after_first,
+        "workflow_state_version must be unchanged"
+    );
 
     let event_count_after: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_events
@@ -973,7 +1023,10 @@ async fn archive_new_key_already_archived_rejected(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count archive events after rejection");
-    assert_eq!(event_count_after, event_count_before, "archive event count must be unchanged");
+    assert_eq!(
+        event_count_after, event_count_before,
+        "archive event count must be unchanged"
+    );
     assert_eq!(event_count_after, 1, "exactly one archive event total");
 
     let receipt_count: i64 = sqlx::query_scalar(
@@ -984,7 +1037,10 @@ async fn archive_new_key_already_archived_rejected(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count receipts for rejected key");
-    assert_eq!(receipt_count, 0, "no success receipt may exist for the rejected key");
+    assert_eq!(
+        receipt_count, 0,
+        "no success receipt may exist for the rejected key"
+    );
 }
 
 #[sqlx::test]
@@ -1027,7 +1083,10 @@ async fn archive_same_key_different_request_conflicts(pool: PgPool) {
     .expect_err("same key with a different request must conflict");
 
     assert!(
-        matches!(err, ArchiveWorkflowInstanceError::IdempotencyConflict { .. }),
+        matches!(
+            err,
+            ArchiveWorkflowInstanceError::IdempotencyConflict { .. }
+        ),
         "expected IdempotencyConflict, got {:?}",
         err
     );
@@ -1057,7 +1116,10 @@ async fn archive_same_key_different_request_conflicts(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count archive events");
-    assert_eq!(event_count, 1, "exactly one archive event after conflict + replay");
+    assert_eq!(
+        event_count, 1,
+        "exactly one archive event after conflict + replay"
+    );
 }
 
 #[sqlx::test]
@@ -1106,7 +1168,10 @@ async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
         (Ok(_), Err(_)) | (Err(_), Ok(_)) => 1,
         (Err(_), Err(_)) => 0,
     };
-    assert_eq!(success_count, 1, "exactly one concurrent archive must succeed");
+    assert_eq!(
+        success_count, 1,
+        "exactly one concurrent archive must succeed"
+    );
     for result in [&result_a, &result_b] {
         if let Err(err) = result {
             assert!(
@@ -1126,7 +1191,10 @@ async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count archive events");
-    assert_eq!(event_count, 1, "exactly one archive event after concurrent archive");
+    assert_eq!(
+        event_count, 1,
+        "exactly one archive event after concurrent archive"
+    );
 
     let archived_at_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_instances
@@ -1136,5 +1204,8 @@ async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .expect("count archived_at writes");
-    assert_eq!(archived_at_count, 1, "archived_at must be written exactly once");
+    assert_eq!(
+        archived_at_count, 1,
+        "archived_at must be written exactly once"
+    );
 }

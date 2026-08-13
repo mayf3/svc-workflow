@@ -6,8 +6,6 @@ use svc_workflow::domain::workflow_instance::recovery::{
     COMMAND_TYPE_REBUILD_PROJECTION,
 };
 
-const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-
 struct EventFailureGuard {
     trigger: String,
     function: String,
@@ -55,7 +53,9 @@ impl Drop for InstanceUpdateFailureGuard {
                 .build()
                 .unwrap();
             runtime.block_on(async move {
-                let Ok(mut connection) = sqlx::PgConnection::connect(DATABASE_URL).await else {
+                let Ok(mut connection) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
+                else {
                     return;
                 };
                 let _ = sqlx::query(&format!(
@@ -111,7 +111,9 @@ impl Drop for EventFailureGuard {
                 .build()
                 .unwrap();
             runtime.block_on(async move {
-                let Ok(mut connection) = sqlx::PgConnection::connect(DATABASE_URL).await else {
+                let Ok(mut connection) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
+                else {
                     return;
                 };
                 let _ = sqlx::query(&format!(

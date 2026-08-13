@@ -309,13 +309,39 @@ pub fn generate_rsa_key_pair() -> RsaTestKeyPair {
 /// Default test database URL.
 const TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
 
+/// Resolve the integration-test database URL.
+///
+/// Defaults to the standard local test database; override with the
+/// `TEST_DATABASE_URL` environment variable to point at a different
+/// PostgreSQL (e.g. a dockerized test instance on a non-default port).
+pub fn test_database_url() -> String {
+    std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| TEST_DATABASE_URL.to_string())
+}
+
+/// Scheme + credentials + host portion of the test database URL (without
+/// the database name), e.g. `postgres://postgres:postgres@localhost:55432`.
+pub fn test_database_base() -> String {
+    let url = test_database_url();
+    url.rsplit_once('/')
+        .expect("TEST_DATABASE_URL must be a full DSN")
+        .0
+        .to_string()
+}
+
+/// Resolve the admin (maintenance) database URL — same credentials and
+/// host as the test database, but the `postgres` maintenance database
+/// (used to create/drop isolated test databases).
+pub fn admin_database_url() -> String {
+    format!("{}/postgres", test_database_base())
+}
+
 /// Create a new pool for a test and ensure migrations are applied.
 ///
 /// SQLx migration tracking is idempotent: the `_sqlx_migrations` table records
 /// which migrations have been applied. Calling `run()` multiple times is safe
 /// and will only apply pending migrations.
 pub async fn create_pool() -> PgPool {
-    let pool = PgPool::connect(TEST_DATABASE_URL)
+    let pool = PgPool::connect(&test_database_url())
         .await
         .expect("failed to connect to test database");
 

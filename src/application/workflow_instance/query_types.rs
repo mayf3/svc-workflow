@@ -10,6 +10,7 @@ pub enum WorkflowQueryError {
     PrincipalDisabled,
     WorkflowInstanceNotFoundOrNotVisible,
     RestrictedHistoryNotVisible,
+    GlobalCoordinatorRequired,
     InvalidPagination(String),
     InternalConsistency(String),
     StorageError(String),
@@ -24,6 +25,9 @@ impl std::fmt::Display for WorkflowQueryError {
                 write!(f, "workflow instance not found or not visible")
             }
             Self::RestrictedHistoryNotVisible => write!(f, "restricted history not visible"),
+            Self::GlobalCoordinatorRequired => {
+                write!(f, "GLOBAL_WORKFLOW_COORDINATOR role is required")
+            }
             Self::InvalidPagination(detail) => write!(f, "invalid pagination: {detail}"),
             Self::InternalConsistency(detail) => {
                 write!(f, "internal consistency error: {detail}")
@@ -303,6 +307,23 @@ pub enum StatusFilter {
 pub struct ListDomainInstances {
     pub actor_principal_id: Uuid,
     pub domain_id: Uuid,
+    pub before: Option<TimeUuidCursor>,
+    pub limit: Option<u32>,
+    pub definition_key: Option<String>,
+    pub lifecycle: Option<LifecycleFilter>,
+    pub current_node_key: Option<String>,
+    pub assignee_principal_id: Option<Uuid>,
+    pub status: StatusFilter,
+}
+
+/// Global (cross-domain) instance list query.
+///
+/// Authorization (GLOBAL_WORKFLOW_COORDINATOR) is checked by the service
+/// layer before any projection happens — the caller never sees instances
+/// from domains they are not entitled to.
+#[derive(Debug, Clone)]
+pub struct ListGlobalInstances {
+    pub actor_principal_id: Uuid,
     pub before: Option<TimeUuidCursor>,
     pub limit: Option<u32>,
     pub definition_key: Option<String>,

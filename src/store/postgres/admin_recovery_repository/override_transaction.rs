@@ -365,6 +365,15 @@ pub async fn admin_emergency_override(
         }
     };
     let target_visit_id = Uuid::new_v4();
+    crate::store::postgres::workflow_instance_repository::assistance_transaction::void_open_cases(
+        &mut tx,
+        instance_id,
+        actor,
+        command_id,
+        "ADMIN_EMERGENCY_OVERRIDE",
+    )
+    .await
+    .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
     sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number,

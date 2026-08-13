@@ -532,6 +532,159 @@ export const archiveDefinitionResponseSchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// Workflow Assistance V1
+// ---------------------------------------------------------------------------
+
+export const assistanceCaseStatusSchema = z.enum([
+  'OWNER_PENDING',
+  'HUMAN_REQUIRED',
+  'RESOLVED',
+  'VOIDED',
+]);
+
+export const assistancePayloadSchema = z
+  .object({
+    message: z
+      .string()
+      .min(1)
+      .max(2000)
+      .refine((value) => value.trim() === value, 'message must be trimmed')
+      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), 'control characters forbidden'),
+    supportingPayload: jsonObjectSchema.optional(),
+  })
+  .strict();
+
+export const requestAssistanceRequestSchema = z
+  .object({
+    currentNodeVisitId: uuidSchema,
+    expectedWorkflowStateVersion: z.number().int(),
+    request: assistancePayloadSchema,
+  })
+  .strict();
+
+export const escalateAssistanceRequestSchema = z
+  .object({
+    expectedWorkflowStateVersion: z.number().int(),
+    escalation: assistancePayloadSchema,
+  })
+  .strict();
+
+export const resolveAssistanceRequestSchema = z
+  .object({
+    expectedWorkflowStateVersion: z.number().int(),
+    resolution: assistancePayloadSchema,
+  })
+  .strict();
+
+export const assistanceCommandResponseSchema = z
+  .object({
+    assistanceCaseId: uuidSchema,
+    workflowInstanceId: uuidSchema,
+    nodeVisitId: uuidSchema,
+    status: assistanceCaseStatusSchema,
+    workflowStateVersion: z.number().int(),
+    eventSequence: z.number().int(),
+    createdAt: dateTimeSchema,
+  })
+  .strict();
+
+export const assistanceNodeSummarySchema = z
+  .object({
+    nodeId: uuidSchema,
+    nodeKey: z.string(),
+    displayName: z.string(),
+  })
+  .strict();
+
+export const assistanceCaseDetailSchema = z
+  .object({
+    assistanceCaseId: uuidSchema,
+    workflowInstanceId: uuidSchema,
+    nodeVisitId: uuidSchema,
+    status: assistanceCaseStatusSchema,
+    domainId: uuidSchema,
+    definitionKey: z.string(),
+    node: assistanceNodeSummarySchema,
+    requestedByPrincipalId: uuidSchema,
+    request: assistancePayloadSchema,
+    escalatedByPrincipalId: uuidSchema.nullable(),
+    escalation: assistancePayloadSchema.nullable(),
+    resolvedByPrincipalId: uuidSchema.nullable(),
+    resolution: assistancePayloadSchema.nullable(),
+    workflowStateVersion: z.number().int(),
+    currentNodeVisitId: uuidSchema,
+    createdAt: dateTimeSchema,
+    escalatedAt: dateTimeSchema.nullable(),
+    resolvedAt: dateTimeSchema.nullable(),
+    voidedAt: dateTimeSchema.nullable(),
+  })
+  .strict();
+
+export const assistanceCursorSchema = z
+  .object({ at: dateTimeSchema, id: uuidSchema })
+  .strict();
+
+export const assistanceCasePageSchema = z
+  .object({
+    items: z.array(assistanceCaseDetailSchema),
+    nextCursor: assistanceCursorSchema.nullable(),
+  })
+  .strict();
+
+export const humanRequiredAssistanceItemSchema = z
+  .object({
+    assistanceCaseId: uuidSchema,
+    status: z.literal('HUMAN_REQUIRED'),
+    createdAt: dateTimeSchema,
+    escalatedAt: dateTimeSchema,
+    domainId: uuidSchema,
+    workflowInstanceId: uuidSchema,
+    definitionKey: z.string(),
+    node: assistanceNodeSummarySchema,
+    requestedByPrincipalId: uuidSchema,
+    request: assistancePayloadSchema,
+    escalation: assistancePayloadSchema,
+  })
+  .strict();
+
+export const assistanceCaseDetailResponseSchema = z.union([
+  assistanceCaseDetailSchema,
+  humanRequiredAssistanceItemSchema,
+]);
+
+export const humanRequiredAssistancePageSchema = z
+  .object({
+    items: z.array(humanRequiredAssistanceItemSchema),
+    nextCursor: assistanceCursorSchema.nullable(),
+  })
+  .strict();
+
+export const assistanceInboxQuerySchema = z
+  .object({
+    beforeCreatedAt: dateTimeSchema.optional(),
+    beforeId: uuidSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    status: assistanceCaseStatusSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.beforeCreatedAt) === Boolean(query.beforeId),
+    'beforeCreatedAt and beforeId must be provided together',
+  );
+
+export const humanRequiredAssistanceQuerySchema = z
+  .object({
+    beforeEscalatedAt: dateTimeSchema.optional(),
+    beforeId: uuidSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict()
+  .refine(
+    (query) => Boolean(query.beforeEscalatedAt) === Boolean(query.beforeId),
+    'beforeEscalatedAt and beforeId must be provided together',
+  );
+
 export const errorEnvelopeSchema = z
   .object({
     error: z

@@ -1,6 +1,11 @@
 import type { z } from 'zod';
 
 import type {
+  assistanceCaseDetailSchema,
+  assistanceCaseDetailResponseSchema,
+  assistanceCasePageSchema,
+  assistanceCommandResponseSchema,
+  assistanceInboxQuerySchema,
   archiveDefinitionResponseSchema,
   createDefinitionRequestSchema,
   createDefinitionResponseSchema,
@@ -16,8 +21,11 @@ import type {
   definitionVersionSummarySchema,
   domainInstancePageSchema,
   domainInstanceQuerySchema,
+  escalateAssistanceRequestSchema,
   executeWorkflowTransitionRequestSchema,
   executeWorkflowTransitionResponseSchema,
+  humanRequiredAssistancePageSchema,
+  humanRequiredAssistanceQuerySchema,
   memberAddResponseSchema,
   memberItemSchema,
   memberListPageSchema,
@@ -26,6 +34,8 @@ import type {
   publishVersionRequestSchema,
   publishVersionResponseSchema,
   replaceDraftGraphRequestSchema,
+  requestAssistanceRequestSchema,
+  resolveAssistanceRequestSchema,
   selfProjectionResponseSchema,
   timelineQuerySchema,
   timelineResponseSchema,
@@ -98,3 +108,20 @@ export type ReplaceDraftGraphRequest = z.infer<typeof replaceDraftGraphRequestSc
 export type PublishVersionRequest = z.infer<typeof publishVersionRequestSchema>;
 export type PublishVersionResponse = z.infer<typeof publishVersionResponseSchema>;
 export type ArchiveDefinitionResponse = z.infer<typeof archiveDefinitionResponseSchema>;
+
+export type RequestAssistanceRequest = z.infer<typeof requestAssistanceRequestSchema>;
+export type EscalateAssistanceRequest = z.infer<typeof escalateAssistanceRequestSchema>;
+export type ResolveAssistanceRequest = z.infer<typeof resolveAssistanceRequestSchema>;
+export type AssistanceCommandResponse = z.infer<typeof assistanceCommandResponseSchema>;
+export type AssistanceCaseDetail = z.infer<typeof assistanceCaseDetailSchema>;
+export type AssistanceCaseDetailResponse = z.infer<
+  typeof assistanceCaseDetailResponseSchema
+>;
+export type AssistanceCasePage = z.infer<typeof assistanceCasePageSchema>;
+export type HumanRequiredAssistancePage = z.infer<
+  typeof humanRequiredAssistancePageSchema
+>;
+export type AssistanceInboxQuery = z.infer<typeof assistanceInboxQuerySchema>;
+export type HumanRequiredAssistanceQuery = z.infer<
+  typeof humanRequiredAssistanceQuerySchema
+>;

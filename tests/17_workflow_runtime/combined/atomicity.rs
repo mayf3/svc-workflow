@@ -1,8 +1,6 @@
 use super::*;
 use sqlx::Connection;
 
-const TEST_DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/svc_workflow";
-
 struct TriggerGuard {
     suffix: String,
     table: String,
@@ -46,7 +44,8 @@ impl Drop for TriggerGuard {
                 .build()
                 .unwrap();
             runtime.block_on(async move {
-                let Ok(mut connection) = sqlx::PgConnection::connect(TEST_DATABASE_URL).await
+                let Ok(mut connection) =
+                    sqlx::PgConnection::connect(&crate::common::test_database_url()).await
                 else {
                     return;
                 };

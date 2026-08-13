@@ -495,6 +495,7 @@ pub(super) fn is_deterministic_error(err: &ExecuteWorkflowTransitionError) -> bo
             | ExecuteWorkflowTransitionError::InstanceNotFound
             | ExecuteWorkflowTransitionError::CurrentVisitNotFound
             | ExecuteWorkflowTransitionError::PrincipalNotAssignee
+            | ExecuteWorkflowTransitionError::AssistanceOpen
             | ExecuteWorkflowTransitionError::SourceNodeTerminal
             | ExecuteWorkflowTransitionError::DefinitionVersionRevoked
             | ExecuteWorkflowTransitionError::DefinitionVersionDraft
