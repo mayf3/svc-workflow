@@ -88,7 +88,7 @@
       "submission_required": "submission payload is required",
       "submission_validation_failed": "submission payload failed validation",
       "invalid_input": "invalid request input",
-      "invalid_return_references": "return references are invalid",
+      "invalid_return_references": "return references are invalid (details.detail carries the specific missing/invalid RETURN contract field)",
       "invalid_assistance_payload": "assistance payload is invalid",
       "invalid_filter": "query filter is invalid for this assistance view"
     },
