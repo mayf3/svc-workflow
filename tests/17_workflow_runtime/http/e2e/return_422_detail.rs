@@ -159,5 +159,10 @@ async fn return_422_exposes_aggregated_contract_detail_over_real_tcp() {
 
     server.stop().await.expect("E2E server shutdown");
     database.cleanup().await;
-    TemporaryDatabase::assert_no_residue().await;
+    // NOTE: do not call TemporaryDatabase::assert_no_residue() here — E2E
+    // tests run in parallel and the long-running scenario test may still hold
+    // its temporary database when this test finishes, which would trip the
+    // global residue assertion. Cleanup of this test's database is performed
+    // by database.cleanup() above; the residue assertion remains owned by the
+    // scenario test (the last E2E test to finish).
 }
