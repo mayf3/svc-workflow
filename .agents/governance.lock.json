@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "distribution": "development-governance-v0",
+  "version": "0.1.0-draft.1",
+  "source_repository": "mayf3/agent-development-governance",
+  "source_commit": "46f78c3f00d768d99a4c8c2da975b124bce042f9",
+  "distribution_manifest_sha256": "58b5b28bb801538fe62be0ac98a7bc539ff34ec24fa368c48996dd40d8653ba0",
+  "adoption": {
+    "mode": "vendored",
+    "status": "proposed",
+    "prepared_by": "GPT-5.6 Pro via connected GitHub",
+    "prepared_at": "2026-08-19T14:33:51Z",
+    "accepted_by": null,
+    "accepted_at": null
+  },
+  "files": [
+    {
+      "path": ".agents/README.md",
+      "sha256": "276081dae1e48959e98e8d2a7d379a10514d2318891cb286d099c67268b8fb39",
+      "size": 15418
+    },
+    {
+      "path": ".agents/protocol/SPEC_GOVERNANCE_V0.md",
+      "sha256": "7a85b39f4fd9ca4965c90f85d3521d5e0334793f76194cd2f16a0e61a15be9a5",
+      "size": 15979
+    },
+    {
+      "path": ".agents/protocol/SPEC_FORMAT_V0.md",
+      "sha256": "c9a5e3bebb6f8928de5559c1f9024038c10530bd8da1f1aeee9fbbf9f6c6b036",
+      "size": 12010
+    },
+    {
+      "path": ".agents/skills/spec-governance/SKILL.md",
+      "sha256": "2ef55ddaa72051dc7b948851538bde1c33d9e9b9026d1cac15c4c44d491214b7",
+      "size": 2369
+    },
+    {
+      "path": ".agents/skills/spec-governance/modes/PREFLIGHT.md",
+      "sha256": "4fb139bd43726fb880ccb3431df4c38d1bac84c078807dace578cf1a89d063c7",
+      "size": 3014
+    },
+    {
+      "path": ".agents/skills/spec-governance/modes/AUTHOR.md",
+      "sha256": "b568a174a1370ffb637afec27cdc66a67e7e0017a1b07e1927700568233eca4c",
+      "size": 2757
+    },
+    {
+      "path": ".agents/skills/spec-governance/modes/REVIEW.md",
+      "sha256": "6f2ccbea5c2e867293e50dbf8be7215b88d8684fdc19f1726bd3ca4208cd31ff",
+      "size": 2645
+    },
+    {
+      "path": ".agents/skills/spec-governance/modes/COMPLIANCE.md",
+      "sha256": "dd28faaea5eff25066097a9aa45af9e5b52a07ced6d755cbc4d7bc7fad63aeee",
+      "size": 2805
+    },
+    {
+      "path": ".agents/tools/verify_governance.py",
+      "sha256": "1a4b8e3421ad6e3d07d0c11badbc103e9a7646a25015814241a3f29049515937",
+      "size": 7938
+    },
+    {
+      "path": ".agents/schemas/distribution-manifest.schema.json",
+      "sha256": "9255c0772bf552b6118b664cd3e7a399b5ccbe6f7bedb711a9049f9716072041",
+      "size": 1113
+    },
+    {
+      "path": ".agents/schemas/spec-frontmatter.schema.json",
+      "sha256": "445860137a5f8229871f15566ae2ed0ce0322305d5c0d14e72849610e8af9de8",
+      "size": 2424
+    },
+    {
+      "path": ".agents/schemas/governance-lock.schema.json",
+      "sha256": "e21a9b535cfacc20b898e782dbe142c76078f73a76c1bcddae83ea50c0c478a3",
+      "size": 2812
+    },
+    {
+      "path": ".agents/templates/SPEC_TEMPLATE.md",
+      "sha256": "fbc45e2996065f3ad9db266d7bf8fad6b0adc3866bbacc6a0e32df9104e5c1e2",
+      "size": 3343
+    },
+    {
+      "path": ".agents/templates/GOVERNANCE_ADOPTION_SPEC_TEMPLATE.md",
+      "sha256": "b8758487fdf4cec5d67ab28982a84b73add09d2a944a77d59fcb2bb34ee9682a",
+      "size": 11290
+    },
+    {
+      "path": ".agents/templates/REVIEW_RECORD_TEMPLATE.md",
+      "sha256": "0ef6dd2acb479426d31afb586e31dcfdf09a7e93dc5c4422407e03913be76cfb",
+      "size": 1215
+    },
+    {
+      "path": ".agents/templates/CONFORMANCE_RECORD_TEMPLATE.md",
+      "sha256": "a22dfad8c948d801ae9f19ab41d6885b14926902dd4b492b4d17524321d94f96",
+      "size": 1960
+    },
+    {
+      "path": ".agents/templates/INVESTIGATION_RECORD_TEMPLATE.md",
+      "sha256": "e63e5081b1fb68720784bf6bc6bd35357901d8ed566743a7e1507b5a9c5ca28b",
+      "size": 1394
+    }
+  ]
+}
