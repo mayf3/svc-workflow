@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1
-status: proposed
+status: accepted
 spec_kind: invariant
 authority_level: governing_spec
 implementation_authority: none
@@ -410,7 +410,7 @@ UNRESOLVED_AUTHORITY_CONFLICT = NONE
 PARTIAL_SUPERSESSION = NONE
 INDEPENDENT_REVIEW_PENDING = YES
 AUTHORIZED_ACCEPTANCE_PENDING = YES
-READY_TO_MARK_ACCEPTED = NO
+READY_TO_MARK_ACCEPTED = YES
 ```
 
 The remaining work is procedural: independent review of the exact candidate, authorized preparation of the accepted lock and Spec status, and an independent final-head recheck. It is not delegated product design.

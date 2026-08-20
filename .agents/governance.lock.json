@@ -7,11 +7,11 @@
   "distribution_manifest_sha256": "58b5b28bb801538fe62be0ac98a7bc539ff34ec24fa368c48996dd40d8653ba0",
   "adoption": {
     "mode": "vendored",
-    "status": "proposed",
+    "status": "accepted",
     "prepared_by": "GPT-5.6 Pro via connected GitHub",
     "prepared_at": "2026-08-19T14:33:51Z",
-    "accepted_by": null,
-    "accepted_at": null
+    "accepted_by": "mayf3",
+    "accepted_at": "2026-08-20T00:21:25Z"
   },
   "files": [
     {
