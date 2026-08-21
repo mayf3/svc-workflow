@@ -304,7 +304,16 @@ GLOBAL_ADMIN_SELF_GRANT = FORBIDDEN
 GLOBAL_ADMIN_SELF_DOMAIN_OWNER = FORBIDDEN
 ```
 
-These prohibitions apply directly and through aliases, chained calls, role combinations, retries, migrations, or compatibility routes. `svc-workflow` MUST NOT infer that two Principals share a controller, owner, operator, account, person, bot, or other common-control relationship. Every canonical Principal is authorized independently. A linkage between Principals may be used only when an accepted external identity authority explicitly establishes that canonical linkage and an accepted child Spec pins the exact authority and semantics. The self-Owner prohibition therefore cannot be implemented only as equality between the authenticated actor Principal and the proposed Owner Principal; it must also reject every canonically linked identity when such an accepted linkage exists, and otherwise fail closed without inventing linkage.
+These prohibitions apply directly and through aliases, chained calls, role combinations, retries, migrations, or compatibility routes. The immediate self-Owner rule is canonical Principal equality: if `authenticatedActorPrincipalId == newOwnerPrincipalId`, Owner replacement MUST be rejected. When the two values are different canonical Principal UUIDs, `svc-workflow` treats them as distinct Principals, MUST NOT infer common control, MUST NOT require proof that no linkage exists, and MUST NOT reject merely because linkage evidence is absent.
+
+```text
+SELF_DOMAIN_OWNER_RULE = CANONICAL_PRINCIPAL_EQUALITY
+NO_ACCEPTED_LINKAGE_AUTHORITY = TREAT_DISTINCT_CANONICAL_PRINCIPALS_AS_DISTINCT
+IMPLICIT_COMMON_CONTROL_INFERENCE = FORBIDDEN
+FAIL_CLOSED_WHEN_LINKAGE_IS_ABSENT = NO
+```
+
+Only an exact accepted external identity authority that explicitly establishes a canonical controller/identity linkage between Principal A and Principal B may extend the self-Owner prohibition to that accepted linkage set. An accepted child Spec must pin that authority before using the linkage. No implementation Agent, runtime heuristic, request assertion, Feishu identity, body field, or service identity may invent or infer it.
 
 ## 11. Global permission lifecycle
 
@@ -328,9 +337,28 @@ BREAK_GLASS = NOT_SUPPORTED_IN_V2
 
 Every grant MUST have an expiry. Omitted requested expiry means exactly 30 days; an explicit requested expiry may be longer than 30 days but MUST NOT exceed 90 days. No grant is indefinite. Renewal is a new grant decision and MUST repeat the same approval process. Expiry and revocation take effect immediately and fail closed.
 
-The repository owner `mayf3` is the root designation authority for global-permission security governance. The owner explicitly designates and revokes the roster of canonical Principals eligible as security approvers. A grant or renewal requires approvals from exactly two distinct active security approvers. The requester never counts as either approval, even when the requester is an active security approver. The grant subject MUST NOT approve, finalize, or otherwise cause its own grant, and a security approver MUST NOT self-grant. After two valid approvals exist, finalization is a deterministic system action; no human or service Principal obtains a discretionary third approval or finalizer role.
+GitHub/repository identity `mayf3` is the repository governance owner and acceptance actor; it is not a runtime actor and MUST NOT be treated as a canonical Principal. Before any global-permission grant, renewal, approver-roster mutation, or product activation, a separate repository-owned security invariant must be accepted and present on `main`:
 
-The repository owner or any one active security approver may revoke either global permission immediately without a second approver. Holding `GLOBAL_SCHEDULER_READ`, `GLOBAL_DOMAIN_ADMIN`, or both grants no request, approval, designation, finalization, renewal, or revoke authority. Grant, renewal, denial, expiry, and revocation authority must be evaluated from the current owner-designated canonical roster, not Feishu configuration, request content, legacy role name, the permission being granted, or a child Spec's choice. A child implementation Spec must freeze storage, API, race, and evidence mechanics while preserving this complete eligibility model.
+```text
+ROOT_AUTHORITY_ID = SVC_WORKFLOW_GLOBAL_PERMISSION_GOVERNANCE_ROOT_V1
+ROOT_AUTHORITY_KIND = repository-owned security invariant
+ROOT_AUTHORITY_OWNER = mayf3
+```
+
+That authority must record the repository governance owner `mayf3`, one exact `canonicalRootPrincipalId` from auth-service, at least two distinct exact canonical `initialSecurityApproverPrincipalIds`, activation time, `supersedes`, `superseded_by`, and owners. V2 freezes its necessity and semantics but does not create or accept it.
+
+```text
+NO_ACTIVE_ACCEPTED_ROOT_AUTHORITY =
+  GRANT_DISABLED
+  RENEWAL_DISABLED
+  APPROVER_ROSTER_CHANGE_DISABLED
+```
+
+Root bootstrap, rotation, recovery, and every security-approver roster change require a new docs-only revision/whole-authority transition for `SVC_WORKFLOW_GLOBAL_PERMISSION_GOVERNANCE_ROOT_V1`, acceptance by repository owner `mayf3`, independent audit, and presence on `main`. Runtime APIs, Feishu Bots, global-permission holders, request bodies, and services MUST NOT create or modify the root mapping or roster. When a new accepted root authority becomes active, the old root and old roster cease authorizing new governance actions immediately. If the canonical root identity is unavailable, the system MUST NOT fall back to GitHub username, body actor, Feishu identity, Adapter identity, or service identity.
+
+The initial and current security-approver roster comes only from the active accepted root authority. The canonical root Principal is not automatically an approver unless explicitly listed. A grant or renewal requires approvals from exactly two distinct active security approvers; the requester never counts as an approval; the subject MUST NOT approve itself; and a security approver MUST NOT self-grant. After two valid approvals exist, finalization is a deterministic system action with no discretionary runtime finalizer. Holding `GLOBAL_SCHEDULER_READ`, `GLOBAL_DOMAIN_ADMIN`, or both grants no request, approval, roster, finalization, renewal, or revoke authority.
+
+Emergency revoke remains available to the active canonical root Principal or any one current active security approver, without a second approver. A child implementation Spec must freeze storage, API, race, and evidence mechanics while preserving this complete eligibility model.
 
 Legacy `GLOBAL_WORKFLOW_COORDINATOR` bindings MUST NOT auto-migrate. Every legacy holder must be explicitly reviewed and mapped to:
 
@@ -352,7 +380,8 @@ FEISHU_HUMAN_OPERATOR = ALLOWED_VIA_OBO
 FEISHU_IS_PERMISSION_SOURCE = NO
 FEISHU_HUMAN_OBO = TARGET_PRODUCT_DIRECTION
 AUTH_SERVICE_HUMAN_OBO_CURRENTLY_AVAILABLE = NO
-IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
+FEISHU_HUMAN_IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
+DIRECT_TOKEN_SLICES_BLOCKED_BY_HUMAN_OBO = NO
 ```
 
 This is a target Product Direction, not a claim that an implementable Human OBO contract already exists. At exact auth-service revision `450a0ecb286cbe5da6e790d3c572fa71218ca9c0`:
@@ -525,16 +554,16 @@ PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 ```
 
-Before implementation begins, at least one accepted governing child Spec with:
+Before implementation of any capability Slice begins, at least one relevant accepted governing child Spec with:
 
 ```text
 spec_kind: implementation
 implementation_authority: contracts
 ```
 
-must be present in the implementation base and must freeze, at minimum:
+must be present in that Slice's implementation base. Across the Slices, accepted child authorities must collectively freeze the applicable items below. A Slice child freezes only the items it consumes or changes and is not blocked by an unrelated item or independent authority:
 
-- the exact relationship to frozen/effective Architecture and each relevant legacy Contract, with explicit reconciliation wherever their narrower or conflicting meaning cannot remain active;
+- the exact relationship to frozen/effective Architecture and each legacy Contract relevant to that Slice, with explicit reconciliation wherever narrower or conflicting meaning cannot remain active;
 - permission storage and expiry model;
 - two-person grant/renewal and one-actor revoke APIs;
 - auth-service/OBO contract and exact canonical actor rules;
@@ -547,22 +576,65 @@ must be present in the implementation base and must freeze, at minimum:
 - exact HTTP and SDK behavior;
 - executable Acceptance covering positive, negative, race, expiry, revoke, unknown-outcome, and sensitive-content paths.
 
-### 20.1 Legacy and external authority reconciliation matrix
+### 20.1 Legacy and external authority classification
 
-The following exact relationships are frozen for planning. Legacy documents without frontmatter retain their established historical IDs/statuses; this table cites them and does not silently reclassify them.
+The following relationships are capability-scoped. Legacy documents without frontmatter retain only their established status; this table cites them and does not silently promote descriptive current state into normative predecessor authority.
 
-| PATH / REPOSITORY | AUTHORITY_ID | REVISION | STATUS | RELATION_TO_V2 | SUCCESSOR_REQUIRED | IMPLEMENTATION_BLOCKED_UNTIL_RECONCILED |
+| PATH / REPOSITORY | AUTHORITY_ID | REVISION / STATUS | CLASS | BLOCKS | DOES_NOT_BLOCK | REQUIRED_RECONCILIATION |
 |---|---|---|---|---|---|---|
-| `contracts/workflow-http/v1/contract.md` / `mayf3/svc-workflow` | `WORKFLOW_RUNTIME_HTTP_CONTRACT_V1` | `c7830e58578d7c7360710f2449c48cb801da773e` | current-state freeze | Its global Coordinator, global Instance, Assistance, and runtime wire surfaces must not authorize implementation that conflicts with V2. | YES — whole-authority successor in owning repository | YES |
-| `docs/contracts/IDENTITY_PROVISIONING_API_V0.md` / `mayf3/svc-workflow` | `IDENTITY_PROVISIONING_API_V0` | `c7830e58578d7c7360710f2449c48cb801da773e` | `FROZEN_FOR_PROVISIONING_READY` | Its Domain create, Owner replacement, Principal selection, and role-binding surfaces require reconciliation with split permissions and self-Owner/self-grant prohibitions. | YES — whole-authority successor in owning repository | YES |
-| `docs/contracts/minimal-auth-v1/` / `mayf3/auth-service` | `MINIMAL_AUTH_FOUNDATION_V1` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0` | `FROZEN_TARGET_CONTRACT`; Human OBO forbidden | External constraint; V2 requires a Human OBO direction that this authority does not provide. | YES — accepted auth-service Human OBO whole-authority successor | YES for every Feishu Human path |
-| `docs/contracts/WORKFLOW_AGENT_OBO_TOKEN_EXCHANGE_V0.md` / `mayf3/auth-service` | `AUTH_SERVICE_WORKFLOW_AGENT_OBO_V0_FROZEN` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0` | frozen; may govern until V1 gates complete; Agent-only | External Agent OBO authority; it cannot be reused or reinterpreted as Human OBO. | YES — accepted auth-service Human OBO whole-authority successor | YES for every Feishu Human path |
-| Assistance sections in `contracts/workflow-http/v1/contract.md` / `mayf3/svc-workflow`; proposed draft at `docs/specs/SVC_WORKFLOW_ASSISTANCE_V1.md` is uncommitted on `agent/workflow-assistance-v1-spec` | `WORKFLOW_ASSISTANCE_V1` current surface; proposed `SVC_WORKFLOW_ASSISTANCE_V1` draft | current surface `c7830e58578d7c7360710f2449c48cb801da773e`; draft not in authority branch | current-state freeze plus non-authoritative proposed draft | Assistance remains independent; scheduler fields and global Assistance visibility cannot be imported into V2 by prose or by the draft. | YES — accepted whole-authority Assistance successor/reconciliation | YES for conflicting Assistance/global visibility implementation |
-| `docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md` / `mayf3/svc-workflow` | `ADMIN_RECOVERY_CONTRACT_V0_1` | `c7830e58578d7c7360710f2449c48cb801da773e` | `CURRENT` | Recovery remains independent; its administrator/binding semantics must not be conflated with V2 global permissions. | YES — planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` whole-authority successor/reconciliation | YES for conflicting Recovery/global permission implementation |
+| `docs/contracts/IDENTITY_PROVISIONING_API_V0.md` / `mayf3/svc-workflow` | `IDENTITY_PROVISIONING_API_V0` | `c7830e58578d7c7360710f2449c48cb801da773e`; `FROZEN_FOR_PROVISIONING_READY` | `NORMATIVE_PREDECESSOR` | Slice A global permission lifecycle and Slice C global Domain admin | direct scheduler query design that does not activate permissions; Assistance; Admin Recovery | owning-repository whole-authority successor reconciles conflicting provisioning, role, Owner, and governance semantics |
+| `contracts/workflow-http/v1/contract.md` / `mayf3/svc-workflow` | `WORKFLOW_RUNTIME_HTTP_CONTRACT_V1` | `c7830e58578d7c7360710f2449c48cb801da773e`; current-state freeze | `DESCRIPTIVE_CURRENT_STATE` | no global implementation gate by itself; the relevant Slice must establish accepted normative HTTP/wire authority before activation | unrelated Slices | accepted capability child Spec establishes the new normative HTTP Contract; the descriptive bundle is updated with that Slice and passes compliance |
+| `docs/contracts/minimal-auth-v1/` / `mayf3/auth-service` | `MINIMAL_AUTH_FOUNDATION_V1` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0`; `FROZEN_TARGET_CONTRACT`; Human OBO forbidden | `CAPABILITY_SPECIFIC_EXTERNAL_DEPENDENCY` | Slice D and Slice E | Slice A, Slice B, Slice C | accepted auth-service Human OBO whole-authority successor plus accepted Feishu Adapter/OBO authority |
+| `docs/contracts/WORKFLOW_AGENT_OBO_TOKEN_EXCHANGE_V0.md` / `mayf3/auth-service` | `AUTH_SERVICE_WORKFLOW_AGENT_OBO_V0_FROZEN` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0`; Agent-only | `CAPABILITY_SPECIFIC_EXTERNAL_DEPENDENCY` | Slice D and Slice E because it cannot authorize Human OBO | Slice A, Slice B, Slice C | same Human OBO successor; Agent-only authority MUST NOT be reinterpreted |
+| Assistance current-state sections in `contracts/workflow-http/v1/contract.md`; uncommitted proposed draft `docs/specs/SVC_WORKFLOW_ASSISTANCE_V1.md` on `agent/workflow-assistance-v1-spec` | current Assistance surface; proposed `SVC_WORKFLOW_ASSISTANCE_V1` draft | current surface at `c7830e58578d7c7360710f2449c48cb801da773e`; draft not in authority branch | `INDEPENDENT_AUTHORITY` | only future Assistance-content or Assistance-derived scheduling metadata work | Slice A, Slice B, Slice C, and Slice D/E when no Assistance data is returned | accepted Assistance authority only when that independent capability changes |
+| `docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md` / `mayf3/svc-workflow` | `ADMIN_RECOVERY_CONTRACT_V0_1` | `c7830e58578d7c7360710f2449c48cb801da773e`; `CURRENT` | `INDEPENDENT_AUTHORITY` | only implementation that changes Recovery event/rebuild semantics | Slice A, Slice B, Slice C, Slice D, Slice E | planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` only for Recovery-changing work |
 
-V2 does not partially supersede any matrix entry through prose. If V2 is later accepted, a legacy or external authority's parent-conflicting portions cannot authorize new implementation. Before any V2 product implementation starts, each required successor must be completed as a whole-authority transition in its owning repository and accepted at an exact revision. Assistance and Recovery remain independent authorities after reconciliation; they are not absorbed into Product Direction or into the global-permission child Spec.
+V2 does not partially supersede any entry through prose. If V2 is later accepted, parent-conflicting legacy semantics cannot authorize a new capability; however, reconciliation is required only for the capability Slice that consumes or changes that authority. Assistance and Recovery remain independent and are not absorbed into V2 or its global-permission implementation.
 
-Assistance lifecycle/content and Admin Recovery event/rebuild details remain in their own governing authorities. The planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` must separately resolve its relationship to `ADMIN_RECOVERY_CONTRACT_V0_1`; neither this Product Direction nor a global-permission child Spec may partially supersede Recovery semantics in prose. A child implementation Spec may coordinate with Assistance and Recovery but MUST NOT copy their lower-level details into this Product Direction or silently supersede them.
+### 20.2 Capability-scoped predecessor gates
+
+No all-successors global gate exists. Each Slice may proceed only after V2 itself is accepted and the Slice-specific authorities below are accepted in its implementation base.
+
+#### Slice A — Global permission governance foundation
+
+Scope: split permission storage, TTL, grant, approval, renewal, revoke, expiry, root/approver evaluation, and durable audit.
+
+Required:
+
+- accepted `SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`;
+- accepted `SVC_WORKFLOW_GLOBAL_PERMISSION_GOVERNANCE_ROOT_V1`;
+- `IDENTITY_PROVISIONING_API_V0` relationship reconciled by its owning whole-authority successor;
+- relevant implementation-authorizing child Spec accepted.
+
+Not required: auth-service Human OBO successor, Workflow Assistance successor, or Admin Recovery successor.
+
+#### Slice B — Direct-token `GLOBAL_SCHEDULER_READ`
+
+Required: Slice A foundation complete, scheduler-read child implementation Spec accepted, and relevant runtime HTTP/wire authority established and reconciled. This Slice may return only V2 active-current-task metadata. Human OBO, Assistance, and Admin Recovery successors are not prerequisites.
+
+#### Slice C — Direct-token `GLOBAL_DOMAIN_ADMIN`
+
+Required: Slice A foundation complete, accepted whole-authority successor to `IDENTITY_PROVISIONING_API_V0`, Domain-admin child implementation Spec accepted, and relevant HTTP/control-plane authority reconciled. Human OBO, Assistance, and Admin Recovery successors are not prerequisites.
+
+#### Slice D — Feishu Human `GLOBAL_SCHEDULER_READ`
+
+Required: Slice B direct scheduler available, accepted auth-service Human OBO whole-authority successor, and accepted Feishu Adapter/OBO authority. Missing Human OBO blocks only this Feishu Slice; it does not block direct-token scheduler implementation.
+
+#### Slice E — Feishu Human `GLOBAL_DOMAIN_ADMIN`
+
+Required: Slice C direct Domain-admin available, accepted auth-service Human OBO whole-authority successor, and accepted Feishu Adapter/OBO authority.
+
+#### Slice F — Assistance-derived scheduling metadata
+
+```text
+NOT_AUTHORIZED_BY_V2
+```
+
+V2 excludes Assistance and blocking fields. Adding them requires a new accepted Product Direction or lawful whole-authority successor. Current Assistance authority is not a prerequisite for Slice A, B, or C.
+
+#### Slice G — Admin Recovery
+
+Admin Recovery is independently governed. `ADMIN_RECOVERY_CONTRACT_V0_1` and planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` are not common prerequisites for any global scheduler or Domain-admin Slice. Only an implementation that changes Recovery event/rebuild semantics is blocked on its Recovery successor.
 
 Current Rust, SQL, migrations, HTTP Contract bundle, OpenAPI, SDK, tests, and deployments are descriptive current state only. Acceptance of V2 would not automatically make them compliant or authorize retrospective implementation. Conformance requires Contract-by-Contract evaluation against an exact accepted child-Spec revision and exact implementation coordinates.
 
@@ -611,21 +683,30 @@ REMOVE_FROM_V2_SCHEDULER_METADATA = blockedFlag, blockedReasonCode, waitingAssis
 TASK_LABEL = NOT_INCLUDED_IN_V2
 CONTEXT_TITLE_AS_METADATA = FORBIDDEN
 ALTERNATE_IDENTITY_RULE = NO_IMPLICIT_LINKAGE
+SELF_DOMAIN_OWNER_RULE = CANONICAL_PRINCIPAL_EQUALITY
+NO_ACCEPTED_LINKAGE_AUTHORITY = TREAT_DISTINCT_CANONICAL_PRINCIPALS_AS_DISTINCT
+IMPLICIT_COMMON_CONTROL_INFERENCE = FORBIDDEN
+FAIL_CLOSED_WHEN_LINKAGE_IS_ABSENT = NO
 GLOBAL_ADMIN_SELF_GRANT = FORBIDDEN
 GLOBAL_ADMIN_SELF_DOMAIN_OWNER = FORBIDDEN
-GLOBAL_PERMISSION_ROOT_AUTHORITY = repository owner mayf3
-SECURITY_APPROVER_ROSTER = canonical Principals explicitly designated by repository owner
+ROOT_AUTHORITY_ID = SVC_WORKFLOW_GLOBAL_PERMISSION_GOVERNANCE_ROOT_V1
+ROOT_AUTHORITY_KIND = repository-owned security invariant
+ROOT_AUTHORITY_OWNER = mayf3
+REPOSITORY_OWNER_IS_RUNTIME_ACTOR = NO
+NO_ACTIVE_ACCEPTED_ROOT_AUTHORITY = GRANT_RENEWAL_AND_ROSTER_CHANGE_DISABLED
+SECURITY_APPROVER_ROSTER = canonical Principals explicitly recorded by active accepted root authority
 GRANT_REQUESTER_COUNTS_AS_APPROVER = NO
 GRANT_APPROVALS_REQUIRED = 2_DISTINCT_SECURITY_APPROVERS
 GRANT_FINALIZATION = DETERMINISTIC_SYSTEM_FINALIZATION_AFTER_2_VALID_APPROVALS
-REVOKE_AUTHORITY = repository owner or 1 active security approver
+REVOKE_AUTHORITY = active canonical root Principal or 1 active security approver
 SUBJECT_SELF_APPROVAL = FORBIDDEN
 SECURITY_APPROVER_SELF_GRANT = FORBIDDEN
 FEISHU_HUMAN_OPERATOR = ALLOWED_VIA_OBO
 FEISHU_IS_PERMISSION_SOURCE = NO
 FEISHU_HUMAN_OBO = TARGET_PRODUCT_DIRECTION
 AUTH_SERVICE_HUMAN_OBO_CURRENTLY_AVAILABLE = NO
-IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
+FEISHU_HUMAN_IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
+DIRECT_TOKEN_SLICES_BLOCKED_BY_HUMAN_OBO = NO
 NORMAL_GRANT_DEFAULT_TTL = 30_DAYS
 NORMAL_GRANT_MAX_TTL = 90_DAYS
 GRANT_REQUIRES_TWO_PERSON_APPROVAL = YES
@@ -637,7 +718,8 @@ EXTERNAL_AUDIT_EXPORT = NOT_SUPPORTED_IN_V2
 UNAUTHENTICATED_DENIAL_AUDIT = REUSE_EXISTING_AUTHENTICATION_AUTHORITY
 PERMISSION_EXPIRY = FAIL_CLOSED_AT_EXPIRES_AT
 EXPIRY_AUDIT = RECONCILE_LATER_WITHOUT_EXTENDING_AUTHORITY
-LEGACY_AUTHORITY_STRATEGY = EXPLICIT_WHOLE_AUTHORITY_SUCCESSORS_BEFORE_IMPLEMENTATION
+LEGACY_AUTHORITY_STRATEGY = CAPABILITY_SCOPED_PREDECESSOR_GATES
+ALL_SUCCESSORS_GLOBAL_GATE = FORBIDDEN
 FAILURE_POLICY = FAIL_CLOSED
 
 OPEN_OWNER_DECISIONS = NONE
