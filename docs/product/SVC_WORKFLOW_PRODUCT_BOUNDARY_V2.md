@@ -205,9 +205,9 @@ CONTEXT_TITLE_AS_METADATA = FORBIDDEN
 
 The logical scheduling projection contains one record per active current task. In every record, `principalId` is the scheduling subject and MUST equal `currentAssigneePrincipalId`; `activeTaskCount` is the total number of active current-task records for that Principal at the projection snapshot. A child wire contract MAY group records under a Principal summary or repeat Principal/count fields per task, but it MUST preserve those semantics and MUST NOT change the authorized data.
 
-All listed identity, Domain, Definition, current-node, lifecycle/status, assignee, count, and timestamp fields are required. `blockedReasonCode` is nullable only when `blockedFlag=false`; `assistanceStatus` is nullable only when `waitingAssistance=false`. Node type, lifecycle, status, blocked-reason, and Assistance status values MUST come from closed, non-sensitive code sets frozen by the child implementation Contract; free-form text is forbidden.
+All listed identity, Domain, Definition, current-node, lifecycle/status, assignee, count, and timestamp fields are required. Node type, lifecycle, and status values MUST come from closed, non-sensitive code sets frozen by the child implementation Contract; free-form text is forbidden. `updatedAt` means the timestamp of the latest committed Workflow Instance state change represented by the current authoritative Instance projection. It is not a read time, cache refresh time, scheduler observation time, audit time, Assistance time, or external-system update time.
 
-The scheduling view MUST include only active, current-task records. Archived, cancelled, terminal-without-current-task, historical Node Visit, and non-current task records MUST NOT be returned under this permission under any filter, mode, grouping, or pagination option. A child implementation Spec may define pagination and stable filtering only within this active-current-task population; it may not add fields or lifecycle scope beyond this Product Direction.
+The scheduling view MUST include only active, current-task records. Archived, cancelled, terminal-without-current-task, historical Node Visit, and non-current task records MUST NOT be returned under this permission under any filter, mode, grouping, or pagination option. A child implementation Spec may define pagination and stable filtering only within this active-current-task population; it may not add fields or lifecycle scope beyond this Product Direction. Assistance status or blocking-status fields may be added only by a later accepted Product Direction or a whole-authority successor to V2; a child implementation Spec cannot add them.
 
 ### 9.2 Complete allowed field set
 
@@ -232,13 +232,9 @@ lifecycle
 status
 nodeEnteredAt
 updatedAt
-blockedFlag
-blockedReasonCode
-waitingAssistance
-assistanceStatus
 ```
 
-These fields are scheduling metadata. Their authorization does not make any similarly named field in another payload globally readable. `blockedReasonCode` is a bounded code, not free-form reason text.
+These fields are the complete V2 scheduling metadata allowlist. Their authorization does not make any similarly named field in another payload globally readable. In particular, `blockedFlag`, `blockedReasonCode`, `waitingAssistance`, and `assistanceStatus` are not V2 scheduler metadata.
 
 ### 9.3 Forbidden scheduling content
 
@@ -308,7 +304,7 @@ GLOBAL_ADMIN_SELF_GRANT = FORBIDDEN
 GLOBAL_ADMIN_SELF_DOMAIN_OWNER = FORBIDDEN
 ```
 
-These prohibitions apply directly and through aliases, chained calls, role combinations, retries, migrations, compatibility routes, or another identity controlled by the same actor.
+These prohibitions apply directly and through aliases, chained calls, role combinations, retries, migrations, or compatibility routes. `svc-workflow` MUST NOT infer that two Principals share a controller, owner, operator, account, person, bot, or other common-control relationship. Every canonical Principal is authorized independently. A linkage between Principals may be used only when an accepted external identity authority explicitly establishes that canonical linkage and an accepted child Spec pins the exact authority and semantics. The self-Owner prohibition therefore cannot be implemented only as equality between the authenticated actor Principal and the proposed Owner Principal; it must also reject every canonically linked identity when such an accepted linkage exists, and otherwise fail closed without inventing linkage.
 
 ## 11. Global permission lifecycle
 
@@ -332,9 +328,9 @@ BREAK_GLASS = NOT_SUPPORTED_IN_V2
 
 Every grant MUST have an expiry. Omitted requested expiry means exactly 30 days; an explicit requested expiry may be longer than 30 days but MUST NOT exceed 90 days. No grant is indefinite. Renewal is a new grant decision and MUST repeat the same approval process. Expiry and revocation take effect immediately and fail closed.
 
-Two-person approval means two distinct canonical authorized approval actors. Neither approver may be the grant subject, and the subject MUST NOT approve, finalize, or otherwise cause its own grant; requesting consideration alone grants no authority. An authorized sponsor MAY request a grant and MAY count as one of the two approvers only if independently eligible and not the subject; a separate finalization step MUST NOT fabricate another approval. The child implementation Spec must freeze the external/local authority source and exact eligibility for sponsors, approvers, finalizers, and security revokers without weakening these constraints.
+The repository owner `mayf3` is the root designation authority for global-permission security governance. The owner explicitly designates and revokes the roster of canonical Principals eligible as security approvers. A grant or renewal requires approvals from exactly two distinct active security approvers. The requester never counts as either approval, even when the requester is an active security approver. The grant subject MUST NOT approve, finalize, or otherwise cause its own grant, and a security approver MUST NOT self-grant. After two valid approvals exist, finalization is a deterministic system action; no human or service Principal obtains a discretionary third approval or finalizer role.
 
-One eligible authorized security actor may revoke without a second approver so containment is not delayed. Grant, renewal, denial, expiry, and revocation authority must be evaluated from current canonical authorization state, not Feishu configuration, request content, legacy role name, or the permission being granted.
+The repository owner or any one active security approver may revoke either global permission immediately without a second approver. Holding `GLOBAL_SCHEDULER_READ`, `GLOBAL_DOMAIN_ADMIN`, or both grants no request, approval, designation, finalization, renewal, or revoke authority. Grant, renewal, denial, expiry, and revocation authority must be evaluated from the current owner-designated canonical roster, not Feishu configuration, request content, legacy role name, the permission being granted, or a child Spec's choice. A child implementation Spec must freeze storage, API, race, and evidence mechanics while preserving this complete eligibility model.
 
 Legacy `GLOBAL_WORKFLOW_COORDINATOR` bindings MUST NOT auto-migrate. Every legacy holder must be explicitly reviewed and mapped to:
 
@@ -354,12 +350,22 @@ Feishu is an allowed human-operator entry channel, not an identity or permission
 ```text
 FEISHU_HUMAN_OPERATOR = ALLOWED_VIA_OBO
 FEISHU_IS_PERMISSION_SOURCE = NO
+FEISHU_HUMAN_OBO = TARGET_PRODUCT_DIRECTION
+AUTH_SERVICE_HUMAN_OBO_CURRENTLY_AVAILABLE = NO
+IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
 ```
 
-The identity boundary is:
+This is a target Product Direction, not a claim that an implementable Human OBO contract already exists. At exact auth-service revision `450a0ecb286cbe5da6e790d3c572fa71218ca9c0`:
+
+- repository `mayf3/auth-service`, authority `MINIMAL_AUTH_FOUNDATION_V1`, normative path `docs/contracts/minimal-auth-v1/`, status `FROZEN_TARGET_CONTRACT`, relationship `constrained_by`, explicitly freezes `HUMAN_OBO=false`;
+- repository `mayf3/auth-service`, authority `AUTH_SERVICE_WORKFLOW_AGENT_OBO_V0_FROZEN`, path `docs/contracts/WORKFLOW_AGENT_OBO_TOKEN_EXCHANGE_V0.md`, status frozen and still potentially governing until the V1 effectiveness/supersession gates complete, relationship `constrained_by`, supports Agent OBO only and defers User/Human OBO.
+
+Therefore every Feishu Human implementation is blocked until `mayf3/auth-service` establishes and accepts a whole-authority Human OBO successor and a later accepted svc-workflow implementation Spec pins it. Agent-only OBO, a request-body actor, message or mention identity, Feishu user identity, and Adapter/service identity MUST NOT substitute for that missing Human OBO authority.
+
+The target identity boundary is:
 
 - the canonical Human Principal is the actor whose global permission is evaluated;
-- the Feishu Adapter acts as the service/client identity and uses the accepted auth-service on-behalf-of contract;
+- the Feishu Adapter acts as the service/client identity and, only after the blocking authority transition above, uses the accepted auth-service Human on-behalf-of successor;
 - the verified `token.sub` is the actual human operator;
 - the adapter/service identity, `act`, or equivalent delegation claim identifies the intermediary only as defined by the auth contract and does not replace `token.sub` as actor;
 - message text, mention identity, request-body `principalId`, Feishu user identifier, or chat-room membership MUST NOT impersonate or substitute for the authenticated actor;
@@ -370,29 +376,32 @@ Direct authenticated channels and Feishu-via-OBO must converge on the same canon
 
 ## 13. Audit, retention, and failure policy
 
-Every successful and denied attempt for a protected global-control-plane operation requires a durable audit record, including:
+Every successful or authenticated-denied attempt for a protected global-control-plane operation requires a durable audit record, including:
 
-- permission request, approval, finalization, renewal, revoke, and expiry processing;
+- permission request, approval, deterministic finalization, renewal, revoke, and expiry processing;
 - Domain creation;
 - Domain Owner replacement;
 - global scheduling reads;
-- global Domain and Principal directory reads;
-- global-control-plane audit reads and external audit exports.
+- global Domain and Principal directory reads.
 
-Expiry itself MUST produce a durable lifecycle audit record even when no request occurs at the expiry instant.
+Unauthenticated denials reuse the existing authentication authority's denial and security-audit semantics. They do not require a nonexistent canonical actor and MUST NOT promote unverified token, message, mention, body, or Feishu fields into actor facts.
 
-Audit records must identify the canonical actor, subject/target, permission or operation, decision/result, time, idempotency/correlation identity where applicable, and non-sensitive reason codes needed for accountability. They MUST NOT copy sensitive workflow content, Context payloads, Submissions, Assistance content, credentials, tokens, Receipt bodies, unrestricted request bodies, or unrestricted response payloads.
+Audit records must identify the canonical actor when one is authenticated, subject/target, permission or operation, decision/result, time, idempotency/correlation identity where applicable, and non-sensitive reason codes needed for accountability. They MUST NOT copy sensitive workflow content, Context payloads, Submissions, Assistance content, credentials, tokens, Receipt bodies, unrestricted request bodies, or unrestricted response payloads.
 
 ```text
 AUDIT_RETENTION = 365_DAYS
 FAILURE_POLICY = FAIL_CLOSED
+AUDIT_PRODUCT_READ_API = NOT_SUPPORTED_IN_V2
+EXTERNAL_AUDIT_EXPORT = NOT_SUPPORTED_IN_V2
+PERMISSION_EXPIRY = FAIL_CLOSED_AT_EXPIRES_AT
+EXPIRY_AUDIT = RECONCILE_LATER_WITHOUT_EXTENDING_AUTHORITY
 ```
 
-The normal retention period is exactly 365 days. Earlier deletion is forbidden; longer retention requires separate accepted legal/security authority and must remain access-controlled and minimized.
+The V2 retention period is exactly 365 days. Earlier deletion and a product-configurable longer retention period are not supported by V2; any different retention direction requires a later accepted Product Direction. V2 authorizes durable audit writes only; it does not authorize a product runtime audit query API, make the repository/product Owner a runtime audit reader, or authorize external audit export. Any future read or export product capability requires later accepted Product Direction.
 
-Only the repository/product Owner and explicitly authorized security auditors may read these global-control-plane audit records. External audit export must be redacted and minimized before release, and the read/export operation must itself be audited.
+Permission authority ends fail-closed at its authoritative `expiresAt` even when the expiry-time audit write or reconciler is unavailable. The expiry lifecycle audit may be appended during the next successful reconciliation, with the original `expiresAt` and reconciliation time distinguished; delayed audit MUST NOT extend, revive, or imply continued permission authority.
 
-If authorization state or required durable audit is unavailable, the protected operation MUST fail closed. A successful read must durably record its audit before any protected data is released. A successful write and its required audit must commit atomically. Authorization is not complete merely because a permission check once succeeded: if revocation or expiry takes effect before the authorization publication/commit barrier, an older in-flight request MUST neither release protected response data nor commit a protected write.
+If authorization state or a required request-time durable audit is unavailable, the protected operation MUST fail closed. A successful read must durably record its audit before any protected data is released. A successful write and its required audit must commit atomically. Authorization is not complete merely because a permission check once succeeded: if revocation or expiry takes effect before the authorization publication/commit barrier, an older in-flight request MUST neither release protected response data nor commit a protected write.
 
 For writes, if the client cannot know whether the authoritative transaction committed, the result must be `outcome_unknown` (or the exact child-Spec wire equivalent). The client must retry only the exact request with the same idempotency key. It MUST NOT create a new idempotency key and blindly repeat the write.
 
@@ -418,9 +427,9 @@ The exact request-hash envelope, receipt states, lock order, database constraint
 
 `auth-service` owns global identity, authentication, token issuance, token exchange/OBO, and signing-key publication. `svc-workflow` does not issue identity or access tokens and does not treat a Feishu identifier or body field as an identity authority.
 
-The preserved V1 machine/service boundary is RS256 verification using auth-service JWKS, with audience `aud=svc-workflow` and a canonical Machine Principal UUID in `token.sub`; verification is offline at request authorization time subject to the bounded JWKS cache trade-off in §19. Cross-service delegation uses auth-service OBO token exchange. V2 adds the explicit Human-via-OBO path in §12: for that path the verified `token.sub` is the canonical Human Principal, while the Adapter/service identity remains the intermediary identity.
+The preserved V1 machine/service boundary is RS256 verification using auth-service JWKS, with audience `aud=svc-workflow` and a canonical Machine Principal UUID in `token.sub`; verification is offline at request authorization time subject to the bounded JWKS cache trade-off in §19. Current cross-service delegation is Agent-only under the exact authorities and revision pinned in §12. Those authorities explicitly do not support Human OBO.
 
-A child implementation Spec must pin these expectations to exact accepted auth-service authority and freeze token-use, actor/delegation claims, key validation, cache/revocation behavior, and service-to-service wire contracts without weakening the preserved V1 boundary or the V2 Human-via-OBO extension. This Product Direction states what `svc-workflow` requires but does not redefine or supersede auth-service behavior.
+V2 requires a future Human-via-OBO path in which verified `token.sub` is the canonical Human Principal and the Adapter/service identity remains only the intermediary identity. This requirement is blocked, not currently implementable. Before any Feishu Human implementation, auth-service must accept a whole-authority successor that authorizes Human OBO, and an accepted svc-workflow child Spec must pin that successor's exact revision, token-use, actor/delegation claims, key validation, cache/revocation behavior, and service-to-service wire contract. This Product Direction does not redefine or partially supersede auth-service behavior.
 
 ### 15.2 `adc-v2` and upper-layer business services
 
@@ -532,11 +541,26 @@ must be present in the implementation base and must freeze, at minimum:
 - Feishu command Adapter and event-id idempotency;
 - scheduler query, complete response contract, filtering, pagination, revocation barrier, and denial semantics;
 - Domain creation and Owner replacement transactions;
-- audit records, readers, retention, redacted export, and failure behavior;
+- durable audit writes, unauthenticated-denial reuse, expiry reconciliation, retention, sensitive-content exclusion, and fail-closed behavior;
 - legacy holder mapping and migration;
 - rollout, containment, rollback, and compatibility removal;
 - exact HTTP and SDK behavior;
 - executable Acceptance covering positive, negative, race, expiry, revoke, unknown-outcome, and sensitive-content paths.
+
+### 20.1 Legacy and external authority reconciliation matrix
+
+The following exact relationships are frozen for planning. Legacy documents without frontmatter retain their established historical IDs/statuses; this table cites them and does not silently reclassify them.
+
+| PATH / REPOSITORY | AUTHORITY_ID | REVISION | STATUS | RELATION_TO_V2 | SUCCESSOR_REQUIRED | IMPLEMENTATION_BLOCKED_UNTIL_RECONCILED |
+|---|---|---|---|---|---|---|
+| `contracts/workflow-http/v1/contract.md` / `mayf3/svc-workflow` | `WORKFLOW_RUNTIME_HTTP_CONTRACT_V1` | `c7830e58578d7c7360710f2449c48cb801da773e` | current-state freeze | Its global Coordinator, global Instance, Assistance, and runtime wire surfaces must not authorize implementation that conflicts with V2. | YES — whole-authority successor in owning repository | YES |
+| `docs/contracts/IDENTITY_PROVISIONING_API_V0.md` / `mayf3/svc-workflow` | `IDENTITY_PROVISIONING_API_V0` | `c7830e58578d7c7360710f2449c48cb801da773e` | `FROZEN_FOR_PROVISIONING_READY` | Its Domain create, Owner replacement, Principal selection, and role-binding surfaces require reconciliation with split permissions and self-Owner/self-grant prohibitions. | YES — whole-authority successor in owning repository | YES |
+| `docs/contracts/minimal-auth-v1/` / `mayf3/auth-service` | `MINIMAL_AUTH_FOUNDATION_V1` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0` | `FROZEN_TARGET_CONTRACT`; Human OBO forbidden | External constraint; V2 requires a Human OBO direction that this authority does not provide. | YES — accepted auth-service Human OBO whole-authority successor | YES for every Feishu Human path |
+| `docs/contracts/WORKFLOW_AGENT_OBO_TOKEN_EXCHANGE_V0.md` / `mayf3/auth-service` | `AUTH_SERVICE_WORKFLOW_AGENT_OBO_V0_FROZEN` | `450a0ecb286cbe5da6e790d3c572fa71218ca9c0` | frozen; may govern until V1 gates complete; Agent-only | External Agent OBO authority; it cannot be reused or reinterpreted as Human OBO. | YES — accepted auth-service Human OBO whole-authority successor | YES for every Feishu Human path |
+| Assistance sections in `contracts/workflow-http/v1/contract.md` / `mayf3/svc-workflow`; proposed draft at `docs/specs/SVC_WORKFLOW_ASSISTANCE_V1.md` is uncommitted on `agent/workflow-assistance-v1-spec` | `WORKFLOW_ASSISTANCE_V1` current surface; proposed `SVC_WORKFLOW_ASSISTANCE_V1` draft | current surface `c7830e58578d7c7360710f2449c48cb801da773e`; draft not in authority branch | current-state freeze plus non-authoritative proposed draft | Assistance remains independent; scheduler fields and global Assistance visibility cannot be imported into V2 by prose or by the draft. | YES — accepted whole-authority Assistance successor/reconciliation | YES for conflicting Assistance/global visibility implementation |
+| `docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md` / `mayf3/svc-workflow` | `ADMIN_RECOVERY_CONTRACT_V0_1` | `c7830e58578d7c7360710f2449c48cb801da773e` | `CURRENT` | Recovery remains independent; its administrator/binding semantics must not be conflated with V2 global permissions. | YES — planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` whole-authority successor/reconciliation | YES for conflicting Recovery/global permission implementation |
+
+V2 does not partially supersede any matrix entry through prose. If V2 is later accepted, a legacy or external authority's parent-conflicting portions cannot authorize new implementation. Before any V2 product implementation starts, each required successor must be completed as a whole-authority transition in its owning repository and accepted at an exact revision. Assistance and Recovery remain independent authorities after reconciliation; they are not absorbed into Product Direction or into the global-permission child Spec.
 
 Assistance lifecycle/content and Admin Recovery event/rebuild details remain in their own governing authorities. The planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` must separately resolve its relationship to `ADMIN_RECOVERY_CONTRACT_V0_1`; neither this Product Direction nor a global-permission child Spec may partially supersede Recovery semantics in prose. A child implementation Spec may coordinate with Assistance and Recovery but MUST NOT copy their lower-level details into this Product Direction or silently supersede them.
 
@@ -558,14 +582,18 @@ While V2 is proposed:
 
 A future acceptance-only, docs-only transition must prepare one atomic candidate that completes all content changes below before final-head review:
 
-1. change V2 `status: proposed` to `status: accepted`;
-2. prepend authority metadata to the existing V1 path `PRODUCT-BOUNDARY.md` with `authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V1`, `status: superseded`, and `superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, while preserving every byte of V1's historical body below that metadata and preserving the path;
-3. update `.agents/local/README.md` so active Product Direction points to V2 and V1 is listed only as superseded history;
-4. retain V2 `supersedes: [SVC_WORKFLOW_PRODUCT_BOUNDARY_V1]` as the forward link;
-5. perform an independent final-head recheck of the exact complete acceptance candidate;
-6. merge that accepted candidate to `main`, after which—and only after which—V2 becomes active Product Direction and V1 becomes superseded history.
+1. change V2 frontmatter `status: proposed` to `status: accepted`;
+2. update every V2 body status field and every prose statement that says V2 is proposed, inactive, or pending so the complete document consistently describes the accepted candidate;
+3. set `INDEPENDENT_REVIEW_PENDING = NO` and `AUTHORIZED_ACCEPTANCE_PENDING = NO` only after their corresponding acts are complete;
+4. prepend complete metadata to the existing V1 path `PRODUCT-BOUNDARY.md`: `authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V1`, `status: superseded`, `authority_kind: product_direction`, `owning_repository: mayf3/svc-workflow`, `supersedes: []`, `superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, and `owners: [mayf3]`;
+5. preserve the V1 historical body byte-for-byte from the fixed separator: after the prepended metadata's closing `---` and one blank line, the historical body begins with `# svc-workflow 产品边界定义` and continues unchanged to EOF;
+6. verify the preserved V1 historical-body SHA-256 is exactly `ab4fb261f5fe1f7eef0dd710b60ec088a3cb24747c8070c32ab5e30e8f1b70c2`;
+7. update `.agents/local/README.md` so active Product Direction points to V2 and V1 is listed only as superseded history, while retaining V2 `supersedes: [SVC_WORKFLOW_PRODUCT_BOUNDARY_V1]` as the forward link;
+8. if `docs/product/README.md` exists or is introduced as an authority index, update it in the same candidate to point to V2 as active and V1 as superseded history;
+9. perform an independent final-head recheck of the exact complete acceptance candidate, including metadata/prose consistency, backlinks, authority map, optional index, fixed separator, and historical-body digest;
+10. merge that exact accepted candidate to `main`, after which—and only after which—V2 becomes active Product Direction and V1 becomes superseded history.
 
-The `supersedes` value in this proposed V2 is a proposed future relationship only; it has no effect while `status: proposed` or while the acceptance candidate is unmerged. No one-sided metadata update, acceptance in an unmerged branch, PR approval alone, lower-level Spec, code merge, or runtime deployment performs this supersession.
+The `supersedes` value in this proposed V2 is a proposed future relationship only; it has no effect while `status: proposed` or while the acceptance candidate is unmerged. No one-sided metadata update, acceptance in an unmerged branch, PR approval alone, lower-level Spec, code merge, or runtime deployment performs this supersession. This amendment does not execute any acceptance step.
 
 ## 22. Decision and readiness summary
 
@@ -578,18 +606,38 @@ SAME_PRINCIPAL_MAY_HOLD_BOTH = YES
 GLOBAL_WORKFLOW_COORDINATOR = UI_LABEL_ONLY
 FULL_CONTENT_ACCESS_REQUIRED = NO
 SCHEDULING_VIEW_SCOPE = ACTIVE_CURRENT_TASK_METADATA_ONLY
+SCHEDULER_UPDATED_AT = LATEST_COMMITTED_WORKFLOW_INSTANCE_STATE_CHANGE_TIMESTAMP
+REMOVE_FROM_V2_SCHEDULER_METADATA = blockedFlag, blockedReasonCode, waitingAssistance, assistanceStatus
 TASK_LABEL = NOT_INCLUDED_IN_V2
 CONTEXT_TITLE_AS_METADATA = FORBIDDEN
+ALTERNATE_IDENTITY_RULE = NO_IMPLICIT_LINKAGE
 GLOBAL_ADMIN_SELF_GRANT = FORBIDDEN
 GLOBAL_ADMIN_SELF_DOMAIN_OWNER = FORBIDDEN
+GLOBAL_PERMISSION_ROOT_AUTHORITY = repository owner mayf3
+SECURITY_APPROVER_ROSTER = canonical Principals explicitly designated by repository owner
+GRANT_REQUESTER_COUNTS_AS_APPROVER = NO
+GRANT_APPROVALS_REQUIRED = 2_DISTINCT_SECURITY_APPROVERS
+GRANT_FINALIZATION = DETERMINISTIC_SYSTEM_FINALIZATION_AFTER_2_VALID_APPROVALS
+REVOKE_AUTHORITY = repository owner or 1 active security approver
+SUBJECT_SELF_APPROVAL = FORBIDDEN
+SECURITY_APPROVER_SELF_GRANT = FORBIDDEN
 FEISHU_HUMAN_OPERATOR = ALLOWED_VIA_OBO
 FEISHU_IS_PERMISSION_SOURCE = NO
+FEISHU_HUMAN_OBO = TARGET_PRODUCT_DIRECTION
+AUTH_SERVICE_HUMAN_OBO_CURRENTLY_AVAILABLE = NO
+IMPLEMENTATION_BLOCKED_UNTIL_AUTH_SERVICE_AUTHORITY = YES
 NORMAL_GRANT_DEFAULT_TTL = 30_DAYS
 NORMAL_GRANT_MAX_TTL = 90_DAYS
 GRANT_REQUIRES_TWO_PERSON_APPROVAL = YES
 REVOKE_MAY_BE_PERFORMED_BY_ONE_AUTHORIZED_SECURITY_ACTOR = YES
 BREAK_GLASS = NOT_SUPPORTED_IN_V2
 AUDIT_RETENTION = 365_DAYS
+AUDIT_PRODUCT_READ_API = NOT_SUPPORTED_IN_V2
+EXTERNAL_AUDIT_EXPORT = NOT_SUPPORTED_IN_V2
+UNAUTHENTICATED_DENIAL_AUDIT = REUSE_EXISTING_AUTHENTICATION_AUTHORITY
+PERMISSION_EXPIRY = FAIL_CLOSED_AT_EXPIRES_AT
+EXPIRY_AUDIT = RECONCILE_LATER_WITHOUT_EXTENDING_AUTHORITY
+LEGACY_AUTHORITY_STRATEGY = EXPLICIT_WHOLE_AUTHORITY_SUCCESSORS_BEFORE_IMPLEMENTATION
 FAILURE_POLICY = FAIL_CLOSED
 
 OPEN_OWNER_DECISIONS = NONE
