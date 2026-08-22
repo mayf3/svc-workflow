@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -25,16 +25,16 @@ source_spec_revision: 6f1f546787bd5fb1644ec91327d3e7374dc28165
 source_spec_authoring_base: 8cda3d05e1c22814b7aeaace97d317380df83836
 semantic_delta_from_source: AUTHORITY_ALIGNMENT_ONLY
 migration_kind: ONE_TIME_SUCCESSOR
-implementation_authorized_now: false
+implementation_authority_activation: accepted_on_main
 production_apply_authorized_now: false
-merge_performed: false
+merge_required_for_activation: true
 ---
 
 # SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1
 
 ## 0. Authority alignment and provenance
 
-This proposed child implementation Spec is governed by the active Product Direction chain now present on `github/main`:
+This accepted child implementation Spec is governed by the active Product Direction chain present on `github/main`:
 
 ```text
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
@@ -55,7 +55,7 @@ CURRENT_AUTHORING_BASE = 6d4e117bfe8b41b82cf74d4e839125ffc4ee7261
 SEMANTIC_DELTA_FROM_6F1F546 = AUTHORITY_ALIGNMENT_ONLY
 ```
 
-All migration behavior frozen by the source proposal is preserved. This alignment changes only authority linkage and provenance coordinates. Because this Spec remains `status: proposed`, its declared `implementation_authority: contracts` is not active. Independent review and authorized acceptance on an exact final Spec head remain prerequisites to implementation; production apply remains a separate later execution gate.
+All migration behavior frozen by the source proposal is preserved. The reviewed-to-finalized change is lifecycle-only: `status: accepted` and the corresponding activation wording. Under repository lifecycle, the declared `implementation_authority: contracts` becomes active only when this exact accepted head is present on `main`. Acceptance and merge do not themselves perform implementation; production apply remains a separate later execution gate.
 
 ## 1. Decision summary
 
@@ -77,7 +77,7 @@ DATABASE_SCHEMA_CHANGED = NO
 PRODUCTION_APPLY_AUTHORIZED_BY_THIS_SPEC = NO
 ```
 
-The proposed executable shape is:
+The frozen executable shape is:
 
 ```text
 plan
@@ -85,7 +85,7 @@ plan
 exact metadata rerun => NOOP
 ```
 
-The implementation may exist only after this proposed Spec is independently reviewed and accepted. Acceptance authorizes implementation review, not production execution. Production execution requires a separate explicit owner authorization over an exact implementation Git SHA and reviewed plan digest.
+This independently reviewed and accepted Spec authorizes only the bounded implementation described by its Contracts once the exact accepted head is present on `main`. Acceptance and merge do not perform that implementation and do not authorize production execution. Production execution requires a separate explicit owner authorization over an exact implementation Git SHA and reviewed plan digest.
 
 ## 2. Scope and frozen production facts
 
@@ -522,7 +522,7 @@ Independent review must explicitly confirm:
 - legacy 5,583 archive exclusion;
 - real Feishu Domains/Tasks acceptance;
 - three-file implementation closure;
-- absence of implementation or production authorization in this proposed Spec.
+- lifecycle activation authorizes only the bounded implementation Contracts, performs no implementation, and leaves production apply unauthorized.
 
 ## 16. Final frozen fields
 
@@ -556,12 +556,16 @@ TRANSACTION_MODEL = ONE_POSTGRESQL_SERIALIZABLE_TRANSACTION
 NOOP_MODEL = EXACT_RECEIPT_EVENT_AUDIT_CHAIN_AND_POSTSTATE_MATCH
 IMPLEMENTATION_FILES = 3
 
-STATUS = proposed
-READY_FOR_INDEPENDENT_REVIEW = YES
-IMPLEMENTATION_AUTHORIZED_NOW = NO
+STATUS = accepted
+INDEPENDENT_REVIEW_RESULT = PASS
+REQUIRED_FIXES = NONE
+SEMANTIC_DELTA_AFTER_REVIEW = LIFECYCLE_ONLY
+IMPLEMENTATION_AUTHORITY = contracts
+IMPLEMENTATION_AUTHORITY_ACTIVATION = ACCEPTED_ON_MAIN
+IMPLEMENTATION_PERFORMED = NO
 PRODUCTION_APPLY_AUTHORIZED_NOW = NO
-MERGE_PERFORMED = NO
+MERGE_REQUIRED_FOR_ACTIVATION = YES
 PRODUCTION_CHANGE = NONE
 ```
 
-End of proposed Spec. Stop here: no product implementation, database write, production apply, or merge is authorized.
+End of accepted Spec. Merge of this exact accepted head activates only its bounded implementation Contracts; it performs no implementation or database write and does not authorize production apply.
