@@ -1,3 +1,14 @@
+---
+authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V1
+status: superseded
+authority_kind: product_direction
+owning_repository: mayf3/svc-workflow
+supersedes: []
+superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
+owners:
+  - mayf3
+---
+
 # svc-workflow 产品边界定义
 
 > 日期：2026-08-02 | 状态：生效中
