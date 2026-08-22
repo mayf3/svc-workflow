@@ -730,3 +730,108 @@ INDEPENDENT_REVIEW_PENDING = NO
 AUTHORIZED_ACCEPTANCE_PENDING = NO
 ACCEPTED_CANDIDATE_READY_FOR_FINAL_HEAD_RECHECK = YES
 ```
+
+## 23. Bounded one-time Principal successor migration amendment
+
+### 23.1 Authority classification
+
+This strictly additive amendment records one Owner-authorized migration exception without changing the ordinary product-capability prohibition in §2.
+
+```text
+AMENDMENT_ID = PBV2-ONE-TIME-SUCCESSOR-001
+AMENDMENT_CLASS = BOUNDED_ADDITIVE_EXCEPTION
+OWNER_DECISION = ALLOW_BOUNDED_ONE_TIME_SUCCESSOR_MIGRATION
+OWNER_DECISION_ACTOR = mayf3
+ORDINARY_REASSIGNMENT = NOT_AUTHORIZED
+HANDOFF = NOT_AUTHORIZED
+DELEGATION = NOT_AUTHORIZED
+GENERAL_REASSIGNMENT_API = NOT_AUTHORIZED
+PRODUCT_DIRECTION_AUTHORIZES_IMPLEMENTATION_DIRECTLY = NO
+PRODUCTION_APPLY_AUTHORIZED = NO
+```
+
+The exception is an offline migration authority for one exact Principal pair and one exact migration purpose. It is not ordinary reassignment, handoff, delegation, a reusable administration operation, or a new long-lived Product Capability. Section 2 continues to prohibit those capabilities with unchanged meaning.
+
+### 23.2 Owner Decision
+
+#### DEC-PBV2-SUCCESSOR-001 — Restore current effective responsibility to one exact successor
+
+Owner: `mayf3`.
+
+Selected direction: permit one offline successor migration for exactly:
+
+```text
+OLD_PRINCIPAL = 3e2439d2-fb54-44f5-afee-77aa17c40d22
+NEW_PRINCIPAL = 4e5a4578-0645-4133-bd35-b80e453dfee9
+MIGRATION_KIND = ONE_TIME_SUCCESSOR
+```
+
+The migration may restore only responsibility that is current and still effective when an independently reviewed execution plan is frozen. The known Domain authority scope is exactly nine currently enabled Domain bindings. Current workflow responsibility is limited to the execution-time set that still points to an active, non-terminal current Visit assigned to OLD and exactly matches the reviewed plan.
+
+Rejected alternatives:
+
+- a general or reusable reassignment endpoint;
+- ordinary handoff or delegation;
+- extending the migration to another Principal pair;
+- converting historical OLD attribution into NEW attribution;
+- treating production execution as implied by Owner acceptance of this Product Direction.
+
+### 23.3 Bounded Contracts
+
+#### CTR-PBV2-SUCCESSOR-PAIR-001 — Exact pair and one-time shape
+
+The migration tooling and authority MUST be fixed to the exact OLD/NEW UUID pair in `DEC-PBV2-SUCCESSOR-001`. It MUST be offline, one-time, fail-closed on scope drift, and incapable of accepting an arbitrary Principal pair.
+
+#### CTR-PBV2-SUCCESSOR-DOMAIN-001 — Nine current Domain authorities only
+
+The migration MAY transfer exactly the reviewed nine currently enabled Domain authorities from OLD to NEW. It MUST preserve single-Owner semantics and MUST NOT leave OLD and NEW with long-lived concurrent authority for a transferred Domain role. Any execution-time difference from the independently reviewed nine-row snapshot MUST produce conflict with no committed writes.
+
+#### CTR-PBV2-SUCCESSOR-CURRENT-001 — Current responsibility only
+
+The migration MAY transfer only workflow responsibility whose current Visit remains active, non-terminal, assigned to OLD, and present in the reviewed execution plan at apply time. It MUST NOT widen its scope when the live set differs from the plan.
+
+#### CTR-PBV2-SUCCESSOR-HISTORY-001 — Historical provenance is immutable
+
+The transfer MUST be represented by newly appended successor Visit, Event, Receipt, and Audit facts. It MUST NOT UPDATE, delete, relabel, or otherwise rewrite an existing Node Visit or historical assignment provenance. In particular:
+
+```text
+HISTORICAL_ASSIGNMENTS_58_MIGRATED = 0
+HISTORICAL_VISITS_111_REWRITTEN = 0
+```
+
+The counts identify the known historical set excluded from migration; they do not turn historical tasks into current successor work.
+
+#### CTR-PBV2-SUCCESSOR-ATOMIC-NOOP-001 — Atomic apply and exact rerun
+
+The nine Domain authority transfers, current-responsibility successor facts, current projection change, receipt completion, and durable migration audit MUST commit as one atomic migration outcome. Partial Domain-only or responsibility-only success is forbidden. After one successful apply, a rerun with exact migration metadata MUST return NOOP with zero writes and zero new audits; mismatched metadata or post-state MUST fail closed.
+
+#### CTR-PBV2-SUCCESSOR-SURFACE-001 — No durable product surface
+
+The exception MUST NOT add a general HTTP reassignment API, SDK capability, handoff/delegation command, reusable arbitrary-pair migration mode, or authorization inference for any other Principal pair. Completion of the one-time migration creates no continuing Product Capability.
+
+#### CTR-PBV2-SUCCESSOR-EXECUTION-GATE-001 — Separate implementation and production gates
+
+This Product Direction amendment supplies only the upper-level authority for a bounded child implementation Spec. Implementation still requires an independently reviewed and accepted implementation-authorizing child Spec on its implementation base. Production apply requires a later independent execution gate over the exact implementation Git SHA, clean checkout, reviewed plan and digest, database identity, operator identity, and fail-closed preconditions. Neither acceptance nor merge of this amendment performs or authorizes production apply.
+
+### 23.4 Audit handoff
+
+The independent review named **“过户 审计”** MUST evaluate the exact amendment commit and confirm:
+
+1. §2 ordinary reassignment, handoff, and delegation prohibitions remain unchanged;
+2. the exception is fixed to the exact OLD/NEW pair and nine current Domain authorities;
+3. only execution-time current active responsibility is eligible;
+4. historical 58 assignments and 111 Visit provenance records remain outside migration scope;
+5. successor responsibility is append-only through new Visit/Event/Receipt/Audit facts;
+6. no general API or durable Product Capability is authorized;
+7. atomicity, fail-closed drift handling, and exact-rerun NOOP are mandatory;
+8. implementation and production apply remain separately gated.
+
+```text
+ALLOW_BOUNDED_ONE_TIME_SUCCESSOR_MIGRATION = YES
+ONE_TIME_MIGRATION_AUTHORITY = YES
+LONG_LIVED_PRODUCT_CAPABILITY = NO
+IMPLEMENTATION_AUTHORIZED_NOW = NO
+PRODUCTION_APPLY_AUTHORIZED_NOW = NO
+INDEPENDENT_REVIEW_REQUIRED = YES
+MERGE_PERFORMED = NO
+```
