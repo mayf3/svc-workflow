@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 supersedes:
@@ -14,21 +14,21 @@ owners:
 
 ## 1. Authority status and purpose
 
-This document proposes the complete Product Direction boundary for `svc-workflow`. It restates the still-valid product boundary in full and adds one explicit, authorized, and bounded global control-plane exception to otherwise strict Domain isolation.
+This document is the complete Owner-accepted Product Direction candidate for `svc-workflow`. It restates the still-valid product boundary in full and adds one explicit, authorized, and bounded global control-plane exception to otherwise strict Domain isolation.
 
 ```text
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
 AUTHORITY_KIND = product_direction
-STATUS = proposed
+STATUS = accepted
 SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V1
 WHOLE_AUTHORITY_SUPERSESSION = YES
 PARTIAL_SUPERSESSION = NONE
 PRODUCT_DIRECTION_AUTHORIZES_IMPLEMENTATION_DIRECTLY = NO
 ```
 
-This proposal is not active authority. `SVC_WORKFLOW_PRODUCT_BOUNDARY_V1` at `PRODUCT-BOUNDARY.md` remains the current Product Direction until an acceptance-only transition atomically accepts this V2, supersedes V1 with the required backlink and authority-map update, passes an independent final-head recheck, and the accepted transition is merged into `main`.
+This accepted candidate is not yet active repository authority because it is on an unmerged PR branch. `SVC_WORKFLOW_PRODUCT_BOUNDARY_V1` at `PRODUCT-BOUNDARY.md` remains the active Product Direction on `main` until this atomic V2-accepted/V1-superseded transition passes an independent final-head recheck and is merged into `main`.
 
-This authoring change does not modify V1, accept either authority, authorize implementation, declare current code compliant, or change product/runtime state.
+This acceptance-only change prepares V1 supersession metadata and the repository-local authority-map switch atomically with V2 acceptance. It does not authorize implementation, declare current code compliant, or change product/runtime state.
 
 ```text
 AUTHORING_BASE_COMMIT = c7830e58578d7c7360710f2449c48cb801da773e
@@ -589,11 +589,11 @@ The following relationships are capability-scoped. Legacy documents without fron
 | Assistance current-state sections in `contracts/workflow-http/v1/contract.md`; uncommitted proposed draft `docs/specs/SVC_WORKFLOW_ASSISTANCE_V1.md` on `agent/workflow-assistance-v1-spec` | current Assistance surface; proposed `SVC_WORKFLOW_ASSISTANCE_V1` draft | current surface at `c7830e58578d7c7360710f2449c48cb801da773e`; draft not in authority branch | `INDEPENDENT_AUTHORITY` | only future Assistance-content or Assistance-derived scheduling metadata work | Slice A, Slice B, Slice C, and Slice D/E when no Assistance data is returned | accepted Assistance authority only when that independent capability changes |
 | `docs/contracts/ADMIN_RECOVERY_CONTRACT_V0_1.md` / `mayf3/svc-workflow` | `ADMIN_RECOVERY_CONTRACT_V0_1` | `c7830e58578d7c7360710f2449c48cb801da773e`; `CURRENT` | `INDEPENDENT_AUTHORITY` | only implementation that changes Recovery event/rebuild semantics | Slice A, Slice B, Slice C, Slice D, Slice E | planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` only for Recovery-changing work |
 
-V2 does not partially supersede any entry through prose. If V2 is later accepted, parent-conflicting legacy semantics cannot authorize a new capability; however, reconciliation is required only for the capability Slice that consumes or changes that authority. Assistance and Recovery remain independent and are not absorbed into V2 or its global-permission implementation.
+V2 does not partially supersede any entry through prose. After this accepted candidate is merged and becomes active, parent-conflicting legacy semantics cannot authorize a new capability; however, reconciliation is required only for the capability Slice that consumes or changes that authority. Assistance and Recovery remain independent and are not absorbed into V2 or its global-permission implementation.
 
 ### 20.2 Capability-scoped predecessor gates
 
-No all-successors global gate exists. Each Slice may proceed only after V2 itself is accepted and the Slice-specific authorities below are accepted in its implementation base.
+No all-successors global gate exists. Each Slice may proceed only after V2 is active and present as accepted authority in that Slice's implementation base, and the Slice-specific authorities below are also accepted in that implementation base.
 
 #### Slice A — Global permission governance foundation
 
@@ -636,36 +636,36 @@ V2 excludes Assistance and blocking fields. Adding them requires a new accepted 
 
 Admin Recovery is independently governed. `ADMIN_RECOVERY_CONTRACT_V0_1` and planned `SVC_WORKFLOW_ADMIN_RECOVERY_V1` are not common prerequisites for any global scheduler or Domain-admin Slice. Only an implementation that changes Recovery event/rebuild semantics is blocked on its Recovery successor.
 
-Current Rust, SQL, migrations, HTTP Contract bundle, OpenAPI, SDK, tests, and deployments are descriptive current state only. Acceptance of V2 would not automatically make them compliant or authorize retrospective implementation. Conformance requires Contract-by-Contract evaluation against an exact accepted child-Spec revision and exact implementation coordinates.
+Current Rust, SQL, migrations, HTTP Contract bundle, OpenAPI, SDK, tests, and deployments are descriptive current state only. Owner acceptance of this V2 candidate does not make them compliant or authorize retrospective implementation; merge and activation of V2 would not do so either. Conformance requires Contract-by-Contract evaluation against an exact accepted child-Spec revision and exact implementation coordinates.
 
-## 21. Whole-authority supersession and future acceptance transition
+## 21. Whole-authority supersession and accepted-candidate transition
 
-This proposal is classified `SUPERSEDE`, not `AMEND`, because V2 changes Product Direction by introducing two explicit bounded global control-plane permissions while preserving strict normal-data-plane Domain isolation. V2 fully replaces the scope and meaning of V1; it is not a prose-only exception attached to V1.
+This accepted candidate is classified `SUPERSEDE`, not `AMEND`, because V2 changes Product Direction by introducing two explicit bounded global control-plane permissions while preserving strict normal-data-plane Domain isolation. V2 fully replaces the scope and meaning of V1; it is not a prose-only exception attached to V1.
 
 The closed Draft PR #3 Option A proposal to remove all global Coordinator capabilities was rejected and MUST NOT be continued or treated as authority. Its lower-level implementation approach cannot override the frozen V2 Owner direction.
 
-While V2 is proposed:
+On this unmerged acceptance-candidate branch:
 
-- only this new authority is created;
-- V1 remains unchanged and active;
-- `.agents/local/README.md` continues to point to V1;
-- no implementation may cite V2 as authority;
+- V2 carries accepted metadata and V1 carries superseded metadata as one atomic candidate;
+- V1 remains unchanged and active on `main` until this candidate is merged;
+- `.agents/local/README.md` in this candidate points to V2, while the active map on `main` continues to point to V1 until merge;
+- no implementation may cite the unmerged V2 candidate as active repository authority;
 - no partial supersession is inferred.
 
-A future acceptance-only, docs-only transition must prepare one atomic candidate that completes all content changes below before final-head review:
+This acceptance-only, docs-only transition prepares one atomic candidate with all content changes below complete before final-head review:
 
-1. change V2 frontmatter `status: proposed` to `status: accepted`;
-2. update every V2 body status field and every prose statement that says V2 is proposed, inactive, or pending so the complete document consistently describes the accepted candidate;
-3. set `INDEPENDENT_REVIEW_PENDING = NO` and `AUTHORIZED_ACCEPTANCE_PENDING = NO` only after their corresponding acts are complete;
-4. prepend complete metadata to the existing V1 path `PRODUCT-BOUNDARY.md`: `authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V1`, `status: superseded`, `authority_kind: product_direction`, `owning_repository: mayf3/svc-workflow`, `supersedes: []`, `superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, and `owners: [mayf3]`;
-5. preserve the V1 historical body byte-for-byte from the fixed separator: after the prepended metadata's closing `---` and one blank line, the historical body begins with `# svc-workflow 产品边界定义` and continues unchanged to EOF;
-6. verify the preserved V1 historical-body SHA-256 is exactly `ab4fb261f5fe1f7eef0dd710b60ec088a3cb24747c8070c32ab5e30e8f1b70c2`;
-7. update `.agents/local/README.md` so active Product Direction points to V2 and V1 is listed only as superseded history, while retaining V2 `supersedes: [SVC_WORKFLOW_PRODUCT_BOUNDARY_V1]` as the forward link;
-8. if `docs/product/README.md` exists or is introduced as an authority index, update it in the same candidate to point to V2 as active and V1 as superseded history;
-9. perform an independent final-head recheck of the exact complete acceptance candidate, including metadata/prose consistency, backlinks, authority map, optional index, fixed separator, and historical-body digest;
-10. merge that exact accepted candidate to `main`, after which—and only after which—V2 becomes active Product Direction and V1 becomes superseded history.
+1. V2 frontmatter and body status are `accepted`;
+2. V2 lifecycle prose consistently describes the Owner-accepted candidate without claiming that it is active on `main`;
+3. `INDEPENDENT_REVIEW_PENDING = NO` and `AUTHORIZED_ACCEPTANCE_PENDING = NO` record the completed independent review and Owner acceptance acts;
+4. complete metadata is prepended to the existing V1 path `PRODUCT-BOUNDARY.md`: `authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V1`, `status: superseded`, `authority_kind: product_direction`, `owning_repository: mayf3/svc-workflow`, `supersedes: []`, `superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, and `owners: [mayf3]`;
+5. the V1 historical body is preserved byte-for-byte from the fixed separator: after the prepended metadata's closing `---` and one blank line, the historical body begins with `# svc-workflow 产品边界定义` and continues unchanged to EOF;
+6. the preserved V1 historical-body SHA-256 is `ab4fb261f5fe1f7eef0dd710b60ec088a3cb24747c8070c32ab5e30e8f1b70c2`;
+7. `.agents/local/README.md` identifies V2 as the accepted Product Direction candidate and V1 as superseded history, while V2 retains `supersedes: [SVC_WORKFLOW_PRODUCT_BOUNDARY_V1]` as the forward link;
+8. no `docs/product/README.md` authority index exists in this candidate, so none is introduced by this transition;
+9. an independent final-head recheck of the exact complete acceptance candidate remains required, including metadata/prose consistency, backlinks, authority map, fixed separator, and historical-body digest;
+10. merge of that exact accepted candidate to `main` remains required; after that—and only after that—V2 becomes active Product Direction and V1 becomes superseded history.
 
-The `supersedes` value in this proposed V2 is a proposed future relationship only; it has no effect while `status: proposed` or while the acceptance candidate is unmerged. No one-sided metadata update, acceptance in an unmerged branch, PR approval alone, lower-level Spec, code merge, or runtime deployment performs this supersession. This amendment does not execute any acceptance step.
+The `supersedes` value in this accepted V2 candidate and the V1 backlink form a complete candidate relationship, but they have no active repository-authority effect while the acceptance candidate is unmerged. No one-sided metadata update, acceptance in an unmerged branch, PR approval alone, lower-level Spec, code merge, or runtime deployment performs this supersession.
 
 ## 22. Decision and readiness summary
 
@@ -726,7 +726,7 @@ OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
 UNRESOLVED_AUTHORITY_CONFLICT = NONE
 PARTIAL_SUPERSESSION = NONE
-INDEPENDENT_REVIEW_PENDING = YES
-AUTHORIZED_ACCEPTANCE_PENDING = YES
-AUTHORING_READY_FOR_REVIEW = YES
+INDEPENDENT_REVIEW_PENDING = NO
+AUTHORIZED_ACCEPTANCE_PENDING = NO
+ACCEPTED_CANDIDATE_READY_FOR_FINAL_HEAD_RECHECK = YES
 ```
