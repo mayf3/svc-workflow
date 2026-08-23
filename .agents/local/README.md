@@ -18,12 +18,18 @@ A proposed or accepted-looking lock on an unmerged branch is not active reposito
 The repository uses the following precedence for the domain each authority actually owns:
 
 ```text
-SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
-  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V2.md
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V3.md
   kind: product_direction
   status: accepted
 
 superseded history:
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V2.md
+  kind: product_direction
+  status: superseded
+  superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
+
 SVC_WORKFLOW_PRODUCT_BOUNDARY_V1
   path: PRODUCT-BOUNDARY.md
   kind: product_direction
@@ -85,7 +91,7 @@ Authoring, independent semantic review, and acceptance are distinct acts. A revi
 ## Governing and persistence locations
 
 ```text
-PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V2.md
+PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V3.md
 PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md
 ARCHITECTURE_REFINEMENTS = docs/architecture/
 LEGACY_IMPLEMENTATION_CONTRACTS = docs/contracts/
