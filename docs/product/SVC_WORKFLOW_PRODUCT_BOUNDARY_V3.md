@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -15,12 +15,12 @@ owners:
 
 ## 1. Goal and authority status
 
-This document is the complete proposed Product Direction for `svc-workflow`. It is a whole-authority successor to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, not an amendment or a set of exceptions that must be read together with V2.
+This document is the complete Product Direction for `svc-workflow`. It is a whole-authority successor to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V2`, not an amendment or a set of exceptions that must be read together with V2.
 
 ```text
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
 AUTHORITY_KIND = product_direction
-STATUS = proposed
+STATUS = accepted
 SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
 PRODUCT_BOUNDARY_ACTION = SUPERSEDE
 WHOLE_AUTHORITY_SUPERSESSION = YES
@@ -32,7 +32,7 @@ PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 ```
 
-While this document is proposed or unmerged, V2 remains the active Product Direction on `main`. The forward `supersedes` declaration records the intended whole-authority relationship only. V2's `superseded_by` backlink and `.agents/local/README.md` MUST change only in a later Owner-accepted, independently reviewed, atomic acceptance transition; this authoring change does not activate V3.
+V3 is Owner-accepted on the PR branch. V3 is not repository-active until the accepted candidate is independently rechecked and merged to main. The Owner-accepted atomic acceptance transition has changed V2's frontmatter lifecycle and `superseded_by` backlink and `.agents/local/README.md` together with this acceptance; V2 remains the active Product Direction on `main` until that transition passes the independent final-head recheck and is merged.
 
 The Goal is to preserve the complete workflow product boundary and bounded split global control plane established by V2 while replacing V2's Human-root, security-approver, expiring two-person grant, Human OBO, and Human-administration prerequisite with a single-user deployment operated by one repository-designated, dedicated trusted administrative Agent using its own direct token and actual Agent Principal audit identity.
 
@@ -1054,3 +1054,28 @@ TWO_PERSON_APPROVAL_REQUIRED_FOR_V1 = NO
 ```
 
 The exact Admin Agent Principal UUID and Client ID are intentionally not open Product Direction decisions: they are required fields owned by the later designation authority. Implementation Agents have no discretion to choose or activate them outside that authority.
+
+## 25. Acceptance Record (OWNER_WHOLE_AUTHORITY_ACCEPTANCE_TRANSITION_ONLY)
+
+```text
+ACCEPTANCE_STATUS = accepted
+REVIEWED_BASE_COMMIT = 9ba2d87e94f6d39ffdd6986b5a434546cb91d90c
+REVIEWED_AUTHORITY_COMMIT = d830b9754ec0ae694fa6cb44b727700552557fe0
+REVIEWER_ID = local-independent-audit-agent/svc-workflow-pb-v3-review-20260823
+REVIEW_RESULT = ACCEPT
+READY_TO_MARK_ACCEPTED = YES (per independent Product Direction review)
+ACCEPTED_BY = mayf3
+ACCEPTED_AT = 2026-08-23T14:03:33Z
+V2_TRANSITION = superseded candidate
+V2_HISTORICAL_BODY = byte-identical from first H1 to EOF (frontmatter lifecycle metadata only)
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+ALLOWED_DELTA = lifecycle metadata + acceptance receipt + V2 frontmatter supersession + repository-local authority map
+FINAL_HEAD_RECHECK = PENDING (independent final-head recheck required)
+ACTIVE_ON_MAIN = NO (accepted candidate on PR #8 branch; becomes repository-active only after merge to main)
+PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
+CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
+```
+
+Persistent review provenance: independent Product Direction review record persisted as PR #8 conversation comment (`issuecomment-5386404196`); Owner acceptance action persisted as `issuecomment-5386404671`, both posted before this acceptance transition modified any file.
+
+This acceptance is an owner whole-authority lifecycle transition only: V3 becomes an accepted candidate, V2's frontmatter becomes superseded with a `superseded_by` backlink, and the repository-local authority map is switched atomically. It does not authorize implementation, Agent creation, credential or permission mutation, deployment, Ready transition, or merge. The final accepted head must still be independently rechecked; `FINAL_ACCEPTED_HEAD` is reported as a persistent PR record after the acceptance commit and is not embedded here.
