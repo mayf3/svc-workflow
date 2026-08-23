@@ -41,6 +41,7 @@ Adoption is forward-only and does not bulk-migrate legacy documents.
 
 | Spec ID | Status | Kind | Implementation authority | Scope | Supersedes |
 |---|---|---|---|---|---|
-| `SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1` | proposed | invariant | none | repository development process | none |
+| `SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1` | accepted | invariant | none | repository development process | none |
+| `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | implementation | contracts | one-time Principal successor migration | none |
 
 Update this index when a governing Spec is accepted or superseded. The table is a discovery aid; each Spec's exact frontmatter and revision remain authoritative.
