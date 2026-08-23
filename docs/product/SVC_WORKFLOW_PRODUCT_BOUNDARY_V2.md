@@ -1,11 +1,11 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V2
-status: accepted
+status: superseded
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 supersedes:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V1
-superseded_by: null
+superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
 owners:
   - mayf3
 ---
