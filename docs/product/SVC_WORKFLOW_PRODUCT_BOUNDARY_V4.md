@@ -176,7 +176,7 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 
 - Support state: SUPPORTED.
 - Supported by: `EVD-V4-001`.
-- Claim: adding a second exact bounded successor pair changes V3's accepted exact-pair meaning and therefore cannot be a silent edit or partial amendment to accepted V3.
+- Claim: adding one exact-plan-bound trusted-fleet successor exception changes V3's accepted successor-scope meaning and therefore requires whole-authority supersession; it cannot be a silent edit or partial amendment to accepted V3.
 
 #### CLM-V4-002 — Existing implementation is conformance debt, not authority
 
@@ -751,10 +751,12 @@ Each missing projection is created only for the exact NEW Principal in the froze
 
 - dynamically enumerating an 87th identity from Auth;
 - display-name pairing;
-- removing the `agt_` inference discipline;
+- deriving an OLD identity by stripping the `agt_` prefix from a NEW agent_id;
 - fuzzy or prefix matching;
 - creating the excluded identity's projection or binding it anywhere;
 - replacing any Auth Principal UUID.
+
+Stripping the `agt_` prefix never constitutes mapping evidence; display-name, prefix, and fuzzy matching remain forbidden; exact pairs come only from the frozen artifact.
 
 After creation, verification must show `workflow_my_tasks` no longer returns `principal_not_found`; with no current tasks, the correct terminal state is exactly HTTP 200 with `items = []`.
 
@@ -846,7 +848,7 @@ TERMINAL_TASK_REACTIVATION = FORBIDDEN
 PRODUCTION_APPLY_AUTHORIZED = NO
 ```
 
-The CTO, Build in Public, and fleet mappings are never abstracted into a caller-parameterized general migration mechanism.
+The retained CTO exception and the exact fleet mappings, including the Build in Public pair, are never abstracted into a caller-parameterized general migration mechanism.
 
 ### 17A.10 Blocked Child and PR disposition
 
