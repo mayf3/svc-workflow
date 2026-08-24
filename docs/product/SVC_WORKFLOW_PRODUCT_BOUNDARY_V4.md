@@ -36,7 +36,7 @@ CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 
 V4 is proposed and inert. V3 remains the accepted active Product Direction on `main`. A later acceptance transition, if authorized after independent review, must atomically mark V4 accepted, mark V3 superseded with its `superseded_by` backlink, and update the repository authority map. This authoring PR performs none of those lifecycle changes and MUST NOT be merged as acceptance by implication.
 
-The Goal is to preserve every V3 product boundary, Decision, Contract, exclusion, security invariant, capability Slice, retained trade-off, conformance-debt statement, and the original CTO bounded successor exception unchanged, while adding exactly one independent bounded Build in Public successor exception for the exact pair in §17A. No other V3 meaning changes.
+The Goal is to preserve every V3 product boundary, Decision, Contract, exclusion, security invariant, capability Slice, retained trade-off, conformance-debt statement, and the original CTO bounded successor exception unchanged, while adding exactly one independent bounded trusted-fleet successor exception frozen to the exact canonical plan artifact in §17A. No other V3 meaning changes.
 
 ## 2. Scope and non-goals
 
@@ -53,11 +53,11 @@ V4 governs:
 - durable audit using the actual authenticated Agent Principal;
 - capability-scoped child-authority sequencing and current conformance debt;
 - the original CTO bounded one-time Principal successor migration already added to V2;
-- the additive exact-pair-only Build in Public bounded successor exception in §17A.
+- the additive exact-plan-bound trusted fleet bounded successor exception in §17A, frozen to 86 exact successor pairs by `PLAN_SHA256`.
 
 ### 2.2 Explicit non-goals
 
-This Product Direction does not create or select an Agent, Principal UUID, Client, credential, permission Grant, designation root instance, database row, migration, API, HTTP Contract, OpenAPI surface, SDK, test, deployment, production change, auth-service change, or dsh-agent-core change. It does not accept, merge, mark Ready, or activate any child authority or external PR.
+This Product Direction does not create or select an Agent, Principal UUID, Client, credential, permission Grant, designation root instance, database row, migration, API, HTTP Contract, OpenAPI surface, SDK, test, deployment, production change, auth-service change, or dsh-agent-core change. It does not accept, merge, mark Ready, or activate any child authority or external PR. It does not commit the frozen fleet plan artifact into this repository, and the frozen plan is not live database truth.
 
 It does not add parallel workflow nodes, dynamic forward branching, claim/pull assignment, ordinary reassignment, handoff, delegation, timers, external signals, automatic retry, SLA orchestration, arbitrary script guards, built-in LLM execution, cross-Domain shared templates, in-flight template replacement, in-flight Domain transfer, physical Instance deletion, unrestricted global workflow content access, or a runtime break-glass grant.
 
@@ -73,6 +73,13 @@ CURRENT_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
 SUCCESSOR_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V4
 BLOCKED_CHILD_PR = https://github.com/mayf3/svc-workflow/pull/9
 BLOCKED_CHILD_HEAD = 3056263c3fc964a2b225720dd2b859b47e296c2e
+FLEET_PLAN_SCHEMA = workflow_trusted_fleet_successor_plan_v2
+FLEET_PLAN_SIZE_BYTES = 540472
+FLEET_PLAN_SHA256 = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
+FLEET_ROSTER_SHA256 = f046d18f76da838ba94775af7c960d0ee548f2e392c22e6c7b0e3add36cb8e5f
+FLEET_PLAN_CANONICAL = YES
+FLEET_PLAN_MODE = READ_ONLY_CANONICAL_PLAN
+FLEET_PLAN_SNAPSHOT_UTC = 2026-08-24T01:03:53.192875+00:00
 ```
 
 Authority precedence remains Product Direction, then accepted Architecture/long-lived invariant authority, then accepted governing child Specs, then descriptive code/tests/runtime/operations. External repositories are referenced at exact revisions and remain owned by those repositories.
@@ -148,6 +155,21 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Result: PR #9 is fixed to Build in Public OLD `bb9d8f48-7962-4321-8fb1-554bb428c159` and NEW `d5b3aeb2-e754-49a9-9914-b963521c0985`, while V3 authorizes only the distinct CTO pair. The child correctly remains non-implementing and reports a lawful-parent blocker.
 - Provenance: exact GitHub PR and commit coordinates above; no production database was queried.
 
+#### OBS-V4-008 — Frozen trusted-fleet successor plan artifact
+
+- Subject: local canonical plan `workflow_trusted_fleet_successor_plan_v2.json`.
+- Source: file at `/Users/yanfenma/workspace/project/svc-workflow/workflow_trusted_fleet_successor_plan_v2.json`, byte size 540472, `PLAN_SHA256 = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606`, frozen roster digest `ROSTER_SHA256 = f046d18f76da838ba94775af7c960d0ee548f2e392c22e6c7b0e3add36cb8e5f`, snapshot `2026-08-24T01:03:53.192875+00:00`, mode `READ_ONLY_CANONICAL_PLAN`, superseding plan v1 digest `57f769d0bc9f0a4494dd37685da3cc8657b2dc5845f020858457dbecc35ce9b7` (538625 bytes).
+- Method: `shasum -a 256` byte verification plus structural count verification of the artifact summary and row arrays.
+- Result: 86 `EXACT_SUCCESSOR_PAIR` rows with 86 `active` NEW Auth Principals, 0 ambiguous, 0 conflict; 760 Domain tuples (8 `DOMAIN_OWNER` + 752 `DOMAIN_MEMBER`); 80 active responsibility tuples; 99 creator-owned draft tuples with 0 migration candidates; 85 missing plus 1 present NEW Workflow projection, the present one being exactly `agt_build-in-public-agent`; and exactly one excluded duplicate identity `efficiency-agent`/`d09f8849-073c-484a-978c-f375113c28b2` (disabled, zero enabled Domain bindings, zero Visits, zero future operator writes). The roster source file verifies at sha256 `32d0b23753370156150babcaf0b108ad1d8c2b28f952e9586cf700142f9ec852` under `docs/evidence/account-recovery-phase-a-20260823/` in dsh-agent-core.
+- Provenance: artifact bytes verified locally; roster evidence file digest verified against the artifact's recorded `frozen_roster_file_sha256`.
+
+#### OBS-V4-009 — Systemic assigned-to-me 404 for unprojected NEW fleet principals
+
+- Subject: svc-workflow worklist behavior for the 85 NEW fleet principals absent from the Principal projection.
+- Method: read-only diagnosis recorded in the frozen artifact's `broker_4xx_diagnosis`.
+- Result: `/internal/v1/worklists/assigned-to-me` returns `404 principal_not_found` when the actor Principal is absent from the projection, and the model renderer flattens it to a generic HTTP 4xx; the one projected principal `agt_build-in-public-agent` returns HTTP 200 with `items = []`.
+- Provenance: artifact `broker_4xx_diagnosis` with its recorded in-production sample evidence path; no production write was performed.
+
 ### 4.2 Claims
 
 #### CLM-V4-001 — V4 requires whole-authority supersession
@@ -168,11 +190,17 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Supported by: `EVD-V4-003`.
 - Claim: separate child authorities can close identity, designation, permission supply, scheduler read, Domain admin, and Feishu routing without allowing one Slice to authorize another or making Human governance a common prerequisite.
 
-#### CLM-V4-004 — Complete restatement can preserve V3 while adding only BIP
+#### CLM-V4-004 — Complete restatement can preserve V3 while adding only the fleet exception
 
 - Support state: SUPPORTED.
 - Supported by: `EVD-V4-004`.
-- Claim: a complete V4 restatement can preserve every V3 boundary and the original CTO exception while adding one separately exact, plan-first BIP exception without creating general migration authority.
+- Claim: a complete V4 restatement can preserve every V3 boundary and the original CTO exception while adding one separately exact, plan-first trusted-fleet exception frozen to a single canonical artifact without creating general migration authority.
+
+#### CLM-V4-005 — Exact-plan binding prevents a general migration capability
+
+- Support state: SUPPORTED.
+- Supported by: `EVD-V4-005`.
+- Claim: binding the fleet exception to one digest-frozen artifact with 86 exact pairs, closed counts, per-pair SERIALIZABLE apply, and fail-closed drift prevents any caller-parameterized or dynamically expanded migration capability.
 
 ### 4.3 Evidence relations
 
@@ -203,14 +231,23 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Strength/sufficiency: sufficient for Product Direction decomposition.
 - Limitations: each external repository retains acceptance authority over its own child.
 
-#### EVD-V4-004 — V3 restatement and exact BIP delta support bounded preservation
+#### EVD-V4-004 — V3 restatement and exact fleet delta support bounded preservation
 
-- Source observations: `OBS-V4-001`, `OBS-V4-007`, accepted V3 at main `327b74f138151a7f4d9d88e3881e54d203f1e8f6`, and this file's explicit §17/§17A separation.
+- Source observations: `OBS-V4-001`, `OBS-V4-007`, `OBS-V4-008`, accepted V3 at main `327b74f138151a7f4d9d88e3881e54d203f1e8f6`, and this file's explicit §17/§17A separation.
 - Target: `CLM-V4-004`.
 - Relation: SUPPORTS.
 - Bound coordinates: §3 blocked-child and current-parent commits.
 - Strength/sufficiency: sufficient for bounded proposal authoring and independent semantic review.
 - Limitations: does not accept V4, align PR #9, implement an operator, establish live scope, or authorize production apply.
+
+#### EVD-V4-005 — Frozen artifact counts and exclusion support exact-plan binding
+
+- Source observations: `OBS-V4-008`, `OBS-V4-009`.
+- Target: `CLM-V4-005`.
+- Relation: SUPPORTS.
+- Bound coordinates: §17A.1 artifact digests.
+- Strength/sufficiency: sufficient to bind the proposal to exact artifact rows.
+- Limitations: future apply must re-verify live state; the artifact itself grants no write authority.
 
 ## 5. Product positioning and qualifying workflow shape
 
@@ -620,96 +657,206 @@ Nine Domain transfers, eligible current-responsibility facts, projection changes
 
 Implementation remains bounded by accepted `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1`. Production apply still requires a separate independently reviewed execution gate pinning implementation SHA, clean checkout, reviewed plan/digest, database identity, operator identity, and fail-closed preconditions. Open PR #7 affects only its stated replay closure and remains independently governed.
 
-## 17A. Additive Build in Public exact-pair bounded successor exception
+## 17A. Additive trusted-fleet exact-plan-bound bounded successor exception
 
-### 17A.1 Exact identity and exclusion boundary
+### 17A.1 Frozen canonical plan artifact
 
-```text
-BIP_EXCEPTION = ADDITIVE_EXACT_PAIR_ONLY
-BIP_OLD_AGENT_ID = build-in-public-agent
-BIP_OLD_PRINCIPAL = bb9d8f48-7962-4321-8fb1-554bb428c159
-BIP_NEW_AGENT_ID = agt_build-in-public-agent
-BIP_NEW_PRINCIPAL = d5b3aeb2-e754-49a9-9914-b963521c0985
-
-EXCLUDED_AGENT_ID = blog-agent
-EXCLUDED_PRINCIPAL = 81c7fc7e-c696-4b47-bfd6-f12a9ecb68a6
-OTHER_PRINCIPAL_PAIRS = FORBIDDEN
-MIGRATION_KIND = ONE_TIME_SUCCESSOR
-```
-
-This exception authorizes a later accepted bounded Child Spec to govern only the exact `BIP_OLD_PRINCIPAL -> BIP_NEW_PRINCIPAL` pair. Agent labels are explanatory provenance and MUST NOT be used as runtime identity selectors. `blog-agent`, its exact Principal, and every other Principal pair are outside authority. The exception creates no general Principal migration capability.
-
-### 17A.2 Plan-selected live scope only
-
-Only two object categories may be selected, and only through an independently reviewed canonical production read-only plan:
-
-A. Domain authority bindings whose live tuple still identifies BIP OLD and remains enabled in the reviewed snapshot;
-
-B. workflow responsibility whose live current Visit is assigned to BIP OLD, is current, active, non-terminal, not cancelled, and remains exactly present in the reviewed snapshot at apply time.
-
-The Owner expects one `DOMAIN_OWNER` and eight `DOMAIN_MEMBER` bindings, but `1 + 8` is expected authoring scope, not live database truth and not permission to force counts. The future plan MUST re-read exact tuples, including Domain, Role, binding identity, enabled state, Principal, and review-relevant timestamps. A missing, additional, disabled, role-changed, Principal-changed, state-version-changed, or otherwise mismatched tuple is conflict with zero committed writes. A reviewed plan may lawfully contain zero eligible current responsibilities:
+V4 authorizes only the exact frozen local evidence artifact and its reviewed contents:
 
 ```text
-ACTIVE_RESPONSIBILITY_TRANSFER_COUNT = 0
-RESULT = VALID_PLAN
-HISTORICAL_REACTIVATION = FORBIDDEN
+PLAN_SCHEMA = workflow_trusted_fleet_successor_plan_v2
+PLAN_PATH = /Users/yanfenma/workspace/project/svc-workflow/workflow_trusted_fleet_successor_plan_v2.json
+PLAN_SIZE_BYTES = 540472
+PLAN_SHA256 = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
+ROSTER_SHA256 = f046d18f76da838ba94775af7c960d0ee548f2e392c22e6c7b0e3add36cb8e5f
+PLAN_MODE = READ_ONLY_CANONICAL_PLAN
+PLAN_CANONICAL = YES
+SNAPSHOT_OBSERVED_AT_UTC = 2026-08-24T01:03:53.192875+00:00
+PLAN_PRODUCTION_CHANGE = NONE
+PLAN_SUPERSEDES_SCHEMA = workflow_trusted_fleet_successor_plan_v1
+PLAN_SUPERSEDES_SHA256 = 57f769d0bc9f0a4494dd37685da3cc8657b2dc5845f020858457dbecc35ce9b7
 ```
 
-### 17A.3 Domain successor semantics
+The artifact is a read-only canonical production snapshot; it performs and authorizes zero writes. Any future operator binds to `PLAN_SHA256` exactly. A byte-different plan, an unverified digest, or any runtime-supplied `OLD`/`NEW` parameter is outside authority. The artifact remains a local evidence file and is not committed by this PR; only its digest is frozen here. The frozen roster source is the dsh-agent-core account-recovery evidence file `docs/evidence/account-recovery-phase-a-20260823/plan-production-20260823015745Z.json` bound by `ROSTER_SHA256` and file sha256 `32d0b23753370156150babcaf0b108ad1d8c2b28f952e9586cf700142f9ec852`; the roster is itself frozen and is never dynamically expanded.
 
-For each exact reviewed enabled Domain tuple:
+### 17A.2 Exact fleet authority and frozen counts
 
-- `DOMAIN_OWNER` uses atomic formal Owner replacement from BIP OLD to BIP NEW and never commits dual Owner authority;
-- `DOMAIN_MEMBER` preserves Domain and Role, enables/re-enables BIP NEW, disables BIP OLD, and never commits long-lived dual authority;
-- every tuple participates in one atomic migration outcome together with every selected responsibility successor Visit/Event/Receipt/Audit and projection CAS;
-- exact successful rerun is `NOOP` with zero writes and zero new audit;
-- any live-plan drift or post-state mismatch fails closed with zero committed writes.
+The exception authorizes only the exact successor pairs, Domain tuples, and active responsibility tuples contained in the frozen artifact:
 
-No number in this Product Direction substitutes for live tuple review.
+```text
+TOTAL_NEW_AGENTS = 86
+EXACT_SUCCESSOR_PAIR_COUNT = 86
+AMBIGUOUS_COUNT = 0
+CONFLICT_COUNT = 0
 
-### 17A.4 Current responsibility and immutable history
+WORKFLOW_PROJECTION_CREATE_COUNT = 85
+WORKFLOW_PROJECTION_PRESENT_COUNT = 1
 
-For every exact reviewed eligible responsibility, future apply MUST preserve the same Workflow Instance and node, append one successor Visit assigned to BIP NEW, append a dedicated successor Event, complete a dedicated Receipt, append durable Audit, and CAS the reviewed current Visit and expected workflow state version. It MUST update or delete zero historical Visits, assignments, Events, Submissions, Context revisions, Receipts, or Audits. Completed, terminal, cancelled, archived, non-current, and unplanned tasks remain untouched. The legacy 5,583 archive is excluded and MUST NOT be queried or migrated by this operator.
+DOMAIN_OWNER_TRANSFER_COUNT = 8
+DOMAIN_MEMBER_TRANSFER_COUNT = 752
+DOMAIN_TUPLE_COUNT = 760
 
-### 17A.5 Plan-first and separate production authorization
+ACTIVE_RESPONSIBILITY_TRANSFER_COUNT = 80
+
+DRAFT_OWNERSHIP_CANDIDATE_COUNT = 99
+DRAFT_OWNERSHIP_MIGRATION_COUNT = 0
+```
+
+These counts are frozen authoring scope bound to the artifact digest — never live database truth and never permission to force counts at apply time. Every future apply re-verifies live state against the exact artifact rows and fails closed on drift.
+
+For each exact pair, the only permitted future transaction shape is:
+
+1. verify the NEW Auth Principal is exact and `active`;
+2. NEW Workflow projection: create when missing, or require exact match when present;
+3. transfer the reviewed Domain authority tuples;
+4. transfer the reviewed active responsibility tuples;
+5. write Event / Receipt / Audit;
+6. verify the exact terminal state.
+
+No step accepts arbitrary `OLD`/`NEW` input; identities come only from the frozen artifact rows.
+
+### 17A.3 Duplicate identity exclusion and canonical pairs
+
+Exactly one identity is excluded as a duplicate:
+
+```text
+EXCLUDED_AGENT_ID = efficiency-agent
+EXCLUDED_PRINCIPAL_ID = d09f8849-073c-484a-978c-f375113c28b2
+EXCLUDED_CLASSIFICATION = EXCLUDED_DUPLICATE_IDENTITY
+EXCLUDED_MIGRATION_CANDIDATE = false
+EXCLUDED_FUTURE_OPERATOR_WRITES = 0
+```
+
+The excluded identity is a disabled, non-canonical duplicate with an existing projection, zero enabled Domain bindings, and zero Visits. A future operator encountering it commits zero writes. The only canonical efficiency pair is:
+
+```text
+efficiency-manager / 95eab282-22c7-46a2-8580-abfef4942cdc
+  -> agt_efficiency-agent / b21ddb23-42f6-47c4-a27f-bc44950e554c
+```
+
+The artifact also fixes, as two fully independent pairs:
+
+```text
+build-in-public-agent -> agt_build-in-public-agent
+blog-agent -> agt_blog-agent
+```
+
+`blog-agent` pairs only with `agt_blog-agent`, never with `agt_build-in-public-agent`; agent labels remain explanatory provenance and are never runtime identity selectors.
+
+### 17A.4 Workflow projection creation
+
+Future apply must first resolve the current systemic worklist failure: 85 of 86 NEW Auth Principals are absent from the svc-workflow Principal projection, so assigned-to-me reads return `404 principal_not_found`. The one present projection is exactly `agt_build-in-public-agent`.
+
+Each missing projection is created only for the exact NEW Principal in the frozen artifact. Forbidden:
+
+- dynamically enumerating an 87th identity from Auth;
+- display-name pairing;
+- removing the `agt_` inference discipline;
+- fuzzy or prefix matching;
+- creating the excluded identity's projection or binding it anywhere;
+- replacing any Auth Principal UUID.
+
+After creation, verification must show `workflow_my_tasks` no longer returns `principal_not_found`; with no current tasks, the correct terminal state is exactly HTTP 200 with `items = []`.
+
+### 17A.5 Domain transfer
+
+Only the 760 exact tuples in the artifact are processed.
+
+`DOMAIN_OWNER`:
+
+- exact OLD -> NEW transfer;
+- atomic Owner replacement;
+- never commits dual Owner;
+- Domain unchanged.
+
+`DOMAIN_MEMBER`:
+
+- enable NEW;
+- disable OLD;
+- Domain and Role unchanged;
+- never commits long-lived dual authority.
+
+Any tuple drift — missing, additional, disabled, role-changed, Principal-changed, or otherwise mismatched against the artifact — sets that pair's writes to 0 and the outcome to `CONFLICT`.
+
+### 17A.6 Active responsibility transfer
+
+Only the 80 exact responsibility tuples are processed, and each is re-validated at apply time: the current Visit is current, active, non-terminal, not cancelled, not archived, currently assigned to OLD, and its expected workflow state version matches the artifact.
+
+Apply must:
+
+- append a same-node successor Visit;
+- append a dedicated Event;
+- append a Receipt;
+- append durable Audit;
+- CAS the workflow state version;
+- preserve Instance and node;
+- keep historical Visits immutable;
+- keep historical assignments immutable.
+
+Terminal, completed, cancelled, or archived records are never migrated or reactivated.
+
+### 17A.7 Creator-owned drafts
+
+The 99 creator-owned draft tuples keep `created_by_principal_id` unchanged:
+
+```text
+DRAFT_CREATOR_HISTORY_IMMUTABLE = YES
+DRAFT_SUCCESSOR_MIGRATION = FORBIDDEN
+```
+
+If a "current maintainer" concept is ever needed, it requires a separate future draft-stewardship capability; this boundary never silently overwrites creator attribution.
+
+### 17A.8 Canary and execution sequence
+
+The complete future sequence is:
+
+1. accepted fleet Product Boundary;
+2. accepted local implementation Child;
+3. independently reviewed operator;
+4. production read-only plan recheck;
+5. exact `PLAN_SHA256` review;
+6. separate production apply authorization;
+7. canary 1: `agt_build-in-public-agent`;
+8. canary 2: `agt_efficiency-agent`;
+9. remaining exact 84 pairs;
+10. verify;
+11. exact rerun NOOP.
 
 ```text
 SPEC_ACCEPTED != PRODUCTION_APPLY_AUTHORIZED
 ```
 
-The complete mandatory sequence is:
+Each pair commits in its own independent SERIALIZABLE transaction. One pair's failure never fabricates another pair's success.
 
-1. accepted bounded Child Spec;
-2. independently reviewed exact operator implementation;
-3. production read-only `--plan` with zero writes;
-4. canonical plan bytes and separately computed `PLAN_SHA256`;
-5. independent review of the exact live plan and digest;
-6. separate explicit production apply authorization over exact implementation/plan/database/operator coordinates;
-7. apply;
-8. verify;
-9. exact rerun returning `NOOP` with zero writes and zero new audits.
-
-No write is authorized without a reviewed live plan. Product Direction acceptance, Child acceptance, implementation review, or plan generation alone does not authorize production apply. Apply must be atomic, fail closed on drift, and use no OLD credential impersonation, manual SQL mutation, online management API, or database-switch/fallback path.
-
-### 17A.6 No durable general capability
+### 17A.9 No durable general capability
 
 ```text
 CTO_BOUNDED_SUCCESSOR_AUTHORITY = PRESERVED_UNCHANGED
-BIP_BOUNDED_SUCCESSOR_AUTHORITY = ADDITIVE_EXACT_PAIR_ONLY
+FLEET_BOUNDED_SUCCESSOR_AUTHORITY = ADDITIVE_EXACT_PLAN_BOUND_ONLY
 ORDINARY_REASSIGNMENT = STILL_FORBIDDEN
 HANDOFF = STILL_FORBIDDEN
 DELEGATION = STILL_FORBIDDEN
 GENERAL_SUCCESSOR_API = FORBIDDEN
-OTHER_PRINCIPAL_PAIRS = FORBIDDEN
+GENERAL_MIGRATION_CAPABILITY = NO
+RUNTIME_OLD_NEW_PARAMETERS = FORBIDDEN
+DYNAMIC_ROSTER_EXPANSION = FORBIDDEN
 ONLINE_MANAGEMENT_API = FORBIDDEN
 HISTORICAL_REWRITE = FORBIDDEN
-LEGACY_5583_ARCHIVE_MIGRATION = FORBIDDEN
+TERMINAL_TASK_REACTIVATION = FORBIDDEN
 PRODUCTION_APPLY_AUTHORIZED = NO
 ```
 
-### 17A.7 Blocked Child relationship
+The CTO, Build in Public, and fleet mappings are never abstracted into a caller-parameterized general migration mechanism.
 
-Draft PR #9 at exact Head `3056263c3fc964a2b225720dd2b859b47e296c2e` remains blocked and inert while V4 is proposed/unmerged. After a separately reviewed Owner-accepted V4 is merged, PR #9 may receive only an authority-alignment amendment that updates `governed_by`/parent and base/revision coordinates, refreshes authority observations, and closes the lawful-parent blocker. That amendment MUST NOT change the child's exact BIP pair, `blog-agent` exclusion, plan-first model, Domain successor model, active-current-responsibility model, historical immutability, or separate production apply authorization. This V4 PR MUST NOT modify PR #9.
+### 17A.10 Blocked Child and PR disposition
+
+Draft PR #9 is now dispositioned:
+
+```text
+PR_9_DISPOSITION = SUPERSEDED_BY_FLEET_LOCAL_CHILD
+```
+
+This round must not close, modify, or merge PR #9. Its single-pair Child meaning is superseded by the fleet boundary above; the future local implementation Child (sequence step 2) supersedes it and must carry its own independent review. PR #10 may update this proposed V4 Head in this round, and the updated Head must receive a fresh independent audit before any acceptance consideration.
 
 ## 18. Capability-scoped child authorities and ordering
 
@@ -778,11 +925,11 @@ Slices may have dependency edges necessary for their own execution, but no Slice
 - Rejected: partial supersession or reader-side composition with V2.
 - Owner input remaining: none.
 
-### DEC-V4-006 — Add only the exact BIP bounded exception
+### DEC-V4-006 — Add only the exact fleet bounded exception
 
 - Decision owner: `mayf3`.
-- Decision: preserve the CTO exception unchanged and add only §17A's exact Build in Public pair with reviewed-live-plan selection, append-only successor facts, atomic apply, fail-closed drift, exact NOOP, and separate production authorization.
-- Rejected: modifying the CTO pair, arbitrary Principal migration, ordinary reassignment/handoff/delegation, online management API, historical rewrite/reactivation, count-forcing, and legacy archive migration.
+- Decision: preserve the CTO exception unchanged and add only §17A's trusted-fleet exception bound to the exact frozen plan artifact — 86 exact successor pairs, 85 projection creations, 760 exact Domain tuples, 80 exact active responsibilities, 99 immutable creator-owned drafts — with per-pair SERIALIZABLE apply, canary-first ordering, fail-closed drift, exact NOOP rerun, and separate production authorization.
+- Rejected: modifying the CTO pair; keeping only the single Build in Public pair; arbitrary Principal migration with runtime OLD/NEW arguments; dynamic roster expansion; ordinary reassignment/handoff/delegation; general successor API; online management API; historical rewrite/reactivation; count-forcing.
 - Owner input remaining: none.
 
 ## 20. Normative Contracts
@@ -889,26 +1036,32 @@ The migration MUST rewrite zero historical assignments/Visits, preserve the know
 ### CTR-V4-034 — Successor atomic NOOP and no durable product surface
 The retained migration MUST commit atomically, exact-rerun NOOP with zero writes/audits, fail closed on mismatched metadata/post-state, create no general API/capability, and retain separate implementation/production gates.
 
-### CTR-V4-035 — BIP exact pair and explicit exclusions
-The additive exception MUST be fixed only to §17A's exact BIP OLD/NEW UUIDs, MUST exclude `blog-agent`/`81c7fc7e-c696-4b47-bfd6-f12a9ecb68a6` and every other pair, and MUST NOT use labels, credentials, request fields, or dynamic input to widen identity.
+### CTR-V4-035 — Fleet exception binds only to the frozen plan
+The additive exception MUST authorize only the exact rows of the artifact with `PLAN_SHA256 = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606` (§17A.1); any other bytes, digest mismatch, runtime `OLD`/`NEW` parameter, label-based selection, or roster expansion MUST be rejected before writes.
 
-### CTR-V4-036 — BIP reviewed live-plan scope
-Only exact enabled OLD Domain tuples and exact current active non-terminal non-cancelled OLD-assigned responsibilities present in the independently reviewed live plan MAY be selected; expected `1 + 8` Domain scope is not live truth, zero active responsibility is valid, and any drift MUST commit zero writes.
+### CTR-V4-036 — Excluded duplicate identity and canonical pairs
+The efficiency duplicate `efficiency-agent`/`d09f8849-073c-484a-978c-f375113c28b2` MUST remain excluded with `EXCLUDED_FUTURE_OPERATOR_WRITES = 0`; only the canonical pair `efficiency-manager` -> `agt_efficiency-agent` MAY transfer efficiency authority, and `blog-agent` MUST pair only with `agt_blog-agent`.
 
-### CTR-V4-037 — BIP Domain successor atomicity
-BIP Owner replacement and Member enable-NEW/disable-OLD MUST preserve exact Domain/Role and commit atomically with every selected responsibility successor fact/projection CAS, without persistent dual authority; conflict MUST fail closed and exact rerun MUST return NOOP with zero writes/audits.
+### CTR-V4-037 — Projection creation and worklist terminal state
+Each of the 85 missing NEW Workflow projections MUST be created only from the artifact's exact NEW Principal; the already-present `agt_build-in-public-agent` projection MUST exactly match; after creation `workflow_my_tasks` MUST stop returning `principal_not_found` and MUST return HTTP 200 with `items = []` when no current tasks exist.
 
-### CTR-V4-038 — BIP append-only responsibility and history
-Each reviewed eligible responsibility MUST preserve Instance/node, append successor Visit/dedicated Event/Receipt/Audit, CAS exact Visit/state version, and rewrite/reactivate zero historical, terminal, completed, cancelled, archived, or legacy-archive facts.
+### CTR-V4-038 — Exact Domain tuple transfer
+Only the artifact's 760 exact Domain tuples MAY transfer: `DOMAIN_OWNER` by atomic OLD->NEW replacement without dual Owner, `DOMAIN_MEMBER` by enable-NEW/disable-OLD with Domain and Role unchanged; any tuple drift MUST yield zero writes for that pair with outcome `CONFLICT`.
 
-### CTR-V4-039 — BIP plan-first production gate
-The complete §17A.5 sequence MUST be enforced; canonical `PLAN_SHA256` and independent live-plan review are mandatory, and no Product Direction/Child/implementation/plan milestone authorizes production apply without the separate exact execution authorization.
+### CTR-V4-039 — Append-only active responsibility transfer
+Only the artifact's 80 exact responsibility tuples MAY transfer, each re-validated at apply time (current, active, non-terminal, not cancelled, not archived, assignee OLD, expected state version matching); apply MUST append same-node successor Visit, dedicated Event, Receipt, and Audit, CAS the state version, preserve Instance and node, and rewrite zero historical facts.
 
-### CTR-V4-040 — BIP no general product capability
-The BIP exception MUST create no general migration, reassignment, handoff, delegation, online management, arbitrary-pair, manual-SQL, database-switch, historical-rewrite, or legacy-archive capability and MUST leave every V3 prohibition unchanged.
+### CTR-V4-040 — Creator-owned draft immutability
+All 99 creator-owned draft tuples MUST keep `created_by_principal_id` unchanged (`DRAFT_CREATOR_HISTORY_IMMUTABLE = YES`, `DRAFT_SUCCESSOR_MIGRATION = FORBIDDEN`); any maintainer concept requires a separate future draft-stewardship capability.
 
-### CTR-V4-041 — Blocked Child alignment only
-After V4 acceptance and merge, PR #9 MAY change only authority-alignment coordinates/observations and blocker state; its exact pair, exclusion, plan-first, Domain, active-responsibility, history, and separate apply-authorization product semantics MUST remain unchanged.
+### CTR-V4-041 — Per-pair transaction isolation, canary order, exact NOOP
+Each pair MUST commit in one independent SERIALIZABLE transaction following the §17A.8 sequence (canary 1 `agt_build-in-public-agent`, canary 2 `agt_efficiency-agent`, then the remaining exact 84); one pair's failure MUST NOT fabricate another pair's success; an exact successful rerun MUST be NOOP with zero writes and zero new audits.
+
+### CTR-V4-042 — Fleet plan-first separate production gate
+The complete §17A.8 sequence MUST be enforced before any fleet write: accepted fleet Product Boundary, accepted local implementation Child, independently reviewed operator, production read-only plan recheck, and exact `PLAN_SHA256` review occur before a separate explicit production apply authorization; no earlier milestone authorizes apply.
+
+### CTR-V4-043 — PR disposition without lifecycle change
+PR #9 MUST carry disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD` without being closed, modified, or merged this round; this updated proposed V4 Head MUST receive a fresh independent audit, and V4 MUST remain proposed with `implementation_authority = none` and `production_apply_authority = none`.
 
 ## 21. Acceptance
 
@@ -1152,59 +1305,73 @@ Every item requires executed evidence at the implementation/authority revision n
 - Required evidence: executed transactions, counts, surface diff, gate record.
 - Failure condition: partial commit, rerun side effect, reusable reassignment surface, or Spec/merge alone authorizes production.
 
-### ACC-V4-035 — BIP exact-pair negative matrix
+### ACC-V4-035 — Frozen-plan binding negative matrix
 - Contracts: `CTR-V4-035`.
-- Method/environment: child/tool review using exact BIP pair, `blog-agent`, CTO pair, and arbitrary UUID fixtures.
-- Expected: only exact BIP OLD to NEW is selectable under the BIP exception; all excluded/other pairs fail before writes.
-- Required evidence: exact source constants, CLI/surface inventory, executed negative matrix.
-- Failure condition: label/dynamic input widens pair, excluded Principal is selected, or CTO authority is modified.
+- Method/environment: child/operator review using exact artifact bytes, byte-modified plan, mismatched digest, runtime-supplied OLD/NEW, and label/renamed-account fixtures.
+- Expected: only the exact frozen artifact rows are selectable; every other input fails before writes.
+- Required evidence: executed digest checks, source constants, and negative matrix transcript.
+- Failure condition: any non-artifact identity or parameter reaches a write path.
 
-### ACC-V4-036 — BIP live-plan scope and zero-responsibility case
+### ACC-V4-036 — Excluded identity and canonical pair check
 - Contracts: `CTR-V4-036`.
-- Method/environment: production read-only reviewed plan plus disposable changed/missing/extra/zero fixtures.
-- Expected: exact live enabled tuples and eligible current responsibilities are frozen; zero responsibility is valid; drift writes zero.
-- Required evidence: canonical plan/digest, tuple identities, eligibility fields, before snapshot, and zero-write proof.
-- Failure condition: expected count substitutes for live rows, an ineligible task enters scope, zero reactivates history, or drift commits.
+- Method/environment: operator fixtures for the excluded duplicate, canonical efficiency pair, Build in Public pair, and blog pair.
+- Expected: excluded identity commits zero writes; efficiency transfers only via the canonical pair; blog and Build in Public pairs stay independent.
+- Required evidence: executed matrix with pre/post row digests.
+- Failure condition: the duplicate receives any write, or cross-pair confusion occurs.
 
-### ACC-V4-037 — BIP Domain atomic successor
+### ACC-V4-037 — Projection creation and worklist terminal state
 - Contracts: `CTR-V4-037`.
-- Method/environment: disposable Owner/Member/failure/concurrent/rerun matrix.
-- Expected: exact Role/Domain preserved, one effective Owner, no committed dual authority, atomic rollback, exact NOOP.
-- Required evidence: pre/post tuples, fault-injection transaction proof, Receipt/Audit counts.
-- Failure condition: partial Domain transfer, role change, dual authority, mismatched rerun repair, or extra audit.
+- Method/environment: disposable projection store with the 85 missing and 1 present identities.
+- Expected: 85 projections created from exact artifact Principals; the present one exact-matched; `workflow_my_tasks` returns HTTP 200 with `items = []` (or real tasks) and no `principal_not_found`.
+- Required evidence: created-row digests and executed worklist responses.
+- Failure condition: a 87th/dynamic identity, display-name pairing, excluded-identity creation, or residual 404.
 
-### ACC-V4-038 — BIP append-only responsibility and history
+### ACC-V4-038 — Domain tuple exactness and conflict
 - Contracts: `CTR-V4-038`.
-- Method/environment: disposable current/terminal/completed/cancelled/archived/history/CAS/replay matrix.
-- Expected: same Instance/node successor chain is appended only for reviewed eligible rows; every old fact remains immutable.
-- Required evidence: before/after row digests, CAS outcomes, new Visit/Event/Receipt/Audit lineage.
-- Failure condition: history changes, wrong Instance/node, ineligible reactivation, missing dedicated fact, or legacy archive access.
+- Method/environment: disposable Domain fixtures with exact, missing, extra, disabled, role-changed, and Principal-changed tuples.
+- Expected: the exact 760 transfer atomically per pair; every drift yields zero writes with `CONFLICT`.
+- Required evidence: pre/post tuples, transaction logs, and outcome records.
+- Failure condition: dual Owner, long-lived dual member authority, Domain/Role change, or drift commits.
 
-### ACC-V4-039 — BIP plan/apply gate sequence
+### ACC-V4-039 — Responsibility append-only and history immutability
 - Contracts: `CTR-V4-039`.
-- Method/environment: authority/implementation/plan/execution-record lifecycle review.
-- Expected: all nine ordered gates occur; canonical plan digest is reviewed; apply lacks authority until separate exact approval.
-- Required evidence: exact commits, plan bytes/SHA, review receipt, execution authorization, apply/verify/NOOP transcript.
-- Failure condition: any earlier milestone implies apply, write precedes reviewed plan, or exact NOOP is absent.
+- Method/environment: disposable current/terminal/cancelled/archived/state-version-mismatch fixtures.
+- Expected: only the 80 re-validated exact tuples append successor Visit/Event/Receipt/Audit with CAS; all historical facts remain byte-identical.
+- Required evidence: before/after history digests, new fact lineage, and CAS outcomes.
+- Failure condition: ineligible reactivation, missing dedicated fact, wrong Instance/node, or any historical rewrite.
 
-### ACC-V4-040 — No general successor surface
+### ACC-V4-040 — Draft creator immutability
 - Contracts: `CTR-V4-040`.
-- Method/environment: Product Direction diff plus HTTP/OpenAPI/SDK/CLI/database-path inventory.
-- Expected: V3 prohibitions remain and only the offline exact-pair exception exists.
-- Required evidence: semantic diff, surface inventory, excluded-operation tests.
-- Failure condition: general migration/reassign/handoff/delegate/API/manual-SQL/database-switch/history/archive capability exists.
+- Method/environment: all 99 draft tuples in a disposable store with a candidate successor operator run.
+- Expected: zero `created_by_principal_id` changes and zero draft migrations.
+- Required evidence: pre/post draft digests.
+- Failure condition: any creator field rewrite or silent maintainer overwrite.
 
-### ACC-V4-041 — PR #9 alignment-only diff
+### ACC-V4-041 — Canary sequence and per-pair isolation
 - Contracts: `CTR-V4-041`.
-- Method/environment: after V4 acceptance/merge only, compare exact blocked Head with proposed child amendment.
-- Expected: only parent/base/revision coordinates, authority observations, and lawful-parent blocker state change.
-- Required evidence: exact PR #9 semantic diff and independent child re-review.
-- Failure condition: any frozen BIP product semantic changes or child implementation/apply authority is inferred.
+- Method/environment: full fleet rehearsal on a disposable store with injected per-pair failure and exact rerun.
+- Expected: canary order holds; each pair commits independently SERIALIZABLE; one failure never fabricates another pair's success; exact rerun is a zero-write NOOP.
+- Required evidence: ordered transcripts, per-pair transaction records, and rerun counts.
+- Failure condition: pair writes merge, failure leaks into other pairs' outcomes, or rerun mutates.
+
+### ACC-V4-042 — Fleet production gate sequence
+- Contracts: `CTR-V4-042`.
+- Method/environment: authority/implementation/plan/execution-record lifecycle review for the fleet apply.
+- Expected: all ordered gates occur before any write; exact `PLAN_SHA256` is re-reviewed against the live recheck; apply lacks authority until the separate exact production authorization.
+- Required evidence: exact commits, plan bytes/SHA, review receipt, execution authorization, and apply/verify/NOOP transcript.
+- Failure condition: any earlier milestone implies apply, a write precedes the reviewed rechecked plan, or production apply is derived from acceptance alone.
+
+### ACC-V4-043 — PR disposition and lifecycle invariance
+- Contracts: `CTR-V4-043`.
+- Method/environment: PR and repository state review at the updated Head.
+- Expected: PR #9 open, unmodified, and unmerged with the recorded disposition; V4 proposed with no implementation or production apply authority; fresh independent audit required.
+- Required evidence: PR snapshots, frontmatter/lifecycle review, and audit gate record.
+- Failure condition: PR #9 is closed/modified/merged, V4 is treated as accepted, or the fresh audit is skipped.
 
 ```text
-CONTRACT_COUNT = 41
-CONTRACTS_WITH_ACCEPTANCE = 41
-ACCEPTANCE_COUNT = 41
+CONTRACT_COUNT = 43
+CONTRACTS_WITH_ACCEPTANCE = 43
+ACCEPTANCE_COUNT = 43
 DANGLING_CONTRACT_REFERENCES = 0
 UNCOVERED_CONTRACTS = 0
 ACCEPTANCE_WITHOUT_FAILURE_CONDITION = 0
@@ -1219,8 +1386,10 @@ ACCEPTANCE_WITHOUT_FAILURE_CONDITION = 0
 - Runtime grant API/Agent self-grant: rejected; designation is repository-owned and reviewed.
 - Auto-expiring designation: not required; short token/rotation/revoke/disable controls plus whole-authority replacement are selected.
 - Partial V2 amendment: rejected in V3; identity/governance meaning changed and V0 permits only whole-authority supersession.
-- Directly amend accepted V3 for the BIP pair: rejected; exact-pair meaning changes, so V4 is a whole-authority successor.
-- Generalize CTO/BIP into arbitrary Principal migration: rejected; each exception remains independently exact and bounded.
+- Directly amend accepted V3 for the fleet: rejected; successor-scope meaning changes, so V4 is a whole-authority successor.
+- Generalize CTO/fleet into arbitrary Principal migration: rejected; each exception remains independently exact and bounded, and the fleet exception stays digest-frozen.
+- Keep the single Build in Public pair as the entire exception: superseded; the frozen plan v2 artifact supersedes plan v1, and Draft PR #9 is dispositioned `SUPERSEDED_BY_FLEET_LOCAL_CHILD`.
+- Accept runtime OLD/NEW arguments or dynamic roster expansion: rejected; a future operator binds only to exact artifact rows.
 - Use PR #15 or mutable PR #2 as common prerequisites: rejected; both are independent from Agent-first V1.
 
 ## 23. Migration, compatibility, containment, and rollback
@@ -1229,7 +1398,7 @@ V4 acceptance, if later performed, is docs-only and does not mutate runtime. Exi
 
 Capability rollout is Slice-scoped. Rollback of code/config is owned by each child. Security containment may revoke/rotate Client, disable binding, disable Principal, and record durable audit without creating a replacement authority. Product-direction rollback before runtime implementation is a Git revert of the complete accepted transition. After dependent authorities/implementation exist, a lawful whole-authority successor and child rollback plan are required; neither V3 nor V2 is silently revived.
 
-The retained CTO migration and additive BIP exception each keep separate implementation, reviewed-plan, and production execution gates. PR #7 remains independent. No current HTTP Contract, OpenAPI, SDK, Rust, SQL, migration, test, deployment, auth-service, or dsh-agent-core change is made or authorized here.
+The retained CTO migration and additive trusted-fleet exception each keep separate implementation, reviewed-plan, and production execution gates. PR #7 remains independent. PR #9 remains open and unmodified this round with disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD`. No current HTTP Contract, OpenAPI, SDK, Rust, SQL, migration, test, deployment, auth-service, or dsh-agent-core change is made or authorized here.
 
 ## 24. Open Questions and authoring readiness
 
@@ -1259,8 +1428,17 @@ The exact Admin Agent Principal UUID and Client ID are intentionally not open Pr
 ACCEPTANCE_STATUS = NOT_PERFORMED
 STATUS = proposed
 AUTHORING_BASE = 327b74f138151a7f4d9d88e3881e54d203f1e8f6
+SUPERSEDED_PROPOSAL_HEAD = 142af0db347c1b1f21cfcf50a594f0c612a29f7c
+PLAN_SHA256_BOUND = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
+EXACT_FLEET_PAIR_COUNT = 86
+WORKFLOW_PROJECTION_CREATE_COUNT = 85
+DOMAIN_TRANSFER_COUNT = 760
+ACTIVE_RESPONSIBILITY_TRANSFER_COUNT = 80
+GENERAL_MIGRATION_CAPABILITY = NO
 BLOCKED_CHILD_PR = 9
 BLOCKED_CHILD_HEAD = 3056263c3fc964a2b225720dd2b859b47e296c2e
+PR_9_DISPOSITION = SUPERSEDED_BY_FLEET_LOCAL_CHILD
+PR_9_MODIFIED_THIS_ROUND = NO
 V3_STATUS_ON_MAIN = accepted
 V3_TRANSITION = NOT_PERFORMED
 IMPLEMENTATION_AUTHORITY = none
@@ -1268,10 +1446,11 @@ PRODUCTION_APPLY_AUTHORITY = none
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 PRODUCTION_APPLY_AUTHORIZED = NO
 INDEPENDENT_REVIEW_REQUIRED = YES
+FRESH_INDEPENDENT_AUDIT_REQUIRED_FOR_UPDATED_HEAD = YES
 OWNER_ACCEPTANCE_REQUIRED = YES
 FINAL_HEAD_RECHECK_REQUIRED = YES
 MERGE_PERFORMED = NO
 PRODUCTION_CHANGE = NONE
 ```
 
-This authoring change only proposes V4. It does not edit accepted V3, modify blocked Child PR #9, finalize acceptance, update the repository authority map, authorize implementation, query production, mutate any Domain/workflow/history fact, merge, or authorize production apply.
+This authoring change only re-proposes V4 as an exact-plan-bound trusted-fleet successor boundary, wholly replacing the prior single-pair proposed text at Head `142af0db347c1b1f21cfcf50a594f0c612a29f7c`. It does not edit accepted V3, close or modify blocked Child PR #9, finalize acceptance, update the repository authority map, authorize implementation, query or mutate production, mutate any Domain/workflow/history fact, commit the plan artifact, merge, or authorize production apply. The updated Head requires a fresh independent audit before any acceptance consideration.
