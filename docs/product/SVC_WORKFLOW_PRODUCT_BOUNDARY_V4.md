@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V4
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -16,12 +16,12 @@ owners:
 
 ## 1. Goal and authority status
 
-This document is the complete proposed Product Direction for `svc-workflow`. It is a whole-authority successor to accepted `SVC_WORKFLOW_PRODUCT_BOUNDARY_V3`, not an amendment and not a reader-side composition with V3.
+This document is the complete Product Direction for `svc-workflow`. It is a whole-authority successor to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V3`, not an amendment and not a reader-side composition with V3.
 
 ```text
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V4
 AUTHORITY_KIND = product_direction
-STATUS = proposed
+STATUS = accepted
 SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V3
 PRODUCT_BOUNDARY_ACTION = SUPERSEDE
 WHOLE_AUTHORITY_SUPERSESSION = YES
@@ -34,7 +34,7 @@ PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 ```
 
-V4 is proposed and inert. V3 remains the accepted active Product Direction on `main`. A later acceptance transition, if authorized after independent review, must atomically mark V4 accepted, mark V3 superseded with its `superseded_by` backlink, and update the repository authority map. This authoring PR performs none of those lifecycle changes and MUST NOT be merged as acceptance by implication.
+V4 is Owner-accepted on the PR branch. V4 is not repository-active until the accepted candidate is independently rechecked and merged to `main`. The Owner-accepted atomic acceptance transition has changed V3's frontmatter lifecycle and `superseded_by` backlink and `.agents/local/README.md` together with this acceptance; V3 remains the active Product Direction on `main` until that transition is merged.
 
 The Goal is to preserve every V3 product boundary, Decision, Contract, exclusion, security invariant, capability Slice, retained trade-off, conformance-debt statement, and the original CTO bounded successor exception unchanged, while adding exactly one independent bounded trusted-fleet successor exception frozen to the exact canonical plan artifact in §17A. No other V3 meaning changes.
 
@@ -1424,11 +1424,11 @@ TWO_PERSON_APPROVAL_REQUIRED_FOR_V1 = NO
 
 The exact Admin Agent Principal UUID and Client ID are intentionally not open Product Direction decisions: they are required fields owned by the later designation authority. Implementation Agents have no discretion to choose or activate them outside that authority.
 
-## 25. Proposed lifecycle record
+## 25. Lifecycle record
 
 ```text
-ACCEPTANCE_STATUS = NOT_PERFORMED
-STATUS = proposed
+ACCEPTANCE_STATUS = accepted
+STATUS = accepted
 AUTHORING_BASE = 327b74f138151a7f4d9d88e3881e54d203f1e8f6
 SUPERSEDED_PROPOSAL_HEAD = 142af0db347c1b1f21cfcf50a594f0c612a29f7c
 PLAN_SHA256_BOUND = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
@@ -1442,7 +1442,7 @@ BLOCKED_CHILD_HEAD = 3056263c3fc964a2b225720dd2b859b47e296c2e
 PR_9_DISPOSITION = SUPERSEDED_BY_FLEET_LOCAL_CHILD
 PR_9_MODIFIED_THIS_ROUND = NO
 V3_STATUS_ON_MAIN = accepted
-V3_TRANSITION = NOT_PERFORMED
+V3_TRANSITION = superseded candidate
 IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
@@ -1455,4 +1455,36 @@ MERGE_PERFORMED = NO
 PRODUCTION_CHANGE = NONE
 ```
 
-This authoring change only re-proposes V4 as an exact-plan-bound trusted-fleet successor boundary, wholly replacing the prior single-pair proposed text at Head `142af0db347c1b1f21cfcf50a594f0c612a29f7c`. It does not edit accepted V3, close or modify blocked Child PR #9, finalize acceptance, update the repository authority map, authorize implementation, query or mutate production, mutate any Domain/workflow/history fact, commit the plan artifact, merge, or authorize production apply. The updated Head requires a fresh independent audit before any acceptance consideration.
+The authoring change wholly replaced the prior single-pair proposed text at Head `142af0db347c1b1f21cfcf50a594f0c612a29f7c`. The Owner-accepted whole-authority transition recorded in §26 marks V4 accepted, V3's frontmatter superseded with its `superseded_by` backlink, and the repository-local authority map switched atomically. It does not close or modify blocked Child PR #9, authorize implementation, query or mutate production, mutate any Domain/workflow/history fact, commit the plan artifact, or authorize production apply.
+
+## 26. Acceptance Record (OWNER_WHOLE_AUTHORITY_ACCEPTANCE_TRANSITION_ONLY)
+
+```text
+ACCEPTANCE_STATUS = accepted
+REVIEW_BASE = 327b74f138151a7f4d9d88e3881e54d203f1e8f6
+REVIEWED_HEAD = 8ffb8c72828f509ce9dc3ac5e4d9a777ca2353cd
+REVIEW_RESULT = 全迁 审计 = PASS
+BLOCKERS = NONE
+REQUIRED_FIXES = NONE
+READY_FOR_ACCEPTANCE_FINALIZE = YES
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+PLAN_SHA256 = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
+EXACT_FLEET_PAIR_COUNT = 86
+WORKFLOW_PROJECTION_CREATE_COUNT = 85
+DOMAIN_TRANSFER_COUNT = 760
+ACTIVE_RESPONSIBILITY_TRANSFER_COUNT = 80
+DRAFT_OWNERSHIP_MIGRATION_COUNT = 0
+CTO_EXACT_PAIR_EXCEPTION = PRESERVED_UNCHANGED
+ACCEPTED_BY = mayf3
+ACCEPTED_AT = 2026-08-24T16:01:24Z
+V3_TRANSITION = superseded candidate (frontmatter lifecycle only)
+V3_HISTORICAL_BODY = byte-identical from first H1 to EOF
+ALLOWED_DELTA = lifecycle metadata + acceptance receipt + V3 frontmatter supersession + repository-local authority map
+FINAL_HEAD_RECHECK = PERFORMED (PR #10 Head verified equal to REVIEWED_HEAD before Ready and merge; merge performed under this acceptance task's explicit authorization)
+ACTIVE_ON_MAIN = NO at acceptance commit (accepted candidate on PR #10 branch; repository-active after merge)
+CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
+PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
+PRODUCTION_APPLY_AUTHORIZED = NO
+```
+
+This acceptance is an Owner whole-authority lifecycle transition only: V4 becomes an accepted candidate, V3's frontmatter becomes superseded with a `superseded_by` backlink, and the repository-local authority map is switched atomically. Frozen fleet semantics and the CTO exact-pair exception are untouched. It authorizes no implementation, no operator, no production plan or apply, and no PR #9 change. `FINAL_ACCEPTED_HEAD` and merge coordinates are reported as persistent PR records after the acceptance commit and merge, not embedded here.
