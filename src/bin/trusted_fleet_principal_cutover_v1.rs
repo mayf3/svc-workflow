@@ -1264,15 +1264,36 @@ async fn apply_scope(
         gate(w, a, p, "agt_efficiency-agent", actor).await?;
     }
     let mut outcomes = Vec::new();
+    let mut conflict_pairs = 0usize;
     for (idx, pair) in p
         .fleet_rows
         .iter()
         .enumerate()
         .filter(|(_, x)| selected(scope, x))
     {
-        let display = auth_exact(a, pair).await?;
-        let outcome = apply_pair(w, p, idx + 1, pair, &display, actor).await?;
-        outcomes.push(json!({"pairIndex":idx+1,"newAgentId":pair.new_agent_id,"outcome":outcome}));
+        // Per-pair failure isolation: a conflicting pair stops itself with
+        // zero writes and is reported; the remaining pairs still execute.
+        // One pair's failure never fabricates another pair's success.
+        let entry = match auth_exact(a, pair).await {
+            Err(error) => {
+                conflict_pairs += 1;
+                json!({"pairIndex":idx+1,"newAgentId":pair.new_agent_id,"outcome":"CONFLICT","reason":error.to_string()})
+            }
+            Ok(display) => match apply_pair(w, p, idx + 1, pair, &display, actor).await {
+                Ok(outcome) => json!({"pairIndex":idx+1,"newAgentId":pair.new_agent_id,"outcome":outcome}),
+                Err(error) => {
+                    conflict_pairs += 1;
+                    let message = error.to_string();
+                    let outcome = message
+                        .split_once(':')
+                        .map(|(prefix, _)| prefix)
+                        .filter(|value| matches!(*value, "CONFLICT" | "ROLLED_BACK" | "OUTCOME_UNKNOWN"))
+                        .unwrap_or("CONFLICT");
+                    json!({"pairIndex":idx+1,"newAgentId":pair.new_agent_id,"outcome":outcome,"reason":message})
+                }
+            },
+        };
+        outcomes.push(entry);
     }
     let committed = outcomes
         .iter()
@@ -1284,8 +1305,13 @@ async fn apply_scope(
         .count();
     println!(
         "{}",
-        json!({"planSha256":PLAN_SHA,"scope":format!("{:?}",scope),"outcome":if committed==0{"NOOP"}else{"COMMITTED"},"writes":if committed==0{Some(0)}else{None},"newAudits":committed,"noopCount":noops,"pairs":outcomes})
+        json!({"planSha256":PLAN_SHA,"scope":format!("{:?}",scope),"outcome":if conflict_pairs>0{"CONFLICT"}else if committed==0{"NOOP"}else{"COMMITTED"},"writes":if committed==0{Some(0)}else{None},"newAudits":committed,"noopCount":noops,"conflictCount":conflict_pairs,"pairs":outcomes})
     );
+    if conflict_pairs > 0 {
+        return Err(conflict(format!(
+            "{conflict_pairs} pair(s) stopped with zero writes; other pairs executed; see per-pair summary"
+        )));
+    }
     Ok(())
 }
 fn pair_migration_id(pair: &Pair) -> Result<String> {
