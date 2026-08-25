@@ -265,3 +265,146 @@ async fn empty_disposable_databases_fail_loud_with_zero_workflow_writes() {
             .unwrap();
     assert_eq!(audit_count_after, 1);
 }
+
+fn json_lines(output: &[u8]) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("JSON line"))
+        .collect()
+}
+
+/// Owner display-drift ruling matrix (tests A-E). Runs after the BIP apply
+/// test under `--test-threads=1` (alphabetical order) and reuses its
+/// terminal BIP state. The apply path exercises the same identity-critical
+/// projection classification as plan/verify (a NOOP verdict requires
+/// pair_terminal_exact, which includes the patched projection_exact).
+#[tokio::test]
+async fn zz_display_drift_matrix_and_identity_critical_conflicts() {
+    let workflow_url = std::env::var("TEST_WORKFLOW_DATABASE_URL").unwrap();
+    let auth_url = std::env::var("TEST_AUTH_DATABASE_URL").unwrap();
+    let workflow = PgPool::connect(&workflow_url).await.unwrap();
+    let auth = PgPool::connect(&auth_url).await.unwrap();
+
+    let plan: serde_json::Value = serde_json::from_slice(&std::fs::read(PLAN).unwrap()).unwrap();
+    let bip = plan["fleet_rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["new_agent_id"] == "agt_build-in-public-agent")
+        .unwrap();
+    let bip_new: uuid::Uuid = bip["new_principal_id"].as_str().unwrap().parse().unwrap();
+    let auth_display = "Build in Public — Formal Auth Name";
+
+    let apply_bip = || {
+        let output = Command::new(binary())
+            .args(["--apply", "--scope", "build-in-public-canary"])
+            .env("DATABASE_URL", &workflow_url)
+            .env("AUTH_DATABASE_URL", &auth_url)
+            .env("MIGRATION_ACTOR_PRINCIPAL_ID", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .output()
+            .expect("apply canary");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("JSON line"))
+            .collect::<Vec<_>>()
+    };
+    let audits = async || -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM workflow_security_audits")
+            .fetch_one(&workflow)
+            .await
+            .unwrap()
+    };
+
+    // ---- C. principal_type differs -> CONFLICT, zero writes ----
+    sqlx::query("UPDATE principals SET principal_type='HUMAN' WHERE principal_id=$1")
+        .bind(bip_new)
+        .execute(&workflow)
+        .await
+        .unwrap();
+    let body = apply_bip()[0].clone();
+    assert_eq!(body["outcome"], "CONFLICT", "C: {body}");
+    assert_eq!(body["writes"], 0, "C: {body}");
+    assert_eq!(audits().await, 1, "C: audit written");
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(bip_new)
+        .execute(&workflow)
+        .await
+        .unwrap();
+
+    // ---- D. enabled differs -> CONFLICT, zero writes ----
+    sqlx::query("UPDATE principals SET enabled=FALSE WHERE principal_id=$1")
+        .bind(bip_new)
+        .execute(&workflow)
+        .await
+        .unwrap();
+    let body = apply_bip()[0].clone();
+    assert_eq!(body["outcome"], "CONFLICT", "D: {body}");
+    assert_eq!(body["writes"], 0, "D: {body}");
+    assert_eq!(audits().await, 1, "D: audit written");
+    sqlx::query("UPDATE principals SET enabled=TRUE WHERE principal_id=$1")
+        .bind(bip_new)
+        .execute(&workflow)
+        .await
+        .unwrap();
+
+    // ---- E. Auth agent identity differs -> CONFLICT, zero writes ----
+    sqlx::query("UPDATE machine_principals SET agent_id='agt_wrong-agent' WHERE id=$1")
+        .bind(bip_new)
+        .execute(&auth)
+        .await
+        .unwrap();
+    let body = apply_bip()[0].clone();
+    assert_eq!(body["outcome"], "CONFLICT", "E: {body}");
+    assert_eq!(body["writes"], 0, "E: {body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("Auth identity drift"),
+        "E: {body}"
+    );
+    assert_eq!(audits().await, 1, "E: audit written");
+    sqlx::query("UPDATE machine_principals SET agent_id=$2 WHERE id=$1")
+        .bind(bip_new)
+        .bind("agt_build-in-public-agent")
+        .execute(&auth)
+        .await
+        .unwrap();
+
+    // ---- B. only display_name drifts -> PASS_WITH_DISPLAY_DRIFT, writes=0 ----
+    sqlx::query("UPDATE principals SET display_name='agent-d5b3aeb2' WHERE principal_id=$1")
+        .bind(bip_new)
+        .execute(&workflow)
+        .await
+        .unwrap();
+    let body = apply_bip()[0].clone();
+    assert_eq!(body["outcome"], "NOOP", "B apply: {body}");
+    assert_eq!(body["writes"], 0, "B apply: {body}");
+    assert_eq!(body["newAudits"], 0, "B apply: {body}");
+    let live_display: String =
+        sqlx::query_scalar("SELECT display_name FROM principals WHERE principal_id=$1")
+            .bind(bip_new)
+            .fetch_one(&workflow)
+            .await
+            .unwrap();
+    assert_eq!(live_display, "agent-d5b3aeb2", "B: display_name was rewritten");
+    assert_eq!(audits().await, 1, "B: audit written during drift NOOP");
+
+    // ---- A. all fields identical -> clean NOOP ----
+    sqlx::query("UPDATE principals SET display_name=$2 WHERE principal_id=$1")
+        .bind(bip_new)
+        .bind(auth_display)
+        .execute(&workflow)
+        .await
+        .unwrap();
+    let body = apply_bip()[0].clone();
+    assert_eq!(body["outcome"], "NOOP", "A apply: {body}");
+    assert_eq!(body["writes"], 0, "A apply: {body}");
+    assert_eq!(body["newAudits"], 0, "A apply: {body}");
+    let live_display: String =
+        sqlx::query_scalar("SELECT display_name FROM principals WHERE principal_id=$1")
+            .bind(bip_new)
+            .fetch_one(&workflow)
+            .await
+            .unwrap();
+    assert_eq!(live_display, auth_display, "A: display drifted");
+}

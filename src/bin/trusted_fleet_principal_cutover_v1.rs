@@ -958,14 +958,17 @@ async fn auth_exact(auth: &PgPool, p: &Pair) -> Result<String> {
     Ok(n)
 }
 async fn projection_exact(w: &PgPool, pair: &Pair, display: &str) -> Result<bool> {
-    let row = sqlx::query("SELECT principal_type::text AS t,display_name,enabled FROM principals WHERE principal_id=$1")
+    // Owner emergency compatibility ruling: exact-match compares
+    // identity-critical fields only (principal_id binding, principal_type,
+    // enabled). display_name is PRESENTATION_METADATA / NON_AUTHORIZATION;
+    // its drift is reported as a warning and never written by this cutover.
+    let _ = display;
+    let row = sqlx::query("SELECT principal_type::text AS t,enabled FROM principals WHERE principal_id=$1")
         .bind(pair.new_principal_id)
         .fetch_optional(w)
         .await?;
     Ok(row.as_ref().is_some_and(|r| {
-        r.get::<String, _>("t") == "AGENT"
-            && r.get::<String, _>("display_name") == display
-            && r.get::<bool, _>("enabled")
+        r.get::<String, _>("t") == "AGENT" && r.get::<bool, _>("enabled")
     }))
 }
 
@@ -1076,6 +1079,7 @@ async fn observe(
 ) -> Result<()> {
     let mut pairs = Vec::new();
     let mut projection_ready = 0usize;
+    let mut display_drift = 0usize;
     let mut owner_ready = 0usize;
     let mut member_ready = 0usize;
     let mut responsibility_ready = 0usize;
@@ -1096,11 +1100,25 @@ async fn observe(
                 .bind(pair.new_principal_id)
                 .fetch_one(w)
                 .await?;
+        let mut warnings: Vec<String> = Vec::new();
         if projection {
             projection_ready += 1;
+            let live_display: Option<String> =
+                sqlx::query_scalar("SELECT display_name FROM principals WHERE principal_id=$1")
+                    .bind(pair.new_principal_id)
+                    .fetch_optional(w)
+                    .await?
+                    .flatten();
+            if live_display.as_deref() != Some(display.as_str()) {
+                warnings.push(format!(
+                    "display_name drift: auth official {:?} vs projection {:?} (PASS_WITH_DISPLAY_DRIFT; presentation metadata; update deferred; writes=0)",
+                    display,
+                    live_display.unwrap_or_default()
+                ));
+            }
         } else if projection_present != 0 {
             pair_conflicts
-                .push("projection exists but does not exactly match Auth formal fields".into());
+                .push("projection exists but identity-critical fields mismatch (principal_type/enabled)".into());
         } else if pair.evidence.new_workflow_principal_present {
             pair_conflicts.push("plan-required existing projection is now missing".into());
         } else if terminal {
@@ -1151,7 +1169,11 @@ async fn observe(
         if !pair_conflicts.is_empty() {
             conflicts += 1;
         }
-        pairs.push(json!({"newAgentId":pair.new_agent_id,"outcome":if pair_conflicts.is_empty(){if terminal{"NOOP"}else{"PLANNED"}}else{"CONFLICT"},"projectionExact":projection,"drift":pair_conflicts}));
+        let display_drifted = !warnings.is_empty();
+        if display_drifted {
+            display_drift += 1;
+        }
+        pairs.push(json!({"newAgentId":pair.new_agent_id,"outcome":if pair_conflicts.is_empty(){if terminal{"NOOP"}else{"PLANNED"}}else{"CONFLICT"},"projectionExact":projection,"displayNameDrift":display_drifted,"drift":pair_conflicts,"warnings":warnings}));
     }
     let excluded: Uuid = EXCLUDED_PRINCIPAL.parse().expect("compiled excluded UUID");
     let excluded_domain_writes: i64 = sqlx::query_scalar(
@@ -1177,6 +1199,7 @@ async fn observe(
             "writes": 0,
             "newAudits": 0,
             "workflowProjectionReadyCount": projection_ready,
+            "displayNameDriftCount": display_drift,
             "domainOwnerReadyCount": owner_ready,
             "domainMemberReadyCount": member_ready,
             "activeResponsibilityReadyCount": responsibility_ready,
@@ -1422,7 +1445,7 @@ async fn apply_pair(
             "OLD Workflow projection drift pair {index}"
         )));
     }
-    match sqlx::query("SELECT principal_type::text AS t,display_name,enabled FROM principals WHERE principal_id=$1 FOR UPDATE").bind(pair.new_principal_id).fetch_optional(&mut *tx).await?{None=>{sqlx::query("INSERT INTO principals(principal_id,principal_type,display_name,email,enabled,metadata) VALUES($1,'AGENT',$2,NULL,TRUE,NULL)").bind(pair.new_principal_id).bind(display).execute(&mut *tx).await?;},Some(r)=>if r.get::<String,_>("t")!="AGENT"||r.get::<String,_>("display_name")!=display||!r.get::<bool,_>("enabled"){return Err(conflict(format!("NEW Workflow projection drift pair {index}")));}}
+    match sqlx::query("SELECT principal_type::text AS t,enabled FROM principals WHERE principal_id=$1 FOR UPDATE").bind(pair.new_principal_id).fetch_optional(&mut *tx).await?{None=>{sqlx::query("INSERT INTO principals(principal_id,principal_type,display_name,email,enabled,metadata) VALUES($1,'AGENT',$2,NULL,TRUE,NULL)").bind(pair.new_principal_id).bind(display).execute(&mut *tx).await?;},Some(r)=>if r.get::<String,_>("t")!="AGENT"||!r.get::<bool,_>("enabled"){return Err(conflict(format!("NEW Workflow projection identity-critical drift pair {index}")));}}
     let domains: Vec<_> = plan
         .domain_tuples
         .iter()
