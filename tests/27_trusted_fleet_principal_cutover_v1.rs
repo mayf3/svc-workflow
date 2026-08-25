@@ -359,7 +359,15 @@ async fn zz_display_drift_matrix_and_identity_critical_conflicts() {
     assert_eq!(body["outcome"], "CONFLICT", "E: {body}");
     assert_eq!(body["writes"], 0, "E: {body}");
     assert!(
-        body["error"].as_str().unwrap().contains("Auth identity drift"),
+        body["pairs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["outcome"] == "CONFLICT"
+                && entry["reason"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("Auth identity drift")),
         "E: {body}"
     );
     assert_eq!(audits().await, 1, "E: audit written");
