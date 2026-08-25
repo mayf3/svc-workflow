@@ -142,7 +142,10 @@ async fn empty_disposable_databases_fail_loud_with_zero_workflow_writes() {
     assert_eq!(body["writes"], 0);
     assert_eq!(body["outcome"], "CONFLICT");
     assert!(
-        body["error"].as_str().unwrap().contains("Auth pair missing")
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("Auth pair missing")
             || body["error"].as_str().unwrap().contains("is missing"),
         "unexpected plan failure: {body}"
     );

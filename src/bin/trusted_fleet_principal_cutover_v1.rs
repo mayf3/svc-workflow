@@ -619,6 +619,11 @@ struct Pair {
     old_principal_status: String,
     new_principal_status: String,
     classification: String,
+    evidence: PairEvidence,
+}
+#[derive(Clone, Debug, Deserialize)]
+struct PairEvidence {
+    new_workflow_principal_present: bool,
 }
 #[derive(Clone, Debug, Deserialize)]
 struct DomainTuple {
@@ -1086,10 +1091,19 @@ async fn observe(
             }
         };
         let projection = !display.is_empty() && projection_exact(w, pair, &display).await?;
+        let projection_present: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM principals WHERE principal_id=$1")
+                .bind(pair.new_principal_id)
+                .fetch_one(w)
+                .await?;
         if projection {
             projection_ready += 1;
-        }
-        if terminal && !projection {
+        } else if projection_present != 0 {
+            pair_conflicts
+                .push("projection exists but does not exactly match Auth formal fields".into());
+        } else if pair.evidence.new_workflow_principal_present {
+            pair_conflicts.push("plan-required existing projection is now missing".into());
+        } else if terminal {
             pair_conflicts.push("projection is not exact terminal state".into());
         }
         for tuple in p.domain_tuples.iter().filter(|tuple| {
