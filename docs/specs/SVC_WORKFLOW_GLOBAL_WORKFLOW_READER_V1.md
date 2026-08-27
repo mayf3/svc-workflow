@@ -22,7 +22,7 @@ companion_specs:
   # final head; dsh-agent-core Specs are DOWNSTREAM (they may pin this
   # Spec's head; this Spec never pins theirs).
   - mayf3/auth-service AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1
-    (proposed, PR #31 @ 50b5ad313536f0f75382c06ebb56c38114b0db4a —
+    (proposed, PR #31 @ 5b4a3ed7e28c631280d3e6894437e7e8569958ac —
     dispatcher Principal/Client/grants; sole upstream authority)
 ---
 
@@ -242,9 +242,9 @@ and adds exactly this file.
 SVC_WORKFLOW_CODE_CHANGE (this PR) = NONE
 ROLE_CHANGE                            = NONE (plan only)
 PRODUCTION_CHANGE                      = NONE
-DEPENDENCY_POSITION = node 2 of 31 -> 14 -> 83 -> 87
+DEPENDENCY_POSITION = node 3 of WAKE -> 31 -> 14 -> 83 -> 87
 UPSTREAM_HEAD_PINS   = auth-service PR #31 only
-                      (50b5ad313536f0f75382c06ebb56c38114b0db4a)
+                      (5b4a3ed7e28c631280d3e6894437e7e8569958ac)
 DOWNSTREAM_PINS      = NONE (no normative dependency on, and no exact-head
                       pin of, any dsh-agent-core Spec)
 CIRCULAR_AUTHORITY_PIN_COUNT (this Spec) = 0
