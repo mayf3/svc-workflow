@@ -16,9 +16,14 @@ server_change_authorized_upon_acceptance: true (controlled closure, section 5; N
 role_applied_by_this_pr: false
 production_apply_authorized: false
 companion_specs:
-  - mayf3/auth-service AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1 (proposed, PR #31 — dispatcher Principal/Client/grants)
-  - mayf3/dsh-agent-core AGENT_CORE_HR_DISPATCHER_V1 (proposed — dispatcher system Agent / scheduler / wake)
-  - mayf3/dsh-agent-core AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V1 (proposed, PR #83 — generic broker capability)
+  # Sole upstream authority (dependency DAG, frozen: auth-service PR #31 ->
+  # THIS Spec -> dsh-agent-core PR #83 -> dsh-agent-core PR #87). This Spec
+  # depends ONLY on the auth-service identity Spec below and pins ONLY its
+  # final head; dsh-agent-core Specs are DOWNSTREAM (they may pin this
+  # Spec's head; this Spec never pins theirs).
+  - mayf3/auth-service AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1
+    (proposed, PR #31 @ 50b5ad313536f0f75382c06ebb56c38114b0db4a —
+    dispatcher Principal/Client/grants; sole upstream authority)
 ---
 
 # SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
@@ -61,6 +66,16 @@ ROLE_APPLIED_THIS_ROUND     = NO
 This PR is docs-only (one spec file). Acceptance authorizes the §5 code
 change for implementation review; role apply remains a separately
 owner-authorized production step (§7).
+
+Dependency direction (frozen, 2026-08-27 DAG sync): this Spec's ONLY
+normative dependency is the auth-service identity Spec
+(`AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1`, PR #31 — the
+dispatcher Principal/Client/grants whose creation §6 grantee 2 waits for).
+The dsh-agent-core broker-capability and dispatcher Specs are DOWNSTREAM of
+this Spec: they depend on the final server-side GLOBAL_WORKFLOW_READER
+contract frozen here; this Spec takes no authority from, and pins no exact
+head of, any dsh-agent-core artifact (their responsibilities may be
+described as out-of-scope context, never as dependencies).
 
 ## 2. Why coordinator is not grantable to either principal (carried evidence)
 
@@ -142,7 +157,8 @@ before §4 deploys: 403 {"code":"global_coordinator_required", ...}   (existing)
 ```
 
 Both codes are legitimate deployment-transition realities; downstream
-declarers (dsh-agent-core PR #83) declare BOTH. No other endpoint's error
+declarers on the dsh-agent-core side (governed by their own Specs, out of
+scope here) are expected to declare BOTH. No other endpoint's error
 contract changes.
 
 ## 6. Grant plan (future applies, separately authorized)
@@ -226,6 +242,13 @@ and adds exactly this file.
 SVC_WORKFLOW_CODE_CHANGE (this PR) = NONE
 ROLE_CHANGE                            = NONE (plan only)
 PRODUCTION_CHANGE                      = NONE
+DEPENDENCY_POSITION = node 2 of 31 -> 14 -> 83 -> 87
+UPSTREAM_HEAD_PINS   = auth-service PR #31 only
+                      (50b5ad313536f0f75382c06ebb56c38114b0db4a)
+DOWNSTREAM_PINS      = NONE (no normative dependency on, and no exact-head
+                      pin of, any dsh-agent-core Spec)
+CIRCULAR_AUTHORITY_PIN_COUNT (this Spec) = 0
+READY_FOR_INDEPENDENT_REVIEW = YES
 ```
 
 Independent review required before acceptance; acceptance authorizes the
