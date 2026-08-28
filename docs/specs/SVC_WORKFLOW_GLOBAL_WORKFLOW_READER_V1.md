@@ -1,7 +1,9 @@
 ---
 spec_id: SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
 title: Global Workflow Reader Role (Dual Grant: HR Main + Dedicated Dispatcher) V1
-status: proposed
+status: accepted
+accepted_date: 2026-08-28
+accepted_reviewed_head: f900586fe198b3a1e1a069fe8ccc3690a481612a
 repo: mayf3/svc-workflow
 base_head: 2ff81ae47ab068216bd0012fa0e76a45dd2fb572
 date: 2026-08-27
@@ -13,6 +15,9 @@ revision_of_drafts:
 owner_ruling: DUAL_GLOBAL_READER_MODEL (FINAL — no further identity-model switches)
 product_code_changed_by_this_spec_pr: false
 server_change_authorized_upon_acceptance: true (controlled closure, section 5; NO database migration)
+implementation_authority: contracts
+implementation_authority_activation: accepted_on_main
+merge_required_for_activation: true
 role_applied_by_this_pr: false
 production_apply_authorized: false
 companion_specs:
@@ -263,8 +268,47 @@ DOWNSTREAM_PINS      = NONE (no normative dependency on, and no exact-head
                       pin of, any dsh-agent-core Spec)
 CIRCULAR_AUTHORITY_PIN_COUNT (this Spec) = 0
 READY_FOR_INDEPENDENT_REVIEW = YES
+STATUS = accepted
+INDEPENDENT_REVIEW_RESULT = PASS
+REQUIRED_FIXES = NONE
+SEMANTIC_DELTA_AFTER_REVIEW = LIFECYCLE_ONLY
+IMPLEMENTATION_PERFORMED = NO
+MERGE_REQUIRED_FOR_ACTIVATION = YES
 ```
 
 Independent review required before acceptance; acceptance authorizes the
 §4 implementation-review path and nothing else — role applies remain
 separately owner-authorized per grant (§6).
+
+## 10. Acceptance Record
+
+```text
+ACCEPTANCE_TRANSACTION = 2026-08-28 (TASK_NAME = 全查 执行,
+  TASK_TYPE = ACCEPTANCE_AND_IMPLEMENTATION, Part A)
+ACCEPTED_SPEC = SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
+ACCEPTED_REVIEWED_HEAD = f900586fe198b3a1e1a069fe8ccc3690a481612a
+INDEPENDENT_AUDIT (全查 审计) = PASS
+  HEAD_DRIFT = NONE
+  UPSTREAM_ACCEPTED_PIN = EXACT
+  READ_ONLY_ROLE_BOUNDARY = HOLDS
+  WRITE_GATE_PRESERVATION = HOLDS
+  EXACT_GRANTEE_MODEL = HOLDS
+  IMPLEMENTATION_CLOSURE = COMPLETE
+  DATABASE_MIGRATION_REQUIRED = NO
+  BLOCKERS = NONE
+  REQUIRED_FIXES = NONE
+  READY_FOR_ACCEPTANCE_FINALIZE = YES
+UPSTREAM_CHAIN_ACCEPTED =
+  AUTH_SERVICE_AGENT_WAKE_AUDIENCE_CCR_V1 = eb1a1c15488b75c4a1828902f5c65a38178a88ce
+  AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1 = 51a11af57ce39eafac5883e0c32474ea06906b8e
+TRANSACTION_SEMANTICS = LIFECYCLE_ONLY — this record plus the status /
+  activation metadata fields above; every §1-§9 ruling, the §3 permission
+  matrix, the §6 grantees, and the §4 exact file closure are
+  byte-preserved. Pre-acceptance conditional sentences are preserved
+  verbatim as historical records.
+ACTIVATION_SEMANTICS = merge of this exact accepted head to main activates
+  ONLY the §4 implementation contracts (implementation-review path);
+  production role apply remains separately owner-authorized per grant (§6),
+  and grantee-2 apply stays additionally gated on identity creation + the
+  Principal-UUID backfill amendment + independent apply authority.
+```
