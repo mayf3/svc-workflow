@@ -22,11 +22,25 @@ companion_specs:
   # final head; dsh-agent-core Specs are DOWNSTREAM (they may pin this
   # Spec's head; this Spec never pins theirs).
   - mayf3/auth-service AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1
-    (proposed, PR #31 @ 5b4a3ed7e28c631280d3e6894437e7e8569958ac —
+    (accepted, PR #31 merged @ 51a11af57ce39eafac5883e0c32474ea06906b8e —
     dispatcher Principal/Client/grants; sole upstream authority)
 ---
 
 # SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
+
+> **Revision note (2026-08-28, round 3 — upstream acceptance repin,
+> metadata-only):** the sole normative upstream
+> `AUTH_SERVICE_AGENTCORE_HR_DISPATCHER_IDENTITY_V1` completed its
+> acceptance transaction and merged to auth-service main via PR #31
+> (merge commit `51a11af57ce39eafac5883e0c32474ea06906b8e`; upstream
+> frontmatter: status accepted, implementation_authority contracts,
+> production_apply_authority none). Both normative pins in THIS Spec
+> (frontmatter `companion_specs` and §9 `UPSTREAM_HEAD_PINS`) are repinned
+> from the superseded proposed-branch head
+> `5b4a3ed7e28c631280d3e6894437e7e8569958ac` to that accepted main merge
+> commit. The old head survives ONLY in this historical note and is no
+> longer a normative dependency. No ruling, role definition, grantee
+> freeze, or §4/§5 contract changes in this round.
 
 ## 1. Decision summary
 
@@ -244,7 +258,7 @@ ROLE_CHANGE                            = NONE (plan only)
 PRODUCTION_CHANGE                      = NONE
 DEPENDENCY_POSITION = node 3 of WAKE -> 31 -> 14 -> 83 -> 87
 UPSTREAM_HEAD_PINS   = auth-service PR #31 only
-                      (5b4a3ed7e28c631280d3e6894437e7e8569958ac)
+                      (51a11af57ce39eafac5883e0c32474ea06906b8e)
 DOWNSTREAM_PINS      = NONE (no normative dependency on, and no exact-head
                       pin of, any dsh-agent-core Spec)
 CIRCULAR_AUTHORITY_PIN_COUNT (this Spec) = 0
