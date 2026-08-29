@@ -89,6 +89,96 @@ pub(crate) async fn seed_transition_graph(
     )
 }
 
+/// Like [`seed_transition_graph`], but the RETURN transition carries the
+/// given `return_schema` instead of the default contract-aware schema.
+/// Used to reproduce definitions whose RETURN submission_schema omits the
+/// engine-level RETURN contract fields (e.g. only declares `summary`) — the
+/// exact shape that produced opaque 422 `invalid_return_references` on
+/// instance 121e76b4.
+#[allow(clippy::too_many_arguments, dead_code)]
+pub(crate) async fn seed_transition_graph_with_return_schema(
+    pool: &PgPool,
+    domain_id: Uuid,
+    draft_assignee: &str,
+    normal_assignee: &str,
+    fixed_principal_id: Option<Uuid>,
+    return_schema: serde_json::Value,
+) -> (Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid, Uuid) {
+    let def_id = Uuid::new_v4();
+    let ver_id = Uuid::new_v4();
+    let def_key = format!("tgraph-{}", &Uuid::new_v4().to_string()[..8]);
+
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1, $2, $3, 'Trans Graph')")
+        .bind(def_id).bind(domain_id).bind(&def_key)
+        .execute(pool).await.expect("insert def");
+
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1, $2, 1, 'DRAFT', NULL)")
+        .bind(ver_id).bind(def_id).execute(pool).await.expect("insert version");
+
+    let draft_id = Uuid::new_v4();
+    let normal_id = Uuid::new_v4();
+    let term_id = Uuid::new_v4();
+
+    let draft_fixed = if draft_assignee == "FIXED_PRINCIPAL" {
+        fixed_principal_id
+    } else {
+        None
+    };
+    let normal_fixed = if normal_assignee == "FIXED_PRINCIPAL" {
+        fixed_principal_id
+    } else {
+        None
+    };
+
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', $3::assignee_ref_type, $4)")
+        .bind(draft_id).bind(ver_id).bind(draft_assignee).bind(draft_fixed)
+        .execute(pool).await.expect("insert draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) VALUES ($1, $2, 'review', 'Review', 1, 'NORMAL', $3::assignee_ref_type, $4)")
+        .bind(normal_id).bind(ver_id).bind(normal_assignee).bind(normal_fixed)
+        .execute(pool).await.expect("insert normal node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1, $2, 'done', 'Done', 2, 'TERMINAL', NULL)")
+        .bind(term_id).bind(ver_id).execute(pool).await.expect("insert terminal node");
+
+    let adv_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-draft', 'To Review', $3, $4, 'ADVANCE')")
+        .bind(adv_id).bind(ver_id).bind(draft_id).bind(normal_id)
+        .execute(pool).await.expect("insert advance draft→normal");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(adv_id).bind(draft_id).execute(pool).await.expect("set primary on draft");
+
+    let adv2_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1, $2, 'advance-done', 'To Done', $3, $4, 'ADVANCE')")
+        .bind(adv2_id).bind(ver_id).bind(normal_id).bind(term_id)
+        .execute(pool).await.expect("insert advance normal→done");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
+        .bind(adv2_id).bind(normal_id).execute(pool).await.expect("set primary on normal");
+
+    let ret_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect, submission_schema) VALUES ($1, $2, 'return-to-draft', 'Return to Draft', $3, $4, 'RETURN', $5::jsonb)")
+        .bind(ret_id).bind(ver_id).bind(normal_id).bind(draft_id).bind(return_schema)
+        .execute(pool).await.expect("insert return transition");
+
+    let term_trans_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect, submission_schema) VALUES ($1, $2, 'terminate', 'Terminate', $3, $4, 'TERMINATE', '{\"type\":\"object\",\"required\":[\"reasonCode\",\"reason\"],\"properties\":{\"reasonCode\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\"}}}'::jsonb)")
+        .bind(term_trans_id).bind(ver_id).bind(normal_id).bind(term_id)
+        .execute(pool).await.expect("insert terminate transition");
+
+    sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
+        .bind(ver_id).execute(pool).await.expect("publish version");
+
+    (
+        domain_id,
+        ver_id,
+        draft_id,
+        normal_id,
+        term_id,
+        adv_id,
+        adv2_id,
+        ret_id,
+        term_trans_id,
+    )
+}
+
 /// Create an instance and advance from DRAFT to the NORMAL node.
 #[allow(dead_code)]
 pub(crate) async fn create_and_advance_to_normal(
