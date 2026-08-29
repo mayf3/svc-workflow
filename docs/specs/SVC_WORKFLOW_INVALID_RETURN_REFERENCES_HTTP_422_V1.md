@@ -3,7 +3,7 @@ spec_id: SVC_WORKFLOW_INVALID_RETURN_REFERENCES_HTTP_422_V1
 status: proposed
 spec_kind: implementation
 authority_level: governing_spec
-implementation_authority: contracts
+implementation_authority: none
 scope:
   - mayf3/svc-workflow
   - workflow-transition-execute-api-invalid-return-references-error-surface
@@ -19,14 +19,31 @@ repo: mayf3/svc-workflow
 base_head: bf875c265843b3e07570a96b734051e9cfe27a43
 date: 2026-08-29
 product_code_changed_by_this_spec_pr: false
-server_change_authorized_upon_acceptance: true (exact three-commit reland only; §5)
-implementation_authority_activation: accepted_on_main
-merge_required_for_activation: true
-production_deploy_authorized_by_this_spec: false
+production_apply_authority: none
 owner_ruling_input: PRESERVE_PRODUCTION_RETURN_422_FIX_AND_RELAND_TO_MAIN
 ---
 
 # SVC_WORKFLOW_INVALID_RETURN_REFERENCES_HTTP_422_V1
+
+> **Revision note (2026-08-29, round 2 — lifecycle correction,
+> metadata-only):** independent audit (返参 审计 = REVISE, sole blocker
+> LIFECYCLE) found the proposed frontmatter prematurely carried
+> contracts authority. Corrected: `implementation_authority:
+> contracts -> none` (proposed Specs carry no contracts authority);
+> removed acceptance-transaction fields `implementation_authority_activation`,
+> `merge_required_for_activation`, and `server_change_authorized_upon_acceptance`
+> (these are added only in a future acceptance transaction after an audit
+> PASS, per repository precedent — accepted
+> `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` / Global Reader specs);
+> `production_deploy_authorized_by_this_spec: false` mechanically renamed
+> to the audit-directed `production_apply_authority: none`. Same-round
+> mechanical provenance corrections only (no closure-total or semantic
+> change): §4 `src/http/error.rs` numstat `+28/-3 -> +25/-3` and
+> `transition_validation.rs` `+280/-33 -> +249/-31` (both previously
+> recorded `git show --stat` totals, not `--numstat` values). Product
+> semantics, three-commit provenance, ten-file closure (+913/-35
+> unchanged), reland recipe, deployment blocker, test inventory, and
+> production branch coordinates are byte-identical.
 
 ## 0. Problem and current split state
 
@@ -197,8 +214,8 @@ Exact file closure (combined `8cda3d0..91fc4e4`, 10 files,
 | `Cargo.toml` | f283a63 | +1 (`proptest = "1"` under `[dev-dependencies]`) |
 | `contracts/workflow-http/v1/errors.json` | f283a63 | message documents `details.detail` |
 | `docs/DIAGNOSIS_RETURN_422_INVALID_RETURN_REFERENCES.md` | f283a63 | new, +109 |
-| `src/http/error.rs` | f283a63 | detail mapping + unit test (+28/−3) |
-| `src/store/postgres/workflow_instance_repository/transition_validation.rs` | f283a63 | aggregation + 2 proptests (+280/−33) |
+| `src/http/error.rs` | f283a63 | detail mapping + unit test (+25/−3) |
+| `src/store/postgres/workflow_instance_repository/transition_validation.rs` | f283a63 | aggregation + 2 proptests (+249/−31) |
 | `tests/17_workflow_runtime/transition/submission_validation.rs` | f283a63 | +169 (4 new tests) |
 | `tests/17_workflow_runtime/transition_helpers.rs` | f283a63 | new, +90 |
 | `tests/17_workflow_runtime/http/e2e/mod.rs` | 9c96a2f | +1 (register e2e module) |
