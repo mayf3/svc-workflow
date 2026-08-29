@@ -98,13 +98,16 @@ impl WorkflowQueryService {
         query_domain_instances::list_domain_instances(&self.pool, query).await
     }
 
-    /// List instance summaries across ALL domains (global coordinators only).
+    /// List instance summaries across ALL domains (global read roles only).
     ///
-    /// Performs the GLOBAL_WORKFLOW_COORDINATOR authorization check before
-    /// querying. Returns `WorkflowQueryError::GlobalCoordinatorRequired`
-    /// (mapped to 403 by the HTTP handler) when the actor does not hold the
-    /// role. The projection is identical to `DomainInstanceSummary` — no
-    /// detail / submission payload is ever exposed.
+    /// Performs the global read-role authorization check before querying:
+    /// an enabled `GLOBAL_WORKFLOW_READER` or `GLOBAL_WORKFLOW_COORDINATOR`
+    /// binding satisfies the gate. Returns
+    /// `WorkflowQueryError::GlobalCoordinatorRequired` (mapped to 403
+    /// `global_read_role_required` by the HTTP handler) when the actor
+    /// holds neither role. The projection is identical to
+    /// `DomainInstanceSummary` — no detail / submission payload is ever
+    /// exposed.
     pub async fn list_global_instances(
         &self,
         query: ListGlobalInstances,
@@ -112,10 +115,10 @@ impl WorkflowQueryService {
         use crate::store::postgres::workflow_instance_repository::query_visibility;
 
         let mut tx = query_visibility::begin_snapshot(&self.pool).await?;
-        let is_coordinator =
-            query_visibility::check_global_workflow_coordinator(&mut tx, query.actor_principal_id)
+        let has_read_role =
+            query_visibility::check_global_workflow_read_role(&mut tx, query.actor_principal_id)
                 .await?;
-        if !is_coordinator {
+        if !has_read_role {
             tx.commit()
                 .await
                 .map_err(|e| WorkflowQueryError::StorageError(e.to_string()))?;

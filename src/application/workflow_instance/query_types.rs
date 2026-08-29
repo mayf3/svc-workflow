@@ -26,7 +26,10 @@ impl std::fmt::Display for WorkflowQueryError {
             }
             Self::RestrictedHistoryNotVisible => write!(f, "restricted history not visible"),
             Self::GlobalCoordinatorRequired => {
-                write!(f, "GLOBAL_WORKFLOW_COORDINATOR role is required")
+                write!(
+                    f,
+                    "GLOBAL_WORKFLOW_READER or GLOBAL_WORKFLOW_COORDINATOR role is required"
+                )
             }
             Self::InvalidPagination(detail) => write!(f, "invalid pagination: {detail}"),
             Self::InternalConsistency(detail) => {
