@@ -1,15 +1,20 @@
 //! HTTP integration tests for the global (cross-domain) workflow instance
-//! list and the GLOBAL_WORKFLOW_COORDINATOR role.
+//! list and its global read roles (GLOBAL_WORKFLOW_COORDINATOR and the
+//! read-only GLOBAL_WORKFLOW_READER, SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1).
 //!
 //! Covers:
 //! - coordinator sees instances across multiple domains
 //! - coordinator sees instances assigned to other principals
 //! - keyset pagination is continuous (no duplicates / no misses)
 //! - response is summary-only (no detail / submission payload)
-//! - normal agent denied (403)
-//! - DOMAIN_OWNER without coordinator denied (403) and domain boundary intact
+//! - normal agent denied (403 global_read_role_required)
+//! - DOMAIN_OWNER without a global read role denied (403) and domain boundary intact
 //! - coordinator gains no write powers (cancel / archive / transition denied)
 //! - global role binding provisioning lifecycle (PUT / DELETE)
+//! - READER sees the same cross-domain summaries (read-only grant works)
+//! - READER gains no write powers (domain create / owner replace / cancel /
+//!   archive / transition / assistance owner-inbox all denied)
+//! - READER role key accepted by the provisioning endpoints
 
 #![allow(clippy::needless_borrow)]
 #![allow(unused_imports, unused_variables)]
@@ -250,6 +255,20 @@ async fn grant_global_coordinator(pool: &PgPool, principal_id: Uuid) {
     .expect("grant global coordinator");
 }
 
+/// Grant the read-only global workflow reader role directly in the DB
+/// (SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1; provisioning lifecycle tested
+/// separately below).
+async fn grant_global_reader(pool: &PgPool, principal_id: Uuid) {
+    sqlx::query(
+        "INSERT INTO global_role_bindings (binding_id, principal_id, role_key, enabled) VALUES ($1, $2, 'GLOBAL_WORKFLOW_READER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(principal_id)
+    .execute(pool)
+    .await
+    .expect("grant global reader");
+}
+
 async fn seed_agent(pool: &PgPool) -> Uuid {
     let id = Uuid::new_v4();
     sqlx::query(
@@ -482,9 +501,9 @@ async fn normal_agent_and_domain_owner_without_coordinator_denied() {
     )
     .await;
     assert_eq!(status, 403, "normal agent must be denied: {body}");
-    assert_eq!(body["error"]["code"], "global_coordinator_required");
+    assert_eq!(body["error"]["code"], "global_read_role_required");
 
-    // DOMAIN_OWNER without coordinator → 403
+    // DOMAIN_OWNER without a global read role → 403
     let token = direct_token(owner, "workflow.read", &mock.key_pair);
     let (status, body) = do_get(
         app.clone(),
@@ -494,9 +513,9 @@ async fn normal_agent_and_domain_owner_without_coordinator_denied() {
     .await;
     assert_eq!(
         status, 403,
-        "domain owner without coordinator must be denied: {body}"
+        "domain owner without a global read role must be denied: {body}"
     );
-    assert_eq!(body["error"]["code"], "global_coordinator_required");
+    assert_eq!(body["error"]["code"], "global_read_role_required");
 
     // Missing scope → 403 forbidden
     let token = direct_token(normal_agent, "workflow.execute", &mock.key_pair);
@@ -706,4 +725,257 @@ async fn global_role_binding_provisioning_lifecycle() {
     )
     .await;
     assert_eq!(status, 403, "revoked coordinator can no longer list");
+}
+
+#[tokio::test]
+async fn global_workflow_reader_sees_cross_domain_instances() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+
+    // Two domains with independent owners; a READER (not owner/creator of
+    // either, no coordinator binding).
+    let (owner_a, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_a, key_a) = seed_published_definition(&pool, domain_a).await;
+    let (owner_b, domain_b) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_b, _) = seed_published_definition(&pool, domain_b).await;
+    let reader = seed_agent(&pool).await;
+    grant_global_reader(&pool, reader).await;
+
+    let (inst_a1, _) = create_instance(&pool, owner_a, domain_a, ver_a, "reader-a1").await;
+    let (inst_a2, _) = create_instance(&pool, owner_a, domain_a, ver_a, "reader-a2").await;
+    let (inst_b1, _) = create_instance(&pool, owner_b, domain_b, ver_b, "reader-b1").await;
+
+    let app = build_app(pool.clone(), &mock.url, vec![]);
+    let token = direct_token(reader, "workflow.read", &mock.key_pair);
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/workflow-instances/global",
+        &token,
+    )
+    .await;
+
+    assert_eq!(status, 200, "reader list should succeed: {body}");
+    let items = body["items"].as_array().expect("items array");
+    let ids: Vec<String> = items
+        .iter()
+        .map(|it| it["workflow_instance_id"].as_str().unwrap().to_string())
+        .collect();
+    for expected in [inst_a1, inst_a2, inst_b1] {
+        assert!(
+            ids.contains(&expected.to_string()),
+            "instance {expected} must be visible to the reader"
+        );
+    }
+
+    // Per-definition scoping keeps working for a reader.
+    let (status, body) = do_get(
+        app.clone(),
+        &format!("/internal/v1/workflow-instances/global?definitionKey={key_a}"),
+        &token,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let items_a = body["items"].as_array().unwrap();
+    assert_eq!(items_a.len(), 2, "domain A instances via reader: {body}");
+    for it in items_a {
+        assert_eq!(it["domain_id"].as_str().unwrap(), domain_a.to_string());
+        // Summary projection only.
+        assert!(it.get("context_payload").is_none());
+    }
+}
+
+#[tokio::test]
+async fn reader_gains_no_write_or_assistance_powers() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+
+    let (owner_a, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_a, _) = seed_published_definition(&pool, domain_a).await;
+    let (owner_b, domain_b) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_b, _) = seed_published_definition(&pool, domain_b).await;
+    let reader = seed_agent(&pool).await;
+    grant_global_reader(&pool, reader).await;
+
+    let (inst_a, _) = create_instance(&pool, owner_a, domain_a, ver_a, "reader-write-a").await;
+    let (inst_b, _) = create_instance(&pool, owner_b, domain_b, ver_b, "reader-write-b").await;
+
+    let app = build_app(pool.clone(), &mock.url, vec![]);
+    // Reader mints workflow.execute too (HR-main shape): write gates must
+    // still deny — READER is not a write role of any kind.
+    let exec_token = direct_token(reader, "workflow.execute workflow.read", &mock.key_pair);
+
+    // Domain create → coordinator-only.
+    let (status, body) = do_post(
+        app.clone(),
+        "/internal/v1/domains",
+        &exec_token,
+        json!({
+            "domainId": Uuid::new_v4(),
+            "domainKey": "reader-denied-create-1",
+            "displayName": "Denied",
+            "enabled": true
+        }),
+        "reader-denied-create-1",
+    )
+    .await;
+    assert_eq!(status, 403, "reader domain create must be denied: {body}");
+    assert_eq!(body["error"]["code"], "global_coordinator_required");
+
+    // Domain owner replacement → coordinator-only.
+    let (status, body) = do_put(
+        app.clone(),
+        &format!("/internal/v1/domains/{domain_a}/owner"),
+        &exec_token,
+        json!({ "newOwnerPrincipalId": Uuid::new_v4() }),
+        "reader-denied-owner-1",
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "reader owner replacement must be denied: {body}"
+    );
+    assert_eq!(body["error"]["code"], "global_coordinator_required");
+
+    // Cancel / archive stay DOMAIN_OWNER-gated.
+    let (status, body) = do_post(
+        app.clone(),
+        &format!("/internal/v1/workflow-instances/{inst_a}/cancel"),
+        &exec_token,
+        json!({"reason": "reader test"}),
+        "reader-denied-cancel-1",
+    )
+    .await;
+    assert_eq!(status, 403, "reader cancel must be denied: {body}");
+    assert_eq!(body["error"]["code"], "not_domain_owner");
+
+    let (status, body) = do_post(
+        app.clone(),
+        &format!("/internal/v1/workflow-instances/{inst_a}/archive"),
+        &exec_token,
+        json!({"reason": "reader test"}),
+        "reader-denied-archive-1",
+    )
+    .await;
+    assert_eq!(status, 403, "reader archive must be denied: {body}");
+    assert_eq!(body["error"]["code"], "not_domain_owner");
+
+    // Transition stays assignee-gated.
+    let trans_id: Uuid = sqlx::query_scalar(
+        "SELECT transition_id FROM workflow_transition_definitions WHERE definition_version_id = $1 ORDER BY transition_key LIMIT 1",
+    )
+    .bind(ver_b)
+    .fetch_one(&pool)
+    .await
+    .expect("find transition");
+    let (status, body) = do_post(
+        app.clone(),
+        &format!("/internal/v1/workflow-instances/{inst_b}/transitions"),
+        &exec_token,
+        json!({
+            "transitionDefinitionId": trans_id.to_string(),
+            "expectedWorkflowStateVersion": 1,
+            "submissionPayload": null
+        }),
+        "reader-denied-transition-1",
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "reader transition on other-assignee must be denied: {body}"
+    );
+    assert_eq!(body["error"]["code"], "principal_not_assignee");
+
+    // Assistance human-required stays coordinator-only (READER ≠ assistance
+    // reader; the assistance gate is deliberately unchanged — owner-inbox is
+    // domain-owner-scoped and returns an empty page, but human-required is
+    // the cross-domain coordinator surface).
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/assistance-cases/human-required",
+        &exec_token,
+    )
+    .await;
+    assert_eq!(status, 403, "reader human-required must be denied: {body}");
+    assert_eq!(body["error"]["code"], "global_coordinator_required");
+}
+
+#[tokio::test]
+async fn reader_role_binding_provisioning_lifecycle() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+
+    let admin = seed_agent(&pool).await;
+    let target = seed_agent(&pool).await;
+
+    let app = build_app(pool.clone(), &mock.url, vec![admin]);
+    let admin_token = direct_token(admin, "workflow.admin", &mock.key_pair);
+
+    // PUT accepts the read-only role key.
+    let (status, body) = do_put(
+        app.clone(),
+        &format!("/internal/v1/admin/global-role-bindings/{target}"),
+        &admin_token,
+        json!({"roleKey": "GLOBAL_WORKFLOW_READER", "enabled": true}),
+        "grant-reader-1",
+    )
+    .await;
+    assert_eq!(status, 200, "reader grant must succeed: {body}");
+    assert_eq!(body["roleKey"], "GLOBAL_WORKFLOW_READER");
+    assert_eq!(body["enabled"], true);
+
+    let enabled: bool = sqlx::query_scalar(
+        "SELECT enabled FROM global_role_bindings WHERE principal_id = $1 AND role_key = 'GLOBAL_WORKFLOW_READER'",
+    )
+    .bind(target)
+    .fetch_one(&pool)
+    .await
+    .expect("reader binding row");
+    assert!(enabled);
+
+    // Unsupported role key → still 422.
+    let (status, body) = do_put(
+        app.clone(),
+        &format!("/internal/v1/admin/global-role-bindings/{target}"),
+        &admin_token,
+        json!({"roleKey": "GLOBAL_READ_ALL", "enabled": true}),
+        "grant-reader-2",
+    )
+    .await;
+    assert_eq!(status, 422);
+    assert_eq!(body["error"]["code"], "role_key_invalid");
+
+    // Granted reader can list; after revoke it cannot.
+    let (owner, domain) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver, _) = seed_published_definition(&pool, domain).await;
+    create_instance(&pool, owner, domain, ver, "reader-lifecycle-1").await;
+
+    let read_app = build_app(pool.clone(), &mock.url, vec![admin]);
+    let read_token = direct_token(target, "workflow.read", &mock.key_pair);
+    let (status, _) = do_get(
+        read_app.clone(),
+        "/internal/v1/workflow-instances/global",
+        &read_token,
+    )
+    .await;
+    assert_eq!(status, 200, "granted reader can list");
+
+    let (status, body) = do_delete(
+        app.clone(),
+        &format!("/internal/v1/admin/global-role-bindings/{target}"),
+        &admin_token,
+        json!({"roleKey": "GLOBAL_WORKFLOW_READER"}),
+        "revoke-reader-1",
+    )
+    .await;
+    assert_eq!(status, 200, "reader revoke must succeed: {body}");
+    assert_eq!(body["enabled"], false);
+
+    let (status, body) = do_get(
+        read_app,
+        "/internal/v1/workflow-instances/global",
+        &read_token,
+    )
+    .await;
+    assert_eq!(status, 403, "revoked reader can no longer list");
+    assert_eq!(body["error"]["code"], "global_read_role_required");
 }

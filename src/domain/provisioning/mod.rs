@@ -38,6 +38,16 @@ pub const PROVISIONING_SCHEMA_VERSION: &str = "v1";
 /// DOMAIN_OWNER-gated, provisioning stays admin-gated.
 pub const GLOBAL_WORKFLOW_COORDINATOR_ROLE: &str = "GLOBAL_WORKFLOW_COORDINATOR";
 
+/// The read-only global workflow role
+/// (SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1).
+///
+/// Holders may read workflow instance summaries across all domains via
+/// `GET /internal/v1/workflow-instances/global`. It gates ONLY that list:
+/// no write powers, no coordinator surfaces — domain create / owner
+/// replacement, assistance, provisioning, and all transitions stay out
+/// of reach exactly as for any role-less principal.
+pub const GLOBAL_WORKFLOW_READER_ROLE: &str = "GLOBAL_WORKFLOW_READER";
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
