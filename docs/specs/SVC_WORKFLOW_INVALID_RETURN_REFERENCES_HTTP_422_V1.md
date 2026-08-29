@@ -1,9 +1,11 @@
 ---
 spec_id: SVC_WORKFLOW_INVALID_RETURN_REFERENCES_HTTP_422_V1
-status: proposed
+status: accepted
+accepted_date: 2026-08-29
+accepted_reviewed_head: 13303ef1489582de546ec091863f847dd85ae919
 spec_kind: implementation
 authority_level: governing_spec
-implementation_authority: none
+implementation_authority: contracts
 scope:
   - mayf3/svc-workflow
   - workflow-transition-execute-api-invalid-return-references-error-surface
@@ -281,3 +283,31 @@ Exact file closure (combined `8cda3d0..91fc4e4`, 10 files,
 Global Workflow Reader deployment mechanics, any other error-code
 semantics, transition definition management, DB migrations, idempotency
 changes, and everything already governed by other Specs.
+
+## 9. Acceptance Record
+
+```text
+ACCEPTANCE_TRANSACTION = 2026-08-29 (TASK_NAME = 返参 执行,
+  TASK_TYPE = ACCEPTANCE_AND_CLEAN_RELAND, Part A)
+ACCEPTED_SPEC = SVC_WORKFLOW_INVALID_RETURN_REFERENCES_HTTP_422_V1
+ACCEPTED_REVIEWED_HEAD = 13303ef1489582de546ec091863f847dd85ae919
+INDEPENDENT_AUDIT (返参 审计) = PASS
+  HEAD_DRIFT = NONE
+  LIFECYCLE = CORRECTED
+  PRODUCT_CONTRACT_PRESERVED = YES
+  EXACT_PROVENANCE = VERIFIED
+  IMPLEMENTATION_CLOSURE = VERIFIED
+  RELAND_RECIPE = VERIFIED
+  TEST_COVERAGE = SUFFICIENT
+  OTHER_SEMANTIC_DELTA = NONE
+  BLOCKERS = NONE
+  READY_FOR_ACCEPTANCE_FINALIZE = YES
+TRANSACTION_SEMANTICS = LIFECYCLE_ONLY — status proposed -> accepted;
+  implementation_authority none -> contracts; accepted_date and
+  accepted_reviewed_head added; this Acceptance Record added. Every §0-§8
+  product contract is byte-preserved.
+ACTIVATION_SEMANTICS = merge of this exact accepted lifecycle head to main
+  activates ONLY the §2 implementation contracts. production_apply_authority
+  remains none; acceptance and merge neither deploy nor restart production and
+  authorize no production database write.
+```
