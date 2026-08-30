@@ -363,22 +363,111 @@ pub(super) fn validate_submission_schema(
     Ok(())
 }
 
+/// Pure contract-field validation for RETURN submissions.
+///
+/// Returns a list of human-readable errors for missing/malformed RETURN
+/// contract fields (`rootCauseNodeVisitId`, `reasonCode`, `reason`,
+/// optional `relatedSubmissionIds`). Empty list means the payload carries
+/// all fields in the correct shape; instance-ownership checks still run
+/// against the DB in [`validate_return_references`].
+///
+/// Extracted as a pure function so property-based tests can cover the
+/// contract without a database.
+pub(crate) fn collect_return_contract_errors(
+    payload: &serde_json::Value,
+) -> Vec<String> {
+    let mut contract_errors: Vec<String> = Vec::new();
+
+    // rootCauseNodeVisitId: required, must be a valid UUID
+    match payload
+        .get("rootCauseNodeVisitId")
+        .and_then(|v| v.as_str())
+    {
+        Some(s) => {
+            if Uuid::parse_str(s).is_err() {
+                contract_errors.push(format!(
+                    "rootCauseNodeVisitId is not a valid UUID: '{}'",
+                    s
+                ));
+            }
+        }
+        None => {
+            contract_errors.push(
+                "rootCauseNodeVisitId is required and must be a valid UUID".to_string(),
+            );
+        }
+    }
+
+    // reasonCode / reason: required
+    if payload.get("reasonCode").is_none() {
+        contract_errors.push("reasonCode is required for RETURN submissions".to_string());
+    }
+    if payload.get("reason").is_none() {
+        contract_errors.push("reason is required for RETURN submissions".to_string());
+    }
+
+    // relatedSubmissionIds: optional, but if present must be an array of UUID strings
+    match payload.get("relatedSubmissionIds") {
+        None => {}
+        Some(v) if v.is_array() => {
+            for entry in v.as_array().expect("checked is_array") {
+                match entry.as_str() {
+                    Some(s) => {
+                        if Uuid::parse_str(s).is_err() {
+                            contract_errors.push(format!(
+                                "relatedSubmissionIds entry is not a valid UUID: '{}'",
+                                s
+                            ));
+                        }
+                    }
+                    None => contract_errors
+                        .push("relatedSubmissionIds entries must be strings".to_string()),
+                }
+            }
+        }
+        Some(_) => {
+            contract_errors.push(
+                "relatedSubmissionIds must be an array of UUID strings when present".to_string(),
+            );
+        }
+    }
+
+    contract_errors
+}
+
 /// Validate RETURN submission references.
+///
+/// RETURN submissions require the engine-level contract fields:
+/// `rootCauseNodeVisitId` (valid UUID belonging to this instance),
+/// `reasonCode`, and `reason`. Missing fields are aggregated into a single
+/// error so callers see the full contract in one response.
 pub(super) async fn validate_return_references(
     tx: &mut Transaction<'_, Postgres>,
     payload: &serde_json::Value,
     instance_uuid: Uuid,
 ) -> Result<(), ExecuteWorkflowTransitionError> {
-    // Extract rootCauseNodeVisitId
+    // Aggregate every missing/invalid contract field first so the caller sees
+    // the full RETURN contract in one error instead of fixing fields one at a
+    // time (root cause of repeated 422 with no progress).
+    let contract_errors = collect_return_contract_errors(payload);
+
+    if !contract_errors.is_empty() {
+        let detail = format!(
+            "RETURN submissions require: rootCauseNodeVisitId (valid UUID), reasonCode, reason, \
+             relatedSubmissionIds (optional array of UUIDs); {}",
+            contract_errors.join("; ")
+        );
+        return Err(ExecuteWorkflowTransitionError::InvalidReturnReferences(
+            detail,
+        ));
+    }
+
+    // rootCauseNodeVisitId parsed successfully by collect_return_contract_errors
     let root_cause = payload
         .get("rootCauseNodeVisitId")
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
-        .ok_or_else(|| {
-            ExecuteWorkflowTransitionError::InvalidReturnReferences(
-                "rootCauseNodeVisitId is required and must be a valid UUID".to_string(),
-            )
-        })?;
+        .expect("validated by collect_return_contract_errors");
 
     // Verify rootCauseNodeVisitId exists and belongs to this instance
     let root_visit: Option<(Uuid,)> = sqlx::query_as(
@@ -397,23 +486,14 @@ pub(super) async fn validate_return_references(
         ));
     }
 
-    // Extract and validate relatedSubmissionIds
+    // Verify each relatedSubmissionId exists and belongs to this instance
     if let Some(related) = payload
         .get("relatedSubmissionIds")
         .and_then(|v| v.as_array())
     {
         for entry in related {
-            let sub_id_str = entry.as_str().ok_or_else(|| {
-                ExecuteWorkflowTransitionError::InvalidReturnReferences(
-                    "relatedSubmissionIds entries must be strings".to_string(),
-                )
-            })?;
-
-            let sub_id = Uuid::parse_str(sub_id_str).map_err(|_| {
-                ExecuteWorkflowTransitionError::InvalidReturnReferences(
-                    "relatedSubmissionIds entry is not a valid UUID".to_string(),
-                )
-            })?;
+            let sub_id = Uuid::parse_str(entry.as_str().expect("validated above"))
+                .expect("validated above");
 
             let sub: Option<(Uuid,)> = sqlx::query_as(
                 "SELECT submission_id FROM workflow_submissions \
@@ -434,19 +514,6 @@ pub(super) async fn validate_return_references(
                 ));
             }
         }
-    }
-
-    // Validate required fields exist
-    if payload.get("reasonCode").is_none() {
-        return Err(ExecuteWorkflowTransitionError::InvalidReturnReferences(
-            "reasonCode is required for RETURN submissions".to_string(),
-        ));
-    }
-
-    if payload.get("reason").is_none() {
-        return Err(ExecuteWorkflowTransitionError::InvalidReturnReferences(
-            "reason is required for RETURN submissions".to_string(),
-        ));
     }
 
     Ok(())
@@ -523,4 +590,155 @@ pub(super) async fn persist_deterministic_failure(
     tx.commit()
         .await
         .map_err(|error| ExecuteWorkflowTransitionError::StorageError(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect_return_contract_errors;
+    use serde_json::json;
+
+    /// A fully valid RETURN payload produces no contract errors.
+    #[test]
+    fn valid_return_payload_has_no_contract_errors() {
+        let payload = json!({
+            "rootCauseNodeVisitId": "550e8400-e29b-41d4-a716-446655440000",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+            "relatedSubmissionIds": ["550e8400-e29b-41d4-a716-446655440001"],
+        });
+        assert!(collect_return_contract_errors(&payload).is_empty());
+    }
+
+    /// Missing every required field reports each one (aggregated, not just the first).
+    #[test]
+    fn missing_all_required_fields_reports_each() {
+        let payload = json!({ "summary": "no contract fields" });
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 3);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("rootCauseNodeVisitId is required"))
+        );
+        assert!(errors.iter().any(|e| e.contains("reasonCode is required")));
+        assert!(errors.iter().any(|e| e.contains("reason is required")));
+    }
+
+    /// Missing just one field reports exactly that one.
+    #[test]
+    fn missing_single_field_reports_only_it() {
+        let base = json!({
+            "rootCauseNodeVisitId": "550e8400-e29b-41d4-a716-446655440000",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+        });
+        // Remove reasonCode
+        let mut payload = base.clone();
+        payload.as_object_mut().unwrap().remove("reasonCode");
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("reasonCode is required"));
+
+        // Remove rootCauseNodeVisitId
+        let mut payload = base.clone();
+        payload.as_object_mut().unwrap().remove("rootCauseNodeVisitId");
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("rootCauseNodeVisitId is required"));
+
+        // Remove reason
+        let mut payload = base.clone();
+        payload.as_object_mut().unwrap().remove("reason");
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("reason is required"));
+    }
+
+    /// Malformed rootCauseNodeVisitId is reported as invalid UUID.
+    #[test]
+    fn malformed_root_cause_reports_invalid_uuid() {
+        let payload = json!({
+            "rootCauseNodeVisitId": "not-a-uuid",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+        });
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("not a valid UUID"));
+    }
+
+    /// relatedSubmissionIds shape violations are reported.
+    #[test]
+    fn malformed_related_submissions_reported() {
+        // Not an array
+        let payload = json!({
+            "rootCauseNodeVisitId": "550e8400-e29b-41d4-a716-446655440000",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+            "relatedSubmissionIds": "oops",
+        });
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("must be an array"));
+
+        // Entry is not a string
+        let payload = json!({
+            "rootCauseNodeVisitId": "550e8400-e29b-41d4-a716-446655440000",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+            "relatedSubmissionIds": [123],
+        });
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("must be strings"));
+
+        // Entry is not a valid UUID
+        let payload = json!({
+            "rootCauseNodeVisitId": "550e8400-e29b-41d4-a716-446655440000",
+            "reasonCode": "NEEDS_REVISION",
+            "reason": "spec gap",
+            "relatedSubmissionIds": ["not-a-uuid"],
+        });
+        let errors = collect_return_contract_errors(&payload);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("not a valid UUID"));
+    }
+
+    // PBT: any string-valued rootCauseNodeVisitId is either accepted (valid
+    // UUID) or reported as invalid — never silently ignored.
+    proptest::proptest! {
+        #[test]
+        fn root_cause_never_silently_ignored(
+            s in proptest::string::string_regex(".*").unwrap()
+        ) {
+            let payload = json!({
+                "rootCauseNodeVisitId": s,
+                "reasonCode": "NEEDS_REVISION",
+                "reason": "spec gap",
+            });
+            let errors = collect_return_contract_errors(&payload);
+            let uuid_parse_ok = s.parse::<uuid::Uuid>().is_ok();
+            if uuid_parse_ok {
+                assert!(errors.is_empty(), "valid UUID should pass: {}", s);
+            } else {
+                assert_eq!(errors.len(), 1, "invalid UUID must be reported: {}", s);
+                assert!(errors[0].contains("not a valid UUID"), "{}", errors[0]);
+            }
+        }
+    }
+
+    // PBT: an arbitrary JSON value never panics the contract checker and the
+    // number of errors is bounded by the four contract fields it validates.
+    proptest::proptest! {
+        #[test]
+        fn arbitrary_payload_is_bounded_and_total(
+            value in proptest::collection::vec(proptest::arbitrary::any::<u8>(), 0..64)
+        ) {
+            let payload: serde_json::Value = serde_json::from_slice(&value)
+                .unwrap_or(serde_json::Value::Null);
+            let errors = collect_return_contract_errors(&payload);
+            // rootCauseNodeVisitId / reasonCode / reason / relatedSubmissionIds
+            assert!(errors.len() <= 6, "unexpected error count: {}", errors.len());
+        }
+    }
 }

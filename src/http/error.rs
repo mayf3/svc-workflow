@@ -213,9 +213,11 @@ impl ApiError {
                 "submission payload failed validation",
             ),
             E::SizeLimitExceeded(detail) => size_limit(size_field(&detail)),
-            E::InvalidReturnReferences(_) => {
-                unprocessable("invalid_return_references", "return references are invalid")
-            }
+            E::InvalidReturnReferences(detail) => unprocessable(
+                "invalid_return_references",
+                "return references are invalid",
+            )
+            .with_details(serde_json::json!({ "detail": detail })),
             E::AssigneeResolutionFailed(_) => unprocessable(
                 "assignee_resolution_failed",
                 "target assignee could not be resolved",
@@ -610,5 +612,25 @@ mod tests {
         ));
         assert_eq!(consistency.status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(consistency.code, "internal_consistency_error");
+    }
+
+    #[test]
+    fn invalid_return_references_exposes_detail() {
+        let error = ApiError::from_transition(
+            ExecuteWorkflowTransitionError::InvalidReturnReferences(
+                "rootCauseNodeVisitId is required and must be a valid UUID".to_string(),
+            ),
+        );
+        assert_eq!(error.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error.code, "invalid_return_references");
+        // Code stays stable (backward compatible); the detail that was
+        // previously swallowed is now surfaced so callers can fix the payload.
+        let details = error
+            .details
+            .expect("InvalidReturnReferences must carry details");
+        assert_eq!(
+            details["detail"],
+            "rootCauseNodeVisitId is required and must be a valid UUID"
+        );
     }
 }
