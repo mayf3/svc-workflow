@@ -541,8 +541,8 @@ remain mandatory before the child becomes active implementation authority.
 - Target: the wire-authority statement in §3.3 and `CTR-DISP-013`.
 - Relation: SUPPORTS.
 - Strength: explicit current-state compatibility policy.
-- Limitation: the future accepted authority must decide whether to version the
-  endpoint or explicitly authorize the additive structure change.
+- Limitation: accepted V5 has selected explicit query opt-in; this evidence does
+  not by itself verify a future implementation's omitted/false/true wire shapes.
 
 ## 8. Decisions
 
@@ -808,6 +808,10 @@ These are future verification mappings, not executed evidence.
   `CTR-DISP-010`, `CTR-DISP-011`.
 - Method: integration fixtures independently and cumulatively set each formal
   fact; query both Domain and global surfaces.
+- Environment: disposable PostgreSQL integration database and real HTTP service
+  process at the pinned implementation commit.
+- Required evidence: executed fixture matrix, implementation/database revision,
+  seeded facts, and exact Domain/global request-response transcript.
 - Expected: exact closed codes, all true reasons, table order, empty array iff
   dispatchable, DRAFT always blocked, no metadata-derived reason.
 - Failure: missing, extra, reordered, free-text-derived, or incorrectly combined
@@ -818,6 +822,10 @@ These are future verification mappings, not executed evidence.
 - Contracts: `CTR-DISP-004`, `CTR-DISP-005`, `CTR-DISP-010`.
 - Method: create interleaved eligible and blocked rows across all existing
   filters; use small limits.
+- Environment: disposable PostgreSQL integration database with interleaved
+  fixtures and real repository query/HTTP paths at the pinned implementation.
+- Required evidence: executed page sequence, fixture identities, SQL/query-plan
+  provenance, implementation commit, and exact responses.
 - Expected: every returned item is dispatchable, pages are filled from eligible
   rows when enough exist, and no eligible row is skipped by post-page filtering.
 - Failure: sparse pages caused by handler filtering, blocked rows returned, or
@@ -827,6 +835,10 @@ These are future verification mappings, not executed evidence.
 
 - Contracts: `CTR-DISP-005`, `CTR-DISP-006`, `CTR-DISP-007`.
 - Method: walk `next_cursor` with `limit=2` until null over stable fixtures.
+- Environment: stable disposable PostgreSQL snapshot at the pinned
+  implementation, exercised through both Domain and global HTTP endpoints.
+- Required evidence: ordered request/cursor/response transcript, fixture census,
+  implementation commit, and duplicate/missing-row comparison.
 - Expected: no duplicates/misses, existing cursor shape/order, no count or offset
   fields.
 - Failure: discontinuity, changed cursor shape, or pagination additions.
@@ -837,6 +849,10 @@ These are future verification mappings, not executed evidence.
 - Method: run current Domain/global list authorization, default, lifecycle,
   status, assignee, definition, node, and pagination suites without the new
   parameter; compare populations and errors.
+- Environment: pinned-base and pinned-implementation real HTTP integration
+  services backed by equivalent disposable PostgreSQL fixtures.
+- Required evidence: before/after golden JSON key sets and populations, executed
+  authorization/error suite, base/implementation commits, and cursor transcript.
 - Expected: unchanged rows/order/errors and exact legacy response structure;
   neither projection field is present.
 - Failure: either new field appears, or defaults, authorization, population,
@@ -846,6 +862,10 @@ These are future verification mappings, not executed evidence.
 
 - Contracts: `CTR-DISP-004`.
 - Method: query `dispatchableOnly=1`, empty, mixed case, and arbitrary text.
+- Environment: real HTTP parser/handler integration service at the pinned
+  implementation with a disposable PostgreSQL database.
+- Required evidence: executed requests, exact HTTP status/error envelopes,
+  implementation commit, and proof that no page body was returned.
 - Expected: HTTP 422 `invalid_dispatchable_only`, no items.
 - Failure: coercion, silent ignore, 200, or partial response.
 
@@ -854,6 +874,10 @@ These are future verification mappings, not executed evidence.
 - Contracts: `CTR-DISP-007`, `CTR-DISP-008`, `CTR-DISP-014`.
 - Method: concurrency integration test around blocker changes plus database write
   census.
+- Environment: instrumented disposable PostgreSQL integration database using
+  the production-equivalent isolation path at the pinned implementation.
+- Required evidence: synchronized concurrency trace, transaction isolation
+  record, before/after schema and write census, requests, and command result.
 - Expected: each page is internally consistent at one snapshot; zero new
   dispatch state writes; later command still revalidates and can reject stale
   work.
@@ -865,6 +889,10 @@ These are future verification mappings, not executed evidence.
 - Contracts: `CTR-DISP-009`, `CTR-DISP-012`.
 - Method: role matrix for Domain Owner, global reader/coordinator, current
   assignee, and unauthorized caller; use Assistance payload canaries.
+- Environment: isolated auth/role integration fixtures plus disposable
+  PostgreSQL Workflow/Assistance data at the pinned implementation.
+- Required evidence: executed allow/deny matrix, role-binding before/after
+  census, seeded canary markers, exact responses, and forbidden-content scan.
 - Expected: only the closed `ASSISTANCE_OPEN` code where authorized by the
   accepted V5/child boundary; no Assistance payload/status/body leak and no new
   write capability.
@@ -875,6 +903,11 @@ These are future verification mappings, not executed evidence.
 - Contracts: all.
 - Method: semantic review of the exact proposed Spec head against the exact
   accepted Product Direction head.
+- Environment: fresh clean repository worktree pinned to the PR base/head and
+  the authoritative GitHub PR state at review time.
+- Required evidence: exact base/head/blob hashes, V5 lifecycle/merge coordinates,
+  changed-file inventory, governance/schema/structure results, and persistent
+  independent review record.
 - Expected before acceptance: `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5` is
   accepted/current on `main`, this Spec is based on that authority, and every
   V5 child constraint is represented with no unresolved conflict.
