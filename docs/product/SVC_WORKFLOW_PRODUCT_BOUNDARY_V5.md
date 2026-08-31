@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -21,7 +21,7 @@ This document is the complete Product Direction for `svc-workflow`. It is a whol
 ```text
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 AUTHORITY_KIND = product_direction
-STATUS = proposed
+STATUS = accepted
 SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V4
 PRODUCT_BOUNDARY_ACTION = SUPERSEDE
 WHOLE_AUTHORITY_SUPERSESSION = YES
@@ -34,7 +34,7 @@ PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 ```
 
-V5 is proposed and non-active. V4 remains the accepted Product Direction on `main`; this authoring round does not change V4 lifecycle/backlinks or the repository authority map. Only an independent fixed-head review followed by an explicit Owner whole-authority acceptance transaction may atomically accept V5, supersede V4, update the backlink/map, and permit V5-governed child-Spec review. This document never authorizes implementation or production apply directly.
+V5 is Owner-accepted on the PR branch. V5 is not repository-active until the accepted candidate is independently rechecked and merged to `main`. The Owner-accepted atomic acceptance transition has changed V4's frontmatter lifecycle and `superseded_by` backlink and `.agents/local/README.md` together with this acceptance; V4 remains the active Product Direction on `main` until that transition is merged. This document never authorizes implementation or production apply directly.
 
 The Goal is to preserve every V4 product boundary, Decision, Contract, exclusion, security invariant, capability Slice, retained trade-off, conformance-debt statement, original CTO bounded successor exception, and trusted-fleet exact-plan exception byte-for-meaning, while adding one bounded Current Product Direction:
 
@@ -1638,12 +1638,13 @@ Exact dispatch blocker predicates and the final closed enum belong to the revise
 ## 25. Lifecycle record
 
 ```text
-ACCEPTANCE_STATUS = proposed
-STATUS = proposed
+ACCEPTANCE_STATUS = accepted
+STATUS = accepted
 AUTHORING_BASE = f0c74eefd63ca71a1fcb670ad31ac35f19f69539
 CURRENT_PARENT = SVC_WORKFLOW_PRODUCT_BOUNDARY_V4
 CURRENT_PARENT_STATUS_ON_MAIN = accepted
 CURRENT_PARENT_ACCEPT_COMMIT = 5cdd5eeb9895ce0bb4df1989f01806ca25b8ecff
+V4_TRANSITION = superseded candidate
 DISPATCHABILITY_CHILD_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
 DISPATCHABILITY_CHILD_STATUS = proposed / blocked_on_parent
 PLAN_SHA256_BOUND = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
@@ -1664,24 +1665,29 @@ PRODUCT_CODE_CHANGE = NONE
 PRODUCTION_CHANGE = NONE
 ```
 
-This authoring round adds only the proposed V5 file. It does not alter V4, the local authority map, the child candidate, PR #9, code, tests, contracts, schemas, migrations, data, production, roles, Grants, or external repositories.
+The Owner-accepted whole-authority transition recorded in §26 marks V5 accepted, V4's frontmatter superseded with its `superseded_by` backlink, and the repository-local authority map switched atomically. It does not alter the child candidate, PR #9, code, tests, contracts, schemas, migrations, data, production, roles, Grants, or external repositories.
 
-## 26. Acceptance Record (pending)
+## 26. Acceptance Record (OWNER_WHOLE_AUTHORITY_ACCEPTANCE_TRANSITION_ONLY)
 
 ```text
-ACCEPTANCE_STATUS = NOT_PERFORMED
+ACCEPTANCE_STATUS = accepted
 REVIEW_BASE = f0c74eefd63ca71a1fcb670ad31ac35f19f69539
-REVIEWED_HEAD = NONE
-REVIEW_RESULT = PENDING_INDEPENDENT_边界_审计
-READY_FOR_ACCEPTANCE_FINALIZE = NO
-SEMANTIC_DELTA_AFTER_REVIEW = NOT_APPLICABLE
-ACCEPTED_BY = NONE
-ACCEPTED_AT = NONE
-FINAL_HEAD_RECHECK = NOT_PERFORMED
-ACTIVE_ON_MAIN = NO
+REVIEWED_HEAD = 160d2866301c1915223e1fd12fa280e54abe29db
+REVIEW_RESULT = 边界 审计 = PASS
+BLOCKERS = NONE
+REQUIRED_FIXES = NONE
+READY_FOR_ACCEPTANCE_FINALIZE = YES
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+ACCEPTED_BY = mayf3
+ACCEPTED_AT = 2026-08-31T21:56:51Z
+V4_TRANSITION = superseded candidate (frontmatter lifecycle only)
+V4_HISTORICAL_BODY = byte-identical from first H1 to EOF
+ALLOWED_DELTA = lifecycle metadata + acceptance receipt + V4 frontmatter supersession + repository-local authority map
+FINAL_HEAD_RECHECK = PERFORMED (PR #18 Head verified equal to REVIEWED_HEAD before this transition; accepted-head recheck and merge performed under this acceptance task's explicit authorization)
+ACTIVE_ON_MAIN = NO at acceptance commit (accepted candidate on PR #18 branch; repository-active after merge)
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 PRODUCTION_APPLY_AUTHORIZED = NO
 ```
 
-An independent fixed-head review must first verify complete V4 restatement, the bounded §8/§8A delta, Product Direction/role/wire reconciliation, Contract-Acceptance coverage, and zero partial supersession. Only Owner `mayf3` or an explicitly authorized maintainer may later perform an atomic lifecycle transaction. This authoring act is not review or acceptance.
+This acceptance is an Owner whole-authority lifecycle transition only: V5 becomes an accepted candidate, V4's frontmatter becomes superseded with a `superseded_by` backlink, and the repository-local authority map is switched atomically. The reviewed V5 semantics are untouched. It authorizes no implementation, no operator, no production plan or apply, and no PR #9 change. `FINAL_ACCEPTED_HEAD` and merge coordinates are reported as persistent PR records after the acceptance commit and merge, not embedded here.
