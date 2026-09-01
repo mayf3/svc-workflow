@@ -94,10 +94,17 @@ CURRENT_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 CURRENT_PRODUCT_DIRECTION_ACCEPTED_HEAD = b3c6d797d3a79655a8fd5b1c63016600d4631036
 CURRENT_PRODUCT_DIRECTION_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
 SUCCESSOR_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
-LEGACY_DISPATCHABILITY_CANDIDATE = SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1
-LEGACY_DISPATCHABILITY_CANDIDATE_COMMIT = af450aa39e446683b8ae2b2edf99c4febdcfb068
-LEGACY_DISPATCHABILITY_CANDIDATE_STATUS = proposed / unmerged / non-authoritative
-LEGACY_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_IMPLEMENTABLE_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PROPOSAL = SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1
+CURRENT_DISPATCHABILITY_PROPOSAL_PR = https://github.com/mayf3/svc-workflow/pull/19
+CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
+CURRENT_DISPATCHABILITY_PROPOSAL_HEAD = 0c63d35a6e1291e7187e693e2a0ed1fec231eaf2
+CURRENT_DISPATCHABILITY_PROPOSAL_STATE = OPEN / DRAFT / UNMERGED / PROPOSED / NON_AUTHORITATIVE
+CURRENT_DISPATCHABILITY_PROPOSAL_GOVERNED_BY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
+CURRENT_DISPATCHABILITY_PROPOSAL_IMPLEMENTATION_AUTHORITY = contracts (inert while proposed)
+CURRENT_DISPATCHABILITY_PROPOSAL_SEMANTICS = read-time query projection / non-persisted / no canonical activation / no nextEligibleAt
+CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
+CURRENT_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_ACCEPTABLE_OR_IMPLEMENTABLE_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_AUTHORITY = repository owner mayf3
 GLOBAL_READER_SPEC = SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
 GLOBAL_READER_ACCEPT_COMMIT = ea9ab2df0da7e58328ce5018164a2d2b6d6c14a9
 GLOBAL_READER_IMPLEMENTATION_MERGE = bf875c265843b3e07570a96b734051e9cfe27a43
@@ -121,7 +128,7 @@ Authority precedence remains Product Direction, then accepted Architecture/long-
 
 The accepted one-time child authority `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` and both V5-retained successor exceptions remain governed through the byte-for-meaning restatement in §§17/17A. Open svc-workflow Draft PR #7 remains independent. PR #9 retains its existing disposition and is neither modified nor merged by this round.
 
-The dispatchability candidate at `af450aa...` is not active authority and solves a different problem: read-time projection on legacy Domain/global lists, with no canonical activation and no `nextEligibleAt`. It MUST NOT be accepted or implemented as this Goal's child Spec. If any useful query detail is retained later, it must be re-investigated under a separate proposal that cannot compete with canonical activation. The accepted `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` remains valid for its current read-only route gate; it is not the new Scheduler dispatch feed and grants no new role.
+The current dispatchability proposal is svc-workflow PR #19 at base `c90d54c...` / head `0c63d35...`, with `af450aa...` recorded by that Spec as its source candidate/lineage. PR #19 is open, draft, unmerged, proposed, governed by accepted V5, and declares `implementation_authority: contracts`; that declaration is inert while proposed. Its complete current meaning remains a read-time query projection on the existing Domain/global lists, is non-persisted, and creates neither canonical activation nor `nextEligibleAt`. The current Spec is non-authoritative and MUST NOT be accepted or implemented as this Goal's child or canonical dispatch authority. Any useful query semantics retained in the future must be re-investigated and rewritten under accepted V6 and the later lawful Architecture/implementation authority, without competing with canonical activation. V6 records only the local authority inventory and Goal disposition: it does not modify, close, merge, accept, or otherwise control PR #19; repository owner `mayf3` retains its lifecycle authority. The accepted `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` remains valid for its current read-only route gate; it is not the new Scheduler dispatch feed and grants no new role.
 
 The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while V6 proposes `TASK | TERMINAL` for new traffic. V6 is higher Product Direction but does not silently rewrite Architecture. Before implementation, an independently accepted Architecture successor/refinement must reconcile that conflict, and an independently accepted implementation Spec with `implementation_authority: contracts` must then cover the exact code/data/wire changes.
 
@@ -129,17 +136,18 @@ The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while 
 
 ### 3.1 Authority inventory and de-duplication
 
-| Candidate/authority | Lifecycle at base | Disposition for this Goal |
+| Candidate/authority | Lifecycle at authoring coordinates | Disposition for this Goal |
 |---|---|---|
 | `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5` | accepted and active | `SUPERSEDE`; its DRAFT/read-time/non-persisted/no-Scheduler-wake meaning conflicts with the frozen Goal |
-| `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@af450aa...` | proposed, unmerged | not authority; wrong semantic model; rewrite required, never this Goal's implementation Spec |
+| PR #19 `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...` | open, draft, unmerged, proposed, V5-bound; `implementation_authority: contracts` inert while proposed | non-authoritative; read-time/non-persisted/no canonical activation/no `nextEligibleAt`; not acceptable or implementable as this Goal's child/canonical dispatch authority; retained query semantics require later lawful re-investigation/rewrite |
+| `af450aa...` | source candidate/lineage recorded by PR #19, not the current proposal head | provenance only; MUST NOT be misclassified as the sole current dispatchability proposal or used as implementation authority |
 | `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` | accepted | preserve current read-only route compatibility; do not use as canonical dispatch authority |
 | v0.3.1 Architecture + v0.3.2 refinement | frozen/effective | preserve unchanged scopes, but require later Architecture reconciliation for the new node/activation model |
 | `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | preserve exact bounded exception; no general migration capability |
 | `SVC_WORKFLOW_TRUSTED_FLEET_PRINCIPAL_CUTOVER_V1` | proposed at base, implementation already represented as V5 conformance history | preserve V5's exact-plan boundary and production-gate separation; do not broaden |
 | dsh-agent-core PR #87 at `4260911...` | fixed-coordinate external observation; proposed/open at observation time; non-authoritative | provenance only; local interoperability requires Reconciler-only periodic recovery and Scheduler management separated from normal dispatch; external repository chooses its lawful authority/lifecycle path |
 
-No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
+No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. This V6 change only inventories/dispositions PR #19 and does not mutate or control that PR. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
 
 External Draft PRs remain classified exactly as preserved by V5:
 
@@ -162,7 +170,7 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - `STATE-V6-001` — On `mayf3/svc-workflow@c90d54cace46ff505ac54aa6215587d812cf9a78`, V5 is accepted and active; no V6 exists on the base. Basis: `OBS-V6-001`, `EVD-V6-001`.
 - `STATE-V6-002` — V5 authorizes DRAFT plus ordinary nodes, a read-time non-persisted `dispatchable` projection, and explicitly no Scheduler/wake/lease/reservation state. That meaning does not permit this Goal's immediate canonical activation. Basis: `OBS-V6-002`, `EVD-V6-002`.
 - `STATE-V6-003` — Frozen Architecture v0.3.1 defines `DRAFT | NORMAL | TERMINAL`, immutable repeated Node Visits, and `Human | Agent | Service` Principals; v0.3.2 adds Cancel/Archive without changing node semantics. Basis: `OBS-V6-003`, `EVD-V6-003`.
-- `STATE-V6-004` — `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@af450aa...` is proposed/unmerged, bound to V4, and defines only query-time fields/filtering. Basis: `OBS-V6-004`, `EVD-V6-002`.
+- `STATE-V6-004` — svc-workflow PR #19 at base `c90d54c...` / head `0c63d35...` is the current open, draft, unmerged, proposed `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1`, governed by V5 and declaring `implementation_authority: contracts` inert while proposed. Its `af450aa...` coordinate is source candidate/lineage, not the current proposal head. The current Spec defines only a read-time, non-persisted query projection and creates no canonical activation or `nextEligibleAt`. Basis: `OBS-V6-004`, `EVD-V6-002`.
 - `STATE-V6-005` — At the fixed `2026-09-01` observation, dsh-agent-core PR #87 head `4260911...` was an open proposed external PR whose recurring-scan shape did not satisfy this repository's activation-driven interoperability condition. That snapshot creates no present-state, lifecycle, or authority dependency. Basis: `OBS-V6-006`, `EVD-V6-005`.
 
 ### 4.2 Observations
@@ -192,13 +200,15 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Result: v0.3.1 freezes `DRAFT | NORMAL | TERMINAL`, assignee references, repeated immutable Node Visits, and transition/event/transaction semantics; v0.3.2 changes only Cancel/Archive governance. No canonical activation or `nextEligibleAt` exists.
 - Provenance: `docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md`, `docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_2.md`.
 
-#### OBS-V6-004 — Old dispatchability proposal is a duplicate-risk input, not authority
+#### OBS-V6-004 — Current dispatchability proposal is a duplicate-risk input, not authority
 
-- Subject: `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1`.
-- Source revision: `af450aa39e446683b8ae2b2edf99c4febdcfb068`.
-- Method: complete fixed-commit inspection and repository/remote ref inventory.
-- Result: proposed/unmerged; `governed_by` V4; query-time `dispatchable`/reason fields only; no canonical activation, Scheduler contract, or `nextEligibleAt`; implementation is not allowed.
-- Provenance: fixed Git object and its sole Spec file.
+- Subject: svc-workflow PR #19 and `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1`.
+- Source revision: PR base `c90d54cace46ff505ac54aa6215587d812cf9a78`; current PR head `0c63d35a6e1291e7187e693e2a0ed1fec231eaf2`; source candidate/lineage `af450aa39e446683b8ae2b2edf99c4febdcfb068`.
+- Environment/observed at: GitHub and an exact-head local Git object, `2026-09-01`.
+- Method: inspect current PR metadata and completely inspect its sole Spec at the exact head; compare frontmatter, declared source candidate, semantics, acceptance state, and implementation gate.
+- Result: PR #19 is open, draft, unmerged, proposed, governed by V5, and declares `implementation_authority: contracts`, which is inert while proposed. Its read-time query projection is non-persisted and creates no canonical activation or `nextEligibleAt`. The current Spec is non-authoritative and cannot be accepted or implemented as this Goal's child/canonical dispatch authority; `af450aa...` is lineage rather than the current head.
+- Provenance: `https://github.com/mayf3/svc-workflow/pull/19`, exact Git object `0c63d35...`, and `docs/specs/SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1.md` at that object.
+- Limitation: this observation and V6 disposition neither modify nor control PR #19; repository owner `mayf3` retains lifecycle authority.
 
 #### OBS-V6-005 — Accepted global reader remains read-only compatibility authority
 
@@ -217,12 +227,12 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Result: at the fixed observation coordinate, an open draft proposed Spec contained a recurring 30-minute scanner/dispatcher section and a bounded Scheduler-tools section. The snapshot is non-authoritative, external to this repository, and does not authorize this repository to direct the PR's lifecycle.
 - Provenance: `https://github.com/mayf3/dsh-agent-core/pull/87`.
 
-#### OBS-V6-007 — No competing V6 exists
+#### OBS-V6-007 — No competing V6 or canonical-activation Product Direction exists
 
 - Subject: svc-workflow branches and PRs.
 - Source revision: GitHub state observed `2026-09-01`.
 - Method: list all repository PRs and relevant local/remote branches.
-- Result: no V6/canonical-activation Product Direction candidate exists. The only dispatchability candidate is `af450aa...` and is semantically non-reusable for this Goal.
+- Result: no competing V6 or canonical-activation Product Direction candidate exists. A current dispatchability proposal does exist in PR #19 at `0c63d35...`, sourced from `af450aa...`, but its read-time/non-persisted V5-bound semantics are non-reusable for this Goal's canonical activation.
 - Provenance: GitHub PR inventory and Git refs.
 
 ### 4.3 Claims and assumptions
@@ -276,14 +286,14 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Strength/sufficiency: direct accepted-authority and Git evidence; sufficient for `SUPERSEDE` classification.
 - Limitations: does not accept V6.
 
-#### EVD-V6-002 — V5 and old proposal support non-reuse disposition
+#### EVD-V6-002 — V5 and current dispatchability proposal support non-reuse disposition
 
 - Source observations: `OBS-V6-002`, `OBS-V6-004`, `OBS-V6-007`.
 - Target: `STATE-V6-002`, `STATE-V6-004`, `CLM-V6-001`.
 - Relation: SUPPORTS.
-- Bound coordinates: V5 on `c90d54c...`; proposed child `af450aa...`.
-- Strength/sufficiency: complete document comparison; sufficient to reject reuse/duplicate implementation authority.
-- Limitations: does not decide Phase 2 wire/storage design.
+- Bound coordinates: V5 on `c90d54c...`; PR #19 base `c90d54c...`, current head `0c63d35...`, open/draft/unmerged; source candidate/lineage `af450aa...`.
+- Strength/sufficiency: complete current-head document and PR-lifecycle comparison; sufficient to reject reuse, acceptance, or implementation of the current proposal as this Goal's child/canonical dispatch authority.
+- Limitations: does not decide Phase 2 wire/storage design and does not modify or control PR #19's repository-owned lifecycle.
 
 #### EVD-V6-003 — Frozen Architecture supports reconciliation and identity boundaries
 
@@ -299,7 +309,7 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Source observations: `OBS-V6-003`, `OBS-V6-004`.
 - Target: `CLM-V6-003`, `CLM-V6-005`.
 - Relation: SUPPORTS.
-- Bound coordinates: Architecture and proposed child commits in §3.
+- Bound coordinates: Architecture coordinates and current PR #19/source-lineage coordinates in §3.
 - Strength/sufficiency: sufficient for Product Direction choice; implementation details remain gated.
 - Limitations: no runtime behavior or production data was inspected.
 
@@ -1012,7 +1022,7 @@ An independent accepted auth-service child authority supplies only the designate
 
 ### Slice D — svc-workflow Architecture and implementation authority
 
-After V6 is accepted on `main`, one independently reviewed Architecture successor/refinement must reconcile v0.3.1 node/Principal/fact/transaction semantics with §§5 and 8. Only after that authority is accepted may an independently reviewed implementation Spec authorize the bounded new model. One complete implementation Spec may cover node activation, Dispatch Intent/`nextEligibleAt`, controlled wake, reconciliation, and one-way cutover if it remains independently reviewable; V6 does not require artificial Spec multiplication. `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@af450aa...` cannot serve this role.
+After V6 is accepted on `main`, one independently reviewed Architecture successor/refinement must reconcile v0.3.1 node/Principal/fact/transaction semantics with §§5 and 8. Only after that authority is accepted may an independently reviewed implementation Spec authorize the bounded new model. One complete implementation Spec may cover node activation, Dispatch Intent/`nextEligibleAt`, controlled wake, reconciliation, and one-way cutover if it remains independently reviewable; V6 does not require artificial Spec multiplication. Current PR #19 `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...`, sourced from `af450aa...`, cannot serve this role: it is non-authoritative and MUST NOT be accepted or implemented as this Goal's child/canonical dispatch authority. If its query semantics remain useful, they require later re-investigation and rewrite under accepted V6 and the lawful successor authorities, without competing with canonical activation. V6 performs no PR #19 lifecycle action; repository owner `mayf3` retains that authority.
 
 ### Slice E — svc-workflow Domain admin
 
@@ -1302,7 +1312,7 @@ Legacy behavior after cutover MUST be limited to bounded drain of pre-barrier In
 svc-workflow MUST accept external dispatch interoperability only when periodic external recovery is Reconciler-only and Scheduler management is separated from normal dispatch under lawful external authority. dsh-agent-core MAY satisfy those conditions by amending PR #87, adopting a replacement Spec, or using another locally lawful authority. PR #87 at `4260911...` MUST remain a fixed-coordinate non-authoritative observation/provenance reference here; this repository MUST NOT prescribe, edit, accept, amend, split, close, merge, supersede, or implement that external PR or authority lifecycle.
 
 ### CTR-V6-058 — Parent, Architecture, and implementation lifecycle
-V6 authorizes no implementation. Code may start only after V6 is accepted on main, conflicting Architecture is reconciled by accepted authority, and an independently reviewed accepted implementation Spec with `implementation_authority: contracts` is present in the implementation base. `af450aa...` MUST NOT satisfy that gate.
+V6 authorizes no implementation. Code may start only after V6 is accepted on main, conflicting Architecture is reconciled by accepted authority, and an independently reviewed accepted implementation Spec with `implementation_authority: contracts` is present in the implementation base. Current PR #19 / `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...` and its `af450aa...` source lineage MUST NOT satisfy that gate or be accepted/implemented as this Goal's child/canonical dispatch authority. V6 MUST NOT modify or control PR #19's owner-governed lifecycle.
 
 ## 21. Acceptance
 
@@ -1709,10 +1719,10 @@ Every item requires executed evidence at the implementation/authority revision n
 
 ### ACC-V6-058 — Authority-chain implementation gate
 - Contracts: `CTR-V6-058`.
-- Method/environment: preflight on candidate implementation bases with each required authority present/absent and with `af450aa...` substituted.
-- Expected: only a base containing accepted V6, accepted Architecture reconciliation, and accepted implementation Spec permits code; old dispatchability proposal always fails.
-- Required evidence: exact base/head SHAs, authority statuses, review/acceptance records, and preflight output.
-- Failure condition: code starts from proposed/missing/conflicting authority or old proposal is accepted as the child.
+- Method/environment: preflight on candidate implementation bases with each required authority present/absent and with current PR #19 head `0c63d35...` or its `af450aa...` source lineage substituted.
+- Expected: only a base containing accepted V6, accepted Architecture reconciliation, and an independently accepted implementation Spec permits code; the current dispatchability proposal and its source lineage always fail this Goal's child/canonical-authority gate, while V6 takes no action on PR #19's lifecycle.
+- Required evidence: exact V6 and implementation base/head SHAs, PR #19 base/head/state/draft/unmerged coordinates, authority statuses, review/acceptance records, repository-owner lifecycle provenance, and preflight output.
+- Failure condition: code starts from proposed/missing/conflicting authority; current PR #19 or `af450aa...` is accepted or implemented as this Goal's child/canonical dispatch authority; or V6 is used to modify, close, merge, accept, or otherwise control PR #19.
 
 ```text
 CONTRACT_COUNT = 58
@@ -1738,7 +1748,7 @@ ACCEPTANCE_WITHOUT_FAILURE_CONDITION = 0
 - Accept runtime OLD/NEW arguments or dynamic roster expansion: rejected; a future operator binds only to exact artifact rows.
 - Use PR #15 or mutable PR #2 as common prerequisites: rejected; both are independent from Agent-first V1.
 - Reuse or amend accepted V5: rejected; node taxonomy, persistence, Scheduler, wake, lease, and cutover meaning changes, requiring whole-authority `SUPERSEDE`.
-- Accept or implement `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@af450aa...`: rejected; it is proposed, V4-bound, query-time only, and cannot create canonical activation or `nextEligibleAt`.
+- Accept or implement current PR #19 `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...` (source lineage `af450aa...`) as this Goal's child/canonical dispatch authority: rejected; it is open, draft, unmerged, proposed, V5-bound, read-time/non-persisted, and creates neither canonical activation nor `nextEligibleAt`. Any retained query semantics require later lawful re-investigation/rewrite, and V6 does not control the PR's repository-owner lifecycle.
 - Preserve DRAFT/NORMAL for new traffic: rejected; those node kinds are Legacy-only after cutover.
 - Create separate HUMAN/AGENT/SERVICE/WAIT node kinds: rejected; node kind remains `TASK`, with owner type resolving Human/Agent.
 - Auto-convert Service to Agent or schedule Service TASKs: forbidden; inter-service authentication does not create workflow ownership.
@@ -1797,7 +1807,17 @@ UNRESOLVED_AUTHORITY_CONFLICT = NONE_FOR_PRODUCT_DIRECTION_REVIEW
 IMPLEMENTATION_BLOCKED_PENDING_ARCHITECTURE_RECONCILIATION = YES
 PARTIAL_SUPERSESSION = NONE
 DUPLICATE_AUTHORITY_RISK = DISPOSITIONED
-LEGACY_DISPATCHABILITY_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068 / DO_NOT_IMPLEMENT_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
+CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
+CURRENT_DISPATCHABILITY_PROPOSAL_HEAD = 0c63d35a6e1291e7187e693e2a0ed1fec231eaf2
+CURRENT_DISPATCHABILITY_PROPOSAL_STATE = OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
+CURRENT_DISPATCHABILITY_PROPOSAL_GOVERNED_BY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
+CURRENT_DISPATCHABILITY_PROPOSAL_IMPLEMENTATION_AUTHORITY = CONTRACTS_INERT_WHILE_PROPOSED
+CURRENT_DISPATCHABILITY_PROPOSAL_SEMANTICS = READ_TIME_QUERY_PROJECTION_NON_PERSISTED_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
+CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
+CURRENT_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_ACCEPTABLE_OR_IMPLEMENTABLE_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_ACTION_BY_V6 = NONE
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 ARCHITECTURE_SUCCESSOR_OR_REFINEMENT_REQUIRED = YES
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
@@ -1851,8 +1871,17 @@ CURRENT_PARENT_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
 V5_TRANSITION = NONE_WHILE_V6_IS_PROPOSED
 V5_FRONTMATTER_CHANGE = NONE
 LOCAL_AUTHORITY_MAP_CHANGE = NONE
-LEGACY_DISPATCHABILITY_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
-LEGACY_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_IMPLEMENTABLE_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
+CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
+CURRENT_DISPATCHABILITY_PROPOSAL_HEAD = 0c63d35a6e1291e7187e693e2a0ed1fec231eaf2
+CURRENT_DISPATCHABILITY_PROPOSAL_STATE = OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
+CURRENT_DISPATCHABILITY_PROPOSAL_GOVERNED_BY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
+CURRENT_DISPATCHABILITY_PROPOSAL_IMPLEMENTATION_AUTHORITY = CONTRACTS_INERT_WHILE_PROPOSED
+CURRENT_DISPATCHABILITY_PROPOSAL_SEMANTICS = READ_TIME_QUERY_PROJECTION_NON_PERSISTED_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
+CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
+CURRENT_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_ACCEPTABLE_OR_IMPLEMENTABLE_FOR_THIS_GOAL
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_ACTION_BY_V6 = NONE
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 DSH_AGENT_CORE_PR_87_HEAD_OBSERVED = 4260911960f33c5b91c38403f002207f717f4187
 DSH_AGENT_CORE_PR_87_RELATION = FIXED_COORDINATE_NON_AUTHORITATIVE_OBSERVATION_PROVENANCE_ONLY
 EXTERNAL_PERIODIC_RECOVERY_INTEROPERABILITY = RECONCILER_ONLY
@@ -1893,6 +1922,10 @@ IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 EXTERNAL_AUTHORITIES = NONE (PR #87 at `4260911...` is fixed-coordinate non-authoritative observation/provenance only)
+CURRENT_DISPATCHABILITY_PROPOSAL = PR_19_AT_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_V5_BOUND_NON_AUTHORITATIVE
+CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068_LINEAGE_ONLY
+CURRENT_DISPATCHABILITY_DISPOSITION = NOT_ACCEPTABLE_OR_IMPLEMENTABLE_AS_THIS_GOAL_CHILD_OR_CANONICAL_DISPATCH_AUTHORITY_REWRITE_IF_RETAINED
+CURRENT_DISPATCHABILITY_PR_LIFECYCLE_ACTION_BY_V6 = NONE_REPOSITORY_OWNER_RETAINS_AUTHORITY
 OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
 PARTIAL_SUPERSESSION = NONE
