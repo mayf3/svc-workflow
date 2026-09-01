@@ -2,76 +2,77 @@
 
 ## Goal
 
-Independently decide whether an exact Spec revision is safe to recommend for acceptance.
+Independently evaluate an exact candidate, affected implementation surface, controlled operation, or final accepted Head without creating Product Authority or expanding into open-ended research.
 
-## Fix coordinates first
+## Coordinates
 
 ```text
 REPOSITORY
-REVIEWED_BASE_COMMIT
-REVIEWED_SPEC_COMMIT
-SPEC_PATH
+REVIEW_KIND = SPEC | AFFECTED_CONTRACT | CONTROLLED_OPERATION | FINAL_HEAD
+REVIEW_TARGET_HEAD
+BASE_HEAD
+CURRENT_BASE_HEAD
 REVIEWER_ID
 AUTHOR_ID
+ASSURANCE_LEVEL
 ```
 
-The reviewer must not rely on unrecorded chat history.
+Do not rely on unrecorded chat or inaccessible author-only material.
 
-## Review passes
+## Passes
 
-### Authority
+- **Authority/route:** local ownership, exact parents/refs, one unique Authority action, explicit implementation authority, proposal boundaries, no partial supersession, mandate scope.
+- **Primitives/Evidence:** Observation versus interpretation, State coordinates, Claim support, load-bearing Evidence relations, reviewability, Secret-safe receipts.
+- **Scope/stop:** Goal/Gap, non-goals, allowed/forbidden effects, Done When, Expansion Trigger, optional infrastructure not masquerading as progress.
+- **Contracts/Acceptance:** relevant semantic paths; each Acceptance can produce Required Evidence and reject a concrete wrong implementation.
+- **Base impact:** unrelated Base movement gets bounded conflict/authority/behavior/Evidence checking; candidate/relevant authority/behavior/conflict changes invalidate affected review.
 
-Check parent precedence, repository ownership, exact external refs, no silent override, no overlapping conflicting accepted authority, no partial supersession, complete whole-Spec backlinks, and an authorized acceptance actor.
+## Findings
 
-### Primitive types
+A Blocker uses one class:
 
-Check State coordinates and basis; Observation versus interpretation; Claim support state; explicit `EVD-*` source, target, polarity, coordinates, sufficiency, and limits; explicit Decisions; and qualified Evidence rather than filenames or test definitions.
+```text
+CONTRACT_VIOLATION
+REPOSITORY_INVARIANT_VIOLATION
+CONCRETE_REGRESSION
+SECURITY_OR_DATA_LOSS
+FALSE_EVIDENCE
+SCOPE_ESCALATION
+REQUIRED_GATE_FAILURE
+```
 
-### Scope and decisions
+Every Blocker states `SOURCE`, `COUNTEREXAMPLE`, `IMPACT`, `MINIMAL_CLOSURE`. Legal sources are accepted Product Authority, accepted local governance/invariant authority, a pre-existing active machine gate, or a valid Execution Mandate.
 
-Check that no material product choice remains for implementation, non-goals are explicit, Program versus implementation authority is clear, and owner decisions are resolved.
+Use `SPEC_GAP`, `FOLLOW_UP`, or `TOOLING_DEBT` for non-Blockers. A load-bearing gap still makes dependent readiness false. Inaccessible required Evidence is `REQUIRED_GATE_FAILURE`; use `FALSE_EVIDENCE` only for fabrication, material distortion, or false execution claim.
 
-### Contracts
-
-Check relevant identity, authorization, negative paths, trust boundary, transaction, lifecycle, timeout, retry, idempotency, unknown outcome, migration, compatibility, rollback, audit, operations, and security semantics.
-
-### Acceptance
-
-Check every active Contract has coverage, the verification can produce executed evidence at a named environment, and the failure condition rejects a wrong or bypassed implementation.
-
-### Immutability
-
-Check accepted ancestors. Any change to existing normative meaning requires a new Spec and whole-Spec supersession. A strictly additive amendment is allowed only with new stable IDs inside unchanged Goal, scope, authority, and accepted Decisions. Reused IDs with changed meaning and prose-only partial supersession fail review.
-
-## Recommendation output
+## Output
 
 ```text
 SPEC_GOVERNANCE_MODE = REVIEW
-SPEC_REVIEW = ACCEPT | REVISE
-READY_TO_MARK_ACCEPTED = YES | NO
-REVIEWED_BASE_COMMIT = <sha>
-REVIEWED_SPEC_COMMIT = <sha>
+REVIEW_KIND = SPEC | AFFECTED_CONTRACT | CONTROLLED_OPERATION | FINAL_HEAD
+SPEC_REVIEW = ACCEPT | REVISE | NOT_APPLICABLE
+REVIEW_TARGET_HEAD = <sha>
+BASE_HEAD = <sha>
+CURRENT_BASE_HEAD = <sha>
 REVIEWER_ID = <identity>
-AUTHOR_INDEPENDENCE = PASS | FAIL
+AUTHOR_INDEPENDENCE = PASS | FAIL | NOT_REQUIRED
 AUTHORITY_REVIEW = PASS | FAIL
-PRIMITIVE_BOUNDARY_REVIEW = PASS | FAIL
-CONTRACT_REVIEW = PASS | FAIL
-ACCEPTANCE_COVERAGE_REVIEW = PASS | FAIL
-IMMUTABILITY_REVIEW = PASS | FAIL
+PRIMITIVE_BOUNDARY_REVIEW = PASS | FAIL | NOT_APPLICABLE
+CONTRACT_REVIEW = PASS | FAIL | NOT_APPLICABLE
+ACCEPTANCE_COVERAGE_REVIEW = PASS | FAIL | NOT_APPLICABLE
+MANDATE_SCOPE_REVIEW = PASS | FAIL | NOT_APPLICABLE
+EVIDENCE_REVIEWABILITY = PASS | FAIL | NOT_APPLICABLE
+BASE_IMPACT = NONE | BOUNDED | RELEVANT
 BLOCKERS = <n>
-ACCEPTANCE_ACTOR_REQUIRED = <identity or role>
+SPEC_GAPS = <n>
+FOLLOW_UPS = <n>
+TOOLING_DEBT = <n>
+IMPLEMENTATION_ALLOWED = YES | NO | NOT_APPLICABLE
+MERGE_READY = YES | NO | NOT_APPLICABLE
+OPERATION_ALLOWED = YES | NO | NOT_APPLICABLE
+NEXT_ACTION = CONTINUE | STOP | RE_PREFLIGHT | OWNER_DECISION
 ```
 
-Review recommendation is not acceptance.
+Review is not acceptance.
 
-## Final-head binding
-
-After an authorized actor prepares the accepted head, independently compare it with the reviewed Spec commit:
-
-```text
-FINAL_ACCEPTED_HEAD = <sha>
-SEMANTIC_DELTA_AFTER_REVIEW = NONE | DETECTED
-FINAL_HEAD_RECHECK = PASS | FAIL
-```
-
-Any semantic delta requires a new review.
+Final accepted-Head recheck binds `FINAL_ACCEPTED_HEAD`, `ACCEPTANCE_ACTOR`, `ACCEPTED_AT`, `SEMANTIC_DELTA_AFTER_REVIEW`, and `FINAL_HEAD_RECHECK`. Any normative semantic delta requires a new independent review.

@@ -1,74 +1,50 @@
 ---
 name: spec-governance
-description: Route spec-first work to PREFLIGHT, AUTHOR, REVIEW, or COMPLIANCE without conflating authority, implementation, runtime state, or evidence.
+description: Route goal-driven work through independent Authority, Plan, and Assurance decisions without conflating Product Authority, one-operation mandates, implementation, runtime state, or Evidence.
 ---
 
-# Spec Governance Skill V0
+# Spec Governance Skill V1
 
 Use exactly one primary mode per invocation:
 
 ```text
-PREFLIGHT   decide whether implementation may start
-AUTHOR      investigate and draft a docs-only governing Spec
-REVIEW      independently review an exact Spec revision
-COMPLIANCE  evaluate an exact implementation against exact Contracts
+PREFLIGHT   classify Authority, Plan, Assurance, readiness, and next action
+AUTHOR      create or revise Product Authority when the route requires it
+REVIEW      independently review an exact authority/change/final Head
+COMPLIANCE  evaluate exact implementation or operation against exact Contracts
 ```
 
-## Read order
+Change Briefs, ExecPlans, Execution Mandates, and Controlled Runbooks are artifacts, not modes.
 
-Always read:
+## Read order
 
 1. `AGENTS.md`;
 2. `.agents/README.md`;
 3. `.agents/local/README.md`;
-4. relevant Product Direction, Architecture, and accepted Specs;
-5. only the selected mode file under `modes/`.
+4. directly relevant accepted authorities;
+5. only the selected mode file.
 
-Read `.agents/protocol/SPEC_GOVERNANCE_V0.md` and `SPEC_FORMAT_V0.md` as reference when the selected mode needs the detailed rule. They are not mandatory full-context preload for every task.
-
-## Mode files
-
-```text
-modes/PREFLIGHT.md
-modes/AUTHOR.md
-modes/REVIEW.md
-modes/COMPLIANCE.md
-```
+Read the V1 protocol and Spec format only as needed.
 
 ## Shared invariants
 
 ```text
-State is a time-indexed projection, not raw truth.
-Observation is not Claim.
-Claim is not Decision.
-Decision is not Contract.
-Accepted Spec is not implemented state.
-Implementation progress is not conformance.
-Evidence is a first-class relation, not raw provenance material.
-Test definition is not Observation or Evidence.
-External dependency is not locally governed authority.
+Product Authority creates long-lived obligations.
+Execution Mandate constrains one operation.
+Every mutation needs attributable target/scope/effects/Done When authorization and an isolated write surface.
+Complexity determines Plan.
+Failure consequence determines Assurance.
+Investigation / Task / test / Review comment do not create Product Authority.
+AMEND/NEW + CONTROLLED and every SUPERSEDE route are docs-first.
+Load-bearing SPEC_GAP -> AMEND/SUPERSEDE/NEW + readiness NO + RE_PREFLIGHT.
+Inaccessible required Evidence -> REQUIRED_GATE_FAILURE, not automatically FALSE_EVIDENCE.
+Runtime is Observation, not authority.
+Emergency pre-Spec action is Owner-authorized incident containment only; no durable new behavior.
+DONE_WHEN met without EXPANSION_TRIGGER -> STOP.
 ```
 
-For every mode:
+For every mode, bind exact coordinates, preserve stable accepted IDs and whole-authority backlinks, separate Observation from Working Guess when it affects routing, distinguish deterministic checks from semantic judgment, and persist load-bearing results outside chat.
 
-- record exact repository and commit coordinates;
-- preserve stable IDs;
-- treat authority conflict as a blocker;
-- never infer partial supersession from prose;
-- never reuse an accepted Contract ID for changed meaning;
-- persist important results outside chat;
-- distinguish manual policy from actual deterministic enforcement.
+Choose `PREFLIGHT` before non-trivial code/operation unless a persisted record covers the exact request and coordinates. Choose `AUTHOR` only for `AMEND`, `SUPERSEDE`, or `NEW`; `REUSE` normally uses a Brief/ExecPlan. Choose `REVIEW` for independent exact-Head/affected-Contract/final-Head review. Choose `COMPLIANCE` after implementation or operation exists.
 
-## Mode selection
-
-Choose `PREFLIGHT` before code unless an already persisted preflight record covers the exact base and request.
-
-Choose `AUTHOR` when preflight returns `AMEND`, `SUPERSEDE`, or `NEW` and a docs-only authority change is required.
-
-Choose `REVIEW` only as an independent semantic reviewer of a fixed Spec commit.
-
-Choose `COMPLIANCE` after implementation exists and the governing Spec revision is pinned.
-
-## Emergency exception
-
-Rollback, disablement, shutdown, credential revocation, or isolation may use the emergency seam defined in the protocol. Durable new behavior may not.
+One Agent may perform Recorder, PREFLIGHT, and Planner cognitive functions. Independence is required only where Durable/Controlled assurance, authority, or local policy requires it; do not create a fixed Agent formation.

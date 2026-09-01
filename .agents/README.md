@@ -1,498 +1,267 @@
-# Development Grammar V0
+# Development Grammar V1
 
 ```text
-GRAMMAR_VERSION = 0.1.0-draft.1
+GRAMMAR_VERSION = 1.0.0
+GOVERNING_AUTHORITY = AGENT_DEVELOPMENT_GOVERNANCE_V1
 STATUS = accepted
-ENFORCEMENT_LEVEL = manual_policy
+ENFORCEMENT_LEVEL = manual_policy_plus_deterministic_integrity
 ```
 
-This document defines the stable semantic grammar used by Agents and maintainers when investigating, specifying, implementing, reviewing, and operating software.
+This is the shared operating grammar for repositories developed across many Agent sessions. Product Direction, Architecture, governing Specs, investigations, implementation records, and runtime evidence remain in their owning repository.
 
-It is intentionally smaller than a project knowledge base. Repository-specific Product Direction, Architecture, Specs, investigations, implementation records, and runtime evidence remain in their owning repository.
+After this file, read `.agents/local/README.md` when present.
 
-After reading this file, read `.agents/local/README.md` when it exists.
-
-### Operating context budget
+## Context budget
 
 For an ordinary task, load only:
 
 1. this grammar;
-2. the repository-local governance file;
-3. the directly relevant Product Direction, Architecture, and governing Specs;
-4. the Spec-governance Skill router and the single selected mode file.
+2. repository-local governance;
+3. directly relevant accepted authorities;
+4. the Spec-governance router and one selected mode.
 
-The detailed protocol and format documents are reference material. Read only the sections needed to resolve the current mode; do not preload every rationale, template, example, or protocol section into every Agent turn.
+Do not preload every protocol, template, rationale, prior review, or example.
 
----
-
-## 1. Minimum operating loop
+## Minimum loop
 
 ```text
-1. Locate the governing authorities.
-2. Classify the requested work: REUSE / AMEND / SUPERSEDE / NEW.
-3. Decide whether it is mechanical; uncertainty means NON_MECHANICAL.
-4. For non-mechanical implementation, verify that an accepted,
-   implementation-authorizing Spec exists in the implementation PR base.
-5. If not, stop implementation and create or revise a docs-only Spec.
-6. Independently review the exact Spec commit.
-7. An authorized actor accepts the exact final head.
-8. Implement against the pinned accepted Spec revision.
-9. Record Contract-by-Contract implementation and qualified evidence.
-10. Report drift; do not edit accepted authority to excuse the implementation.
+1. Fix target repository, candidate Head, and integration Base.
+2. State GOAL/TARGET and CURRENT_GAP.
+3. Locate Product Authority in precedence order.
+4. Separate OBSERVATION from WORKING_GUESS when interpretation affects routing.
+5. Classify independently: AUTHORITY_ACTION, PLAN_LEVEL, ASSURANCE_LEVEL.
+6. Check Execution Mandate, load-bearing SPEC_GAP, Evidence reviewability,
+   live authority gap, and candidate/Base movement.
+7. Select the shortest authorized route and artifact set.
+8. Execute only within accepted Contracts and the mandate.
+9. Review the affected surface with executed Evidence.
+10. DONE_WHEN met without EXPANSION_TRIGGER -> STOP.
 ```
 
----
+## Semantic primitives
 
-## 2. The semantic primitives
+Epistemic entities:
 
-The grammar uses six **entity primitives** and one first-class **relational primitive**. Relation primitives are still primitives: they are minimal semantic building blocks, but they connect entities rather than naming another kind of thing.
+- **Observation** — direct recorded result with source, revision, environment, time, method, result, and provenance.
+- **Claim** — interpretation with `SUPPORTED`, `INFERRED`, or `OPEN_ASSUMPTION` support state.
+- **State** — a time- and coordinate-bound projection from Observations and necessary Claims.
 
-### 2.1 Epistemic entity primitives: describing what we know
+Normative entities:
 
-#### Observation
+- **Goal** — desired outcome; it does not authorize mutation.
+- **Decision** — selected direction made by an owning authority.
+- **Contract** — stable testable obligation created by an accepted Decision.
 
-A direct, recorded encounter with source, runtime, data, behavior, or an executed verification result.
-
-An Observation must state enough coordinates to be falsifiable and reproducible where feasible:
-
-```text
-subject
-repository / source
-commit or artifact identity
-runtime environment
-observed_at
-method / command / request
-result
-provenance location
-```
-
-An Observation does not contain the explanation of why the result occurred.
-
-#### Claim
-
-An interpretation, generalization, causal explanation, or prediction supported or challenged by Observations through Evidence relations.
-
-Every load-bearing Claim has a support state:
+**Evidence** is a qualified relation from Observation(s) to a named Claim, State assertion, or Contract at exact coordinates.
 
 ```text
-SUPPORTED
-INFERRED
-OPEN_ASSUMPTION
-```
-
-Do not use `VERIFIED CLAIM`. A Claim remains an interpretation even when strongly supported.
-
-#### State
-
-A time-indexed projection of a clearly identified subject, built from Observations and necessary Claims.
-
-```text
-State = projection(subject, commit/environment/time, observations, claims)
-```
-
-State is not raw truth and has no independent evidence authority. Every load-bearing State statement cites provenance, an Observation ID, a Claim ID, or an Evidence ID.
-
-“Current system state” is invalid unless it distinguishes such coordinates as:
-
-- source tree or branch;
-- deployed revision;
-- runtime environment;
-- persisted data;
-- user-visible surface;
-- observation time.
-
-### 2.2 Normative entity primitives: describing what we choose and require
-
-#### Goal
-
-A desired outcome or problem to be solved. A Goal motivates work but does not by itself authorize code or create a system obligation.
-
-#### Decision
-
-A selected direction among alternatives. A Decision becomes normative only through an accepted authority and must identify what was chosen, what was rejected, and why.
-
-#### Contract
-
-A stable, testable obligation created by an accepted Decision.
-
-A Contract states what the system must or must not do across relevant success, failure, identity, authorization, lifecycle, transaction, migration, compatibility, retry, and observability paths.
-
-Every accepted Contract has a stable ID. IDs are never renumbered, reused, or assigned a new meaning.
-
-### 2.3 Relational primitive: Evidence
-
-Evidence is a first-class, auditable relation that states **why one or more qualified Observations count for or against a specific target at specific coordinates**.
-
-Evidence is not the same thing as its source material:
-
-```text
-raw file / log / screenshot / test definition = provenance material
-qualified recorded result                       = Observation
-Observation linked to a target with polarity,
-coordinates, strength, and limits              = Evidence
-```
-
-Each load-bearing Evidence relation has a stable ID such as `EVD-001` and records:
-
-```text
-source_observations
-target_type and target_id
-relation
-repository / spec / implementation revision
-environment and observed_at
-strength or sufficiency
-limitations
-provenance
-```
-
-Allowed relation vocabulary depends on the target type:
-
-```text
-Claim or State assertion:
-  SUPPORTS | CONTRADICTS
-
-Contract at a pinned Spec revision:
-  SATISFIES | VIOLATES | INCONCLUSIVE
-```
-
-The same Observation may support one Claim, contradict another, and be irrelevant to a third. That context dependence is precisely why Evidence is modeled as a relation rather than as an intrinsic label on a file or Observation.
-
-```text
-Test Definition ≠ Observation
-Executed Test Result with coordinates = Observation
+Test Definition != Observation
+Executed Result with coordinates = Observation
 Qualified Observation-to-target relation = Evidence
+Activity != Knowledge
+Activity != Progress
 ```
 
----
+Load-bearing Evidence in a governing Spec or Conformance Record uses stable `EVD-*` identity and records source, target, relation, coordinates, sufficiency, limitations, and provenance. A Routine Change Brief does not require a complete research graph unless a load-bearing interpretation depends on it.
 
-## 3. The relation graph
+## Product Authority and Execution Mandate
+
+Only active accepted Product Direction, Architecture/invariant authority, or governing Spec in the owning repository may create or change long-lived Product Contracts.
+
+These do not create Product Authority:
 
 ```text
-Observation(s)
-  ├─ EVD: SUPPORTS / CONTRADICTS ─────────────> Claim or State assertion
-  └─ EVD: SATISFIES / VIOLATES / INCONCLUSIVE > Contract at a pinned revision
-
-Claim
-  ├─ contributes to ──────────────────────────> State projection
-  └─ informs ─────────────────────────────────> Decision
-
-Goal + State + Claims
-  └─ inform ──────────────────────────────────> Decision
-
-Accepted Decision
-  └─ creates ─────────────────────────────────> Contract
-
-Implementation
-  └─ is evaluated against ────────────────────> Contract
+Investigation
+Task or prompt
+Change Brief
+ExecPlan
+Execution Mandate
+Controlled Runbook
+test definition
+runtime state
+Review comment
 ```
 
----
+A valid **Execution Mandate** authorizes and constrains one task or operation. It binds an attributable issuer, target, scope, allowed/forbidden effects, and `DONE_WHEN`. A controlled mutation additionally binds actor/role, environment, exact operation or operation class, abort conditions, Secret handling, receipt requirements, and validity/attempt bounds. It cannot create or weaken Product Contracts. An Agent-authored Brief cannot self-authorize.
 
-## 4. Type boundaries
+Every mutation—including code, documentation, configuration, schema, behavior-defining tests, generated files, and operational state—MUST have attributable authorization before it begins. The authorization may be carried by a Task, Issue, PR, Brief, or dedicated mandate; it need not become a separate large document, but it MUST remain persistent and reviewable. All write work MUST use an isolated worktree or equivalent isolated write surface bound to an exact parent, isolated ref, and single intended tree without mutating another active checkout.
 
-The following equalities are forbidden:
+## Three independent PREFLIGHT axes
+
+### Authority action
 
 ```text
-Provenance Material ≠ Observation
-State ≠ Observation
-Observation ≠ Evidence
-Observation ≠ Claim
-Claim ≠ Decision
-Goal ≠ Decision
-Decision ≠ Contract
-Spec ≠ Implementation Plan
-Test Definition ≠ Observation
-Test Definition ≠ Evidence
-Accepted Spec ≠ Implemented State
-Implementation Progress ≠ Conformance
-Runtime State ≠ Spec Lifecycle
-Activity ≠ Knowledge
-Newest Document ≠ Highest Authority
-External Dependency ≠ Locally Governed Authority
+REUSE | AMEND | SUPERSEDE | NEW
 ```
 
-Examples of invalid coercion:
+- `REUSE`: active accepted Product Authority already decides the behavior and no Contract meaning changes.
+- `AMEND`: a named proposed authority changes inside its declared scope, ownership, and bounded Decision identity; or accepted authority gets strictly additive new IDs under unchanged Goal, scope, ownership, and accepted Decisions.
+- `SUPERSEDE`: accepted meaning is deleted, narrowed, expanded, reversed, replaced, or receives different failure semantics. Use a whole-authority successor and atomic backlinks.
+- `NEW`: no active accepted authority owns the bounded independent decision, or a targeted proposal's scope, ownership, or bounded Decision identity changes.
 
-- “The code currently does X, therefore X is the Contract.”
-- “The tests pass, therefore production is conforming.”
-- “We discussed Y, therefore Y was decided.”
-- “A proposed Spec was merged, therefore it is accepted.”
-- “A later low-level Spec conflicts with Product Direction, therefore the later file wins.”
-- “This repository depends on another service, therefore it may define that service’s behavior.”
+`AMEND_OR_NEW_PENDING_OWNERSHIP` is investigation-only and must resolve before any readiness boundary.
 
----
+An accepted authority permits implementation only when it declares `implementation_authority: contracts` and the request is inside those Contracts. An accepted Program or `implementation_authority: none` does not authorize child implementation.
 
-## 5. Authority model
-
-### 5.1 Default precedence
-
-A consuming repository must name its authorities. The default precedence is:
+### Plan level
 
 ```text
-Product Direction
-> accepted Architecture / long-lived Invariant authority
-> accepted governing Specs
-> code, tests, runtime, and operational records
+NONE | BRIEF | EXEC_PLAN
 ```
 
-The first three layers are normative. Code, tests, and runtime are descriptive: they may conform or drift, but they do not silently rewrite authority.
+- `NONE`: trivial bounded work with machine-supported semantic identity.
+- `BRIEF`: bounded non-trivial work.
+- `EXEC_PLAN`: multi-phase, cross-component, dependency-sensitive, migratory, or otherwise complex execution.
 
-A lower-level authority may refine a higher-level authority. It may not silently override or supersede it.
+Risk alone does not create an ExecPlan.
 
-### 5.2 Cross-repository boundary
-
-An external authority may be referenced only with:
+### Assurance level
 
 ```text
-repository
-stable authority ID
-exact revision
-relationship
+ROUTINE | DURABLE | CONTROLLED
 ```
 
-A local Spec may state what it expects from an external authority. It may not accept, amend, supersede, or redefine the authority owned by another repository.
+- `ROUTINE`: readily reversible and low consequence.
+- `DURABLE`: persisted/public/package/lifecycle/migration surface requiring independent affected-Contract review.
+- `CONTROLLED`: identity, auth, permission, Secret, Grant, destructive migration, deletion, production activation, cross-repository public protocol, irreversible operation, or comparable high consequence.
 
-### 5.3 Central distribution boundary
+A Controlled Runbook is an Assurance artifact, not a Plan level. A one-shot operation may be `BRIEF + CONTROLLED`.
 
-This governance repository is not automatically authoritative in a consumer.
+## Default routes
 
-A consumer creates local authority by:
+| Authority | Assurance | Default route |
+|---|---|---|
+| `REUSE` | `ROUTINE` | Brief as needed + implementation + focused Evidence |
+| `REUSE` | `DURABLE` | Brief/ExecPlan + implementation + independent affected-Contract review |
+| `REUSE` | `CONTROLLED` | valid mandate + exact runbook + receipt + independent post-state verification; no new Spec solely for risk |
+| `AMEND/NEW` | `ROUTINE/DURABLE` | Spec delta and implementation may share one atomic PR when local authority permits |
+| `AMEND/NEW` | `CONTROLLED` | docs-first Product Authority, then controlled execution |
+| `SUPERSEDE` | any | docs-first whole-authority successor |
 
-1. selecting an exact source commit;
-2. vendoring the distribution into a docs-only adoption branch;
-3. recording the pin in `.agents/governance.lock.json`;
-4. preparing the vendored snapshot with `adoption.status: proposed` and null acceptance metadata;
-5. independently reviewing the adoption;
-6. allowing an authorized local actor to finalize `adoption.status: accepted`;
-7. merging the accepted snapshot into the designated authority branch.
+### Route stage and docs-first gate
 
-Preparing files is not acceptance, and an unmerged accepted-looking lock is not active authority. A later upstream release has no effect until the consumer explicitly updates and accepts it.
-
----
-
-## 6. Authority mutation
-
-### 6.1 Preflight classification
-
-Every non-mechanical request is classified as exactly one of:
+Every structured route records:
 
 ```text
-REUSE       existing accepted authority already covers the work
-AMEND       proposed authority needs revision, or accepted text receives an editorial or strictly additive change
-SUPERSEDE   accepted normative meaning must change
-NEW         no existing authority owns the decision
+ROUTE_STAGE = AUTHORITY_AUTHORING | IMPLEMENTATION | OPERATION
+AUTHORITY_ACCEPTED_IN_BASE = YES | NO | NOT_APPLICABLE
 ```
 
-### 6.2 Accepted meaning is immutable
+`AMEND/NEW + CONTROLLED` remains in `AUTHORITY_AUTHORING` with implementation and operation forbidden until the new authority is accepted in the relevant base. Every `SUPERSEDE` route is docs-first and cannot share a same-stage implementation or operation. After the authority is accepted, the actual implementation or operation is a new task routed as `REUSE`.
 
-Plain language: an accepted rule may later be replaced, but it may not be silently rewritten while keeping the same number. Old references must always keep their original meaning.
+`AMEND/NEW + ROUTINE/DURABLE` MAY combine Spec delta and implementation only when local authority explicitly permits that atomic route. This exception never applies to `CONTROLLED` or `SUPERSEDE`.
 
-After acceptance:
+Implementation detail does not become a Contract because an Investigation, PR body, test, or Reviewer repeats it. A public interface, permission, security, durable-data, lifecycle, or compatibility obligation cannot be demoted by calling it an implementation detail.
 
-- Decision and Contract meaning cannot change under the same stable ID;
-- Contract IDs cannot be repurposed;
-- editorial corrections are allowed only when semantic delta is demonstrably `NONE`;
-- a strictly additive accepted-Spec amendment may add new stable IDs only when it remains within the existing Goal, scope, authority, and accepted Decisions and changes no existing meaning;
-- a new Decision, expanded scope, or independent obligation uses a new Spec authority;
-- deletion, narrowing, expansion, reversal, or changed failure semantics of existing meaning require `SUPERSEDE`.
+## One legal effect per artifact
 
-### 6.3 V0 supersession
+- Standing Spec / Spec delta — Product Authority.
+- Change Brief — one change's goal, gap, route, scope, Evidence, and stop boundary.
+- ExecPlan — phases, dependencies, checkpoints, rollback, and re-PREFLIGHT triggers.
+- Execution Mandate — one operation's authorization and limits.
+- Controlled Runbook — dangerous operation steps, aborts, receipts, and verification.
+- Receipt / Conformance Record — what happened and what it verifies.
+- Investigation — durable non-authoritative findings and alternatives.
 
-V0 supports only whole-authority supersession.
+## Load-bearing gaps and Evidence
+
+A Reviewer may identify a missing long-lived decision but cannot write it in Review. When implementation, merge, or operation depends on it:
 
 ```text
-PARTIAL_SUPERSESSION_V0 = FORBIDDEN
+SPEC_GAP_DEPENDENCY = LOAD_BEARING
+AUTHORITY_ACTION = AMEND | SUPERSEDE | NEW
+at least one applicable readiness boundary = NO
+all readiness boundaries = NOT_APPLICABLE  # forbidden
+NEXT_ACTION = RE_PREFLIGHT
 ```
 
-A supersession transition is atomic in one docs-only change:
+`REUSE` and `AMEND_OR_NEW_PENDING_OWNERSHIP` cannot cross this readiness boundary. `OWNER_DECISION_REQUIRED = YES` may record that the re-PREFLIGHT needs an Owner decision, but `OWNER_DECISION` cannot replace the required `RE_PREFLIGHT` route result.
+
+Required Evidence must be accessible to the designated independent Reviewer, reproducible in an authorized environment, or represented by a sanitized coordinate-bound receipt from a legally independent actor.
 
 ```text
-new authority: status = accepted; supersedes = [old]
-old authority: status = superseded; superseded_by = new
+inaccessible / unverifiable / unknown provenance -> REQUIRED_GATE_FAILURE
+fabricated / materially distorted / falsely claimed execution -> FALSE_EVIDENCE
 ```
 
-Per-Contract supersession requires a future explicit machine-readable authority graph and is not inferred from prose.
+Secret values are not exposed to prove reviewability.
 
----
-
-## 7. Spec lifecycle and other state dimensions
-
-### 7.1 Governing Spec lifecycle
+## Live state ahead of authority
 
 ```text
-proposed
-accepted
-superseded
+LIVE_STATE = Observation, not authority
+EXPANSION = FROZEN
+AUTO_DELETE = NO
+PERMANENT_GRANDFATHER = NO
 ```
 
-A Spec is active authority only when it is `accepted` **and present in the repository's designated authority branch or the implementation base derived from it**. An `accepted` value on an unmerged PR branch is a candidate final state, not yet active repository authority.
+An authorized Owner/risk actor issues temporary scope-bound containment with an expiry or closure condition. Close the long-lived gap docs-first, perform minimum reconcile after acceptance, independently verify conformance, end containment, and stop.
 
-A rejected proposal was never governing authority. Its lasting knowledge is recorded in an Investigation Record with a disposition such as `rejected`, `no_change`, or `reuse`; it is not added as a fourth governing lifecycle state.
+## Emergency containment
 
-### 7.2 Implementation progress
+A pre-Spec emergency action is limited to rollback, disablement or shutdown, revocation, isolation, or equivalent containment. It MUST have attributable Owner authorization and an incident reference, MUST NOT introduce durable new behavior, and MUST require permanent repair to return through normal PREFLIGHT and Product Authority. Emergency containment may authorize the minimum operation needed to reduce harm; it does not authorize feature implementation, merge, or permanent semantics.
+
+## Review coordinates and Blockers
 
 ```text
-NOT_STARTED
-IN_PROGRESS
-COMPLETE
+REVIEW_TARGET_HEAD = exact candidate under review
+BASE_HEAD = integration snapshot used for review
+CURRENT_BASE_HEAD = current branch tip at impact recheck
 ```
 
-### 7.3 Verification coverage
+Unrelated Base movement is not candidate-Head drift. Re-review only when candidate semantics, relevant authority, affected behavior/Evidence, or a real conflict changes.
+
+A Blocker uses one class:
 
 ```text
-NOT_RUN
-PARTIAL
-SUFFICIENT
+CONTRACT_VIOLATION
+REPOSITORY_INVARIANT_VIOLATION
+CONCRETE_REGRESSION
+SECURITY_OR_DATA_LOSS
+FALSE_EVIDENCE
+SCOPE_ESCALATION
+REQUIRED_GATE_FAILURE
 ```
 
-### 7.4 Conformance result
+Every Blocker states `SOURCE`, `COUNTEREXAMPLE`, `IMPACT`, and `MINIMAL_CLOSURE`. Legal sources are active accepted Product Authority, accepted local governance/invariant authority, a pre-existing active machine gate, or a valid Execution Mandate. Investigation, proposed tests, task product prose, Reviewer preference, and Review comments are not Product-Contract sources.
+
+Other findings are `SPEC_GAP`, `FOLLOW_UP`, or `TOOLING_DEBT`. Tooling debt blocks a product only when it causes false pass, harms non-test data, hides a concrete security/data-loss failure, or is itself an accepted deliverable.
+
+## Goal and stop controls
+
+Every non-trivial route records:
 
 ```text
-UNKNOWN
-VERIFIED
-DRIFTED
+GOAL_OR_TARGET
+CURRENT_GAP
+AUTHORITY_ACTION
+PRIMARY_AUTHORITY
+PLAN_LEVEL
+ASSURANCE_LEVEL
+EVIDENCE_NEEDED
+DONE_WHEN
 ```
 
-These dimensions must not be collapsed into one enum.
-
-Valid examples:
+Durable, controlled, or expansion-prone work also records `EXPANSION_TRIGGER`. Use `NEXT_REAL_ACTION` when governance/infrastructure drift is plausible.
 
 ```text
-Spec lifecycle = accepted
-Implementation state = COMPLETE
-Verification state = SUFFICIENT
-Conformance = DRIFTED
+DONE_WHEN met + EXPANSION_TRIGGER not fired -> STOP
 ```
 
-```text
-Spec lifecycle = accepted
-Implementation state = IN_PROGRESS
-Verification state = PARTIAL
-Conformance = UNKNOWN
-```
+Optional platform work, extra fault research, Agent availability, sunk effort, and non-load-bearing harness imperfection are not expansion triggers.
 
----
+## Proportional conformance
 
-## 8. Qualified conformance
+A Conformance Record binds exact Product Authority revision, implementation revision, environment, evaluation time, implementation state, verification state, `conformance_result`, executed Observations, and Evidence relations.
 
-`VERIFIED` is never a permanent property of a Spec.
+Standard review covers affected Contracts and directly dependent accepted invariants. Controlled operations, releases, explicit full audits, and unbounded surfaces use the complete applicable matrix. A prior mechanism is not rerun unless the new change invalidates it.
 
-A Conformance Record binds:
+`VERIFIED` applies only to the exact bound tuple and is never a permanent property of a Spec.
 
-```text
-spec_id
-spec_revision or blob
-implementation_commit
-environment
-evaluated_at
-verification_state
-conformance_result
-evidence
-```
+## Adoption and history
 
-If any bound Spec, code, configuration, data migration, or environment changes, the record remains valid historical evidence for the old tuple but does not automatically verify the new tuple.
+This source repository is not automatically authoritative in a consumer. A consumer vendors an exact commit, reviews it locally, records preparation separately from acceptance, and activates it only after merge into its authority branch.
 
-Contract-level results are:
+Do not bulk-rewrite history. Apply V1 from the next applicable change forward.
 
-```text
-VERIFIED
-DRIFTED
-UNKNOWN
-NOT_APPLICABLE
-```
-
-Aggregate rule:
-
-- any active Contract `DRIFTED` → aggregate `DRIFTED`;
-- all active Contracts `VERIFIED` with sufficient evidence → aggregate `VERIFIED`;
-- otherwise → aggregate `UNKNOWN`.
-
----
-
-## 9. Review and acceptance roles
-
-```text
-Author ≠ independent semantic Reviewer
-Review recommendation ≠ acceptance authority
-```
-
-Every review records:
-
-```text
-reviewed base commit
-reviewed Spec commit
-reviewer identity
-recommendation
-final accepted head
-semantic delta after review
-```
-
-Any semantic change after the reviewed commit invalidates the review. A status-only or proven editorial-only change still requires the final head to be independently checked.
-
-Only a repository owner or explicitly authorized maintainer may perform the acceptance action.
-
----
-
-## 10. Mechanical and emergency boundaries
-
-### 10.1 Mechanical exemption
-
-```text
-UNCERTAIN = NON_MECHANICAL
-```
-
-Mechanical changes are narrowly limited to such cases as:
-
-- spelling correction;
-- formatting with no interpretation change;
-- deterministic generated output already required by an accepted Contract;
-- a pure path move with machine evidence that semantics are unchanged.
-
-These are not mechanical by default:
-
-- dependency upgrades;
-- schema, API, scope, permission, retry, timeout, or lifecycle changes;
-- changed test expectations;
-- deletion of apparently unused behavior;
-- refactors that change module or trust boundaries.
-
-A mechanical exemption is reviewed independently and persisted.
-
-### 10.2 Emergency remediation
-
-Immediate emergency action is limited to:
-
-```text
-rollback
-shutdown / disable
-containment
-credential revocation or isolation
-```
-
-It requires owner authorization and an incident reference. It may not introduce durable new behavior. Permanent repair still requires normal Spec reconciliation.
-
----
-
-## 11. Persistence rules
-
-Durable knowledge must not exist only in chat.
-
-- accepted authority lives in repository files;
-- semantic review and acceptance records live in persistent PR records or repository reports;
-- implementation conformance lives in the implementation PR or a report when evidence spans environments;
-- rejected, no-change, or reuse investigations live in an Investigation Record, issue, or investigation PR with a stable link;
-- raw evidence may remain in logs or external systems, but the provenance relation and required excerpt or query must be recorded.
-
----
-
-## 12. Forward-only adoption
-
-Do not bulk-migrate all historical documents.
-
-Apply the grammar from the next non-mechanical change forward. Reconcile historical artifacts only when they become governing, are cited by new work, or conflict with an active authority.
-
-```text
-NO_BULK_HISTORY_REWRITE = YES
-NO_CENTRAL_SPEC_DATABASE_V0 = YES
-NO_SEMANTIC_CI_REVIEW_V0 = YES
-```
+`.agents/protocol/SPEC_GOVERNANCE_V0.md` is historical compatibility material. The active workflow is `.agents/protocol/SPEC_GOVERNANCE_V1.md`.

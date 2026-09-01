@@ -1,63 +1,78 @@
 {
   "schema_version": 1,
   "distribution": "development-governance-v0",
-  "version": "0.1.0-draft.1",
+  "version": "1.0.0",
   "source_repository": "mayf3/agent-development-governance",
-  "source_commit": "46f78c3f00d768d99a4c8c2da975b124bce042f9",
-  "distribution_manifest_sha256": "58b5b28bb801538fe62be0ac98a7bc539ff34ec24fa368c48996dd40d8653ba0",
+  "source_commit": "902842735a69797b54016eeaa88d2f949f5879a9",
+  "distribution_manifest_sha256": "c1fa620da4a16e4073d617e49eb5080487f2a117e3bab6502fd223afee0f06e0",
   "adoption": {
     "mode": "vendored",
-    "status": "accepted",
-    "prepared_by": "GPT-5.6 Pro via connected GitHub",
-    "prepared_at": "2026-08-19T14:33:51Z",
-    "accepted_by": "mayf3",
-    "accepted_at": "2026-08-20T00:21:25Z"
+    "status": "proposed",
+    "prepared_by": "OpenAI ChatGPT GPT-5.6 Pro / adoption-preparation-agent",
+    "prepared_at": "2026-09-01T22:48:46Z",
+    "accepted_by": null,
+    "accepted_at": null
   },
   "files": [
     {
       "path": ".agents/README.md",
-      "sha256": "276081dae1e48959e98e8d2a7d379a10514d2318891cb286d099c67268b8fb39",
-      "size": 15418
+      "sha256": "730e7c53a5fed05ae601054a01e2b26195acd323de37c2cf6df5e4fc7d6850aa",
+      "size": 13167
     },
     {
       "path": ".agents/protocol/SPEC_GOVERNANCE_V0.md",
-      "sha256": "7a85b39f4fd9ca4965c90f85d3521d5e0334793f76194cd2f16a0e61a15be9a5",
-      "size": 15979
+      "sha256": "4f6deb623ccd38336d1ae5313fcb1f1bbccd41c175e1474f390d643ed12ca41b",
+      "size": 930
+    },
+    {
+      "path": ".agents/protocol/SPEC_GOVERNANCE_V1.md",
+      "sha256": "0c6c6394c304a9690111ec4e0790d79ea2d9f9008b0c4bcc872b7aa069b4ee95",
+      "size": 12715
     },
     {
       "path": ".agents/protocol/SPEC_FORMAT_V0.md",
-      "sha256": "c9a5e3bebb6f8928de5559c1f9024038c10530bd8da1f1aeee9fbbf9f6c6b036",
-      "size": 12010
+      "sha256": "027b7600e240d33602e3e75ece381e82d097fdf3d5aa6f907fe46ccfff249ec4",
+      "size": 13245
     },
     {
       "path": ".agents/skills/spec-governance/SKILL.md",
-      "sha256": "2ef55ddaa72051dc7b948851538bde1c33d9e9b9026d1cac15c4c44d491214b7",
-      "size": 2369
+      "sha256": "a26f27a6f37a40984d8f80be0eea67bcf99d5055b96d840a3116a58e9603be4f",
+      "size": 2589
     },
     {
       "path": ".agents/skills/spec-governance/modes/PREFLIGHT.md",
-      "sha256": "4fb139bd43726fb880ccb3431df4c38d1bac84c078807dace578cf1a89d063c7",
-      "size": 3014
+      "sha256": "de4c851e594ec0cc9266053c51839adcc9d5a3cd0f47236929ac051c12e0066c",
+      "size": 4242
     },
     {
       "path": ".agents/skills/spec-governance/modes/AUTHOR.md",
-      "sha256": "b568a174a1370ffb637afec27cdc66a67e7e0017a1b07e1927700568233eca4c",
-      "size": 2757
+      "sha256": "317b28afb24b4dd657671215de705bf9f631842c38b1add60c7847ff4d986327",
+      "size": 2495
     },
     {
       "path": ".agents/skills/spec-governance/modes/REVIEW.md",
-      "sha256": "6f2ccbea5c2e867293e50dbf8be7215b88d8684fdc19f1726bd3ca4208cd31ff",
-      "size": 2645
+      "sha256": "ed1a8078469e2908c6311269fb058ea8b5bd20a45c033d86a569c5b079b8afbd",
+      "size": 3208
     },
     {
       "path": ".agents/skills/spec-governance/modes/COMPLIANCE.md",
-      "sha256": "dd28faaea5eff25066097a9aa45af9e5b52a07ced6d755cbc4d7bc7fad63aeee",
-      "size": 2805
+      "sha256": "1f26b23f69fef5a1fce219bbc10f23770b5e34a9c026bf05b5abea4bc934881d",
+      "size": 2626
     },
     {
       "path": ".agents/tools/verify_governance.py",
       "sha256": "1a4b8e3421ad6e3d07d0c11badbc103e9a7646a25015814241a3f29049515937",
       "size": 7938
+    },
+    {
+      "path": ".agents/tools/validate_spec_transition.py",
+      "sha256": "255838a907607aeb931b18e38473b603c5da9af07eb61d66219eaf393deecf6c",
+      "size": 10901
+    },
+    {
+      "path": ".agents/tools/validate_governance_route.py",
+      "sha256": "6efec5be27547c093aeb188643bd82c58ee1fbccbf91b898388d6dbd45d9d3f7",
+      "size": 22467
     },
     {
       "path": ".agents/schemas/distribution-manifest.schema.json",
@@ -66,13 +81,18 @@
     },
     {
       "path": ".agents/schemas/spec-frontmatter.schema.json",
-      "sha256": "445860137a5f8229871f15566ae2ed0ce0322305d5c0d14e72849610e8af9de8",
-      "size": 2424
+      "sha256": "132b7325f8e6a286d237f67c226336cd092c828eb52c718b108c4b7ec06a923e",
+      "size": 3190
     },
     {
       "path": ".agents/schemas/governance-lock.schema.json",
       "sha256": "e21a9b535cfacc20b898e782dbe142c76078f73a76c1bcddae83ea50c0c478a3",
       "size": 2812
+    },
+    {
+      "path": ".agents/schemas/governance-route.schema.json",
+      "sha256": "b73e9d20e602a1071a0d2d56345c0fa672d4e7e7a2f84256726769ca8d9c4579",
+      "size": 10530
     },
     {
       "path": ".agents/templates/SPEC_TEMPLATE.md",
@@ -85,14 +105,34 @@
       "size": 11290
     },
     {
+      "path": ".agents/templates/CHANGE_BRIEF_TEMPLATE.md",
+      "sha256": "b7f87479a4b2c2c5bc3a34fd66631ff037cc3fbb9eb4bfa3cd68adb934398e20",
+      "size": 1592
+    },
+    {
+      "path": ".agents/templates/EXEC_PLAN_TEMPLATE.md",
+      "sha256": "edb7252b7416b57a8abea5ce3022d56872e849b5437f1e302c155d8183196196",
+      "size": 1034
+    },
+    {
+      "path": ".agents/templates/EXECUTION_MANDATE_TEMPLATE.md",
+      "sha256": "dedeb24b0f7e53fa962693155a014da4777c8183cc16ff1e9cb138ff9fc62748",
+      "size": 1682
+    },
+    {
+      "path": ".agents/templates/CONTROLLED_RUNBOOK_TEMPLATE.md",
+      "sha256": "4e36d81de5233f834fc745b917111e08f67e132fbb2a78dcdeb82ec9701a9d9b",
+      "size": 1498
+    },
+    {
       "path": ".agents/templates/REVIEW_RECORD_TEMPLATE.md",
-      "sha256": "0ef6dd2acb479426d31afb586e31dcfdf09a7e93dc5c4422407e03913be76cfb",
-      "size": 1215
+      "sha256": "497159bbb38d8726dc149c27734620a3f7fc25a738880960b310125301bd5a49",
+      "size": 1737
     },
     {
       "path": ".agents/templates/CONFORMANCE_RECORD_TEMPLATE.md",
-      "sha256": "a22dfad8c948d801ae9f19ab41d6885b14926902dd4b492b4d17524321d94f96",
-      "size": 1960
+      "sha256": "bfc491210cf0754b818a48290a3ce07639ac0f301e3c891c3eea4fc0a4b0dbdd",
+      "size": 1848
     },
     {
       "path": ".agents/templates/INVESTIGATION_RECORD_TEMPLATE.md",

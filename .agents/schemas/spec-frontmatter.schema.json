@@ -4,6 +4,19 @@
   "title": "Governing Spec frontmatter V0",
   "type": "object",
   "additionalProperties": true,
+  "$defs": {
+    "strictSpecId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
+    },
+    "legacyHistoricalSpecId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+_[A-Z][A-Z0-9_]*$",
+      "not": {
+        "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
+      }
+    }
+  },
   "required": [
     "spec_id",
     "status",
@@ -19,8 +32,7 @@
   ],
   "properties": {
     "spec_id": {
-      "type": "string",
-      "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
+      "type": "string"
     },
     "status": {
       "enum": ["proposed", "accepted", "superseded"]
@@ -42,10 +54,7 @@
     },
     "governed_by": {
       "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
-      },
+      "items": {"$ref": "#/$defs/strictSpecId"},
       "uniqueItems": true
     },
     "external_authorities": {
@@ -59,10 +68,7 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
           },
-          "authority_id": {
-            "type": "string",
-            "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
-          },
+          "authority_id": {"$ref": "#/$defs/strictSpecId"},
           "revision": {
             "type": "string",
             "pattern": "^[0-9a-f]{40}$"
@@ -76,18 +82,17 @@
     "supersedes": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
+        "oneOf": [
+          {"$ref": "#/$defs/strictSpecId"},
+          {"$ref": "#/$defs/legacyHistoricalSpecId"}
+        ]
       },
       "uniqueItems": true
     },
     "superseded_by": {
       "oneOf": [
         {"type": "null"},
-        {
-          "type": "string",
-          "pattern": "^[A-Z][A-Z0-9_]*_V[0-9]+$"
-        }
+        {"$ref": "#/$defs/strictSpecId"}
       ]
     },
     "owners": {
@@ -96,5 +101,32 @@
       "items": {"type": "string", "minLength": 1},
       "uniqueItems": true
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {"const": "superseded"}
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "spec_id": {
+            "oneOf": [
+              {"$ref": "#/$defs/strictSpecId"},
+              {"$ref": "#/$defs/legacyHistoricalSpecId"}
+            ]
+          },
+          "superseded_by": {"$ref": "#/$defs/strictSpecId"}
+        }
+      },
+      "else": {
+        "properties": {
+          "spec_id": {"$ref": "#/$defs/strictSpecId"},
+          "superseded_by": {"type": "null"}
+        }
+      }
+    }
+  ]
 }
