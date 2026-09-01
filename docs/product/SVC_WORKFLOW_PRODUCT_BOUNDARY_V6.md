@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -16,13 +16,13 @@ owners:
 
 ## 1. Goal and authority status
 
-This document is the complete proposed Product Direction for `svc-workflow`. It is a whole-authority successor candidate to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5`, not an amendment and not a reader-side composition with V5.
+This document is the complete Owner-accepted Product Direction candidate for `svc-workflow`. It is a whole-authority successor to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5`, not an amendment and not a reader-side composition with V5.
 
 ```text
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
 AUTHORITY_KIND = product_direction
-STATUS = proposed
-SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5 (only in a future atomic Owner acceptance transaction)
+STATUS = accepted
+SUPERSEDES = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 PRODUCT_BOUNDARY_ACTION = SUPERSEDE
 WHOLE_AUTHORITY_SUPERSESSION = YES
 PARTIAL_SUPERSESSION = NONE
@@ -35,7 +35,7 @@ CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
 ARCHITECTURE_RECONCILIATION_REQUIRED = YES
 ```
 
-V6 is proposed and non-active. V5 remains the accepted repository-active Product Direction on `main`. This authoring task does not change V5 frontmatter, does not change `.agents/local/README.md`, and does not accept or merge this candidate. A future Owner acceptance transaction, after an independent fixed-head review, must atomically mark V6 accepted, mark V5 superseded with its backlink, and switch the repository authority map. This document never authorizes implementation or production apply directly.
+V6 is Owner-accepted on the PR branch and remains non-active repository authority until this lifecycle-only final accepted candidate is independently rechecked and merged to `main`. The authorized atomic acceptance transaction has marked V6 accepted, marked V5 superseded with its `superseded_by` backlink, and switched `.agents/local/README.md` to V6 in the same docs-only change. V5 remains the accepted repository-active Product Direction on current `main` until that transaction is merged. This transaction does not directly authorize merge, implementation, database migration, production deployment, formal dispatch cutover, or production apply.
 
 The Goal is to preserve every V5 boundary not explicitly changed below, including Domain isolation, immutable workflow facts, transition authority, audit, security, the split global permissions, the original CTO bounded successor exception, and the trusted-fleet exact-plan exception, while replacing V5's DRAFT/read-time-dispatchability direction with one canonical activation model:
 
@@ -77,7 +77,7 @@ V6 governs:
 
 ### 2.2 Explicit non-goals
 
-This Product Direction does not create or select an Agent, Principal UUID, Client, credential, permission Grant, designation root instance, database row, migration, API, HTTP Contract, OpenAPI surface, SDK, test, deployment, production change, auth-service change, or dsh-agent-core change. It does not accept, merge, mark Ready, or activate any child authority or external PR. It does not commit the frozen fleet plan artifact into this repository, and the frozen plan is not live database truth.
+This Product Direction does not create or select an Agent, Principal UUID, Client, credential, permission Grant, designation root instance, database row, migration, API, HTTP Contract, OpenAPI surface, SDK, test, deployment, production change, auth-service change, or dsh-agent-core change. This lifecycle transaction accepts only V6; it does not merge V6 and does not accept, merge, mark Ready, or activate any child authority or external PR. It does not commit the frozen fleet plan artifact into this repository, and the frozen plan is not live database truth.
 
 It does not add `HUMAN_TASK`, `AGENT_TASK`, `SERVICE_TASK`, `WAIT_EVENT`, or `WAIT_TIMER`; parallel nodes; dynamic forward branching; claim/pull assignment; ordinary reassignment; handoff; delegation; workflow-syntax timers; external-signal nodes; SLA orchestration; arbitrary script guards; built-in LLM execution; cross-Domain shared templates; in-flight template replacement; in-flight Domain transfer; physical Instance deletion; unrestricted global workflow content access; or a runtime break-glass grant.
 
@@ -90,10 +90,10 @@ Long-term multi-Human governance is deferred, not forbidden. It may be introduce
 ```text
 SVC_WORKFLOW_BASE_REF = github/main
 SVC_WORKFLOW_BASE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
-CURRENT_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
-CURRENT_PRODUCT_DIRECTION_ACCEPTED_HEAD = b3c6d797d3a79655a8fd5b1c63016600d4631036
-CURRENT_PRODUCT_DIRECTION_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
-SUCCESSOR_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
+CURRENT_MAIN_PRODUCT_DIRECTION_AT_ACCEPTANCE = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
+CURRENT_MAIN_PRODUCT_DIRECTION_ACCEPTED_HEAD = b3c6d797d3a79655a8fd5b1c63016600d4631036
+CURRENT_MAIN_PRODUCT_DIRECTION_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
+OWNER_ACCEPTED_BRANCH_CANDIDATE_PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
 CURRENT_DISPATCHABILITY_PROPOSAL = SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1
 CURRENT_DISPATCHABILITY_PROPOSAL_PR = https://github.com/mayf3/svc-workflow/pull/19
 CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
@@ -128,7 +128,7 @@ FLEET_PLAN_MODE = READ_ONLY_CANONICAL_PLAN
 FLEET_PLAN_SNAPSHOT_UTC = 2026-08-24T01:03:53.192875+00:00
 ```
 
-Authority precedence remains Product Direction, then accepted Architecture/long-lived invariant authority, then accepted governing child Specs, then descriptive code/tests/runtime/operations. V6 changes no external repository authority. V5 remains active until a future atomic accepted V6 transition is merged.
+Authority precedence remains Product Direction, then accepted Architecture/long-lived invariant authority, then accepted governing child Specs, then descriptive code/tests/runtime/operations. V6 changes no external repository authority. On this PR branch the atomic V6-accepted/V5-superseded/authority-map transaction is complete; V5 remains active on current `main` until the independently rechecked transition is merged.
 
 The accepted one-time child authority `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` and both V5-retained successor exceptions remain governed through the byte-for-meaning restatement in §§17/17A. Open svc-workflow Draft PR #7 remains independent. PR #9 retains its existing disposition and is neither modified nor merged by this round. At the authoring census, PR #7 is open/draft/unmerged at base `9ba2d87...` / head `a7f8d26...`; it affects only its stated replay closure and remains independently governed. PR #9 is open/draft/unmerged at base `327b74f...` / head `3056263...` and retains `SUPERSEDED_BY_FLEET_LOCAL_CHILD` with no lifecycle action here.
 
@@ -144,7 +144,7 @@ The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while 
 
 | Candidate/authority | Lifecycle at authoring coordinates | Disposition for this Goal |
 |---|---|---|
-| `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5` | accepted and active | `SUPERSEDE`; its DRAFT/read-time/non-persisted/no-Scheduler-wake meaning conflicts with the frozen Goal |
+| `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5` | accepted and active on current `main`; superseded candidate on this PR branch | atomically superseded by accepted V6 on this branch; remains active only until the independently rechecked lifecycle transaction is merged |
 | PR #13 `SVC_WORKFLOW_DOMAIN_OWNER_INSTANCE_LIST_V1@83fd493...` | base `2ff81ae...`; open, draft, unmerged, proposed; V4 + Architecture v0.3.1; `implementation_authority: none`; `production_apply_authority: none` | independent non-authoritative owner-scoped read-only Domain list; no canonical activation or `nextEligibleAt`; not competing V6/canonical authority; no V6 lifecycle action; repository owner retains lifecycle authority |
 | PR #19 `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...` | open, draft, unmerged, proposed, V5-bound; `implementation_authority: contracts` inert while proposed | non-authoritative; read-time/non-persisted/no canonical activation/no `nextEligibleAt`; not acceptable or implementable as this Goal's child/canonical dispatch authority; retained query semantics require later lawful re-investigation/rewrite |
 | `af450aa...` | source candidate/lineage recorded by PR #19, not the current proposal head | provenance only; MUST NOT be misclassified as the sole current dispatchability proposal or used as implementation authority |
@@ -164,11 +164,11 @@ This is an inventory/de-duplication census, not an assertion that every PR has t
 | #9 | `327b74f138151a7f4d9d88e3881e54d203f1e8f6` / `3056263c3fc964a2b225720dd2b859b47e296c2e` | OPEN, DRAFT, unmerged; sole Spec proposed | V3-bound with `implementation_authority: none` and `production_apply_authority: none`; retains V5/V6 disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD`; no modification, closure, merge, acceptance, or other V6 lifecycle action |
 | #13 | `2ff81ae47ab068216bd0012fa0e76a45dd2fb572` / `83fd493db26c5e9b5b00d7e308da3c372c4d9ca4` | OPEN, DRAFT, unmerged; sole Spec proposed | V4 + Architecture v0.3.1; no implementation/production authority; independent owner-scoped read-only Domain list; no canonical activation/`nextEligibleAt`; non-authoritative and not competing with V6; no V6 lifecycle action |
 | #19 | `c90d54cace46ff505ac54aa6215587d812cf9a78` / `0c63d35a6e1291e7187e693e2a0ed1fec231eaf2` | OPEN, DRAFT, unmerged; sole Spec proposed | V5-bound read-time/non-persisted query projection; `implementation_authority: contracts` inert while proposed; source lineage `af450aa...`; retains §3.1 non-reuse/rewrite disposition and no V6 lifecycle action |
-| #20 | `c90d54cace46ff505ac54aa6215587d812cf9a78` / `818948189aa7f4eb326e16ca3e5725fceaf0394d` pre-amendment observation | OPEN, non-draft, unmerged; V6 proposed | this self proposed Product Direction candidate; not active or accepted; `implementation_authority: none`; `production_apply_authority: none`; final amended head reported externally after commit |
+| #20 | `c90d54cace46ff505ac54aa6215587d812cf9a78` / `818948189aa7f4eb326e16ca3e5725fceaf0394d` pre-amendment observation | OPEN, non-draft, unmerged; V6 proposed at census time | this was the self proposed Product Direction candidate at the fixed census; its reviewed semantic head and later lifecycle-only final accepted candidate Head are reported in the PR record because a commit cannot embed its own identity |
 
-Every PR lifecycle above remains owned by repository owner `mayf3`. V6 performs no close, modify, merge, accept, or other lifecycle action on PR #7, #9, #13, or #19; its own PR #20 remains proposed and unmerged.
+Every PR lifecycle above remains owned by repository owner `mayf3`. V6 performs no close, modify, merge, accept, or other lifecycle action on PR #7, #9, #13, or #19. PR #20 is now an Owner-accepted, unmerged branch candidate; it is not active repository authority until independent final-head recheck and merge.
 
-No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. This V6 change only inventories/dispositions the complete open local PR census while preserving each proposal's distinct authority relationship; it does not mutate or control another PR. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
+No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. The reviewed V6 semantic document inventories/dispositions the complete open local PR census while preserving each proposal's distinct authority relationship and does not mutate or control another PR. This acceptance transaction adds only the authorized lifecycle transition across V6, V5 frontmatter/backlink, and the local authority map. The V6 authority is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
 
 External Draft PRs remain classified exactly as preserved by V5:
 
@@ -1024,11 +1024,11 @@ Draft PR #9 is now dispositioned:
 PR_9_DISPOSITION = SUPERSEDED_BY_FLEET_LOCAL_CHILD
 ```
 
-This round must not close, modify, or merge PR #9. Its single-pair Child meaning is superseded by the fleet boundary above; the future local implementation Child (sequence step 2) supersedes it and must carry its own independent review. This proposed V6 Head must receive a fresh independent fixed-head audit before any acceptance consideration; no earlier V5 review result transfers to V6.
+This round must not close, modify, or merge PR #9. Its single-pair Child meaning is superseded by the fleet boundary above; the future local implementation Child (sequence step 2) supersedes it and must carry its own independent review. The reviewed semantic V6 Head `bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9` received a fresh independent fixed-head `ACCEPT` review before Owner acceptance; the resulting lifecycle-only final accepted candidate Head still requires a fresh independent final-head recheck before merge. No earlier V5 review result transfers to V6.
 
 ## 18. Capability-scoped child authorities and ordering
 
-No common all-Slices global gate is created. Each child authorizes only its own capability. V6 acceptance would select Product Direction only; it would not activate Phase 2.
+No common all-Slices global gate is created. Each child authorizes only its own capability. V6 acceptance selects Product Direction only; while the accepted candidate remains unmerged it is not active repository authority and does not activate Phase 2.
 
 ### Slice A — Dedicated Admin Agent identity
 
@@ -1163,7 +1163,7 @@ Slices may have dependency edges necessary for their own execution, but no Slice
 ## 20. Normative Contracts
 
 ### CTR-V6-001 — Whole-authority lifecycle
-V6 MUST remain non-active while proposed/unmerged, MUST replace all V5 meaning only through an atomic accepted transition with V5 backlink/authority-map updates, and MUST NOT authorize implementation or production apply directly.
+V6 MUST remain non-active repository authority while unmerged. Its Owner-accepted branch candidate MUST replace all V5 meaning only through the completed atomic lifecycle transition with V5 backlink/authority-map updates, and V6 MUST NOT authorize implementation or production apply directly.
 
 ### CTR-V6-002 — Serial workflow product shape
 svc-workflow MUST preserve §5's single-current-node, unique-Visit, single TASK-owner, exactly-one-activation deterministic serial workflow shape and MUST NOT add excluded orchestration capabilities without later authority.
@@ -1289,7 +1289,7 @@ Each pair MUST commit in one independent SERIALIZABLE transaction following the 
 The complete §17A.8 sequence MUST be enforced before any fleet write: accepted fleet Product Boundary, accepted local implementation Child, independently reviewed operator, production read-only plan recheck, and exact `PLAN_SHA256` review occur before a separate explicit production apply authorization; no earlier milestone authorizes apply.
 
 ### CTR-V6-043 — PR disposition without lifecycle change
-PR #9 MUST retain disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD` without being closed, modified, or merged this round; V6 MUST receive a fresh independent audit and remain proposed with `implementation_authority = none` and `production_apply_authority = none`.
+PR #9 MUST retain disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD` without being closed, modified, or merged this round. V6's semantic Head MUST receive a fresh independent audit before Owner acceptance; its lifecycle-only final accepted candidate Head MUST receive an independent final-head recheck before merge. `implementation_authority = none` and `production_apply_authority = none` MUST remain unchanged.
 
 ### CTR-V6-044 — Closed node and owner taxonomy
 New activation MUST accept only TASK owned by an enabled canonical Human or Agent Principal, or TERMINAL with no owner. `HUMAN_TASK`, `AGENT_TASK`, `SERVICE_TASK`, `WAIT_EVENT`, `WAIT_TIMER`, legacy DRAFT/NORMAL, and any other node kind MUST fail before new-flow publication or activation.
@@ -1342,10 +1342,10 @@ Every item requires executed evidence at the implementation/authority revision n
 
 ### ACC-V6-001 — Lifecycle and supersession check
 - Contracts: `CTR-V6-001`.
-- Method/environment: repository frontmatter/backlink/map review on proposed and any later acceptance commits.
-- Expected: proposed V6 is inactive; any later acceptance changes V5 backlink/map atomically while implementation and production apply authority remain none.
+- Method/environment: repository frontmatter/backlink/map review on the reviewed semantic Head and lifecycle-only final accepted candidate Head.
+- Expected: the Owner-accepted unmerged V6 candidate is inactive repository authority; the acceptance transaction changes V5 backlink/map atomically while implementation and production apply authority remain none; activation requires independently rechecked merge to `main`.
 - Required evidence: exact Git diffs, reviewed commits, Owner receipt, final-head recheck, and main merge coordinate.
-- Failure condition: proposed V6 is called active/accepted, V5 is partially superseded, or implementation/production apply is authorized.
+- Failure condition: the unmerged accepted V6 candidate is called active repository authority, V5 is partially superseded, or implementation/production apply is authorized.
 
 ### ACC-V6-002 — Serial-shape negative matrix
 - Contracts: `CTR-V6-002`.
@@ -1637,9 +1637,9 @@ Every item requires executed evidence at the implementation/authority revision n
 ### ACC-V6-043 — PR disposition and lifecycle invariance
 - Contracts: `CTR-V6-043`.
 - Method/environment: GitHub PR state plus V6 frontmatter and fresh audit record.
-- Expected: PR #9 remains open/unmodified/unmerged with its disposition; V6 stays proposed with no implementation/production authority until Owner acceptance.
+- Expected: PR #9 remains open/unmodified/unmerged with its disposition; V6 is an Owner-accepted unmerged branch candidate with no implementation/production authority and requires independent final-head recheck before merge.
 - Required evidence: PR snapshots, lifecycle diff, and audit record.
-- Failure condition: PR #9 changes, V6 is treated as active, or independent audit is skipped.
+- Failure condition: PR #9 changes, unmerged V6 is treated as active repository authority, or either independent semantic review or final-head recheck is skipped.
 
 ### ACC-V6-044 — Closed node/owner matrix
 - Contracts: `CTR-V6-044`.
@@ -1785,7 +1785,7 @@ ACCEPTANCE_WITHOUT_FAILURE_CONDITION = 0
 
 ## 23. Migration, compatibility, containment, and rollback
 
-V6 authoring is docs-only and mutates no runtime. It preserves V5's exact principal-successor migrations, trusted-fleet boundary, security containment, current read-route compatibility, and production-gate separation. Existing `GLOBAL_WORKFLOW_READER`/Coordinator bindings gain no Dispatch Intent authority; no role/grant migration occurs here.
+The V6 acceptance transaction is docs-only and mutates no runtime. It preserves V5's exact principal-successor migrations, trusted-fleet boundary, security containment, current read-route compatibility, and production-gate separation. Existing `GLOBAL_WORKFLOW_READER`/Coordinator bindings gain no Dispatch Intent authority; no role/grant migration occurs here.
 
 ### 23.1 New-traffic cutover barrier
 
@@ -1820,7 +1820,7 @@ Before production cutover, rollback may revert candidate code/config with no tra
 
 V6 acceptance, Architecture acceptance, implementation-Spec acceptance, code merge, migration readiness, external Scheduler readiness, production cutover, and Legacy migration/apply are distinct gates. None implies the next. This Product Direction authorizes no production action, transition, canary, Grant, message, Session, wake command, Scheduler job, migration, or apply.
 
-## 24. Open Questions and authoring readiness
+## 24. Open Questions and acceptance readiness
 
 ```text
 OPEN_OWNER_DECISIONS = NONE
@@ -1837,8 +1837,10 @@ OPEN_LOCAL_PR_13 = BASE_2ff81ae47ab068216bd0012fa0e76a45dd2fb572_HEAD_83fd493db2
 OPEN_LOCAL_PR_13_AUTHORITY = V4_PLUS_ARCHITECTURE_V0_3_1_IMPLEMENTATION_NONE_PRODUCTION_NONE
 OPEN_LOCAL_PR_13_SCOPE = OWNER_SCOPED_READ_ONLY_DOMAIN_LIST_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
 OPEN_LOCAL_PR_19 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_HEAD_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
-OPEN_LOCAL_PR_20 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
-OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
+OPEN_LOCAL_PR_20_AT_CENSUS = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
+OPEN_LOCAL_PR_20_REVIEWED_SEMANTIC_HEAD = bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9
+OPEN_LOCAL_PR_20_CURRENT = OWNER_ACCEPTED_UNMERGED_BRANCH_CANDIDATE_NON_ACTIVE_PENDING_FINAL_HEAD_RECHECK_AND_MERGE
+OPEN_LOCAL_PR_20_FINAL_ACCEPTED_HEAD = REPORTED_IN_PR_RECORD_AFTER_COMMIT_NOT_SELF_EMBEDDED
 OTHER_OPEN_LOCAL_PR_LIFECYCLE_ACTION_BY_V6 = NONE
 OPEN_LOCAL_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
@@ -1855,7 +1857,9 @@ CURRENT_DISPATCHABILITY_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 ARCHITECTURE_SUCCESSOR_OR_REFINEMENT_REQUIRED = YES
 CHILD_IMPLEMENTATION_SPEC_REQUIRED = YES
-AUTHORING_READY_FOR_REVIEW = YES
+SEMANTIC_REVIEW_RESULT = ACCEPT
+OWNER_ACCEPTANCE = COMPLETE
+READY_FOR_FINAL_HEAD_RECHECK = YES
 NEW_NODE_KINDS = TASK | TERMINAL
 TASK_OWNER_TYPES = HUMAN | AGENT
 SERVICE_TASK_OWNER = FORBIDDEN_FAIL_CLOSED
@@ -1894,17 +1898,18 @@ Exact table names, endpoint names, bounded delivery mechanism, permission key, t
 ## 25. Lifecycle record
 
 ```text
-ACCEPTANCE_STATUS = NOT_ACCEPTED
-STATUS = proposed
+ACCEPTANCE_STATUS = accepted
+STATUS = accepted
 AUTHORING_BASE_REF = github/main
 AUTHORING_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
 CURRENT_PARENT = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 CURRENT_PARENT_STATUS_ON_MAIN = accepted
 CURRENT_PARENT_ACCEPTED_HEAD = b3c6d797d3a79655a8fd5b1c63016600d4631036
 CURRENT_PARENT_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
-V5_TRANSITION = NONE_WHILE_V6_IS_PROPOSED
-V5_FRONTMATTER_CHANGE = NONE
-LOCAL_AUTHORITY_MAP_CHANGE = NONE
+V5_TRANSITION = superseded candidate (frontmatter lifecycle only)
+V5_FRONTMATTER_CHANGE = status_superseded + superseded_by_SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
+V5_HISTORICAL_BODY = byte-identical from first H1 to EOF
+LOCAL_AUTHORITY_MAP_CHANGE = switched_to_accepted_SVC_WORKFLOW_PRODUCT_BOUNDARY_V6_candidate
 OPEN_LOCAL_PR_CENSUS_OBSERVED_AT = 2026-09-01
 OPEN_LOCAL_PR_CENSUS_COUNT = 5
 OPEN_LOCAL_PR_7 = BASE_9ba2d87e94f6d39ffdd6986b5a434546cb91d90c_HEAD_a7f8d26b7a8f57da773bd7b05879ee485841fa58_OPEN_DRAFT_UNMERGED_PROPOSED_CONTRACTS_PENDING_ACCEPTANCE_INDEPENDENT_REPLAY_CLOSURE_PRODUCTION_UNAUTHORIZED
@@ -1913,8 +1918,10 @@ OPEN_LOCAL_PR_13 = BASE_2ff81ae47ab068216bd0012fa0e76a45dd2fb572_HEAD_83fd493db2
 OPEN_LOCAL_PR_13_AUTHORITY = V4_PLUS_ARCHITECTURE_V0_3_1_IMPLEMENTATION_NONE_PRODUCTION_NONE
 OPEN_LOCAL_PR_13_SCOPE = OWNER_SCOPED_READ_ONLY_DOMAIN_LIST_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
 OPEN_LOCAL_PR_19 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_HEAD_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
-OPEN_LOCAL_PR_20 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
-OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
+OPEN_LOCAL_PR_20_AT_CENSUS = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
+OPEN_LOCAL_PR_20_REVIEWED_SEMANTIC_HEAD = bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9
+OPEN_LOCAL_PR_20_CURRENT = OWNER_ACCEPTED_UNMERGED_BRANCH_CANDIDATE_NON_ACTIVE_PENDING_FINAL_HEAD_RECHECK_AND_MERGE
+OPEN_LOCAL_PR_20_FINAL_ACCEPTED_HEAD = REPORTED_IN_PR_RECORD_AFTER_COMMIT_NOT_SELF_EMBEDDED
 OTHER_OPEN_LOCAL_PR_LIFECYCLE_ACTION_BY_V6 = NONE
 OPEN_LOCAL_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
@@ -1944,17 +1951,17 @@ IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
 PRODUCTION_APPLY_AUTHORIZED = NO
-INDEPENDENT_REVIEW_REQUIRED = YES
-OWNER_ACCEPTANCE_REQUIRED = YES
+INDEPENDENT_SEMANTIC_REVIEW = ACCEPT_AT_bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9
+OWNER_ACCEPTANCE = COMPLETE_BY_mayf3
 FINAL_HEAD_RECHECK_REQUIRED = YES
 MERGE_PERFORMED = NO
 PRODUCT_CODE_CHANGE = NONE
 PRODUCTION_CHANGE = NONE
 ```
 
-No acceptance record exists. A future acceptance task must use an independent fixed-head review, prove semantic delta after review is none, and atomically transition V6/V5/the authority map. This authoring PR changes only this proposed document.
+The Owner acceptance record in §27 binds the reviewed semantic Head and the lifecycle-only scope. This atomic branch transaction changes only V6 lifecycle wording/metadata, V5 lifecycle frontmatter/backlink, and the repository-local authority map. The final accepted candidate Head is reported in the PR record after commit and must receive an independent final-head recheck before any merge.
 
-## 26. AUTHOR output
+## 26. AUTHOR lifecycle output
 
 ```text
 SPEC_GOVERNANCE_MODE = AUTHOR
@@ -1962,16 +1969,18 @@ SPEC_ID = NOT_APPLICABLE (Product Direction authority)
 SPEC_KIND = NOT_APPLICABLE (product_direction)
 AUTHORITY_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
 AUTHORITY_KIND = product_direction
-STATUS = proposed
+STATUS = accepted
 AUTHORITY_LEVEL = highest local Product Direction
 IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 EXTERNAL_AUTHORITIES = NONE (PR #87 at `4260911...` is fixed-coordinate non-authoritative observation/provenance only)
-OPEN_LOCAL_PR_CENSUS = PR_7_a7f8d26_OPEN_DRAFT | PR_9_3056263_OPEN_DRAFT | PR_13_83fd493_OPEN_DRAFT | PR_19_0c63d35_OPEN_DRAFT | PR_20_SELF_PROPOSED_PRE_AMENDMENT_8189481
+OPEN_LOCAL_PR_CENSUS = PR_7_a7f8d26_OPEN_DRAFT | PR_9_3056263_OPEN_DRAFT | PR_13_83fd493_OPEN_DRAFT | PR_19_0c63d35_OPEN_DRAFT | PR_20_AT_CENSUS_SELF_PROPOSED_PRE_AMENDMENT_8189481
 OPEN_LOCAL_PR_13_DISPOSITION = INDEPENDENT_NON_AUTHORITATIVE_OWNER_SCOPED_READ_ONLY_NO_IMPLEMENTATION_OR_PRODUCTION_AUTHORITY_NO_CANONICAL_ACTIVATION_OR_NEXT_ELIGIBLE_AT
 OPEN_LOCAL_PR_OTHER_LIFECYCLE_ACTION_BY_V6 = NONE_REPOSITORY_OWNER_RETAINS_AUTHORITY
-OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
+OPEN_LOCAL_PR_20_REVIEWED_SEMANTIC_HEAD = bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9
+OPEN_LOCAL_PR_20_CURRENT = OWNER_ACCEPTED_UNMERGED_BRANCH_CANDIDATE_NON_ACTIVE_PENDING_FINAL_HEAD_RECHECK_AND_MERGE
+OPEN_LOCAL_PR_20_FINAL_ACCEPTED_HEAD = REPORTED_IN_PR_RECORD_AFTER_COMMIT_NOT_SELF_EMBEDDED
 CURRENT_DISPATCHABILITY_PROPOSAL = PR_19_AT_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_V5_BOUND_NON_AUTHORITATIVE
 CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068_LINEAGE_ONLY
 CURRENT_DISPATCHABILITY_DISPOSITION = NOT_ACCEPTABLE_OR_IMPLEMENTABLE_AS_THIS_GOAL_CHILD_OR_CANONICAL_DISPATCH_AUTHORITY_REWRITE_IF_RETAINED
@@ -1981,10 +1990,44 @@ NORMATIVE_TBD = NONE
 PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 58
 CONTRACTS_WITH_ACCEPTANCE = 58
-AUTHORING_READY_FOR_REVIEW = YES
+SEMANTIC_REVIEW_RESULT = ACCEPT
+OWNER_ACCEPTANCE = COMPLETE
+AUTHORING_READY_FOR_FINAL_HEAD_RECHECK = YES
 INITIAL_NEXT_ELIGIBLE_AT = CANONICAL_SERVER_AUTHORED_ACTIVATION_TIMESTAMP_IN_SAME_TRANSACTION
 LEGACY_CUTOVER_SCOPE = NEW_TRAFFIC_ONLY_WITH_BOUNDED_PRE_BARRIER_DRAIN_FACTS_ALLOWED
 EXTERNAL_INTEROPERABILITY = RECONCILER_ONLY_PERIODIC_RECOVERY_AND_SEPARATE_SCHEDULER_MANAGEMENT
 ```
 
-This is an authoring summary only. Independent review, Owner acceptance, final-head recheck, and merge remain future tasks; none is performed or authorized here.
+This is the lifecycle-only AUTHOR summary. Independent semantic review and Owner acceptance are complete. Independent final-head recheck and any later documentation merge remain separate gates; this transaction does not perform or directly authorize merge, implementation, migration, deployment, formal dispatch cutover, or production apply.
+
+## 27. Acceptance Record (OWNER_WHOLE_AUTHORITY_ACCEPTANCE_TRANSITION_ONLY)
+
+```text
+ACCEPTANCE_STATUS = accepted
+REVIEW_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
+REVIEWED_SEMANTIC_HEAD = bc4a13a968073e1a81ba3fb168d4bf5c3cc12ba9
+REVIEW_RESULT = ACCEPT
+REVIEW_BLOCKERS = 0
+REVIEW_RECORD = https://github.com/mayf3/svc-workflow/pull/20#issuecomment-5487276757
+REVIEWER_ID = Codex independent subagent /root/fresh_boundary_audit_v6_bc4a13a
+READY_TO_MARK_ACCEPTED = YES
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+ACCEPTED_BY = mayf3
+ACCEPTED_AT = 2026-09-01T11:48:22Z
+OWNER_ACCEPTANCE_SCOPE = V6_PRODUCT_DIRECTION_LIFECYCLE_ACCEPTANCE_TRANSACTION_ONLY
+V5_TRANSITION = superseded candidate (frontmatter lifecycle only)
+V5_HISTORICAL_BODY = byte-identical from first H1 to EOF
+LOCAL_AUTHORITY_MAP = switched atomically to accepted V6 candidate
+ALLOWED_DELTA = V6 lifecycle metadata and acceptance receipt + V5 frontmatter supersession/backlink + repository-local authority map
+FINAL_ACCEPTED_HEAD = REPORTED_IN_PR_RECORD_AFTER_COMMIT_NOT_SELF_EMBEDDED
+FINAL_HEAD_RECHECK = NOT_PERFORMED / REQUIRED_BEFORE_MERGE
+ACTIVE_ON_MAIN = NO at acceptance commit (accepted candidate on PR #20 branch; repository-active only after independent final-head recheck and merge)
+DIRECT_MERGE_AUTHORIZED_BY_THIS_TRANSACTION = NO
+PRODUCT_IMPLEMENTATION_AUTHORIZED = NO
+DATABASE_MIGRATION_AUTHORIZED = NO
+PRODUCTION_DEPLOYMENT_AUTHORIZED = NO
+FORMAL_DISPATCH_CUTOVER_AUTHORIZED = NO
+PRODUCTION_APPLY_AUTHORIZED = NO
+```
+
+This acceptance is an Owner whole-authority lifecycle transition only. V6 becomes an accepted branch candidate, V5's frontmatter becomes superseded with its `superseded_by` backlink, and the repository-local authority map is switched atomically. The reviewed V6 product meaning and stable IDs are untouched. The lifecycle-only final accepted candidate Head must be persisted in the PR record and independently rechecked before any documentation merge.
