@@ -149,7 +149,7 @@ activation in the same transaction.
 | SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1 | 67bcdf75c13c092efcea092b9b918c413fe12504 | retain the exact bounded Legacy successor exception; it creates no general reassignment or new-model authority |
 | AUTH_PRINCIPAL_SELF_PROJECTION_AND_DOMAIN_MEMBERSHIP_V1 | afeee332776391281548f4f7ffecde913880eeef | retain verified token.sub self-projection and Domain-member limits; projection does not grant TASK ownership or global permission |
 | v0.3.1 legacy implementation contracts | exact blobs at the authoring base | remain descriptive/implementation authority for their accepted Legacy scope and compatibility history; they cannot authorize VISIT_ACTIVATION_V1 |
-| contracts/workflow-http/v1 | 9d81acb167567d9309846da504af2a5b73b86390 | retain existing wire surfaces until a later accepted implementation Spec explicitly versions or proves compatibility |
+| contracts/workflow-http/v1/contract.md | 9d81acb167567d9309846da504af2a5b73b86390 | retain existing wire surfaces until a later accepted implementation Spec explicitly versions or proves compatibility |
 
 The existing legacy contracts include Definition, Create, Transition, Query,
 PostgreSQL storage, Admin Recovery, Legacy Import, identity/auth, and internal
@@ -171,8 +171,9 @@ The exact legacy contract coordinates inspected for that relation are:
 | docs/contracts/IMPLEMENTATION_CONTRACT_V0_1.md | 0618f60248046e7972970a13ca8d0ee8d87c37cd | historical implementation baseline only; does not authorize V6 code |
 | docs/contracts/IDENTITY_PROVISIONING_API_V0.md | 0e01a15b28268a2c99871df1f4408ae22ff4f61b | retain bounded Principal projection/provisioning compatibility; no owner-type inference |
 | docs/contracts/JWKS_OBO_AUTH_V0.md | 226c2d9e018bd2fa17b9dbf14593f9b1a35aa0d3 | retain verified authentication/actor boundary; no work or global permission grant |
+| docs/contracts/INTERNAL_API_CONTRACT_V0_1.md | c76fb8d28de7590f5c8fcaa4cb30dfe428f0ee20 | retain Legacy internal HTTP adapter compatibility scope; no new-model or canonical dispatch feed authority |
 
-The contracts/workflow-http/v1 directory is tree
+The contracts/workflow-http/v1/contract.md wire contract is blob
 9d81acb167567d9309846da504af2a5b73b86390 at the base. Its wire objects remain
 compatibility authority only until a later accepted implementation Spec maps
 every affected surface.
@@ -1712,7 +1713,7 @@ An Acceptance is not production authorization.
 - Contracts: CTR-ARCH-016
 - Method: graph/Visit review plus later multi-visit RETURN fixtures.
 - Environment: exact proposal Head for Architecture review; later accepted implementation candidate for executable cases.
-- Expected result: RETURN chooses the nearest earlier reachable TASK and creates a fresh Visit and activation.
+- Expected result: RETURN follows the configured earlier reachable TASK target and creates a fresh Visit and activation.
 - Required evidence: repeated-node history showing distinct nodeVisitId and target resolution.
 - Failure condition: Visit reuse, wrong target, no target acceptance, or source activation remains active.
 
@@ -1721,9 +1722,9 @@ An Acceptance is not production authorization.
 - Contracts: CTR-ARCH-017
 - Method: graph-validator and command review plus later configured/unconfigured TERMINATE tests.
 - Environment: exact proposal Head for Architecture review; later accepted implementation candidate for executable cases.
-- Expected result: only configured TASK TERMINATE closes the source activation and Instance without a target Visit.
+- Expected result: only configured TASK TERMINATE closes the source activation and Instance, creates exactly one terminal Visit, and creates no target activation.
 - Required evidence: positive configured trace and negative absent-edge case.
-- Failure condition: implicit TERMINATE, target Visit creation, or unclosed source activation.
+- Failure condition: implicit TERMINATE, target activation creation, missing terminal Visit, or unclosed source activation.
 
 ### ACC-ARCH-018 — Cancel and Archive
 
@@ -1739,7 +1740,7 @@ An Acceptance is not production authorization.
 - Contracts: CTR-ARCH-019
 - Method: Admin Recovery authority review plus later MOVE and MANUALLY_TERMINATE tests.
 - Environment: exact proposal Head for Architecture review; later accepted implementation candidate for executable cases.
-- Expected result: reason and idempotency are required; MOVE closes source and creates target Visit/activation; terminate creates no target; both are atomic.
+- Expected result: reason and idempotency are required; MOVE closes source and creates target Visit/activation; terminate creates no target activation; both are atomic.
 - Required evidence: authorized/unauthorized traces, reason audit, and rollback results.
 - Failure condition: partial mutation, missing reason/audit, Visit reuse, or unauthorized recovery.
 
@@ -1764,11 +1765,11 @@ An Acceptance is not production authorization.
 ### ACC-ARCH-022 — Wake and eligibility update
 
 - Contracts: CTR-ARCH-022
-- Method: eligibility command review plus later owner-authorized wake/update tests.
+- Method: eligibility command review plus later authorization-matrix wake/update tests.
 - Environment: exact proposal Head for Architecture review; later accepted implementation candidate for executable cases.
-- Expected result: only the active owner updates eligibility; the immutable eligibility fact and Event are committed atomically; wake is a hint.
+- Expected result: eligibility mutation requires command-specific authenticated authorization per §5.8 (external event, dependency completion, authorized manual action, or accepted attempt-bound Scheduler policy); it binds the exact current Visit/activation and sets server now, or an accepted bounded future time; the immutable eligibility fact and Event are committed atomically; wake is a hint.
 - Required evidence: authorization matrix, fact/Event trace, and lost/duplicate wake cases.
-- Failure condition: non-owner update, mutable-only timestamp, wake as authority, or partial commit.
+- Failure condition: unauthorized actor update, arbitrary timestamp, mutation of node or owner, activation creation, or partial commit.
 
 ### ACC-ARCH-023 — Attempt and lease boundary
 
@@ -1784,9 +1785,9 @@ An Acceptance is not production authorization.
 - Contracts: CTR-ARCH-024
 - Method: normal-path architecture review plus later bounded worker scheduling tests.
 - Environment: exact proposal Head for Architecture review; later accepted implementation candidate for executable cases.
-- Expected result: normal Agent delivery is triggered only by committed active due DispatchIntent facts and obeys configured global/per-Principal limits.
-- Required evidence: trigger trace, concurrency measurements, and over-limit rejection/defer cases.
-- Failure condition: table-wide scan drives normal delivery, uncommitted intent is consumed, or bounds are exceeded.
+- Expected result: normal Agent delivery is triggered only by committed active due Dispatch Intent facts via the bounded delivery obligation, with no Workflow Instance/global/business-key discovery scan.
+- Required evidence: trigger trace and scan-source proof.
+- Failure condition: table-wide, summary, or business-key scan drives normal delivery, or uncommitted intent is consumed.
 
 ### ACC-ARCH-025 — Recovery-only scans
 
