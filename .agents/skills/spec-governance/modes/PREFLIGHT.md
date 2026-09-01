@@ -2,88 +2,102 @@
 
 ## Goal
 
-Determine whether implementation may start and which authority action is required.
+Select the shortest authorized route by classifying Product Authority, execution complexity, failure consequence, and readiness independently.
 
 ## Procedure
 
-### 1. Fix coordinates
+1. Bind target repository, `REVIEW_TARGET_HEAD`, `BASE_HEAD`, `CURRENT_BASE_HEAD`, Goal/target, and Current Gap.
+2. Read local precedence, exact adoption lock, Product Direction, Architecture/invariants, overlapping accepted Specs, named proposed target, and exact external authorities.
+3. Record qualified Observations; separate a Working Guess when interpretation changes routing.
+4. Choose one Authority action:
 
 ```text
-TARGET_REPOSITORY
-CURRENT_HEAD
-TARGET_BASE_BRANCH
-BASE_COMMIT
-REQUESTED_CHANGE
+REUSE | AMEND | SUPERSEDE | NEW
 ```
 
-### 2. Read authority in precedence order
-
-Read the local adoption lock and local authority map, then Product Direction, Architecture/invariants, overlapping accepted Specs, and exact external authority revisions. Record whether the shared governance adoption is `accepted`, still `proposed`, absent, or not applicable because this is the source repository.
-
-### 3. Classify mechanicality
+Named proposal:
 
 ```text
-UNCERTAIN = NON_MECHANICAL
+scope/ownership/bounded Decision identity unchanged -> AMEND
+any changed -> NEW
 ```
 
-Potentially mechanical: spelling, formatting with no interpretation change, deterministic generated refresh already required by an accepted Contract, or a pure move with machine proof of semantic identity.
-
-Default non-mechanical: dependency, schema, API, permission, scope, timeout, retry, lifecycle, test-expectation, deletion, module-boundary, trust-boundary, and unproven “refactor-only” changes.
-
-A mechanical exemption requires independent review and a persistent record.
-
-### 4. Classify authority handling
-
-Choose exactly one:
+Accepted authority:
 
 ```text
-REUSE       accepted authority already covers the work
-AMEND       proposed authority changes, or accepted editorial / strictly additive change
-SUPERSEDE   accepted normative meaning changes
-NEW         no existing authority owns the bounded decision
+already decides behavior, no meaning change -> REUSE
+strictly additive new IDs under unchanged accepted Decisions -> AMEND
+accepted meaning changes -> SUPERSEDE
+no owner for independent decision -> NEW
 ```
 
-An accepted-Spec addition is `AMEND` only when it adds new stable IDs within unchanged Goal, scope, authority, and accepted Decisions; otherwise it is `NEW` or `SUPERSEDE`.
-
-### 5. Select governing authority
-
-Record one primary Spec and related authorities. Confirm:
-
-- lower authority does not override parent authority;
-- external authorities are reference-only;
-- no partial supersession is implied;
-- Program acceptance is not mistaken for child implementation permission;
-- implementation-authorizing Contracts cover the request.
-
-### 6. Check base rule
-
-For non-mechanical implementation, all must hold:
-
-```text
-SPEC_PRESENT_IN_BASE = YES
-SPEC_STATUS_IN_BASE = accepted
-IMPLEMENTATION_AUTHORITY = contracts
-REQUEST_WITHIN_CONTRACT_SCOPE = YES
-```
+5. Choose Plan from complexity: `NONE | BRIEF | EXEC_PLAN`.
+6. Choose Assurance from consequence: `ROUTINE | DURABLE | CONTROLLED`.
+7. Check route stage, authority accepted in base, implementation authority, attributable mutation authorization, target/scope/effects/Done When, isolated write surface, Controlled Runbook, load-bearing gap, Evidence reviewability, live authority gap, emergency containment, Base impact, Done When, and Expansion Trigger.
+8. Use the route table in `.agents/README.md`.
 
 ## Output
 
 ```text
 SPEC_GOVERNANCE_MODE = PREFLIGHT
-PREFLIGHT_MODE = REUSE | AMEND | SUPERSEDE | NEW
-CHANGE_CLASS = MECHANICAL | NON_MECHANICAL
-MECHANICAL_EXEMPTION_REVIEW = ACCEPT | REJECT | NOT_APPLICABLE
-GOVERNANCE_ADOPTION_STATUS = accepted | proposed | absent | source_repository
-PRIMARY_GOVERNING_SPEC = <ID | NONE>
-RELATED_ACCEPTED_AUTHORITIES = <IDs | NONE>
-GOVERNING_SPEC_REVISION = <commit/blob | NONE>
-BASE_COMMIT = <sha>
-SPEC_PRESENT_IN_BASE = YES | NO | NOT_APPLICABLE
-SPEC_STATUS_IN_BASE = accepted | proposed | superseded | NONE
-IMPLEMENTATION_AUTHORITY = contracts | none | UNKNOWN
-AUTHORITY_CONFLICT = NONE | <description>
-IMPLEMENTATION_ALLOWED = YES | NO
-NEXT_ACTION = <bounded action>
+TARGET_REPOSITORY = <owner/repository>
+REVIEW_TARGET_HEAD = <sha | NOT_APPLICABLE>
+BASE_HEAD = <sha | NOT_APPLICABLE>
+CURRENT_BASE_HEAD = <sha | NOT_APPLICABLE>
+ROUTE_STAGE = AUTHORITY_AUTHORING | IMPLEMENTATION | OPERATION
+AUTHORITY_ACCEPTED_IN_BASE = YES | NO | NOT_APPLICABLE
+GOAL_OR_TARGET = <outcome>
+CURRENT_GAP = <gap>
+OBSERVATIONS = <qualified items>
+WORKING_GUESS = <item | NOT_APPLICABLE>
+AUTHORITY_ACTION = REUSE | AMEND | SUPERSEDE | NEW |
+                   AMEND_OR_NEW_PENDING_OWNERSHIP
+PRIMARY_AUTHORITY = <ID@revision | NONE>
+RELATED_AUTHORITIES = <IDs@revisions | NONE>
+IMPLEMENTATION_AUTHORITY = contracts | none | unknown | not_applicable
+ATOMIC_SPEC_IMPLEMENTATION_PERMITTED = YES | NO
+PLAN_LEVEL = NONE | BRIEF | EXEC_PLAN
+ASSURANCE_LEVEL = ROUTINE | DURABLE | CONTROLLED
+EXECUTION_MANDATE = VALID | INVALID | NOT_APPLICABLE
+MUTATION_AUTHORIZATION = VALID | INVALID | NOT_APPLICABLE
+ISOLATED_WRITE_SURFACE = YES | NO | NOT_APPLICABLE
+CONTROLLED_RUNBOOK_REQUIRED = YES | NO
+SPEC_GAP_DEPENDENCY = NONE | NON_LOAD_BEARING | LOAD_BEARING
+EVIDENCE_REVIEWABILITY = PASS | FAIL | NOT_APPLICABLE
+LIVE_AUTHORITY_GAP = NONE | DETECTED
+OWNER_DECISION_REQUIRED = YES | NO
+EMERGENCY_STATE = NONE | ACTIVE
+EMERGENCY_ACTION = NONE | ROLLBACK | DISABLEMENT | SHUTDOWN |
+                   REVOCATION | ISOLATION | CONTAINMENT
+INCIDENT_REFERENCE = <reference | NOT_APPLICABLE>
+BASE_IMPACT = NONE | BOUNDED | RELEVANT
+IMPLEMENTATION_ALLOWED = YES | NO | NOT_APPLICABLE
+MERGE_READY = YES | NO | NOT_APPLICABLE
+OPERATION_ALLOWED = YES | NO | NOT_APPLICABLE
+EVIDENCE_NEEDED = <items>
+DONE_WHEN = <observable result>
+EXPANSION_TRIGGER = <condition | NOT_APPLICABLE>
+NEXT_REAL_ACTION = <product-facing action | NOT_APPLICABLE>
+NEXT_ACTION = CONTINUE | STOP | RE_PREFLIGHT | OWNER_DECISION
 ```
 
-When `IMPLEMENTATION_ALLOWED = NO`, do not begin semantic implementation.
+Do not start semantic implementation or mutation when the relevant readiness flag is `NO`.
+
+Hard routing effects:
+
+```text
+AMEND/NEW + CONTROLLED before authority acceptance -> docs-first; no implementation/operation
+SUPERSEDE -> docs-first whole-authority successor; no same-stage implementation/operation
+accepted authority, later work -> new REUSE task
+
+any allowed mutation -> attributable authorization + isolated write surface
+controlled allowed mutation -> target + actor/environment + exact operation
+                               + abort/Secret/receipt/attempt bounds + runbook
+
+LOAD_BEARING SPEC_GAP -> no REUSE; no unresolved pending action;
+                         at least one applicable readiness = NO;
+                         NEXT_ACTION = RE_PREFLIGHT
+
+emergency -> Owner + incident + containment-only + no durable new behavior
+             + later normal authority reconciliation
+```
