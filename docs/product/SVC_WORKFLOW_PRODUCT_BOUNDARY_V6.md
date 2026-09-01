@@ -73,7 +73,7 @@ V6 governs:
 - the exactly-one canonical activation invariant and the `HUMAN_WORK_ITEM | DISPATCH_INTENT` split;
 - the Scheduler-facing `nextEligibleAt` contract, controlled early wake, retry/timeout/unknown-outcome boundaries, attempt-scoped leases, and repair-only scan boundary;
 - the one-way cutover rule for new traffic and the bounded Legacy drain/migrate/manual-terminate/read-only-history modes;
-- cross-repository ownership and the explicit disposition of `mayf3/dsh-agent-core` PR #87 without governing or modifying that repository.
+- cross-repository ownership and local interoperability acceptance conditions for future `dsh-agent-core` integration; PR #87 remains only a fixed-coordinate non-authoritative observation/provenance reference.
 
 ### 2.2 Explicit non-goals
 
@@ -125,7 +125,7 @@ The dispatchability candidate at `af450aa...` is not active authority and solves
 
 The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while V6 proposes `TASK | TERMINAL` for new traffic. V6 is higher Product Direction but does not silently rewrite Architecture. Before implementation, an independently accepted Architecture successor/refinement must reconcile that conflict, and an independently accepted implementation Spec with `implementation_authority: contracts` must then cover the exact code/data/wire changes.
 
-`mayf3/dsh-agent-core` PR #87 is an external proposed document, not local or external accepted authority. Owner disposition is fixed for later work: Part A is `AMEND_TO_RECONCILER`; Part B is `SPLIT_TO_INDEPENDENT_SCHEDULER_MANAGEMENT_AUTHORITY`. This repository does not edit, accept, or supersede that PR. No authority dependency is inferred from the PR number or its current head.
+`mayf3/dsh-agent-core` PR #87 at observed head `4260911...` is a fixed-coordinate snapshot of an external proposed document, not local or external accepted authority. It is retained only as non-authoritative observation/provenance for the recurring-scan and Scheduler-management shapes seen at that coordinate. This repository imposes no lifecycle action on that PR and does not edit, accept, amend, split, close, supersede, or merge it. Future interoperability is accepted locally only when external periodic recovery behavior is Reconciler-only and Scheduler management is separated from normal dispatch. The external repository may satisfy those conditions by amending PR #87, adopting a replacement Spec, or using another locally lawful authority; it exclusively governs its PR and authority lifecycle.
 
 ### 3.1 Authority inventory and de-duplication
 
@@ -137,7 +137,7 @@ The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while 
 | v0.3.1 Architecture + v0.3.2 refinement | frozen/effective | preserve unchanged scopes, but require later Architecture reconciliation for the new node/activation model |
 | `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | preserve exact bounded exception; no general migration capability |
 | `SVC_WORKFLOW_TRUSTED_FLEET_PRINCIPAL_CUTOVER_V1` | proposed at base, implementation already represented as V5 conformance history | preserve V5's exact-plan boundary and production-gate separation; do not broaden |
-| dsh-agent-core PR #87 | proposed external PR | Part A amend to Reconciler; Part B split to independent Scheduler-management authority; external follow-up only |
+| dsh-agent-core PR #87 at `4260911...` | fixed-coordinate external observation; proposed/open at observation time; non-authoritative | provenance only; local interoperability requires Reconciler-only periodic recovery and Scheduler management separated from normal dispatch; external repository chooses its lawful authority/lifecycle path |
 
 No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
 
@@ -163,7 +163,7 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - `STATE-V6-002` — V5 authorizes DRAFT plus ordinary nodes, a read-time non-persisted `dispatchable` projection, and explicitly no Scheduler/wake/lease/reservation state. That meaning does not permit this Goal's immediate canonical activation. Basis: `OBS-V6-002`, `EVD-V6-002`.
 - `STATE-V6-003` — Frozen Architecture v0.3.1 defines `DRAFT | NORMAL | TERMINAL`, immutable repeated Node Visits, and `Human | Agent | Service` Principals; v0.3.2 adds Cancel/Archive without changing node semantics. Basis: `OBS-V6-003`, `EVD-V6-003`.
 - `STATE-V6-004` — `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@af450aa...` is proposed/unmerged, bound to V4, and defines only query-time fields/filtering. Basis: `OBS-V6-004`, `EVD-V6-002`.
-- `STATE-V6-005` — dsh-agent-core PR #87 remains an open proposed external PR at head `4260911...`; its current Part A recurring-scan model conflicts with the Owner-frozen activation-driven direction. Basis: `OBS-V6-006`, `EVD-V6-005`.
+- `STATE-V6-005` — At the fixed `2026-09-01` observation, dsh-agent-core PR #87 head `4260911...` was an open proposed external PR whose recurring-scan shape did not satisfy this repository's activation-driven interoperability condition. That snapshot creates no present-state, lifecycle, or authority dependency. Basis: `OBS-V6-006`, `EVD-V6-005`.
 
 ### 4.2 Observations
 
@@ -208,13 +208,13 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Result: the Reader gates the existing global GET surface only, grants no writes, and does not create a canonical dispatch feed.
 - Provenance: `docs/specs/SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1.md` and exact Git commits.
 
-#### OBS-V6-006 — External PR #87 current shape and coordinates
+#### OBS-V6-006 — External PR #87 fixed-coordinate shape and provenance
 
 - Subject: `mayf3/dsh-agent-core` PR #87.
 - Source revision: head `4260911960f33c5b91c38403f002207f717f4187`, base observed `e40c1400266b57ae7746ac766e6b281cf1fbb943`.
 - Environment/observed at: GitHub, `2026-09-01`.
 - Method: GitHub PR metadata and full body/commit inventory.
-- Result: open draft proposed Spec; Part A currently defines a recurring 30-minute scanner/dispatcher; Part B defines bounded Scheduler tools. It is non-authoritative and external to this repository.
+- Result: at the fixed observation coordinate, an open draft proposed Spec contained a recurring 30-minute scanner/dispatcher section and a bounded Scheduler-tools section. The snapshot is non-authoritative, external to this repository, and does not authorize this repository to direct the PR's lifecycle.
 - Provenance: `https://github.com/mayf3/dsh-agent-core/pull/87`.
 
 #### OBS-V6-007 — No competing V6 exists
@@ -259,11 +259,11 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Claim: direct new-model routing plus bounded Legacy drain/migrate/terminate/read-only history prevents silent fallback and competing canonical work identities.
 - Limitation: exact rollout coordinates and migration plan belong to later accepted authority and execution gates.
 
-#### CLM-V6-006 — External PR #87 must be split, not locally governed
+#### CLM-V6-006 — External interoperability is constrained locally without governing PR #87
 
 - Support state: SUPPORTED.
 - Supported by: `EVD-V6-005`.
-- Claim: the recurring scan in current Part A conflicts with activation-driven dispatch and must become Reconciler-only; Scheduler management in Part B is an independent dsh-agent-core authority, not a svc-workflow child.
+- Claim: svc-workflow may interoperate only with external periodic recovery that is Reconciler-only and with Scheduler management separated from normal dispatch. dsh-agent-core chooses whether to satisfy those conditions through PR #87, a replacement Spec, or another locally lawful authority; none is a svc-workflow child.
 
 ### 4.4 Evidence relations
 
@@ -303,14 +303,14 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 - Strength/sufficiency: sufficient for Product Direction choice; implementation details remain gated.
 - Limitations: no runtime behavior or production data was inspected.
 
-#### EVD-V6-005 — External PR evidence supports ownership split
+#### EVD-V6-005 — External PR snapshot supports local interoperability boundaries
 
 - Source observations: `OBS-V6-006`.
 - Target: `STATE-V6-005`, `CLM-V6-006`.
 - Relation: SUPPORTS.
 - Bound coordinates: dsh-agent-core PR #87 head `4260911...`, observed `2026-09-01`.
-- Strength/sufficiency: direct PR metadata/content evidence.
-- Limitations: this local Product Direction cannot mutate or accept the external PR.
+- Strength/sufficiency: direct fixed-coordinate PR metadata/content evidence, sufficient to reject normal-path recurring scans and bundled Scheduler management at the local integration boundary.
+- Limitations: this local Product Direction cannot prescribe, mutate, accept, or otherwise govern the external PR or the replacement authority path chosen by dsh-agent-core.
 
 ## 5. Product positioning and qualifying workflow shape
 
@@ -374,7 +374,7 @@ TASK owner type AGENT -> DISPATCH_INTENT
 TERMINAL              -> no activation
 ```
 
-The activation kind is derived from the resolved canonical Principal type, never from a caller field or node name. Visit creation and activation creation commit atomically. If owner resolution, Principal status/type validation, uniqueness, or activation persistence fails, the Visit/Transition/Instance change commits nothing. One `nodeVisitId` cannot have both activation kinds or more than one canonical activation.
+The activation kind is derived from the resolved canonical Principal type, never from a caller field or node name. Visit creation and activation creation commit atomically. For a Dispatch Intent, that same transaction generates the canonical server-authored activation timestamp and persists it as the initial `nextEligibleAt`; no caller value or post-commit timestamp write participates. If owner resolution, Principal status/type validation, uniqueness, activation timestamp generation, or activation persistence fails, the Visit/Transition/Instance change commits nothing. One `nodeVisitId` cannot have both activation kinds or more than one canonical activation.
 
 On a successful Transition, cancel, or manual termination, the source Visit's active activation is closed or rendered non-active in the same authoritative transaction that changes current-work status. Entry to a target TASK creates its new activation in that transaction; entry to TERMINAL creates none. Repair may restore a missing canonical activation only through a separately authorized, audited, idempotent repair path; it never creates a second one.
 
@@ -460,7 +460,7 @@ updatedAt
 
 It MUST NOT expose or require `nodeKey`, definition/business names, Context/title, task label, Submission/history, timeline `EventData`, Assistance content, credentials/tokens, Receipt/audit payload, Transition options, business metadata, DRAFT, `test_env_deploy`, or `ops-lock`. The Scheduler and Dispatcher may use `nodeVisitId` and canonical Principal identity; they may not interpret workflow business node keys.
 
-`nextEligibleAt` is a required server-time timestamp on each active Dispatch Intent. Initial activation sets it to the activation commit time, making the intent immediately eligible for Scheduler consideration without immediately starting an Agent. The only Scheduler-facing wait predicate is:
+`nextEligibleAt` is a required server-authored timestamp on each active Dispatch Intent. The activation transaction generates one canonical server-authored activation timestamp and persists it in that same transaction as the initial `nextEligibleAt`, making the intent immediately eligible for Scheduler consideration without immediately starting an Agent. The initial value is not client-provided, is not filled in after commit, and is not required to equal a physical or “true” database commit instant. An implementation MUST NOT split Visit/activation creation, defer the write, or weaken atomicity merely to obtain a commit-instant value. The only Scheduler-facing wait predicate is:
 
 ```text
 active Dispatch Intent AND nextEligibleAt <= authoritative now
@@ -482,14 +482,16 @@ Attempt idempotency is bound to `nodeVisitId` plus a stable attempt identity. Sa
 
 The normal main path is activation-driven: the Node Visit transaction durably creates the canonical Dispatch Intent and a bounded delivery mechanism makes that intent available to the Scheduler. A periodic scan of Workflow Instances, global summaries, business node keys, or metadata MUST NOT discover ordinary new work. Periodic scans are allowed only for Reconciler, Watchdog, or Repair purposes: detect missing/duplicate/stuck activation or delivery, preserve the canonical `nodeVisitId`, and repair idempotently with audit. This does not authorize Kafka, a generic Outbox/event platform, or a general Operator; the exact bounded delivery design belongs to later Architecture and implementation authority.
 
-For external `mayf3/dsh-agent-core` PR #87, the only permitted follow-up disposition is:
+Future external interoperability must satisfy:
 
 ```text
-PART_A = AMEND_TO_RECONCILER
-PART_B = SPLIT_TO_INDEPENDENT_SCHEDULER_MANAGEMENT_AUTHORITY
+PERIODIC_EXTERNAL_RECOVERY = RECONCILER_ONLY
+SCHEDULER_MANAGEMENT = SEPARATE_FROM_NORMAL_DISPATCH
+EXTERNAL_AUTHORITY_PATH = EXTERNAL_REPOSITORY_CHOICE
+PR_87_RELATION = FIXED_COORDINATE_NON_AUTHORITATIVE_OBSERVATION_ONLY
 ```
 
-No svc-workflow document may treat that proposed PR as accepted authority or implement/modify it from this repository.
+`dsh-agent-core` may establish those properties by amending PR #87, adopting a replacement Spec, or using another locally lawful authority. Its repository owns that choice and every PR review/acceptance/merge/closure action. No svc-workflow document may treat the observed PR snapshot as accepted authority, require a particular PR lifecycle action, or implement/modify external code from this repository.
 
 ## 9. `GLOBAL_DOMAIN_ADMIN`
 
@@ -747,8 +749,9 @@ V6 preserves V5's record of, and does not excuse, these gaps. It adds the new-mo
 ### dsh-agent-core
 
 - no accepted activation-driven Dispatch Intent consumer exists;
-- current PR #87 Part A is a proposed periodic scanner and requires `AMEND_TO_RECONCILER`;
-- PR #87 Part B requires a separate independent Scheduler-management authority;
+- no qualified external authority/evidence yet establishes Reconciler-only periodic recovery for this integration;
+- no qualified external authority/evidence yet establishes Scheduler management separated from normal dispatch;
+- PR #87 at `4260911...` remains fixed-coordinate observation/provenance only; this repository requires no particular amendment, split, replacement, or lifecycle action on it;
 - no accepted workflow Domain-admin capability manifest;
 - no complete exact Feishu sender/app/tenant/conversation allowlist and replay gate for this route;
 - Notification Ingress is currently a thin delivery adapter, not authority for administrative command ingress;
@@ -1017,7 +1020,7 @@ An implementation-authorizing child Spec freezes Domain create, initial Owner, O
 
 ### Slice F — dsh-agent-core dispatch and Scheduler management
 
-External dsh-agent-core authority owns Scheduler policy, mapping, delivery, Sessions, attempt leases, and bounded Scheduler management. PR #87 Part A must be amended to Reconciler semantics; Part B must be split into an independent Scheduler-management authority. That repository performs its own review/acceptance/implementation lifecycle. svc-workflow cannot accept or implement either part.
+External dsh-agent-core authority owns Scheduler policy, mapping, delivery, Sessions, attempt leases, and bounded Scheduler management. For svc-workflow interoperability, periodic external recovery must be Reconciler-only and Scheduler management must be separated from normal dispatch. dsh-agent-core may satisfy those conditions by amending PR #87, replacing it with another Spec, or using any other locally lawful authority; that repository exclusively performs and decides its own authoring/review/acceptance/implementation/PR lifecycle. svc-workflow cannot prescribe or perform those actions.
 
 ### Slice G — cutover and Legacy execution gates
 
@@ -1093,8 +1096,8 @@ Slices may have dependency edges necessary for their own execution, but no Slice
 ### DEC-V6-010 — `nextEligibleAt` is the only wait primitive
 
 - Decision owner: `mayf3`.
-- Decision: every active Dispatch Intent has required `nextEligibleAt`; initial value is activation commit time, due means `<= authoritative now`, non-execution stores the next concrete time, and external/dependency/manual wake may only set it to `now` through a controlled command.
-- Rejected: wait-status enums, reason predicates, timer/event nodes, business-key exceptions, direct Agent start, or another Scheduler wait field.
+- Decision: every active Dispatch Intent has required `nextEligibleAt`; its initial value is the canonical server-authored activation timestamp generated and persisted in the activation transaction, due means active plus `<= authoritative now`, non-execution stores the next concrete time, and external/dependency/manual wake may only set it to `now` through a controlled command.
+- Rejected: client-authored initial time, post-commit timestamp fill, physical/true commit-instant equality as an atomicity-breaking requirement, wait-status enums, reason predicates, timer/event nodes, business-key exceptions, direct Agent start, or another Scheduler wait field.
 - Owner input remaining: none.
 
 ### DEC-V6-011 — Attempts and leases stay below Workflow syntax
@@ -1114,15 +1117,15 @@ Slices may have dependency edges necessary for their own execution, but no Slice
 ### DEC-V6-013 — Cutover is one-way for new traffic
 
 - Decision owner: `mayf3`.
-- Decision: new traffic enters the new model directly. Legacy is limited to drain, one-time migrate, manually terminate, and historical read-only replay. Permanent dual track, silent fallback, and new Legacy data creation are forbidden.
+- Decision: post-barrier new traffic enters the new model directly. A Legacy Instance that already existed before the barrier may continue in bounded DRAIN and append only the Visit, Submission, Event, Receipt/audit, and other accepted Legacy facts necessary to finish that Instance; those facts create no new Legacy Definition or Instance identity. Legacy otherwise remains limited to exact one-time migrate, manually terminate, and historical read-only replay. New Legacy Definition/Instance identity, new-traffic routing or fallback to Legacy, permanent dual track, and silent fallback are forbidden.
 - Rejected: indefinite coexistence, automatic fallback on new-path failure, or replay that creates activation/mutates history.
 - Owner input remaining: none.
 
-### DEC-V6-014 — External PR #87 is split by ownership
+### DEC-V6-014 — External interoperability is locally bounded without PR lifecycle control
 
 - Decision owner: `mayf3` for this local boundary; external repository retains its own acceptance authority.
-- Decision: PR #87 Part A is `AMEND_TO_RECONCILER`; Part B is `SPLIT_TO_INDEPENDENT_SCHEDULER_MANAGEMENT_AUTHORITY`.
-- Rejected: treat PR #87 as active dependency, implement its recurring scanner, or govern dsh-agent-core from svc-workflow.
+- Decision: svc-workflow interoperability requires future external periodic recovery to be Reconciler-only and Scheduler management to be separated from normal dispatch. dsh-agent-core may satisfy this through PR #87, a replacement Spec, or another locally lawful authority and exclusively governs all external PR lifecycle actions; PR #87 at `4260911...` remains fixed-coordinate non-authoritative observation/provenance only.
+- Rejected: treat PR #87 as active dependency, require one specific amendment/split/merge/closure action, integrate its recurring scanner as the normal path, or govern dsh-agent-core from svc-workflow.
 - Owner input remaining: none.
 
 ## 20. Normative Contracts
@@ -1272,7 +1275,7 @@ Creation of an active non-terminal TASK Visit and its one canonical activation M
 Human-owned TASK MUST create exactly one Human Work Item; Agent-owned TASK MUST create exactly one Dispatch Intent; TERMINAL MUST create none. Source activation closure and target activation creation MUST be atomic with successful Transition/cancel/manual termination as applicable. Dispatch Intent creation MUST NOT start an Agent.
 
 ### CTR-V6-049 — Required `nextEligibleAt`
-Every active Dispatch Intent MUST have one required server-authored `nextEligibleAt`. Initial value MUST equal activation commit time; Scheduler eligibility MUST be exactly active intent with `nextEligibleAt <= authoritative now`. No second wait field/status/reason or business label MAY affect Scheduler eligibility.
+Every active Dispatch Intent MUST have one required server-authored `nextEligibleAt`. The activation transaction MUST generate one canonical server-authored activation timestamp and persist it in that same transaction as the initial `nextEligibleAt`. The initial value MUST NOT be client-authored or post-commit-filled and MUST NOT require equality to a physical/true commit instant at the cost of atomic Visit/activation creation. Scheduler eligibility MUST be exactly active intent with `nextEligibleAt <= authoritative now`. No second wait field/status/reason or business label MAY affect Scheduler eligibility.
 
 ### CTR-V6-050 — Controlled early wake
 External event, dependency completion, or authorized manual action MAY only wake by an authenticated, authorized, idempotent command binding current `nodeVisitId` and setting `nextEligibleAt = now`. It MUST NOT create activation, start Agent execution, mutate node/owner, or bypass transition validation; stale/resolved Visit wake MUST have no workflow side effect.
@@ -1290,13 +1293,13 @@ Committed canonical activation MUST drive ordinary new work. Scheduler/Dispatche
 Periodic scans MAY exist only for Reconciler, Watchdog, or Repair. They MUST detect missing/duplicate/stuck activation/delivery, never branch on business node keys, and repair only through authorized idempotent audited commands that preserve the one canonical activation.
 
 ### CTR-V6-055 — One-way new-traffic cutover
-At the cutover barrier, all new traffic MUST create only new-model Definitions/Instances/Visits/activations. Permanent dual-track routing, silent fallback, and any post-barrier creation of Legacy workflow data are forbidden.
+At the cutover barrier, all new traffic MUST create only new-model Definitions/Instances/Visits/activations or fail closed. It MUST NOT create a Legacy Definition or Legacy Instance, route or fall back new traffic to Legacy, silently fall back, or establish permanent dual-track authority. A Legacy Instance that existed before the barrier MAY, only in bounded DRAIN, append the Visit, Submission, Event, Receipt/audit, and other accepted Legacy facts required to finish its already-authorized flow; those append-only drain facts MUST NOT create new Legacy Definition or Instance identity.
 
 ### CTR-V6-056 — Legacy modes, migration, compatibility, and rollback
-Legacy behavior after cutover MUST be limited to drain, exact one-time migrate, manually terminate, and historical read-only replay. Migration MUST be plan-bound, idempotent, append-only, and create one target Visit/activation without rewriting history. Replay MUST write nothing and schedule nothing. Rollback MAY pause/contain the new path but MUST NOT route new traffic back to Legacy or fabricate Legacy data.
+Legacy behavior after cutover MUST be limited to bounded drain of pre-barrier Instances, exact one-time migrate, manually terminate, and historical read-only replay. DRAIN MAY append only the accepted Legacy Visit, Submission, Event, Receipt/audit, and other facts necessary to finish an already-existing Instance, MUST preserve their immutable history, and MUST create no new Legacy Definition or Instance identity. Migration MUST be plan-bound, idempotent, append-only, and create one target Visit/activation without rewriting history. Replay MUST write nothing and schedule nothing. Rollback MAY pause/contain the new path but MUST NOT route new traffic back to Legacy or fabricate a Legacy Definition/Instance for new traffic.
 
-### CTR-V6-057 — External PR #87 disposition
-svc-workflow MUST treat dsh-agent-core PR #87 as proposed external input only. Part A MUST be amended to Reconciler semantics; Part B MUST become an independent Scheduler-management authority. This repository MUST NOT edit, accept, merge, or implement either external part.
+### CTR-V6-057 — External interoperability and PR #87 provenance
+svc-workflow MUST accept external dispatch interoperability only when periodic external recovery is Reconciler-only and Scheduler management is separated from normal dispatch under lawful external authority. dsh-agent-core MAY satisfy those conditions by amending PR #87, adopting a replacement Spec, or using another locally lawful authority. PR #87 at `4260911...` MUST remain a fixed-coordinate non-authoritative observation/provenance reference here; this repository MUST NOT prescribe, edit, accept, amend, split, close, merge, supersede, or implement that external PR or authority lifecycle.
 
 ### CTR-V6-058 — Parent, Architecture, and implementation lifecycle
 V6 authorizes no implementation. Code may start only after V6 is accepted on main, conflicting Architecture is reconciled by accepted authority, and an independently reviewed accepted implementation Spec with `implementation_authority: contracts` is present in the implementation base. `af450aa...` MUST NOT satisfy that gate.
@@ -1643,10 +1646,10 @@ Every item requires executed evidence at the implementation/authority revision n
 
 ### ACC-V6-049 — `nextEligibleAt` clock/wait matrix
 - Contracts: `CTR-V6-049`.
-- Method/environment: server-time activation, past/equal/future timestamps, clock-boundary concurrency, and alternative-field canaries.
-- Expected: initial commit time; due iff active and timestamp <= authoritative now; no other field affects due selection.
-- Required evidence: database timestamps, ordered query results, and query/source proof.
-- Failure condition: null/missing time, client-authored initial time, another predicate, or early/late selection.
+- Method/environment: activation transactions with server clock control, attempted client timestamp injection, an induced delay between transaction timestamp generation and physical commit, post-commit-write fault injection, past/equal/future timestamps, clock-boundary concurrency, and alternative-field canaries.
+- Expected: the activation transaction generates one canonical server-authored activation timestamp and persists it atomically as initial `nextEligibleAt`; no physical commit-instant equality is required; due iff active and timestamp <= authoritative now; no other field affects due selection.
+- Required evidence: transaction trace, canonical activation timestamp and persisted intent rows, zero post-commit timestamp writes, ordered due-query results, and query/source proof.
+- Failure condition: null/missing time, client-authored value, post-commit fill, Visit/activation atomicity weakened to obtain a commit instant, another predicate, or early/late selection relative to the persisted canonical activation timestamp.
 
 ### ACC-V6-050 — Controlled wake matrix
 - Contracts: `CTR-V6-050`.
@@ -1685,24 +1688,24 @@ Every item requires executed evidence at the implementation/authority revision n
 
 ### ACC-V6-055 — New-traffic cutover barrier
 - Contracts: `CTR-V6-055`.
-- Method/environment: concurrent requests across the exact cutover barrier with new-path failure injection.
-- Expected: every post-barrier request creates only new-model facts or fails closed; none routes to Legacy.
-- Required evidence: ordered route logs, Definition/Instance/Visit/activation row census, and barrier coordinate.
-- Failure condition: permanent dual route, silent fallback, or any new Legacy record after barrier.
+- Method/environment: concurrent new-traffic requests across the exact cutover barrier with new-path failure injection, plus a pre-barrier Legacy Instance completing one bounded DRAIN transition after the barrier.
+- Expected: every post-barrier new-traffic request creates only new-model facts or fails closed and never routes to Legacy; the pre-barrier Instance may append only its required accepted Legacy Visit/Submission/Event/Receipt/audit facts without creating a Legacy Definition or Instance identity.
+- Required evidence: ordered route logs, barrier coordinate, pre-barrier Legacy Instance identity, Definition/Instance identity census, and classified Visit/Submission/Event/Receipt/audit/activation write census.
+- Failure condition: new traffic creates/falls back to a Legacy Definition or Instance, permanent dual route or silent fallback exists, drain creates new Legacy identity, or the valid bounded drain is rejected merely because its required append-only facts commit after the barrier.
 
 ### ACC-V6-056 — Legacy mode and rollback matrix
 - Contracts: `CTR-V6-056`.
 - Method/environment: drain, exact one-time migration/rerun/drift, manual terminate, historical replay, new-path rollback/containment.
-- Expected: only four allowed Legacy modes; migration append-only/one activation/NOOP rerun; replay zero writes; rollback never creates or routes new Legacy data.
-- Required evidence: plan digest, before/after history, activation rows, receipts/audits, write census, and route state.
-- Failure condition: history rewrite, repeat migration, replay write/schedule, forbidden Legacy operation, or fallback.
+- Expected: only four allowed Legacy modes; bounded DRAIN of a pre-barrier Instance may append only necessary accepted Legacy Visit/Submission/Event/Receipt/audit facts and no new Legacy identity; migration is append-only/one activation/NOOP rerun; replay has zero writes; rollback never creates or routes a Legacy Definition/Instance for new traffic.
+- Required evidence: pre-barrier Instance and Definition identities, classified drain write set, plan digest, before/after immutable history, activation rows, receipts/audits, full write census, and route state.
+- Failure condition: drain creates new Legacy Definition/Instance identity or unrelated writes, valid necessary drain facts are categorically blocked, history is rewritten, migration repeats, replay writes/schedules, a forbidden Legacy operation occurs, or new traffic falls back.
 
-### ACC-V6-057 — PR #87 ownership/disposition review
+### ACC-V6-057 — External interoperability/PR #87 ownership review
 - Contracts: `CTR-V6-057`.
-- Method/environment: exact-head review of svc-workflow authority graph and dsh-agent-core PR lineage.
-- Expected: local repo contains no external implementation; Part A follow-up is Reconciler-only; Part B is a separate external authority with its own lifecycle.
-- Required evidence: exact PR/commit coordinates, changed-file lists, and independent external review records when later available.
-- Failure condition: proposed PR treated active, recurring scanner implemented as normal path, Part B bundled, or svc-workflow modifies external repo.
+- Method/environment: exact-head review of the svc-workflow authority/integration graph and whichever lawful dsh-agent-core authority is presented for interoperability; retain PR #87 head `4260911...` only as fixed observation/provenance.
+- Expected: local repo contains no external implementation or lifecycle command; qualified external behavior is Reconciler-only for periodic recovery and separates Scheduler management from normal dispatch; dsh-agent-core chose and governed its own authority/PR path.
+- Required evidence: local changed-file list, fixed observation coordinate, exact accepted external authority/revision when later available, independent external review/acceptance records, and integration call/job graph.
+- Failure condition: proposed PR is treated active, svc-workflow requires a specific PR amendment/split/merge/closure, recurring scanning becomes the normal path, Scheduler management remains coupled to normal dispatch, or the local repo modifies external code/authority.
 
 ### ACC-V6-058 — Authority-chain implementation gate
 - Contracts: `CTR-V6-058`.
@@ -1744,9 +1747,9 @@ ACCEPTANCE_WITHOUT_FAILURE_CONDITION = 0
 - Add wait status/reason/timer/event primitives beside `nextEligibleAt`: rejected; Scheduler wait semantics must remain singular.
 - Put resource lease in Workflow syntax: rejected; it belongs to execution attempt/resource mutual exclusion.
 - Run recurring global scans as normal dispatch: rejected; only Reconciler/Watchdog/Repair may scan periodically.
-- Permanently dual-run new and Legacy models or silently fall back: forbidden; it creates competing authority and new Legacy data.
+- Permanently dual-run new and Legacy models or silently fall back new traffic: forbidden; bounded append-only completion facts for a pre-barrier Legacy Instance are DRAIN, not dual-run or new Legacy identity.
 - Build Kafka/Outbox/general event platform, GitHub App, WORM, WebAuthn, generic Operator, or rewrite three repositories: out of scope and rejected for this Goal.
-- Keep both parts of dsh-agent-core PR #87 bundled: rejected; Part A becomes Reconciler, Part B becomes an independent Scheduler-management authority.
+- Accept external recurring scans as normal dispatch or integrate Scheduler management inseparably with normal dispatch: rejected by the local interoperability boundary. Whether dsh-agent-core amends PR #87, replaces it, or uses another lawful authority is exclusively that repository's choice.
 
 ## 23. Migration, compatibility, containment, and rollback
 
@@ -1754,7 +1757,7 @@ V6 authoring is docs-only and mutates no runtime. It preserves V5's exact princi
 
 ### 23.1 New-traffic cutover barrier
 
-The later implementation/cutover authority must define one exact, auditable barrier after which every new Definition Version and Instance uses the new model. The barrier must be atomic from the caller-routing perspective: a request either enters the new path or fails closed. A new-path failure never falls back to Legacy. The exact timestamp/release/config coordinate is operational evidence, not a new Product Direction choice.
+The later implementation/cutover authority must define one exact, auditable barrier after which every new-traffic Definition Version and Instance uses the new model. The barrier must be atomic from the caller-routing perspective: a new-traffic request either enters the new path or fails closed. A new-path failure never falls back to Legacy. The barrier does not prohibit an already-existing pre-barrier Legacy Instance from appending the bounded facts required by DRAIN. The exact timestamp/release/config coordinate is operational evidence, not a new Product Direction choice.
 
 ### 23.2 Permitted Legacy modes
 
@@ -1767,7 +1770,7 @@ MANUALLY_TERMINATE   close an existing Legacy Instance under authorized governan
 HISTORICAL_REPLAY    reconstruct/read historical facts without writes or scheduling
 ```
 
-Legacy Definition cloning/publishing, new Legacy Instance creation, new ordinary Legacy data, automatic fallback, and permanent dual-write/dual-authority are forbidden. Drain does not create new Legacy workflow identity beyond facts needed to finish the already-existing Instance under its accepted Legacy authority.
+The post-barrier prohibition targets new traffic and new Legacy identity: Legacy Definition creation/cloning/publishing, Legacy Instance creation, routing or falling back new traffic to Legacy, silent fallback, and permanent dual-write/dual-authority are forbidden. A pre-barrier Legacy Instance in bounded DRAIN may append the Visit, Submission, Event, Receipt/audit, and other accepted Legacy facts necessary to complete its already-authorized flow. Those facts are append-only, preserve historical facts, remain bound to the existing Definition/Instance identity, and do not create a new Legacy Definition or Instance.
 
 ### 23.3 One-time migration
 
@@ -1805,13 +1808,24 @@ SERVICE_TASK_OWNER = FORBIDDEN_FAIL_CLOSED
 CANONICAL_WORK_IDENTITY = nodeVisitId
 CANONICAL_ACTIVATION = HUMAN_WORK_ITEM | DISPATCH_INTENT
 SCHEDULER_WAIT_PRIMITIVE = nextEligibleAt
+INITIAL_NEXT_ELIGIBLE_AT = CANONICAL_SERVER_AUTHORED_ACTIVATION_TIMESTAMP
+ACTIVATION_TIMESTAMP_PERSISTENCE = SAME_ACTIVATION_TRANSACTION
+CLIENT_AUTHORED_INITIAL_NEXT_ELIGIBLE_AT = FORBIDDEN
+POST_COMMIT_INITIAL_NEXT_ELIGIBLE_AT_WRITE = FORBIDDEN
+PHYSICAL_COMMIT_INSTANT_EQUALITY_REQUIRED = NO
 NORMAL_PATH = ACTIVATION_DRIVEN
 PERIODIC_SCAN = RECONCILER | WATCHDOG | REPAIR ONLY
 NEW_TRAFFIC_LEGACY_FALLBACK = FORBIDDEN
+LEGACY_CUTOVER_PROHIBITION_SCOPE = POST_BARRIER_NEW_TRAFFIC_AND_NEW_LEGACY_IDENTITY
+PRE_BARRIER_LEGACY_DRAIN_APPEND_FACTS = VISIT | SUBMISSION | EVENT | RECEIPT_AUDIT | OTHER_NECESSARY_ACCEPTED_LEGACY_FACTS
+PRE_BARRIER_LEGACY_DRAIN_CREATES_NEW_DEFINITION_OR_INSTANCE_IDENTITY = NO
 CURRENT_GLOBAL_READ_GATE = COMPATIBILITY_ONLY / GLOBAL_WORKFLOW_READER OR GLOBAL_WORKFLOW_COORDINATOR
 ROLE_OR_GRANT_CHANGE_AUTHORIZED = NO
-PR_87_PART_A = AMEND_TO_RECONCILER
-PR_87_PART_B = SPLIT_TO_INDEPENDENT_SCHEDULER_MANAGEMENT_AUTHORITY
+EXTERNAL_PERIODIC_RECOVERY_INTEROPERABILITY = RECONCILER_ONLY
+EXTERNAL_SCHEDULER_MANAGEMENT_INTEROPERABILITY = SEPARATE_FROM_NORMAL_DISPATCH
+EXTERNAL_AUTHORITY_PATH = EXTERNAL_REPOSITORY_CHOICE
+PR_87_RELATION = FIXED_COORDINATE_NON_AUTHORITATIVE_OBSERVATION_PROVENANCE_ONLY
+PR_87_LIFECYCLE_COMMAND_BY_SVC_WORKFLOW = NONE
 
 TRUSTED_AGENT_ROOT_REQUIRED = YES
 ROOT_AUTHORITY_ID = SVC_WORKFLOW_TRUSTED_ADMIN_AGENT_ROOT_V1
@@ -1840,6 +1854,10 @@ LOCAL_AUTHORITY_MAP_CHANGE = NONE
 LEGACY_DISPATCHABILITY_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
 LEGACY_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_IMPLEMENTABLE_FOR_THIS_GOAL
 DSH_AGENT_CORE_PR_87_HEAD_OBSERVED = 4260911960f33c5b91c38403f002207f717f4187
+DSH_AGENT_CORE_PR_87_RELATION = FIXED_COORDINATE_NON_AUTHORITATIVE_OBSERVATION_PROVENANCE_ONLY
+EXTERNAL_PERIODIC_RECOVERY_INTEROPERABILITY = RECONCILER_ONLY
+EXTERNAL_SCHEDULER_MANAGEMENT_INTEROPERABILITY = SEPARATE_FROM_NORMAL_DISPATCH
+EXTERNAL_AUTHORITY_PATH = EXTERNAL_REPOSITORY_CHOICE
 DSH_AGENT_CORE_CHANGE = NONE
 PLAN_SHA256_BOUND = 0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606
 EXACT_FLEET_PAIR_COUNT = 86
@@ -1874,13 +1892,16 @@ AUTHORITY_LEVEL = highest local Product Direction
 IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
-EXTERNAL_AUTHORITIES = NONE (PR #87 is a non-authoritative coordination reference)
+EXTERNAL_AUTHORITIES = NONE (PR #87 at `4260911...` is fixed-coordinate non-authoritative observation/provenance only)
 OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
 PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 58
 CONTRACTS_WITH_ACCEPTANCE = 58
 AUTHORING_READY_FOR_REVIEW = YES
+INITIAL_NEXT_ELIGIBLE_AT = CANONICAL_SERVER_AUTHORED_ACTIVATION_TIMESTAMP_IN_SAME_TRANSACTION
+LEGACY_CUTOVER_SCOPE = NEW_TRAFFIC_ONLY_WITH_BOUNDED_PRE_BARRIER_DRAIN_FACTS_ALLOWED
+EXTERNAL_INTEROPERABILITY = RECONCILER_ONLY_PERIODIC_RECOVERY_AND_SEPARATE_SCHEDULER_MANAGEMENT
 ```
 
 This is an authoring summary only. Independent review, Owner acceptance, final-head recheck, and merge remain future tasks; none is performed or authorized here.
