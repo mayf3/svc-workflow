@@ -105,6 +105,10 @@ CURRENT_DISPATCHABILITY_PROPOSAL_SEMANTICS = read-time query projection / non-pe
 CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068
 CURRENT_DISPATCHABILITY_DISPOSITION = REWRITE_REQUIRED_NOT_ACCEPTABLE_OR_IMPLEMENTABLE_FOR_THIS_GOAL
 CURRENT_DISPATCHABILITY_PR_LIFECYCLE_AUTHORITY = repository owner mayf3
+OPEN_LOCAL_PR_CENSUS_OBSERVED_AT = 2026-09-01
+OPEN_LOCAL_PR_CENSUS_COUNT = 5
+OPEN_LOCAL_PR_CENSUS = PR #7 | PR #9 | PR #13 | PR #19 | PR #20
+OPEN_LOCAL_PR_LIFECYCLE_AUTHORITY = repository owner mayf3
 GLOBAL_READER_SPEC = SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
 GLOBAL_READER_ACCEPT_COMMIT = ea9ab2df0da7e58328ce5018164a2d2b6d6c14a9
 GLOBAL_READER_IMPLEMENTATION_MERGE = bf875c265843b3e07570a96b734051e9cfe27a43
@@ -126,7 +130,9 @@ FLEET_PLAN_SNAPSHOT_UTC = 2026-08-24T01:03:53.192875+00:00
 
 Authority precedence remains Product Direction, then accepted Architecture/long-lived invariant authority, then accepted governing child Specs, then descriptive code/tests/runtime/operations. V6 changes no external repository authority. V5 remains active until a future atomic accepted V6 transition is merged.
 
-The accepted one-time child authority `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` and both V5-retained successor exceptions remain governed through the byte-for-meaning restatement in §§17/17A. Open svc-workflow Draft PR #7 remains independent. PR #9 retains its existing disposition and is neither modified nor merged by this round.
+The accepted one-time child authority `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` and both V5-retained successor exceptions remain governed through the byte-for-meaning restatement in §§17/17A. Open svc-workflow Draft PR #7 remains independent. PR #9 retains its existing disposition and is neither modified nor merged by this round. At the authoring census, PR #7 is open/draft/unmerged at base `9ba2d87...` / head `a7f8d26...`; it affects only its stated replay closure and remains independently governed. PR #9 is open/draft/unmerged at base `327b74f...` / head `3056263...` and retains `SUPERSEDED_BY_FLEET_LOCAL_CHILD` with no lifecycle action here.
+
+Open svc-workflow Draft PR #13 at base `2ff81ae...` / head `83fd493...` is the proposed `SVC_WORKFLOW_DOMAIN_OWNER_INSTANCE_LIST_V1`, governed by V4 plus Architecture v0.3.1, with `implementation_authority: none` and `production_apply_authority: none`. It defines an independent owner-scoped read-only Domain Workflow Instance list and defines neither canonical activation nor `nextEligibleAt`. It is non-authoritative, does not compete with V6 or the canonical-activation direction, and receives no lifecycle action from V6; repository owner `mayf3` retains its lifecycle authority.
 
 The current dispatchability proposal is svc-workflow PR #19 at base `c90d54c...` / head `0c63d35...`, with `af450aa...` recorded by that Spec as its source candidate/lineage. PR #19 is open, draft, unmerged, proposed, governed by accepted V5, and declares `implementation_authority: contracts`; that declaration is inert while proposed. Its complete current meaning remains a read-time query projection on the existing Domain/global lists, is non-persisted, and creates neither canonical activation nor `nextEligibleAt`. The current Spec is non-authoritative and MUST NOT be accepted or implemented as this Goal's child or canonical dispatch authority. Any useful query semantics retained in the future must be re-investigated and rewritten under accepted V6 and the later lawful Architecture/implementation authority, without competing with canonical activation. V6 records only the local authority inventory and Goal disposition: it does not modify, close, merge, accept, or otherwise control PR #19; repository owner `mayf3` retains its lifecycle authority. The accepted `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` remains valid for its current read-only route gate; it is not the new Scheduler dispatch feed and grants no new role.
 
@@ -139,6 +145,7 @@ The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while 
 | Candidate/authority | Lifecycle at authoring coordinates | Disposition for this Goal |
 |---|---|---|
 | `SVC_WORKFLOW_PRODUCT_BOUNDARY_V5` | accepted and active | `SUPERSEDE`; its DRAFT/read-time/non-persisted/no-Scheduler-wake meaning conflicts with the frozen Goal |
+| PR #13 `SVC_WORKFLOW_DOMAIN_OWNER_INSTANCE_LIST_V1@83fd493...` | base `2ff81ae...`; open, draft, unmerged, proposed; V4 + Architecture v0.3.1; `implementation_authority: none`; `production_apply_authority: none` | independent non-authoritative owner-scoped read-only Domain list; no canonical activation or `nextEligibleAt`; not competing V6/canonical authority; no V6 lifecycle action; repository owner retains lifecycle authority |
 | PR #19 `SVC_WORKFLOW_DISPATCHABILITY_PROJECTION_V1@0c63d35...` | open, draft, unmerged, proposed, V5-bound; `implementation_authority: contracts` inert while proposed | non-authoritative; read-time/non-persisted/no canonical activation/no `nextEligibleAt`; not acceptable or implementable as this Goal's child/canonical dispatch authority; retained query semantics require later lawful re-investigation/rewrite |
 | `af450aa...` | source candidate/lineage recorded by PR #19, not the current proposal head | provenance only; MUST NOT be misclassified as the sole current dispatchability proposal or used as implementation authority |
 | `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` | accepted | preserve current read-only route compatibility; do not use as canonical dispatch authority |
@@ -147,7 +154,21 @@ The frozen v0.3.1 Architecture still defines `DRAFT | NORMAL | TERMINAL`, while 
 | `SVC_WORKFLOW_TRUSTED_FLEET_PRINCIPAL_CUTOVER_V1` | proposed at base, implementation already represented as V5 conformance history | preserve V5's exact-plan boundary and production-gate separation; do not broaden |
 | dsh-agent-core PR #87 at `4260911...` | fixed-coordinate external observation; proposed/open at observation time; non-authoritative | provenance only; local interoperability requires Reconciler-only periodic recovery and Scheduler management separated from normal dispatch; external repository chooses its lawful authority/lifecycle path |
 
-No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. This V6 change only inventories/dispositions PR #19 and does not mutate or control that PR. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
+#### 3.1.1 Complete authoring-time open local PR census
+
+This is an inventory/de-duplication census, not an assertion that every PR has the same authority type or relationship. GitHub metadata and each sole docs proposal were inspected at the exact heads below. For self-referential PR #20, `8189481...` is the exact pre-amendment head at census time; the final amended head is recorded in the PR record after commit because a commit cannot embed its own Git identity.
+
+| PR | Exact base / observed head | Lifecycle at census | Current authority classification and disposition |
+|---|---|---|---|
+| #7 | `9ba2d87e94f6d39ffdd6986b5a434546cb91d90c` / `a7f8d26b7a8f57da773bd7b05879ee485841fa58` | OPEN, DRAFT, unmerged; sole Spec proposed | independently governed replay-closure amendment to the existing bounded successor child; declares `implementation_authority: contracts` but activation is pending amendment acceptance/merge and production apply remains unauthorized; affects only its stated replay closure; no V6 lifecycle action |
+| #9 | `327b74f138151a7f4d9d88e3881e54d203f1e8f6` / `3056263c3fc964a2b225720dd2b859b47e296c2e` | OPEN, DRAFT, unmerged; sole Spec proposed | V3-bound with `implementation_authority: none` and `production_apply_authority: none`; retains V5/V6 disposition `SUPERSEDED_BY_FLEET_LOCAL_CHILD`; no modification, closure, merge, acceptance, or other V6 lifecycle action |
+| #13 | `2ff81ae47ab068216bd0012fa0e76a45dd2fb572` / `83fd493db26c5e9b5b00d7e308da3c372c4d9ca4` | OPEN, DRAFT, unmerged; sole Spec proposed | V4 + Architecture v0.3.1; no implementation/production authority; independent owner-scoped read-only Domain list; no canonical activation/`nextEligibleAt`; non-authoritative and not competing with V6; no V6 lifecycle action |
+| #19 | `c90d54cace46ff505ac54aa6215587d812cf9a78` / `0c63d35a6e1291e7187e693e2a0ed1fec231eaf2` | OPEN, DRAFT, unmerged; sole Spec proposed | V5-bound read-time/non-persisted query projection; `implementation_authority: contracts` inert while proposed; source lineage `af450aa...`; retains §3.1 non-reuse/rewrite disposition and no V6 lifecycle action |
+| #20 | `c90d54cace46ff505ac54aa6215587d812cf9a78` / `818948189aa7f4eb326e16ca3e5725fceaf0394d` pre-amendment observation | OPEN, non-draft, unmerged; V6 proposed | this self proposed Product Direction candidate; not active or accepted; `implementation_authority: none`; `production_apply_authority: none`; final amended head reported externally after commit |
+
+Every PR lifecycle above remains owned by repository owner `mayf3`. V6 performs no close, modify, merge, accept, or other lifecycle action on PR #7, #9, #13, or #19; its own PR #20 remains proposed and unmerged.
+
+No new implementation Spec, Contract bundle, Architecture file, or external-repository authority is created in this Phase. This V6 change only inventories/dispositions the complete open local PR census while preserving each proposal's distinct authority relationship; it does not mutate or control another PR. The single new document is necessary because accepted V5 normative meaning must change and V0 forbids partial supersession.
 
 External Draft PRs remain classified exactly as preserved by V5:
 
@@ -231,9 +252,10 @@ All State below is descriptive. Drift does not rewrite this Product Direction.
 
 - Subject: svc-workflow branches and PRs.
 - Source revision: GitHub state observed `2026-09-01`.
-- Method: list all repository PRs and relevant local/remote branches.
-- Result: no competing V6 or canonical-activation Product Direction candidate exists. A current dispatchability proposal does exist in PR #19 at `0c63d35...`, sourced from `af450aa...`, but its read-time/non-persisted V5-bound semantics are non-reusable for this Goal's canonical activation.
-- Provenance: GitHub PR inventory and Git refs.
+- Method: fresh-list all open repository PRs, fetch exact heads, inspect GitHub base/head/draft/merge metadata, and completely inspect each sole docs proposal for PR #7, #9, #13, and #19 plus the current V6 document in PR #20.
+- Result: the complete open local census is #7 `a7f8d26...`, #9 `3056263...`, #13 `83fd493...`, #19 `0c63d35...`, and self PR #20 at pre-amendment head `8189481...`. PR #7 retains its independently governed replay-closure disposition; PR #9 retains `SUPERSEDED_BY_FLEET_LOCAL_CHILD`; PR #13 is an independent proposed V4/Architecture-bound owner-scoped read-only list with no implementation/production authority, canonical activation, or `nextEligibleAt`; PR #19 retains the V5-bound non-reuse/rewrite disposition in §3.1. No competing V6 or canonical-activation Product Direction candidate exists.
+- Provenance: GitHub PR #7/#9/#13/#19/#20 metadata, exact Git refs, and their sole docs paths recorded in §3.1.1.
+- Limitation: PR #20's final amended head is recorded externally after commit; this census neither equates the proposals' authority kinds nor changes any repository-owner-controlled PR lifecycle.
 
 ### 4.3 Claims and assumptions
 
@@ -1807,6 +1829,18 @@ UNRESOLVED_AUTHORITY_CONFLICT = NONE_FOR_PRODUCT_DIRECTION_REVIEW
 IMPLEMENTATION_BLOCKED_PENDING_ARCHITECTURE_RECONCILIATION = YES
 PARTIAL_SUPERSESSION = NONE
 DUPLICATE_AUTHORITY_RISK = DISPOSITIONED
+OPEN_LOCAL_PR_CENSUS_OBSERVED_AT = 2026-09-01
+OPEN_LOCAL_PR_CENSUS_COUNT = 5
+OPEN_LOCAL_PR_7 = BASE_9ba2d87e94f6d39ffdd6986b5a434546cb91d90c_HEAD_a7f8d26b7a8f57da773bd7b05879ee485841fa58_OPEN_DRAFT_UNMERGED_PROPOSED_CONTRACTS_PENDING_ACCEPTANCE_INDEPENDENT_REPLAY_CLOSURE_PRODUCTION_UNAUTHORIZED
+OPEN_LOCAL_PR_9 = BASE_327b74f138151a7f4d9d88e3881e54d203f1e8f6_HEAD_3056263c3fc964a2b225720dd2b859b47e296c2e_OPEN_DRAFT_UNMERGED_PROPOSED_V3_BOUND_IMPLEMENTATION_NONE_PRODUCTION_NONE_SUPERSEDED_BY_FLEET_LOCAL_CHILD
+OPEN_LOCAL_PR_13 = BASE_2ff81ae47ab068216bd0012fa0e76a45dd2fb572_HEAD_83fd493db26c5e9b5b00d7e308da3c372c4d9ca4_OPEN_DRAFT_UNMERGED_PROPOSED_INDEPENDENT_NON_AUTHORITATIVE
+OPEN_LOCAL_PR_13_AUTHORITY = V4_PLUS_ARCHITECTURE_V0_3_1_IMPLEMENTATION_NONE_PRODUCTION_NONE
+OPEN_LOCAL_PR_13_SCOPE = OWNER_SCOPED_READ_ONLY_DOMAIN_LIST_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
+OPEN_LOCAL_PR_19 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_HEAD_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
+OPEN_LOCAL_PR_20 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
+OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
+OTHER_OPEN_LOCAL_PR_LIFECYCLE_ACTION_BY_V6 = NONE
+OPEN_LOCAL_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
 CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
 CURRENT_DISPATCHABILITY_PROPOSAL_HEAD = 0c63d35a6e1291e7187e693e2a0ed1fec231eaf2
@@ -1871,6 +1905,18 @@ CURRENT_PARENT_MERGE_COMMIT = c90d54cace46ff505ac54aa6215587d812cf9a78
 V5_TRANSITION = NONE_WHILE_V6_IS_PROPOSED
 V5_FRONTMATTER_CHANGE = NONE
 LOCAL_AUTHORITY_MAP_CHANGE = NONE
+OPEN_LOCAL_PR_CENSUS_OBSERVED_AT = 2026-09-01
+OPEN_LOCAL_PR_CENSUS_COUNT = 5
+OPEN_LOCAL_PR_7 = BASE_9ba2d87e94f6d39ffdd6986b5a434546cb91d90c_HEAD_a7f8d26b7a8f57da773bd7b05879ee485841fa58_OPEN_DRAFT_UNMERGED_PROPOSED_CONTRACTS_PENDING_ACCEPTANCE_INDEPENDENT_REPLAY_CLOSURE_PRODUCTION_UNAUTHORIZED
+OPEN_LOCAL_PR_9 = BASE_327b74f138151a7f4d9d88e3881e54d203f1e8f6_HEAD_3056263c3fc964a2b225720dd2b859b47e296c2e_OPEN_DRAFT_UNMERGED_PROPOSED_V3_BOUND_IMPLEMENTATION_NONE_PRODUCTION_NONE_SUPERSEDED_BY_FLEET_LOCAL_CHILD
+OPEN_LOCAL_PR_13 = BASE_2ff81ae47ab068216bd0012fa0e76a45dd2fb572_HEAD_83fd493db26c5e9b5b00d7e308da3c372c4d9ca4_OPEN_DRAFT_UNMERGED_PROPOSED_INDEPENDENT_NON_AUTHORITATIVE
+OPEN_LOCAL_PR_13_AUTHORITY = V4_PLUS_ARCHITECTURE_V0_3_1_IMPLEMENTATION_NONE_PRODUCTION_NONE
+OPEN_LOCAL_PR_13_SCOPE = OWNER_SCOPED_READ_ONLY_DOMAIN_LIST_NO_CANONICAL_ACTIVATION_NO_NEXT_ELIGIBLE_AT
+OPEN_LOCAL_PR_19 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_HEAD_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_NON_AUTHORITATIVE
+OPEN_LOCAL_PR_20 = BASE_c90d54cace46ff505ac54aa6215587d812cf9a78_PRE_AMENDMENT_HEAD_818948189aa7f4eb326e16ca3e5725fceaf0394d_OPEN_NON_DRAFT_UNMERGED_SELF_PROPOSED_CANDIDATE
+OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
+OTHER_OPEN_LOCAL_PR_LIFECYCLE_ACTION_BY_V6 = NONE
+OPEN_LOCAL_PR_LIFECYCLE_AUTHORITY = REPOSITORY_OWNER_MAYF3
 CURRENT_DISPATCHABILITY_PROPOSAL_PR = 19
 CURRENT_DISPATCHABILITY_PROPOSAL_BASE = c90d54cace46ff505ac54aa6215587d812cf9a78
 CURRENT_DISPATCHABILITY_PROPOSAL_HEAD = 0c63d35a6e1291e7187e693e2a0ed1fec231eaf2
@@ -1922,6 +1968,10 @@ IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
 EXTERNAL_AUTHORITIES = NONE (PR #87 at `4260911...` is fixed-coordinate non-authoritative observation/provenance only)
+OPEN_LOCAL_PR_CENSUS = PR_7_a7f8d26_OPEN_DRAFT | PR_9_3056263_OPEN_DRAFT | PR_13_83fd493_OPEN_DRAFT | PR_19_0c63d35_OPEN_DRAFT | PR_20_SELF_PROPOSED_PRE_AMENDMENT_8189481
+OPEN_LOCAL_PR_13_DISPOSITION = INDEPENDENT_NON_AUTHORITATIVE_OWNER_SCOPED_READ_ONLY_NO_IMPLEMENTATION_OR_PRODUCTION_AUTHORITY_NO_CANONICAL_ACTIVATION_OR_NEXT_ELIGIBLE_AT
+OPEN_LOCAL_PR_OTHER_LIFECYCLE_ACTION_BY_V6 = NONE_REPOSITORY_OWNER_RETAINS_AUTHORITY
+OPEN_LOCAL_PR_20_FINAL_HEAD = REPORTED_EXTERNALLY_AFTER_COMMIT_NOT_SELF_EMBEDDED
 CURRENT_DISPATCHABILITY_PROPOSAL = PR_19_AT_0c63d35a6e1291e7187e693e2a0ed1fec231eaf2_OPEN_DRAFT_UNMERGED_PROPOSED_V5_BOUND_NON_AUTHORITATIVE
 CURRENT_DISPATCHABILITY_SOURCE_CANDIDATE = af450aa39e446683b8ae2b2edf99c4febdcfb068_LINEAGE_ONLY
 CURRENT_DISPATCHABILITY_DISPOSITION = NOT_ACCEPTABLE_OR_IMPLEMENTABLE_AS_THIS_GOAL_CHILD_OR_CANONICAL_DISPATCH_AUTHORITY_REWRITE_IF_RETAINED
