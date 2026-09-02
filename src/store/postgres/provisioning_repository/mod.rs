@@ -92,6 +92,26 @@ pub(crate) async fn check_global_coordinator(
     Ok(enabled.unwrap_or(false))
 }
 
+/// Check whether the actor holds an enabled `GLOBAL_SCHEDULER_READ`
+/// binding — the fail-closed server-side mapping of the V6
+/// `GLOBAL_SCHEDULER_READ` product capability (wake + due-intent read).
+pub(crate) async fn check_global_scheduler_read(
+    pool: &PgPool,
+    actor: Uuid,
+) -> Result<bool, ProvisioningError> {
+    let enabled: Option<bool> = sqlx::query_scalar(
+        "SELECT EXISTS(
+           SELECT 1 FROM global_role_bindings
+           WHERE principal_id = $1
+             AND role_key = 'GLOBAL_SCHEDULER_READ' AND enabled = TRUE)",
+    )
+    .bind(actor)
+    .fetch_one(pool)
+    .await
+    .map_err(storage)?;
+    Ok(enabled.unwrap_or(false))
+}
+
 /// Principal row from the database.
 #[derive(Debug, sqlx::FromRow)]
 pub struct PrincipalRow {

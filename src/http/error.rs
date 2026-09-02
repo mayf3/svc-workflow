@@ -15,6 +15,7 @@ use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::errors::{
     ArchiveWorkflowInstanceError, CancelWorkflowInstanceError, CreateWorkflowInstanceError,
     ExecuteWorkflowTransitionError,
+    WakeDispatchIntentError,
 };
 
 #[derive(Debug)]
@@ -421,6 +422,41 @@ impl ApiError {
         api_error
     }
 
+    pub fn from_wake(error: WakeDispatchIntentError) -> Self {
+        use WakeDispatchIntentError as E;
+        match error {
+            E::PrincipalNotFound => not_found("principal_not_found", "principal not found"),
+            E::PrincipalDisabled => forbidden("principal_disabled", "principal is disabled"),
+            E::InstanceNotFound => not_found("instance_not_found", "workflow instance not found"),
+            E::DispatchIntentNotFound => not_found(
+                "dispatch_intent_not_found",
+                "no DISPATCH_INTENT activation exists for the given instance and node visit",
+            ),
+            E::SchedulerReadRoleRequired => forbidden(
+                "scheduler_read_role_required",
+                "caller must hold the GLOBAL_SCHEDULER_READ role",
+            ),
+            E::InvalidCause(detail) => unprocessable("invalid_cause", "wake cause is invalid")
+                .with_details(serde_json::json!({ "detail": detail })),
+            E::IdempotencyConflict { .. } => {
+                conflict("idempotency_conflict", "idempotency key was reused")
+            }
+            E::CommandStillProcessing => Self::new(
+                StatusCode::CONFLICT,
+                "command_still_processing",
+                "command is still processing",
+            ),
+            E::InternalConsistency(detail) => {
+                tracing::error!(error = %detail, "wake internal consistency failure");
+                Self::service_unavailable("service_unavailable", "internal consistency failure")
+            }
+            E::StorageError(detail) => {
+                tracing::error!(error = %detail, "wake storage failure");
+                Self::service_unavailable("service_unavailable", "storage is unavailable")
+            }
+        }
+    }
+
     pub fn from_cancel(error: CancelWorkflowInstanceError) -> Self {
         use CancelWorkflowInstanceError as E;
         match error {
@@ -474,6 +510,10 @@ impl ApiError {
                 "instance is not in a terminal state",
             ),
             E::AlreadyArchived => conflict("already_archived", "instance is already archived"),
+            E::ActiveActivationExists => conflict(
+                "active_activation_exists",
+                "instance has an active canonical activation and cannot be archived",
+            ),
             E::WorkflowStateVersionConflict { expected, actual } => conflict(
                 "workflow_state_version_conflict",
                 "workflow state version does not match",
@@ -518,6 +558,10 @@ impl ApiError {
             E::GlobalCoordinatorRequired => forbidden(
                 "global_read_role_required",
                 "caller must hold GLOBAL_WORKFLOW_READER or GLOBAL_WORKFLOW_COORDINATOR",
+            ),
+            E::SchedulerReadRoleRequired => forbidden(
+                "scheduler_read_role_required",
+                "caller must hold the GLOBAL_SCHEDULER_READ role",
             ),
             E::InvalidPagination(_) => {
                 unprocessable("invalid_pagination", "pagination parameters are invalid")

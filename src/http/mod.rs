@@ -26,7 +26,7 @@ pub use state::{AppState, HttpConfig};
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
 pub const SCHEMA_VERSION: &str = "0022";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 22;
+pub const EXPECTED_MIGRATION_VERSION: i64 = 23;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -118,6 +118,14 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/workflow-instances/global",
             get(handlers::instances::global_list),
+        )
+        .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/node-visits/{nodeVisitId}/wake",
+            post(handlers::wake::wake),
+        )
+        .route(
+            "/internal/v1/dispatch-intents",
+            get(handlers::dispatch_intents::list_due),
         )
         .route(
             "/internal/v1/worklists/assigned-to-me",

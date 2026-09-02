@@ -22,8 +22,10 @@ use crate::domain::workflow_instance::events::{
 use super::command_receipt::{
     self, complete_receipt, try_insert_receipt, write_attempt_audit, ReceiptReplayResult,
 };
+use super::activation_facts;
 use super::definition_lookup::{
     self, lock_and_validate_version, read_draft_node, read_minimal_entry_node,
+    read_visit_activation_entry_node,
 };
 use super::validation_helpers;
 
@@ -66,6 +68,7 @@ pub(crate) async fn create_workflow_instance_atomically(
     let context_revision_id = Uuid::new_v4();
     let node_visit_id = Uuid::new_v4();
     let event_id = Uuid::new_v4();
+    let activation_id = Uuid::new_v4();
 
     let principal_uuid = cmd.principal_id.into_uuid();
     let domain_uuid = cmd.domain_id.into_uuid();
@@ -258,6 +261,22 @@ pub(crate) async fn create_workflow_instance_atomically(
             }
             entry
         }
+        3 => {
+            // VISIT_ACTIVATION_V1: entry must be a TASK of the new model.
+            // Owner references outside the closed set are rejected here as
+            // well (the validator already rejects them at publish time).
+            let entry =
+                validation_result!(read_visit_activation_entry_node(&mut tx, definition_version_uuid).await);
+            if entry.assignee_ref_type
+                == crate::domain::enums::AssigneeRefType::InstanceInputPrincipal
+            {
+                deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                    "VISIT_ACTIVATION_V1 entry uses INSTANCE_INPUT_PRINCIPAL, which is not                      in the new-model owner reference set"
+                        .to_string(),
+                ));
+            }
+            entry
+        }
         other => {
             return Err(CreateWorkflowInstanceError::InternalConsistency(format!(
                 "unknown semantic_model_version {other} for definition version"
@@ -274,6 +293,19 @@ pub(crate) async fn create_workflow_instance_atomically(
         )
         .await
     );
+    // VISIT_ACTIVATION_V1 owners must resolve to an enabled canonical HUMAN
+    // or AGENT Principal; SERVICE can never own new-model work.
+    if version_info.semantic_model_version == 3 {
+        let owner_type_check = activation_facts::validate_owner_is_human_or_agent(
+            &mut tx,
+            resolved_assignee_id,
+        )
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        if let Err(reason) = owner_type_check {
+            deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(reason));
+        }
+    }
     validation_result!(validation_helpers::validate_context_schema(
         &version_info.context_schema,
         &cmd,
@@ -303,8 +335,9 @@ pub(crate) async fn create_workflow_instance_atomically(
             (workflow_instance_id, domain_id, definition_version_id,
              created_by_principal_id, workflow_state_version,
              current_context_revision_id, current_node_visit_id,
-             external_reference, external_url, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             external_reference, external_url, metadata,
+             semantic_model_version)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         "#,
     )
     .bind(workflow_instance_id)
@@ -317,6 +350,7 @@ pub(crate) async fn create_workflow_instance_atomically(
     .bind(&cmd.external_reference)
     .bind(&cmd.external_url)
     .bind(&cmd.metadata)
+    .bind(version_info.semantic_model_version)
     .execute(&mut *tx)
     .await
     .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
@@ -368,6 +402,37 @@ pub(crate) async fn create_workflow_instance_atomically(
     .execute(&mut *tx)
     .await
     .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    // ---------------------------------------------------------------
+    // Step 11b: Canonical activation for VISIT_ACTIVATION_V1 (same tx)
+    // ---------------------------------------------------------------
+    if version_info.semantic_model_version == 3 {
+        // Kind derives only from the resolved canonical Principal type,
+        // never from a caller field or node name.
+        let owner_type: (String,) = sqlx::query_as(
+            "SELECT principal_type::text FROM principals WHERE principal_id = $1",
+        )
+        .bind(resolved_assignee_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        let activation_kind = if owner_type.0 == "AGENT" {
+            crate::domain::enums::ActivationKind::DispatchIntent
+        } else {
+            crate::domain::enums::ActivationKind::HumanWorkItem
+        };
+        activation_facts::insert_activation(
+            &mut tx,
+            activation_id,
+            workflow_instance_id,
+            node_visit_id,
+            activation_kind,
+            resolved_assignee_id,
+            actual_command_id,
+        )
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+    }
 
     // ---------------------------------------------------------------
     // Step 12: Insert INSTANCE_CREATED WorkflowEvent #1

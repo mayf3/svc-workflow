@@ -204,6 +204,43 @@ pub(crate) async fn revise_workflow_context_atomically(
     // ---------------------------------------------------------------
     let instance = revise_validation::lock_instance(&mut tx, instance_uuid).await?;
 
+    // Step 2a: VISIT_ACTIVATION_V1 instances never take Legacy-only revise
+    // semantics (CTR-VAI-012). Deterministic 422 with a durable failure
+    // receipt, matching the revise deterministic-failure pattern.
+    {
+        let (semantic_model_version,): (i16,) = sqlx::query_as(
+            "SELECT wdv.semantic_model_version \
+             FROM workflow_instances wi \
+             JOIN workflow_definition_versions wdv \
+               ON wdv.definition_version_id = wi.definition_version_id \
+             WHERE wi.workflow_instance_id = $1",
+        )
+        .bind(instance_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+        if semantic_model_version == 3 {
+            let error_code = "legacy_command_not_supported_for_semantic_model";
+            let response_body = serde_json::json!({"error": error_code});
+            let response_digest = digest::compute_sha256(error_code.as_bytes());
+            complete_receipt(
+                &mut tx,
+                actual_command_id,
+                422,
+                &response_body,
+                &response_digest,
+            )
+            .await
+            .map_err(map_create_err)?;
+            tx.commit()
+                .await
+                .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+            return Err(ReviseWorkflowContextError::InternalConsistency(
+                "revise is not defined for VISIT_ACTIVATION_V1 instances".to_string(),
+            ));
+        }
+    }
+
     // Step 3: Validate caller is the Workflow Creator
     if instance.created_by_principal_id != principal_uuid {
         let response_body = serde_json::json!({"error": "principal_not_found"});

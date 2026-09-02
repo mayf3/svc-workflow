@@ -108,6 +108,26 @@ impl WorkflowQueryService {
     /// holds neither role. The projection is identical to
     /// `DomainInstanceSummary` — no detail / submission payload is ever
     /// exposed.
+    /// List active due Dispatch Intents (VISIT_ACTIVATION_V1 scheduler read).
+    ///
+    /// The fail-closed `GLOBAL_SCHEDULER_READ` role check runs inside the
+    /// same read snapshot as the query. The projection is the minimum
+    /// Scheduler-facing record of v0.4.0 §5.7 — no workflow content is
+    /// exposed.
+    pub async fn list_due_dispatch_intents(
+        &self,
+        actor_principal_id: uuid::Uuid,
+        limit: i64,
+    ) -> Result<Vec<crate::store::postgres::workflow_instance_repository::query_dispatch_intents::DueDispatchIntent>, WorkflowQueryError>
+    {
+        crate::store::postgres::workflow_instance_repository::query_dispatch_intents::list_due_dispatch_intents(
+            &self.pool,
+            actor_principal_id,
+            limit,
+        )
+        .await
+    }
+
     pub async fn list_global_instances(
         &self,
         query: ListGlobalInstances,

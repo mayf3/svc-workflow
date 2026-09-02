@@ -55,6 +55,7 @@ pub struct WorkflowDefinition {
 pub enum SemanticModelVersion {
     Legacy = 1,
     Minimal = 2,
+    VisitActivation = 3,
 }
 
 impl SemanticModelVersion {

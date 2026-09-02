@@ -8,9 +8,13 @@ mod assignee_validation;
 mod minimal_validator;
 mod transition_validation;
 mod validation;
+mod visit_activation_validator;
 
 #[cfg(test)]
 mod minimal_validator_tests;
+
+#[cfg(test)]
+mod visit_activation_validator_tests;
 
 use std::collections::HashMap;
 
@@ -98,4 +102,12 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
 /// frozen V2 contract.
 pub fn validate_minimal_graph(graph: &WorkflowGraph) -> ValidationResult {
     minimal_validator::validate_minimal_graph(graph)
+}
+
+/// Validate a workflow graph under the VISIT_ACTIVATION_V1 (model 3)
+/// semantic model. Fully separated from the Legacy and Minimal validators;
+/// see `visit_activation_validator` for the frozen V1-new contract
+/// (v0.4.0 §5.3 / CTR-ARCH-006).
+pub fn validate_visit_activation_graph(graph: &WorkflowGraph) -> ValidationResult {
+    visit_activation_validator::validate_visit_activation_graph(graph)
 }

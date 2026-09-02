@@ -1,4 +1,5 @@
 pub(crate) mod archive;
+pub(crate) mod dispatch_intents;
 pub(crate) mod assistance;
 pub(crate) mod cancel;
 pub(crate) mod coordinator_domains;
@@ -11,6 +12,7 @@ pub(crate) mod self_projection;
 pub(crate) mod submissions;
 pub(crate) mod timeline;
 pub(crate) mod transitions;
+pub(crate) mod wake;
 pub(crate) mod worklists;
 
 use axum::http::HeaderMap;

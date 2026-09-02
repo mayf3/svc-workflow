@@ -289,6 +289,33 @@ pub(crate) async fn archive_workflow_instance_atomically(
         return Err(ArchiveWorkflowInstanceError::AlreadyArchived);
     }
 
+    // Step 6b: VISIT_ACTIVATION_V1 fail-closed — an instance whose current
+    // work is still active must not be archived (CTR-VAI-006).
+    let (semantic_model_version, current_visit_id): (i16, Option<Uuid>) = sqlx::query_as(
+        "SELECT wdv.semantic_model_version, wi.current_node_visit_id \
+         FROM workflow_instances wi \
+         JOIN workflow_definition_versions wdv \
+           ON wdv.definition_version_id = wi.definition_version_id \
+         WHERE wi.workflow_instance_id = $1",
+    )
+    .bind(instance_uuid)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(storage)?;
+    if semantic_model_version == 3 {
+        if let Some(visit_id) = current_visit_id {
+            let has_active = super::activation_facts::visit_has_active_activation_tx(
+                &mut tx,
+                visit_id,
+            )
+            .await
+            .map_err(storage)?;
+            if has_active {
+                return Err(ArchiveWorkflowInstanceError::ActiveActivationExists);
+            }
+        }
+    }
+
     super::assistance_transaction::void_open_cases(
         &mut tx,
         instance_uuid,
