@@ -1,8 +1,9 @@
 # svc-workflow 串行受治理工作流内核设计 v0.3.1
 
 ```text
-Status: ARCHITECTURE_FROZEN
+Status: SUPERSEDED
 Version: v0.3.1
+Superseded by: SVC_WORKFLOW_ARCHITECTURE_V0_4_0
 ```
 
 > 文档状态：正式架构冻结
