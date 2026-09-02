@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_0
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -18,14 +18,14 @@ owners:
 
 ## 1. Goal and lifecycle
 
-This document proposes the complete core Architecture for the V6 Product
-Direction. It is a whole-authority successor to
+This document is the complete Owner-accepted core Architecture for the V6
+Product Direction. It is a whole-authority successor to
 SVC_WORKFLOW_ARCHITECTURE_V0_3_1, not a partial patch and not an instruction
 to compose selected paragraphs from both versions.
 
 ~~~text
 AUTHORITY_ID = SVC_WORKFLOW_ARCHITECTURE_V0_4_0
-STATUS = proposed
+STATUS = accepted
 ARCHITECTURE_ACTION = SUPERSEDE
 WHOLE_AUTHORITY_SUPERSESSION = YES
 SUPERSEDES = SVC_WORKFLOW_ARCHITECTURE_V0_3_1
@@ -35,10 +35,13 @@ PRODUCTION_APPLY_AUTHORITY = none
 PARTIAL_SUPERSESSION = NONE
 ~~~
 
-While proposed and unmerged, this document is non-authoritative. It does not
-change the status or backlink of v0.3.1, does not alter the local authority
-map, and does not authorize implementation, schema changes, migration,
-deployment, dispatch cutover, production apply, or work in another
+V0.4.0 is Owner-accepted on the PR branch and remains non-active repository
+authority until this lifecycle-only final accepted candidate is independently
+rechecked and merged to `main`. The authorized atomic acceptance transaction
+has marked v0.4.0 accepted, marked v0.3.1 superseded with its backlink, and
+switched `.agents/local/README.md` to v0.4.0 in the same docs-only change.
+While unmerged it does not authorize implementation, schema changes,
+migration, deployment, dispatch cutover, production apply, or work in another
 repository.
 
 The Goal is to preserve the reusable serial kernel, Domain isolation,
@@ -2023,6 +2026,7 @@ BLOCKED_DESIGN = NONE
 CONTRACT_COUNT = 40
 CONTRACTS_WITH_ACCEPTANCE = 40
 ACCEPTANCE_COUNT = 40
+SEMANTIC_REVIEW_RESULT = ACCEPT
 IMPLEMENTATION_READY = NO
 PRODUCTION_READY = NO
 ~~~
@@ -2039,7 +2043,7 @@ SPEC_GOVERNANCE_MODE = AUTHOR
 SPEC_ID = SVC_WORKFLOW_ARCHITECTURE_V0_4_0
 AUTHORITY_ID = SVC_WORKFLOW_ARCHITECTURE_V0_4_0
 SPEC_KIND = invariant
-STATUS = proposed
+STATUS = accepted
 AUTHORITY_LEVEL = architecture
 IMPLEMENTATION_AUTHORITY = none
 PRODUCTION_APPLY_AUTHORITY = none
@@ -2052,9 +2056,11 @@ PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 40
 CONTRACTS_WITH_ACCEPTANCE = 40
 ACCEPTANCE_COUNT = 40
-AUTHORING_READY_FOR_REVIEW = YES
+SEMANTIC_REVIEW_RESULT = ACCEPT
 ~~~
 
-This document remains a non-authoritative, unmerged proposal until an
-independent reviewer lawfully accepts it. The author of this proposal MUST NOT
-perform that acceptance.
+The reviewed semantic Head `2a91d0c762a5910710c87a11e592d07b2a78e565`
+received a fresh independent fixed-head `ACCEPT` review under the Owner
+ruling `KEEP_ACCEPTED_V6`; the resulting lifecycle-only final accepted
+candidate Head still requires a fresh independent final-head recheck before
+merge. The author of this proposal did not perform that acceptance.
