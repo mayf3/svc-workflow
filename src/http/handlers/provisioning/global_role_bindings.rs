@@ -33,10 +33,11 @@ pub(crate) async fn create(
 
     if req.role_key != GLOBAL_WORKFLOW_COORDINATOR_ROLE
         && req.role_key != GLOBAL_WORKFLOW_READER_ROLE
+        && req.role_key != crate::domain::provisioning::GLOBAL_SCHEDULER_READ_ROLE
     {
         return Err(ApiError::unprocessable(
             "role_key_invalid",
-            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR or GLOBAL_WORKFLOW_READER",
+            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, or GLOBAL_SCHEDULER_READ",
         ));
     }
 
@@ -77,10 +78,11 @@ pub(crate) async fn delete(
 
     if req.role_key != GLOBAL_WORKFLOW_COORDINATOR_ROLE
         && req.role_key != GLOBAL_WORKFLOW_READER_ROLE
+        && req.role_key != crate::domain::provisioning::GLOBAL_SCHEDULER_READ_ROLE
     {
         return Err(ApiError::unprocessable(
             "role_key_invalid",
-            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR or GLOBAL_WORKFLOW_READER",
+            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, or GLOBAL_SCHEDULER_READ",
         ));
     }
 

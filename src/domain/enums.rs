@@ -136,6 +136,14 @@ make_enum!(
     (DRAFT, "DRAFT"),
     (NORMAL, "NORMAL"),
     (TERMINAL, "TERMINAL"),
+    (TASK, "TASK"),
+);
+
+make_enum!(
+    ActivationKind,
+    "activation_kind",
+    (HumanWorkItem, "HUMAN_WORK_ITEM"),
+    (DispatchIntent, "DISPATCH_INTENT"),
 );
 
 make_enum!(

@@ -204,6 +204,9 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             crate::domain::definition::model::SemanticModelVersion::Minimal => {
                 graph::validate_minimal_graph(&graph)
             }
+            crate::domain::definition::model::SemanticModelVersion::VisitActivation => {
+                graph::validate_visit_activation_graph(&graph)
+            }
         };
 
         // Also validate JSON schemas

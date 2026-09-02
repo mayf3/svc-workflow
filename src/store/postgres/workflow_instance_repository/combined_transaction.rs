@@ -147,6 +147,32 @@ pub(crate) async fn revise_context_and_transition_atomically(
     .await
     .map_err(ReviseContextAndTransitionError::from));
 
+    // VISIT_ACTIVATION_V1 instances never take the Legacy combined
+    // revise-and-transition semantics (CTR-VAI-012, deterministic fail-closed).
+    let (semantic_model_version,): (i16,) = sqlx::query_as(
+        "SELECT wdv.semantic_model_version \
+         FROM workflow_instances wi \
+         JOIN workflow_definition_versions wdv \
+           ON wdv.definition_version_id = wi.definition_version_id \
+         WHERE wi.workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        ReviseContextAndTransitionError::from(
+            crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError::StorageError(
+                e.to_string(),
+            ),
+        )
+    })?;
+    if semantic_model_version == 3 {
+        deterministic_failure!(ReviseContextAndTransitionError::TransitionNotApplicable(
+            "revise-and-transition is not defined for VISIT_ACTIVATION_V1 instances"
+                .to_string(),
+        ));
+    }
+
     if command.expected_workflow_state_version != instance.workflow_state_version {
         deterministic_failure!(
             ReviseContextAndTransitionError::WorkflowStateVersionConflict {

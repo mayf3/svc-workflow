@@ -48,6 +48,11 @@ pub const GLOBAL_WORKFLOW_COORDINATOR_ROLE: &str = "GLOBAL_WORKFLOW_COORDINATOR"
 /// of reach exactly as for any role-less principal.
 pub const GLOBAL_WORKFLOW_READER_ROLE: &str = "GLOBAL_WORKFLOW_READER";
 
+/// V6 split-permission Scheduler capability (VISIT_ACTIVATION_V1 wake +
+/// due-intent read). No binding is created by code or migration; supply
+/// stays with the separately gated provisioning authority.
+pub const GLOBAL_SCHEDULER_READ_ROLE: &str = "GLOBAL_SCHEDULER_READ";
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------

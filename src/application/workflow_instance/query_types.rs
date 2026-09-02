@@ -11,6 +11,7 @@ pub enum WorkflowQueryError {
     WorkflowInstanceNotFoundOrNotVisible,
     RestrictedHistoryNotVisible,
     GlobalCoordinatorRequired,
+    SchedulerReadRoleRequired,
     InvalidPagination(String),
     InternalConsistency(String),
     StorageError(String),
@@ -30,6 +31,9 @@ impl std::fmt::Display for WorkflowQueryError {
                     f,
                     "GLOBAL_WORKFLOW_READER or GLOBAL_WORKFLOW_COORDINATOR role is required"
                 )
+            }
+            Self::SchedulerReadRoleRequired => {
+                write!(f, "GLOBAL_SCHEDULER_READ role is required")
             }
             Self::InvalidPagination(detail) => write!(f, "invalid pagination: {detail}"),
             Self::InternalConsistency(detail) => {

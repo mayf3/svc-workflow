@@ -124,6 +124,31 @@ pub async fn rebuild_projection(
         Err(error) => return Err(error),
     };
     authorization::lock_definition_version_any(&mut tx, instance.definition_version_id).await?;
+
+    // VISIT_ACTIVATION_V1: validate the activation fact families for this
+    // instance (cardinality, closure ordering, eligibility sanity) and fail
+    // closed on drift without mutating any fact (CTR-VAI-012 / CTR-ARCH-026).
+    {
+        let (semantic_model_version,): (i16,) = sqlx::query_as(
+            "SELECT semantic_model_version FROM workflow_definition_versions \
+             WHERE definition_version_id = $1",
+        )
+        .bind(instance.definition_version_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+        if semantic_model_version == 3 {
+            if let Err(reason) =
+                crate::store::postgres::workflow_instance_repository::activation_facts::validate_instance_activation_consistency(
+                    &mut tx, instance_id,
+                )
+                .await
+            {
+                let error = RecoveryError::InvalidImmutableFacts(reason);
+                return deny_access(tx, &acquired, &command, request_hash, error).await;
+            }
+        }
+    }
     let access = match authorization::validate_actor(&mut tx, actor).await {
         Ok(()) => authorization::validate_workflow_admin(&mut tx, actor, instance.domain_id).await,
         Err(error) => Err(error),

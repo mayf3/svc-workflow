@@ -4,6 +4,7 @@
 //! idempotency, authorization, and consistency guarantees.
 
 pub mod archive_transaction;
+pub mod activation_facts;
 pub mod assistance_transaction;
 pub mod cancel_transaction;
 pub mod combined_helpers;
@@ -13,6 +14,7 @@ pub mod command_receipt;
 pub mod create_transaction;
 pub mod definition_lookup;
 pub mod query_detail;
+pub mod query_dispatch_intents;
 pub mod query_domain_instances;
 pub mod query_global_instances;
 pub mod query_rows;
@@ -23,6 +25,7 @@ pub mod revise_transaction;
 pub mod revise_validation;
 pub mod row_types;
 pub mod transition_helpers;
+pub mod wake_transaction;
 pub mod transition_receipt;
 pub mod transition_rows;
 pub mod transition_transaction;
