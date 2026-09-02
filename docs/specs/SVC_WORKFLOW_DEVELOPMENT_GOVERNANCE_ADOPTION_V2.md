@@ -10,7 +10,7 @@ governed_by: []
 external_authorities:
   - repository: mayf3/agent-development-governance
     authority_id: AGENT_DEVELOPMENT_GOVERNANCE_V1
-    revision: 902842735a69797b54016eeaa88d2f949f5879a9
+    revision: 3de35f8617616dda4c717233899d6a93a634d5d8
     relation: constrained_by
 supersedes:
   - SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1
@@ -23,7 +23,7 @@ owners:
 
 ## 1. Goal
 
-Adopt the exact Agent Development Governance v1.0.0 distribution for
+Adopt the exact Agent Development Governance v1.0.1 distribution for
 `mayf3/svc-workflow` through this repository's own review and Owner acceptance
 lifecycle.
 
@@ -46,7 +46,7 @@ accepted final Head is merged into `main`.
 ### In scope
 
 - exact-commit vendoring of distribution `development-governance-v0`,
-  version `1.0.0`;
+  version `1.0.1`;
 - local lifecycle transition from the currently accepted adoption V1 to this
   whole-authority successor;
 - preservation of repository-local governance, Product Direction,
@@ -83,9 +83,9 @@ SUCCESSOR_CANDIDATE =
 UPSTREAM_AUTHORITY =
   AGENT_DEVELOPMENT_GOVERNANCE_V1
 UPSTREAM_RELEASE_TAG =
-  v1.0.0
+  v1.0.1
 UPSTREAM_SOURCE_COMMIT =
-  902842735a69797b54016eeaa88d2f949f5879a9
+  3de35f8617616dda4c717233899d6a93a634d5d8
 DISTRIBUTION_ID =
   development-governance-v0
 PLAN_LEVEL =
@@ -131,9 +131,9 @@ not a grant of local supersession or implementation authority.
 - Subject: this adoption preparation.
 - As of revision: the future PR Head produced by this docs-only preparation.
 - Environment: isolated adoption branch.
-- Observed at: `2026-09-01T22:48:46Z`.
+- Observed at: `2026-09-02T23:28:01Z`.
 - Basis: `OBS-ADOPT2-003`, `OBS-ADOPT2-004`.
-- Projection: v1.0.0 bytes and a proposed lock are prepared; no local
+- Projection: v1.0.1 bytes and a proposed lock are prepared; no local
   acceptance or active-authority transition has occurred.
 
 ## 5. Observations
@@ -160,31 +160,31 @@ not a grant of local supersession or implementation authority.
 - Result: V1 is accepted and owns the current repository governance adoption.
 - Provenance: `docs/specs/SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1.md`.
 
-### OBS-ADOPT2-003 — v1.0.0 is an annotated exact-commit tag
+### OBS-ADOPT2-003 — v1.0.1 is an annotated exact-commit tag
 
-- Subject: upstream tag `v1.0.0`.
+- Subject: upstream tag `v1.0.1`.
 - Source revision: tag object
-  `bb98937d176890088da736fa4a45f48279f19d50`.
+  `a7a60006861d09d502e3e7ea5c1a67c31280c571`.
 - Environment: GitHub.
-- Observed at: `2026-09-01T22:48:46Z`.
-- Method: resolve `refs/tags/v1.0.0`, then resolve the annotated tag object.
+- Observed at: `2026-09-02T23:28:01Z`.
+- Method: resolve `refs/tags/v1.0.1`, then resolve the annotated tag object.
 - Result: object type `tag`; target type `commit`; target commit
-  `902842735a69797b54016eeaa88d2f949f5879a9`.
+  `3de35f8617616dda4c717233899d6a93a634d5d8`.
 - Provenance: GitHub Git refs and tag-object APIs.
 
 ### OBS-ADOPT2-004 — Exact release manifest is internally consistent
 
 - Subject: upstream `distribution/manifest.json`.
-- Source revision: `902842735a69797b54016eeaa88d2f949f5879a9`.
+- Source revision: `3de35f8617616dda4c717233899d6a93a634d5d8`.
 - Environment: GitHub exact commit.
-- Observed at: `2026-09-01T22:48:46Z`.
+- Observed at: `2026-09-02T23:28:01Z`.
 - Method: inspect manifest identity/version/file records and reproduce its
   canonical tracked bytes.
-- Result: distribution `development-governance-v0`, version `1.0.0`,
+- Result: distribution `development-governance-v0`, version `1.0.1`,
   25 file entries, manifest SHA-256
-  `c1fa620da4a16e4073d617e49eb5080487f2a117e3bab6502fd223afee0f06e0`.
+  `c84f6557c7c9de404ebce81440d31d2febbc239dc16c0d0e504f94179c774eaf`.
 - Provenance: upstream manifest blob
-  `d4e37f492653260aa24878af1a9208f53122db5d`.
+  `8f36d7e1da0feaa016a474a65e467a280b8ad69d`.
 
 ## 6. Claims and assumptions
 
@@ -219,7 +219,7 @@ repository.
 - Target: `CLM-ADOPT2-001`
 - Relation: SUPPORTS
 - Bound coordinates: consumer `efdfb7e1a0e6a381b2ab000d48f842991d5c0bb6`;
-  upstream `902842735a69797b54016eeaa88d2f949f5879a9`
+  upstream `3de35f8617616dda4c717233899d6a93a634d5d8`
 - Strength/sufficiency: sufficient to classify a whole-authority successor
 - Limitations: does not constitute local acceptance
 - Provenance: tracked authorities, lock, annotated tag, and manifest
@@ -239,8 +239,8 @@ repository.
 ### DEC-ADOPT2-001 — Adopt the exact stable release
 
 - Decision owner: repository owner `mayf3`
-- Decision: prepare Governance v1.0.0 from exact source commit
-  `902842735a69797b54016eeaa88d2f949f5879a9`.
+- Decision: prepare Governance v1.0.1 from exact source commit
+  `3de35f8617616dda4c717233899d6a93a634d5d8`.
 - Rejected alternative: float to upstream `main`, a merge commit, or `latest`.
 - Reason: exact bytes and local review must be reproducible.
 
@@ -248,7 +248,7 @@ repository.
 
 - Decision owner: repository owner `mayf3`
 - Decision: keep distribution ID `development-governance-v0` while setting
-  version `1.0.0`.
+  version `1.0.1`.
 - Rejected alternative: rename the distribution during consumer adoption.
 - Reason: the upstream release and local compatibility contract require the
   existing ID.
@@ -279,7 +279,7 @@ repository.
   `EXPANSION_TRIGGER`.
 - Rejected alternative: use one heavy route for all non-mechanical work or
   retroactively rewrite historical artifacts.
-- Reason: this is the v1.0.0 governance model and avoids governance drift.
+- Reason: this is the v1.0.1 governance model and avoids governance drift.
 
 ## 9. Contracts
 
@@ -287,9 +287,9 @@ repository.
 
 The adopted lock MUST name source repository
 `mayf3/agent-development-governance`, source commit
-`902842735a69797b54016eeaa88d2f949f5879a9`, version `1.0.0`, distribution
+`3de35f8617616dda4c717233899d6a93a634d5d8`, version `1.0.1`, distribution
 `development-governance-v0`, and exact manifest SHA-256
-`c1fa620da4a16e4073d617e49eb5080487f2a117e3bab6502fd223afee0f06e0`.
+`c84f6557c7c9de404ebce81440d31d2febbc239dc16c0d0e504f94179c774eaf`.
 
 ### CTR-ADOPT2-002 — Proposed preparation
 
@@ -493,7 +493,7 @@ Rejected. Preparation and Owner acceptance are distinct acts.
 ### ALT-ADOPT2-004 — Rename the distribution ID
 
 Rejected. `development-governance-v0` is the published compatibility identity
-for version `1.0.0`.
+for version `1.0.1`.
 
 ## 12. Migration, compatibility, and rollback
 

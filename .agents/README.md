@@ -1,7 +1,7 @@
 # Development Grammar V1
 
 ```text
-GRAMMAR_VERSION = 1.0.0
+GRAMMAR_VERSION = 1.0.1
 GOVERNING_AUTHORITY = AGENT_DEVELOPMENT_GOVERNANCE_V1
 STATUS = accepted
 ENFORCEMENT_LEVEL = manual_policy_plus_deterministic_integrity

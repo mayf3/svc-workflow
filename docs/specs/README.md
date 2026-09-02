@@ -15,7 +15,7 @@ Read, in order:
 5. the relevant Product Direction, Architecture, accepted Specs, and exact external authorities.
 
 `SPEC_GOVERNANCE_V0.md` remains historical compatibility material in a
-Governance v1.0.0 candidate or accepted snapshot.
+Governance v1.0.1 candidate or accepted snapshot.
 
 ## Lifecycle and implementation authority
 
