@@ -23,6 +23,11 @@ SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
   kind: product_direction
   status: accepted
 
+SVC_WORKFLOW_ARCHITECTURE_V0_4_0
+  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_0.md
+  kind: architecture
+  status: accepted
+
 superseded history:
 SVC_WORKFLOW_PRODUCT_BOUNDARY_V5
   path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V5.md
@@ -57,6 +62,8 @@ SVC_WORKFLOW_PRODUCT_BOUNDARY_V1
 > SVC_WORKFLOW_ARCHITECTURE_V0_3_1
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md
   kind: architecture
+  status: superseded
+  superseded_by: SVC_WORKFLOW_ARCHITECTURE_V0_4_0
 
 > SVC_WORKFLOW_CANCEL_ARCHIVE_GOVERNANCE_V0_3_2
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_2.md
@@ -110,7 +117,7 @@ Authoring, independent semantic review, and acceptance are distinct acts. A revi
 
 ```text
 PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V6.md
-PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_3_1.md
+PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_0.md
 ARCHITECTURE_REFINEMENTS = docs/architecture/
 LEGACY_IMPLEMENTATION_CONTRACTS = docs/contracts/
 EXTERNAL_HTTP_CONTRACT_BUNDLE = contracts/workflow-http/
