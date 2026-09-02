@@ -1,0 +1,482 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mayf3:agent-development-governance:route:v1",
+  "title": "Governance V1 route record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "task_id",
+    "goal",
+    "current_gap",
+    "done_when",
+    "route_stage",
+    "authority_accepted_in_base",
+    "owner_decision_required",
+    "authority",
+    "plan",
+    "assurance",
+    "execution_mandate",
+    "write_surface",
+    "spec_gap_dependency",
+    "evidence",
+    "live_authority_gap",
+    "emergency",
+    "review",
+    "readiness",
+    "stop",
+    "findings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_gap": {
+      "type": "string",
+      "minLength": 1
+    },
+    "done_when": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_stage": {
+      "enum": [
+        "AUTHORITY_AUTHORING",
+        "IMPLEMENTATION",
+        "OPERATION"
+      ]
+    },
+    "authority_accepted_in_base": {
+      "enum": [
+        "YES",
+        "NO",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "owner_decision_required": {
+      "type": "boolean"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "declared_action",
+        "ownership_known",
+        "accepted_owner_exists",
+        "accepted_meaning_changed",
+        "accepted_strict_addition",
+        "proposed_target_named",
+        "proposal_scope_changed",
+        "proposal_ownership_changed",
+        "proposal_decision_identity_changed",
+        "implementation_authority",
+        "atomic_spec_implementation_permitted"
+      ],
+      "properties": {
+        "declared_action": {
+          "enum": [
+            "REUSE",
+            "AMEND",
+            "SUPERSEDE",
+            "NEW",
+            "AMEND_OR_NEW_PENDING_OWNERSHIP"
+          ]
+        },
+        "ownership_known": {
+          "type": "boolean"
+        },
+        "accepted_owner_exists": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "accepted_meaning_changed": {
+          "type": "boolean"
+        },
+        "accepted_strict_addition": {
+          "type": "boolean"
+        },
+        "proposed_target_named": {
+          "type": "boolean"
+        },
+        "proposal_scope_changed": {
+          "type": "boolean"
+        },
+        "proposal_ownership_changed": {
+          "type": "boolean"
+        },
+        "proposal_decision_identity_changed": {
+          "type": "boolean"
+        },
+        "implementation_authority": {
+          "enum": [
+            "contracts",
+            "none",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "atomic_spec_implementation_permitted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "complexity",
+        "level"
+      ],
+      "properties": {
+        "complexity": {
+          "enum": [
+            "TRIVIAL",
+            "BOUNDED",
+            "COMPLEX"
+          ]
+        },
+        "level": {
+          "enum": [
+            "NONE",
+            "BRIEF",
+            "EXEC_PLAN"
+          ]
+        }
+      }
+    },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "failure_consequence",
+        "level",
+        "controlled_runbook_present"
+      ],
+      "properties": {
+        "failure_consequence": {
+          "enum": [
+            "LOW",
+            "DURABLE_STATE",
+            "HIGH_RISK"
+          ]
+        },
+        "level": {
+          "enum": [
+            "ROUTINE",
+            "DURABLE",
+            "CONTROLLED"
+          ]
+        },
+        "controlled_runbook_present": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution_mandate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "status",
+        "attributable",
+        "target_bound",
+        "actor_bound",
+        "environment_bound",
+        "scope_bound",
+        "allowed_effects_bound",
+        "forbidden_effects_bound",
+        "exact_operation_bound",
+        "done_when_bound",
+        "abort_conditions_bound",
+        "secret_handling_bound",
+        "receipt_bound",
+        "attempt_bounds_bound",
+        "self_issued"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VALID",
+            "INVALID",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "attributable": {
+          "type": "boolean"
+        },
+        "target_bound": {
+          "type": "boolean"
+        },
+        "actor_bound": {
+          "type": "boolean"
+        },
+        "environment_bound": {
+          "type": "boolean"
+        },
+        "scope_bound": {
+          "type": "boolean"
+        },
+        "allowed_effects_bound": {
+          "type": "boolean"
+        },
+        "forbidden_effects_bound": {
+          "type": "boolean"
+        },
+        "exact_operation_bound": {
+          "type": "boolean"
+        },
+        "done_when_bound": {
+          "type": "boolean"
+        },
+        "abort_conditions_bound": {
+          "type": "boolean"
+        },
+        "secret_handling_bound": {
+          "type": "boolean"
+        },
+        "receipt_bound": {
+          "type": "boolean"
+        },
+        "attempt_bounds_bound": {
+          "type": "boolean"
+        },
+        "self_issued": {
+          "type": "boolean"
+        }
+      }
+    },
+    "write_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mutation_planned",
+        "isolated"
+      ],
+      "properties": {
+        "mutation_planned": {
+          "type": "boolean"
+        },
+        "isolated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "spec_gap_dependency": {
+      "enum": [
+        "NONE",
+        "NON_LOAD_BEARING",
+        "LOAD_BEARING"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "load_bearing_required",
+        "reviewability",
+        "fabrication_observed",
+        "failure_class"
+      ],
+      "properties": {
+        "load_bearing_required": {
+          "type": "boolean"
+        },
+        "reviewability": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "fabrication_observed": {
+          "type": "boolean"
+        },
+        "failure_class": {
+          "enum": [
+            "NONE",
+            "REQUIRED_GATE_FAILURE",
+            "FALSE_EVIDENCE"
+          ]
+        }
+      }
+    },
+    "live_authority_gap": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "state",
+        "expansion_frozen",
+        "auto_delete",
+        "permanent_grandfather",
+        "owner_disposition_present"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "NONE",
+            "DETECTED"
+          ]
+        },
+        "expansion_frozen": {
+          "type": "boolean"
+        },
+        "auto_delete": {
+          "type": "boolean"
+        },
+        "permanent_grandfather": {
+          "type": "boolean"
+        },
+        "owner_disposition_present": {
+          "type": "boolean"
+        }
+      }
+    },
+    "emergency": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "state",
+        "action_kind",
+        "owner_authorized",
+        "incident_reference_present",
+        "durable_new_behavior",
+        "normal_authority_reconciliation_required"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "NONE",
+            "ACTIVE"
+          ]
+        },
+        "action_kind": {
+          "enum": [
+            "NONE",
+            "ROLLBACK",
+            "DISABLEMENT",
+            "SHUTDOWN",
+            "REVOCATION",
+            "ISOLATION",
+            "CONTAINMENT"
+          ]
+        },
+        "owner_authorized": {
+          "type": "boolean"
+        },
+        "incident_reference_present": {
+          "type": "boolean"
+        },
+        "durable_new_behavior": {
+          "type": "boolean"
+        },
+        "normal_authority_reconciliation_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "review_target_head",
+        "base_head",
+        "current_base_head",
+        "target_head_changed",
+        "relevant_base_impact",
+        "full_rereview_required"
+      ],
+      "properties": {
+        "review_target_head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "current_base_head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_head_changed": {
+          "type": "boolean"
+        },
+        "relevant_base_impact": {
+          "type": "boolean"
+        },
+        "full_rereview_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation_allowed",
+        "merge_ready",
+        "operation_allowed"
+      ],
+      "properties": {
+        "implementation_allowed": {
+          "enum": [
+            "YES",
+            "NO",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "merge_ready": {
+          "enum": [
+            "YES",
+            "NO",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "operation_allowed": {
+          "enum": [
+            "YES",
+            "NO",
+            "NOT_APPLICABLE"
+          ]
+        }
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "done_when_met",
+        "expansion_triggered",
+        "next_action"
+      ],
+      "properties": {
+        "done_when_met": {
+          "type": "boolean"
+        },
+        "expansion_triggered": {
+          "type": "boolean"
+        },
+        "next_action": {
+          "enum": [
+            "CONTINUE",
+            "STOP",
+            "RE_PREFLIGHT",
+            "OWNER_DECISION"
+          ]
+        }
+      }
+    },
+    "findings": {
+      "type": "array"
+    }
+  }
+}
