@@ -172,6 +172,7 @@ def validate_transition(base_records: object, candidate_records: object) -> list
         supersedes = successor.get("supersedes")
         if not isinstance(supersedes, list):
             continue
+        successor_status = successor.get("status")
         for old_id in supersedes:
             if not isinstance(old_id, str) or not is_reference_id(old_id):
                 continue
@@ -181,10 +182,35 @@ def validate_transition(base_records: object, candidate_records: object) -> list
             if old_base is None:
                 errors.append(f"{successor_id} supersedes nonexistent base authority: {old_id}")
                 continue
-            if successor.get("status") != "accepted" or not is_strict_spec_id(successor_id):
-                errors.append(f"successor must be accepted with a strict ID: {successor_id}")
+            if not is_strict_spec_id(successor_id):
+                errors.append(f"successor must use a strict ID: {successor_id}")
             if old_candidate is None:
                 errors.append(f"candidate omits superseded authority: {old_id}")
+                continue
+
+            if successor_status == "proposed":
+                if old_base.get("status") != "accepted":
+                    errors.append(
+                        f"proposed successor {successor_id} targets non-accepted "
+                        f"base authority: {old_id}"
+                    )
+                    continue
+                if old_base.get("authority_level") != "governing_spec":
+                    errors.append(f"{old_id} was not a governing authority in base")
+                if old_candidate.get("status") != "accepted":
+                    errors.append(
+                        f"proposed successor {successor_id} cannot retire "
+                        f"{old_id} before acceptance"
+                    )
+                if old_candidate.get("superseded_by") is not None:
+                    errors.append(
+                        f"proposed successor {successor_id} cannot set predecessor "
+                        f"backlink before acceptance: {old_id}"
+                    )
+                continue
+
+            if successor_status != "accepted":
+                errors.append(f"successor must be proposed or accepted: {successor_id}")
                 continue
 
             if old_base.get("status") == "accepted":
@@ -252,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    print("Spec transition is a closed whole-authority lifecycle change")
+    print("Spec transition is a valid whole-authority lifecycle state")
     return 0
 
 

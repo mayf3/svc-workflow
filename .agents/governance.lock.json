@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
   "distribution": "development-governance-v0",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "source_repository": "mayf3/agent-development-governance",
-  "source_commit": "902842735a69797b54016eeaa88d2f949f5879a9",
-  "distribution_manifest_sha256": "c1fa620da4a16e4073d617e49eb5080487f2a117e3bab6502fd223afee0f06e0",
+  "source_commit": "3de35f8617616dda4c717233899d6a93a634d5d8",
+  "distribution_manifest_sha256": "c84f6557c7c9de404ebce81440d31d2febbc239dc16c0d0e504f94179c774eaf",
   "adoption": {
     "mode": "vendored",
     "status": "proposed",
-    "prepared_by": "OpenAI ChatGPT GPT-5.6 Pro / adoption-preparation-agent",
-    "prepared_at": "2026-09-01T22:48:46Z",
+    "prepared_by": "ZCode / re-vendor-adoption-preparation-agent",
+    "prepared_at": "2026-09-02T23:26:17Z",
     "accepted_by": null,
     "accepted_at": null
   },
   "files": [
     {
       "path": ".agents/README.md",
-      "sha256": "730e7c53a5fed05ae601054a01e2b26195acd323de37c2cf6df5e4fc7d6850aa",
+      "sha256": "5e134a23424e9fae9ca2c92f38fd899f2321ed62ea01abb4fa326ce28371bf14",
       "size": 13167
     },
     {
@@ -66,8 +66,8 @@
     },
     {
       "path": ".agents/tools/validate_spec_transition.py",
-      "sha256": "255838a907607aeb931b18e38473b603c5da9af07eb61d66219eaf393deecf6c",
-      "size": 10901
+      "sha256": "b6afa390a70854c7c53174622db1430f13eabf3662a958d5527c7094f3dc0643",
+      "size": 12088
     },
     {
       "path": ".agents/tools/validate_governance_route.py",
@@ -81,8 +81,8 @@
     },
     {
       "path": ".agents/schemas/spec-frontmatter.schema.json",
-      "sha256": "132b7325f8e6a286d237f67c226336cd092c828eb52c718b108c4b7ec06a923e",
-      "size": 3190
+      "sha256": "ba481245cb9a636423f6e6386807f408f81f546553e63fd248c75a3093ece74a",
+      "size": 3945
     },
     {
       "path": ".agents/schemas/governance-lock.schema.json",
@@ -101,8 +101,8 @@
     },
     {
       "path": ".agents/templates/GOVERNANCE_ADOPTION_SPEC_TEMPLATE.md",
-      "sha256": "b8758487fdf4cec5d67ab28982a84b73add09d2a944a77d59fcb2bb34ee9682a",
-      "size": 11290
+      "sha256": "c669aa53d0cee0e87cb6cb9b835acaf2f49c7227a80279cd8da56dbbec6d7578",
+      "size": 11645
     },
     {
       "path": ".agents/templates/CHANGE_BRIEF_TEMPLATE.md",

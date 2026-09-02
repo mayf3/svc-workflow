@@ -35,26 +35,42 @@
       "type": "string"
     },
     "status": {
-      "enum": ["proposed", "accepted", "superseded"]
+      "enum": [
+        "proposed",
+        "accepted",
+        "superseded"
+      ]
     },
     "spec_kind": {
-      "enum": ["invariant", "program", "implementation"]
+      "enum": [
+        "invariant",
+        "program",
+        "implementation"
+      ]
     },
     "authority_level": {
       "const": "governing_spec"
     },
     "implementation_authority": {
-      "enum": ["none", "contracts"]
+      "enum": [
+        "none",
+        "contracts"
+      ]
     },
     "scope": {
       "type": "array",
       "minItems": 1,
-      "items": {"type": "string", "minLength": 1},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "governed_by": {
       "type": "array",
-      "items": {"$ref": "#/$defs/strictSpecId"},
+      "items": {
+        "$ref": "#/$defs/strictSpecId"
+      },
       "uniqueItems": true
     },
     "external_authorities": {
@@ -62,19 +78,30 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["repository", "authority_id", "revision", "relation"],
+        "required": [
+          "repository",
+          "authority_id",
+          "revision",
+          "relation"
+        ],
         "properties": {
           "repository": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
           },
-          "authority_id": {"$ref": "#/$defs/strictSpecId"},
+          "authority_id": {
+            "$ref": "#/$defs/strictSpecId"
+          },
           "revision": {
             "type": "string",
             "pattern": "^[0-9a-f]{40}$"
           },
           "relation": {
-            "enum": ["depends_on", "constrained_by", "interoperates_with"]
+            "enum": [
+              "depends_on",
+              "constrained_by",
+              "interoperates_with"
+            ]
           }
         }
       }
@@ -83,22 +110,34 @@
       "type": "array",
       "items": {
         "oneOf": [
-          {"$ref": "#/$defs/strictSpecId"},
-          {"$ref": "#/$defs/legacyHistoricalSpecId"}
+          {
+            "$ref": "#/$defs/strictSpecId"
+          },
+          {
+            "$ref": "#/$defs/legacyHistoricalSpecId"
+          }
         ]
       },
-      "uniqueItems": true
+      "uniqueItems": true,
+      "description": "Whole-authority predecessor IDs. On a proposed successor these entries declare non-active replacement intent; predecessors remain accepted and unbacklinked until atomic acceptance."
     },
     "superseded_by": {
       "oneOf": [
-        {"type": "null"},
-        {"$ref": "#/$defs/strictSpecId"}
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/strictSpecId"
+        }
       ]
     },
     "owners": {
       "type": "array",
       "minItems": 1,
-      "items": {"type": "string", "minLength": 1},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     }
   },
@@ -106,25 +145,39 @@
     {
       "if": {
         "properties": {
-          "status": {"const": "superseded"}
+          "status": {
+            "const": "superseded"
+          }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "then": {
         "properties": {
           "spec_id": {
             "oneOf": [
-              {"$ref": "#/$defs/strictSpecId"},
-              {"$ref": "#/$defs/legacyHistoricalSpecId"}
+              {
+                "$ref": "#/$defs/strictSpecId"
+              },
+              {
+                "$ref": "#/$defs/legacyHistoricalSpecId"
+              }
             ]
           },
-          "superseded_by": {"$ref": "#/$defs/strictSpecId"}
+          "superseded_by": {
+            "$ref": "#/$defs/strictSpecId"
+          }
         }
       },
       "else": {
         "properties": {
-          "spec_id": {"$ref": "#/$defs/strictSpecId"},
-          "superseded_by": {"type": "null"}
+          "spec_id": {
+            "$ref": "#/$defs/strictSpecId"
+          },
+          "superseded_by": {
+            "type": "null"
+          }
         }
       }
     }
