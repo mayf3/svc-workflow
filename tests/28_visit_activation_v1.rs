@@ -857,9 +857,16 @@ async fn legacy_protection_and_v1_command_guards() {
             },
         )
         .await;
-    assert!(
-        revise_result.is_err(),
-        "revise must be rejected for VISIT_ACTIVATION_V1 instances"
+    let revise_err = revise_result.expect_err("revise must be rejected for VISIT_ACTIVATION_V1");
+    // Deterministic 422 wire contract (CTR-VAI-012): status + label.
+    assert_eq!(
+        svc_workflow::domain::workflow_instance::errors::revise_error_code(&revise_err),
+        422,
+        "revise rejection must be 422"
+    );
+    assert_eq!(
+        svc_workflow::domain::workflow_instance::errors::revise_error_label(&revise_err),
+        "legacy_command_not_supported_for_semantic_model"
     );
 
     // The legacy instance is untouched by the v1 instance's rejection.

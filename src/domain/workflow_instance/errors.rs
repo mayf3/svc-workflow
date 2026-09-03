@@ -105,6 +105,9 @@ pub enum ReviseWorkflowContextError {
     DefinitionVersionRevoked,
     /// Definition version is DRAFT (defensive — instance should not reference it).
     DefinitionVersionDraft,
+    /// VISIT_ACTIVATION_V1: legacy-only command on a new-model instance
+    /// (deterministic 422, CTR-VAI-012).
+    LegacyCommandNotSupported,
     /// Expected workflow state version does not match current.
     WorkflowStateVersionConflict { expected: i32, actual: i32 },
     /// Context payload failed schema validation.
@@ -134,6 +137,12 @@ impl fmt::Display for ReviseWorkflowContextError {
             Self::CurrentNodeNotDraft => write!(f, "current node is not DRAFT"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
+            Self::LegacyCommandNotSupported => {
+                write!(
+                    f,
+                    "legacy-only command is not defined for VISIT_ACTIVATION_V1 instances"
+                )
+            }
             Self::WorkflowStateVersionConflict { expected, actual } => {
                 write!(
                     f,
@@ -334,6 +343,7 @@ pub fn revise_error_code(err: &ReviseWorkflowContextError) -> i32 {
         ReviseWorkflowContextError::CurrentNodeNotDraft => 409,
         ReviseWorkflowContextError::DefinitionVersionRevoked => 409,
         ReviseWorkflowContextError::DefinitionVersionDraft => 500,
+        ReviseWorkflowContextError::LegacyCommandNotSupported => 422,
         ReviseWorkflowContextError::WorkflowStateVersionConflict { .. } => 409,
         ReviseWorkflowContextError::ContextValidationFailed(_) => 422,
         ReviseWorkflowContextError::SizeLimitExceeded(_) => 413,
@@ -526,6 +536,9 @@ pub fn revise_error_label(err: &ReviseWorkflowContextError) -> &'static str {
         }
         ReviseWorkflowContextError::ContextValidationFailed(_) => "context_validation_failed",
         ReviseWorkflowContextError::SizeLimitExceeded(_) => "size_limit_exceeded",
+        ReviseWorkflowContextError::LegacyCommandNotSupported => {
+            "legacy_command_not_supported_for_semantic_model"
+        }
         ReviseWorkflowContextError::InternalConsistency(_) => "internal_consistency_error",
         ReviseWorkflowContextError::IdempotencyConflict { .. } => "idempotency_conflict",
         ReviseWorkflowContextError::CommandStillProcessing => "command_still_processing",

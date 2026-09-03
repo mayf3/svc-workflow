@@ -167,10 +167,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
         )
     })?;
     if semantic_model_version == 3 {
-        deterministic_failure!(ReviseContextAndTransitionError::TransitionNotApplicable(
-            "revise-and-transition is not defined for VISIT_ACTIVATION_V1 instances"
-                .to_string(),
-        ));
+        deterministic_failure!(ReviseContextAndTransitionError::LegacyCommandNotSupported);
     }
 
     if command.expected_workflow_state_version != instance.workflow_state_version {

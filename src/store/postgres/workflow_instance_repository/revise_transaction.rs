@@ -235,9 +235,7 @@ pub(crate) async fn revise_workflow_context_atomically(
             tx.commit()
                 .await
                 .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
-            return Err(ReviseWorkflowContextError::InternalConsistency(
-                "revise is not defined for VISIT_ACTIVATION_V1 instances".to_string(),
-            ));
+            return Err(ReviseWorkflowContextError::LegacyCommandNotSupported);
         }
     }
 
