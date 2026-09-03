@@ -132,12 +132,14 @@ async fn test_migration_0019_column_not_null_and_backfilled_to_legacy() {
 
     let non_legacy: (i64,) = sqlx::query_as(
         "SELECT COUNT(*)::int8 FROM workflow_definition_versions \
-         WHERE semantic_model_version IS NULL OR semantic_model_version NOT IN (1, 2)",
+         WHERE semantic_model_version IS NULL OR semantic_model_version NOT IN (1, 2, 3)",
     )
     .fetch_one(&pool)
     .await
     .expect("query failed");
-    assert_eq!(non_legacy.0, 0, "all rows must have semantic_model_version in (1,2)");
+    // Value domain widened to (1,2,3) by accepted SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+    // (CTR-VAI-001): 3 = VISIT_ACTIVATION_V1. NULLs and unknown values stay rejected.
+    assert_eq!(non_legacy.0, 0, "all rows must have semantic_model_version in (1,2,3)");
 
     // With rows present, Legacy (1) must exist (0019 backfill target).
     // NOTE: rows with semantic_model_version = 2 may legitimately exist here —
@@ -178,16 +180,17 @@ async fn test_migration_0019_constraint_enforced() {
         row
     };
 
-    // Out-of-range value rejected.
+    // Out-of-range value rejected (value domain is (1,2,3) under
+    // SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 CTR-VAI-001).
     let rejected = sqlx::query(
-        "UPDATE workflow_definition_versions SET semantic_model_version = 3 WHERE definition_version_id = $1",
+        "UPDATE workflow_definition_versions SET semantic_model_version = 4 WHERE definition_version_id = $1",
     )
     .bind(version_id)
     .execute(&pool)
     .await;
     assert!(
         rejected.is_err(),
-        "semantic_model_version = 3 must be rejected by the CHECK constraint"
+        "semantic_model_version = 4 must be rejected by the CHECK constraint"
     );
 
     // NULL rejected.

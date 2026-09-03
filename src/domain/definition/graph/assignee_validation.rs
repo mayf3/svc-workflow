@@ -37,6 +37,15 @@ pub(super) fn validate_assignee_rules(
                     ));
                 }
             }
+            NodeType::TASK => {
+                errors.push(GraphValidationError::new(
+                    "TASK_NODE_IN_LEGACY_GRAPH",
+                    format!(
+                        "node '{}' uses TASK; the TASK node type exists only in                          VISIT_ACTIVATION_V1 (semantic model 3) graphs",
+                        node.node_key
+                    ),
+                ));
+            }
             NodeType::DRAFT => {
                 let Some(assignee_ref) = &node.assignee_ref else {
                     errors.push(GraphValidationError::new(

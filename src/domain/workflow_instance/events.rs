@@ -164,3 +164,20 @@ pub struct ContextRevisedAndTransitionCommittedEventData {
     pub target_node_visit_id: String,
     pub submission_payload_digest: String,
 }
+
+// ---------------------------------------------------------------------------
+// VISIT_ACTIVATION_V1 (SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1)
+// ---------------------------------------------------------------------------
+
+pub const COMMAND_TYPE_WAKE_DISPATCH_INTENT: &str = "WAKE_DISPATCH_INTENT";
+pub const WAKE_DISPATCH_INTENT_EVENT_TYPE: &str = "WAKE_DISPATCH_INTENT";
+
+/// Event payload for a successful dispatch-intent wake.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WakeDispatchIntentEventData {
+    pub activation_id: String,
+    pub node_visit_id: String,
+    pub previous_next_eligible_at: String,
+    pub new_next_eligible_at: String,
+    pub cause_class: String,
+}

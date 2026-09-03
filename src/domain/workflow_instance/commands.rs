@@ -1,8 +1,7 @@
 //! Command input types for the Workflow Instance domain.
 
 use crate::domain::ids::{
-    DefinitionVersionId, DomainId, PrincipalId, TransitionId, WorkflowInstanceId,
-};
+    DefinitionVersionId, DomainId, PrincipalId, TransitionId, WorkflowInstanceId, NodeVisitId};
 
 /// Command to create a new workflow instance from a published definition version.
 ///
@@ -168,4 +167,43 @@ pub struct ReviseContextAndTransitionCommand {
     pub transition_definition_id: TransitionId,
     pub context_payload: serde_json::Value,
     pub submission_payload: serde_json::Value,
+}
+
+// ---------------------------------------------------------------------------
+// VISIT_ACTIVATION_V1 (SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1)
+// ---------------------------------------------------------------------------
+
+/// Authorized early wake of one DISPATCH_INTENT activation.
+///
+/// The caller must hold the fail-closed `GLOBAL_SCHEDULER_READ` capability
+/// (checked at the HTTP boundary). The wake binds the exact Instance +
+/// nodeVisitId, verifies the current activation and the caller's expected
+/// workflow state version, and — when applicable — sets the activation's
+/// `nextEligibleAt` to the authoritative server now. It can never choose a
+/// different timestamp, create an activation, mutate node/owner, perform a
+/// Transition, or start an Agent.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct WakeDispatchIntentCommand {
+    /// The scheduler actor principal executing the wake.
+    pub principal_id: PrincipalId,
+
+    /// Client-supplied idempotency key, unique per principal.
+    pub idempotency_key: String,
+
+    /// Schema version of this command structure.
+    pub command_schema_version: String,
+
+    /// The workflow instance that owns the dispatch intent.
+    pub workflow_instance_id: WorkflowInstanceId,
+
+    /// The exact current node visit bound to the activation.
+    pub node_visit_id: NodeVisitId,
+
+    /// The caller's expected current workflow state version.
+    pub expected_workflow_state_version: i32,
+
+    /// Optional non-sensitive cause label (bounded, part of the request
+    /// identity for idempotency conflict purposes).
+    #[serde(default)]
+    pub cause: Option<String>,
 }

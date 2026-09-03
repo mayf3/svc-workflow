@@ -324,3 +324,51 @@ pub fn compute_archive_request_hash(
         ))
     })
 }
+
+
+/// The canonical request envelope for WakeDispatchIntent.
+#[derive(Debug, Clone, Serialize)]
+struct WakeRequestEnvelope {
+    command_schema_version: String,
+    command_type: String,
+    route_parameters: serde_json::Value,
+    request_body: WakeRequestBody,
+}
+
+/// The body of the wake request without the idempotency key.
+#[derive(Debug, Clone, Serialize)]
+struct WakeRequestBody {
+    principal_id: String,
+    workflow_instance_id: String,
+    node_visit_id: String,
+    expected_workflow_state_version: i32,
+    cause: Option<String>,
+}
+
+/// Compute the canonical request hash for WakeDispatchIntent idempotency.
+pub fn compute_wake_request_hash(
+    command_schema_version: &str,
+    _idempotency_key: &str,
+    principal_id: &PrincipalId,
+    workflow_instance_id: &WorkflowInstanceId,
+    node_visit_id: &crate::domain::ids::NodeVisitId,
+    expected_workflow_state_version: i32,
+    cause: &Option<String>,
+) -> Result<String, String> {
+    let envelope = WakeRequestEnvelope {
+        command_schema_version: command_schema_version.to_string(),
+        command_type: crate::domain::workflow_instance::events::COMMAND_TYPE_WAKE_DISPATCH_INTENT
+            .to_string(),
+        route_parameters: serde_json::json!({}),
+        request_body: WakeRequestBody {
+            principal_id: principal_id.to_string(),
+            workflow_instance_id: workflow_instance_id.to_string(),
+            node_visit_id: node_visit_id.to_string(),
+            expected_workflow_state_version,
+            cause: cause.clone(),
+        },
+    };
+
+    jcs_canonicalize::sha256_jcs_hex(&envelope)
+        .map_err(|e| format!("request hash computation failed: {}", e))
+}

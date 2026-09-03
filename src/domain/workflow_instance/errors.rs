@@ -105,6 +105,9 @@ pub enum ReviseWorkflowContextError {
     DefinitionVersionRevoked,
     /// Definition version is DRAFT (defensive — instance should not reference it).
     DefinitionVersionDraft,
+    /// VISIT_ACTIVATION_V1: legacy-only command on a new-model instance
+    /// (deterministic 422, CTR-VAI-012).
+    LegacyCommandNotSupported,
     /// Expected workflow state version does not match current.
     WorkflowStateVersionConflict { expected: i32, actual: i32 },
     /// Context payload failed schema validation.
@@ -134,6 +137,12 @@ impl fmt::Display for ReviseWorkflowContextError {
             Self::CurrentNodeNotDraft => write!(f, "current node is not DRAFT"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
+            Self::LegacyCommandNotSupported => {
+                write!(
+                    f,
+                    "legacy-only command is not defined for VISIT_ACTIVATION_V1 instances"
+                )
+            }
             Self::WorkflowStateVersionConflict { expected, actual } => {
                 write!(
                     f,
@@ -261,6 +270,9 @@ pub enum ArchiveWorkflowInstanceError {
     InstanceNotTerminal,
     /// Instance is already archived (archive is a one-shot lifecycle change).
     AlreadyArchived,
+    /// VISIT_ACTIVATION_V1: the current work is still active, so the
+    /// instance must not be archived (deterministic fail-closed).
+    ActiveActivationExists,
     /// Expected workflow state version does not match current.
     WorkflowStateVersionConflict { expected: i32, actual: i32 },
     /// Reason is invalid.
@@ -287,6 +299,9 @@ impl std::fmt::Display for ArchiveWorkflowInstanceError {
             Self::NotDomainOwner => write!(f, "caller is not a domain owner"),
             Self::InstanceNotTerminal => write!(f, "instance is not in a terminal state"),
             Self::AlreadyArchived => write!(f, "instance is already archived"),
+            Self::ActiveActivationExists => {
+                write!(f, "instance has an active canonical activation and cannot be archived")
+            }
             Self::WorkflowStateVersionConflict { expected, actual } => {
                 write!(
                     f,
@@ -328,6 +343,7 @@ pub fn revise_error_code(err: &ReviseWorkflowContextError) -> i32 {
         ReviseWorkflowContextError::CurrentNodeNotDraft => 409,
         ReviseWorkflowContextError::DefinitionVersionRevoked => 409,
         ReviseWorkflowContextError::DefinitionVersionDraft => 500,
+        ReviseWorkflowContextError::LegacyCommandNotSupported => 422,
         ReviseWorkflowContextError::WorkflowStateVersionConflict { .. } => 409,
         ReviseWorkflowContextError::ContextValidationFailed(_) => 422,
         ReviseWorkflowContextError::SizeLimitExceeded(_) => 413,
@@ -520,9 +536,77 @@ pub fn revise_error_label(err: &ReviseWorkflowContextError) -> &'static str {
         }
         ReviseWorkflowContextError::ContextValidationFailed(_) => "context_validation_failed",
         ReviseWorkflowContextError::SizeLimitExceeded(_) => "size_limit_exceeded",
+        ReviseWorkflowContextError::LegacyCommandNotSupported => {
+            "legacy_command_not_supported_for_semantic_model"
+        }
         ReviseWorkflowContextError::InternalConsistency(_) => "internal_consistency_error",
         ReviseWorkflowContextError::IdempotencyConflict { .. } => "idempotency_conflict",
         ReviseWorkflowContextError::CommandStillProcessing => "command_still_processing",
         ReviseWorkflowContextError::StorageError(_) => "storage_error",
     }
 }
+
+// ---------------------------------------------------------------------------
+// VISIT_ACTIVATION_V1 (SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1)
+// ---------------------------------------------------------------------------
+
+/// Errors for the WAKE_DISPATCH_INTENT command.
+#[derive(Debug)]
+pub enum WakeDispatchIntentError {
+    /// Principal does not exist.
+    PrincipalNotFound,
+    /// Principal exists but is disabled.
+    PrincipalDisabled,
+    /// Workflow instance not found.
+    InstanceNotFound,
+    /// The (instance, nodeVisitId) pair carries no DISPATCH_INTENT
+    /// activation (either unknown visit, or a HUMAN_WORK_ITEM visit).
+    DispatchIntentNotFound,
+    /// Caller holds no enabled GLOBAL_SCHEDULER_READ binding.
+    SchedulerReadRoleRequired,
+    /// Client-supplied wake cause is invalid.
+    InvalidCause(String),
+    /// Idempotency key conflict.
+    IdempotencyConflict {
+        original_command_id: uuid::Uuid,
+        original_request_hash: String,
+    },
+    /// A previous request with this idempotency key is still processing.
+    CommandStillProcessing,
+    /// Internal consistency error (defensive check failed).
+    InternalConsistency(String),
+    /// Generic storage or infrastructure error.
+    StorageError(String),
+}
+
+impl std::fmt::Display for WakeDispatchIntentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrincipalNotFound => write!(f, "principal not found"),
+            Self::PrincipalDisabled => write!(f, "principal is disabled"),
+            Self::InstanceNotFound => write!(f, "workflow instance not found"),
+            Self::DispatchIntentNotFound => {
+                write!(f, "no DISPATCH_INTENT activation for the given instance and node visit")
+            }
+            Self::SchedulerReadRoleRequired => {
+                write!(f, "caller must hold the GLOBAL_SCHEDULER_READ role")
+            }
+            Self::InvalidCause(detail) => write!(f, "invalid wake cause: {}", detail),
+            Self::IdempotencyConflict {
+                original_command_id,
+                original_request_hash,
+            } => write!(
+                f,
+                "idempotency key conflict: original_command_id={}, original_request_hash={}",
+                original_command_id, original_request_hash
+            ),
+            Self::CommandStillProcessing => write!(f, "command is still processing"),
+            Self::InternalConsistency(detail) => {
+                write!(f, "internal consistency error: {}", detail)
+            }
+            Self::StorageError(detail) => write!(f, "storage error: {}", detail),
+        }
+    }
+}
+
+impl std::error::Error for WakeDispatchIntentError {}

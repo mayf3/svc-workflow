@@ -188,3 +188,46 @@ pub(super) async fn read_minimal_entry_node(
     })
 }
 
+
+/// Read the entry TASK of a VISIT_ACTIVATION_V1 (model 3) definition
+/// version: the unique TASK node with no incoming ADVANCE edge.
+pub(super) async fn read_visit_activation_entry_node(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: uuid::Uuid,
+) -> Result<DraftNodeInfo, CreateWorkflowInstanceError> {
+    let nodes: Vec<DraftNodeRow> = sqlx::query_as(
+        "SELECT node_id, node_type::TEXT AS node_type, \
+         assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, assignee_input_key \
+         FROM workflow_node_definitions \
+         WHERE definition_version_id = $1 AND node_type = 'TASK' \
+           AND node_id NOT IN ( \
+               SELECT target_node_id FROM workflow_transition_definitions \
+               WHERE definition_version_id = $1 AND transition_effect = 'ADVANCE' \
+           )",
+    )
+    .bind(definition_version_id)
+    .bind(definition_version_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    if nodes.is_empty() {
+        return Err(CreateWorkflowInstanceError::InternalConsistency(
+            "VISIT_ACTIVATION_V1 definition version has no entry TASK".to_string(),
+        ));
+    }
+    if nodes.len() > 1 {
+        return Err(CreateWorkflowInstanceError::InternalConsistency(format!(
+            "VISIT_ACTIVATION_V1 definition version has {} entry TASKs (exactly one required)",
+            nodes.len()
+        )));
+    }
+
+    let node = &nodes[0];
+    Ok(DraftNodeInfo {
+        node_id: node.node_id,
+        assignee_ref_type: node.assignee_ref_type_enum(),
+        fixed_principal_id: node.fixed_principal_id,
+        assignee_input_key: node.assignee_input_key.clone(),
+    })
+}

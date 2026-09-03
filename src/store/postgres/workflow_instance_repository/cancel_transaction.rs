@@ -323,6 +323,39 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     .await
     .map_err(|error| CancelWorkflowInstanceError::StorageError(error.to_string()))?;
 
+    // VISIT_ACTIVATION_V1: close the current activation in this same
+    // transaction (v0.4.0 §5.9; CTR-VAI-006). The closure's Event FK is
+    // deferred, so writing it before the Step 9 Event insert is valid.
+    let (semantic_model_version,): (i16,) = sqlx::query_as(
+        "SELECT wdv.semantic_model_version \
+         FROM workflow_instances wi \
+         JOIN workflow_definition_versions wdv \
+           ON wdv.definition_version_id = wi.definition_version_id \
+         WHERE wi.workflow_instance_id = $1",
+    )
+    .bind(instance_uuid)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(storage)?;
+    if semantic_model_version == 3 {
+        let closed = super::activation_facts::close_activation_by_visit_required(
+            &mut tx,
+            instance_uuid,
+            source_visit_id,
+            super::activation_facts::CLOSURE_REASON_CANCELLED,
+            actual_command_id,
+            Some(event_id),
+        )
+        .await
+        .map_err(storage)?;
+        if !closed {
+            return Err(CancelWorkflowInstanceError::InternalConsistency(
+                "VISIT_ACTIVATION_V1 current visit has no active activation to close"
+                    .to_string(),
+            ));
+        }
+    }
+
     // Step 7: Update instance — set cancelled flag, increment state version.
     // Note: we deliberately do NOT null the node visit assignee here because the
     // database enforces a CHECK constraint that non-terminal node visits must have

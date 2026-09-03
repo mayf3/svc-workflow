@@ -59,6 +59,13 @@ fn node_kind(node: &NodeDefinition) -> Result<MinimalNodeKind, GraphValidationEr
         )),
         NodeType::NORMAL => Ok(MinimalNodeKind::Task),
         NodeType::TERMINAL => Ok(MinimalNodeKind::Terminal),
+        NodeType::TASK => Err(GraphValidationError::new(
+            "v2_node_task_forbidden",
+            format!(
+                "V2 node '{}' uses TASK; that node type belongs to the                  VISIT_ACTIVATION_V1 semantic model, not Minimal",
+                node.node_key
+            ),
+        )),
     }
 }
 

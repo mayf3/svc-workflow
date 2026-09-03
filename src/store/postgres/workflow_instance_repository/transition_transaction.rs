@@ -24,6 +24,7 @@ use super::transition_receipt::{
     self, complete_transition_receipt, try_insert_transition_receipt,
     write_transition_attempt_audit, TransitionReplayResult,
 };
+use super::activation_facts;
 use super::transition_validation;
 use super::transition_validation::{
     lock_instance, read_current_visit, read_semantic_model_version, read_source_node,
@@ -54,6 +55,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     let event_id = Uuid::new_v4();
     let submission_id = Uuid::new_v4();
     let audit_id = Uuid::new_v4();
+    let target_activation_id = Uuid::new_v4();
     // ---------------------------------------------------------------
     // Step 1: Insert command receipt (idempotency gate)
     // ---------------------------------------------------------------
@@ -230,6 +232,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
         read_semantic_model_version(&mut tx, instance.definition_version_id).await
     );
     let is_minimal = semantic_model_version == 2;
+    let is_visit_activation = semantic_model_version == 3;
 
     // ---------------------------------------------------------------
     // Step 9: Read source node definition (for primary check)
@@ -371,6 +374,36 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // ---------------------------------------------------------------
+    // Step 11b: VISIT_ACTIVATION_V1 fail-closed node-kind checks
+    // ---------------------------------------------------------------
+    if is_visit_activation {
+        // New-model graphs contain exactly TASK | TERMINAL; anything else on
+        // a v1 instance is invariant drift and must not transition.
+        if source_node.node_type_enum() != NodeType::TASK {
+            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
+                "VISIT_ACTIVATION_V1 source node is not a TASK".to_string(),
+            ));
+        }
+        let target_is_task_or_terminal = matches!(
+            target_node.node_type_enum(),
+            NodeType::TASK | NodeType::TERMINAL
+        );
+        if !target_is_task_or_terminal {
+            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
+                "VISIT_ACTIVATION_V1 target node is neither TASK nor TERMINAL".to_string(),
+            ));
+        }
+        if target_node.assignee_ref_type_enum()
+            == Some(crate::domain::enums::AssigneeRefType::InstanceInputPrincipal)
+        {
+            deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                "VISIT_ACTIVATION_V1 target uses INSTANCE_INPUT_PRINCIPAL, which is not                  in the new-model owner reference set"
+                    .to_string(),
+            ));
+        }
+    }
+
+    // ---------------------------------------------------------------
     // Step 12: Handle Submission
     // ---------------------------------------------------------------
     let has_submission_schema = transition.submission_schema.is_some();
@@ -440,6 +473,21 @@ pub(crate) async fn execute_workflow_transition_atomically(
         )
         .await
     );
+    if is_visit_activation {
+        if let Some(owner_id) = target_assignee_id {
+            let owner_type_check = activation_facts::validate_owner_is_human_or_agent(
+                &mut tx,
+                owner_id,
+            )
+            .await
+            .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if let Err(reason) = owner_type_check {
+                deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    reason
+                ));
+            }
+        }
+    }
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number
@@ -459,6 +507,29 @@ pub(crate) async fn execute_workflow_transition_atomically(
 
     // All deterministic validation is complete. Runtime fact writes start here;
     // any following error rolls back the receipt and all partial facts.
+    //
+    // VISIT_ACTIVATION_V1: close the source TASK activation in this same
+    // transaction before any new fact is written. A missing or already
+    // closed activation is invariant drift and aborts the command.
+    if is_visit_activation {
+        let closed = activation_facts::close_activation_by_visit_required(
+            &mut tx,
+            instance_uuid,
+            instance.current_node_visit_id,
+            activation_facts::CLOSURE_REASON_TRANSITIONED,
+            _actual_command_id,
+            Some(event_id),
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        if !closed {
+            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
+                "VISIT_ACTIVATION_V1 source visit has no active activation to close"
+                    .to_string(),
+            ));
+        }
+    }
+
     if let Some(payload) = &cmd.submission_payload {
         transition_helpers::insert_submission(
             &mut tx,
@@ -483,6 +554,36 @@ pub(crate) async fn execute_workflow_transition_atomically(
         transition.transition_id,
     )
     .await?;
+
+    // VISIT_ACTIVATION_V1: the target TASK gets its canonical activation in
+    // this same transaction; TERMINAL targets create none. The kind derives
+    // only from the resolved canonical Principal type.
+    if is_visit_activation && target_assignee_id.is_some() {
+        let owner_id = target_assignee_id.unwrap();
+        let owner_type: (String,) = sqlx::query_as(
+            "SELECT principal_type::text FROM principals WHERE principal_id = $1",
+        )
+        .bind(owner_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        let activation_kind = if owner_type.0 == "AGENT" {
+            crate::domain::enums::ActivationKind::DispatchIntent
+        } else {
+            crate::domain::enums::ActivationKind::HumanWorkItem
+        };
+        activation_facts::insert_activation(
+            &mut tx,
+            target_activation_id,
+            instance_uuid,
+            new_node_visit_id,
+            activation_kind,
+            owner_id,
+            _actual_command_id,
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    }
 
     // ---------------------------------------------------------------
     // Step 16: Update WorkflowInstance projection
