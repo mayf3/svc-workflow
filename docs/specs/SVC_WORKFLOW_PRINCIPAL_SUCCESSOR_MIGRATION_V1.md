@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1
-status: accepted
+status: proposed
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -25,7 +25,11 @@ source_spec_revision: 6f1f546787bd5fb1644ec91327d3e7374dc28165
 source_spec_authoring_base: 8cda3d05e1c22814b7aeaace97d317380df83836
 semantic_delta_from_source: AUTHORITY_ALIGNMENT_ONLY
 migration_kind: ONE_TIME_SUCCESSOR
-implementation_authority_activation: accepted_on_main
+amendment_id: SUCCESSOR_RECOVERY_REPLAY_CLOSURE_1
+amendment_base_head: 9ba2d87e94f6d39ffdd6986b5a434546cb91d90c
+amendment_owner_decision: ALLOW_MINIMAL_EVENT_REPLAY_CLOSURE_EXPANSION
+amendment_semantic_delta: MINIMAL_RECOVERY_REPLAY_CLOSURE_ONLY
+implementation_authority_activation: pending_amendment_acceptance_on_main
 production_apply_authorized_now: false
 merge_required_for_activation: true
 ---
@@ -55,7 +59,23 @@ CURRENT_AUTHORING_BASE = 6d4e117bfe8b41b82cf74d4e839125ffc4ee7261
 SEMANTIC_DELTA_FROM_6F1F546 = AUTHORITY_ALIGNMENT_ONLY
 ```
 
-All migration behavior frozen by the source proposal is preserved. The reviewed-to-finalized change is lifecycle-only: `status: accepted` and the corresponding activation wording. Under repository lifecycle, the declared `implementation_authority: contracts` becomes active only when this exact accepted head is present on `main`. Acceptance and merge do not themselves perform implementation; production apply remains a separate later execution gate.
+All migration behavior frozen by the source proposal is preserved. The previously accepted revision remains active on `main`; this docs-only amendment candidate is `status: proposed` and does not authorize resumed implementation until independently reviewed, accepted, and merged. Production apply remains a separate later execution gate.
+
+### 0.1 Minimal recovery replay closure amendment
+
+Implementation evidence at base `9ba2d87e94f6d39ffdd6986b5a434546cb91d90c` shows that Admin Recovery replay rejects every unrecognized event type in `src/store/postgres/admin_recovery_repository/event_replay.rs`. Without one bounded replay case, the dedicated legal event required by this Spec, `PRINCIPAL_SUCCESSOR_MIGRATION_COMMITTED`, would make recovery replay fail for the migrated instance.
+
+Owner decision:
+
+```text
+AMENDMENT_ID = SUCCESSOR_RECOVERY_REPLAY_CLOSURE_1
+OWNER_DECISION = ALLOW_MINIMAL_EVENT_REPLAY_CLOSURE_EXPANSION
+ADD_IMPLEMENTATION_FILE = src/store/postgres/admin_recovery_repository/event_replay.rs
+SEMANTIC_DELTA = MINIMAL_RECOVERY_REPLAY_CLOSURE_ONLY
+OTHER_ACCEPTED_CONTRACTS_CHANGED = NO
+```
+
+The amendment adds only replay/recovery recognition for the already-required successor event and expands the implementation closure from three files to four. It does not change the fixed Principal pair, Domain or responsibility eligibility, transaction, audit, history, NOOP, API, handoff/delegation, or production execution contracts.
 
 ## 1. Decision summary
 
@@ -357,6 +377,24 @@ This is a new successor event/visit/receipt chain. It is not an emergency overri
 
 After the projection changes, the OLD visit remains historical provenance. All earlier visits, events, receipts, submissions, and context revisions remain unchanged.
 
+### 9.1 Admin Recovery replay semantics
+
+`src/store/postgres/admin_recovery_repository/event_replay.rs` MUST recognize exactly `PRINCIPAL_SUCCESSOR_MIGRATION_COMMITTED` in addition to its existing event set. This is recovery compatibility for the event already required above, not a second mutation path.
+
+When replay reaches the successor event, it MUST fail closed unless all of the following are true:
+
+- the generic event sequence/schema/state-version checks already enforced by replay pass;
+- `command_id`, source visit, target visit, and current context revision are present, while submission, transition effect, causation, and correlation remain absent as frozen above;
+- the source visit is replay's current visit and belongs to the same instance;
+- the target visit belongs to the same instance, is different from the source, is on the same node, and is assigned to the exact NEW principal;
+- `from_node_id` and `to_node_id` both equal that same source/target node;
+- event data and digest identify the fixed migration, exact OLD/NEW pair, reason `PRINCIPAL_SUCCESSOR`, and the same source/target visit IDs;
+- the current context revision is unchanged.
+
+A valid replay introduces the already-append-only target visit into replay provenance, advances only the reconstructed current-visit projection and state version, and leaves every prior Visit/Event/Receipt/Context/Submission fact unchanged. It MUST NOT issue a migration write, update a historical Visit, manufacture a replacement event, or reinterpret the successor event as a workflow Transition or `ADMIN_EMERGENCY_OVERRIDE`.
+
+No HTTP route, SDK surface, ordinary reassignment command, handoff/delegation behavior, arbitrary Principal pair, broader Domain set, or production apply authority is added by this replay case.
+
 ## 10. Durable audit and exact-rerun NOOP
 
 ### 10.1 First successful execution
@@ -424,31 +462,34 @@ Database immutability triggers provide an additional mechanical guard for visits
 
 ## 12. Minimal implementation closure
 
-Implementation is frozen to three files:
+Implementation is frozen to four files:
 
 1. `src/bin/one_time_principal_successor_migration_v1.rs`: offline plan/apply tool with compiled OLD/NEW/spec/migration constants, canonical plan validation, serializable transaction, successor writes, audit, and exact NOOP.
 2. `scripts/run_principal_successor_migration_v1_conformance.sh`: disposable PostgreSQL runner that creates an isolated database, applies existing migrations, executes the focused tests/tool scenarios from a clean fixed SHA, and always drops the database.
-3. `tests/26_principal_successor_migration_v1.rs`: focused integration/conformance tests that invoke the actual binary and inspect PostgreSQL facts.
+3. `tests/26_principal_successor_migration_v1.rs`: focused integration/conformance tests that invoke the actual binary, inspect PostgreSQL facts, and exercise successor-event Admin Recovery replay. Replay tests remain in this existing test file; no additional test file is authorized.
+4. `src/store/postgres/admin_recovery_repository/event_replay.rs`: the minimal production closure that recognizes and fail-closed validates `PRINCIPAL_SUCCESSOR_MIGRATION_COMMITTED` during recovery replay exactly as specified in section 9.1.
 
 Cargo automatically discovers `src/bin/*.rs`; integration tests invoke the actual target through `CARGO_BIN_EXE_one_time_principal_successor_migration_v1`, so no `Cargo.toml` edit is expected. Plan fixtures are created only in disposable paths outside the checkout. No migration file is permitted.
 
-Fault injection is compiled only when the runner supplies a dedicated custom Rust cfg (for example `RUSTFLAGS="--cfg successor_migration_conformance"`). The binary must compile all fault hooks out of ordinary/release builds; under the conformance cfg it accepts only enumerated phase names, requires the disposable test database identity, and aborts the current transaction at that phase. A Cargo feature is forbidden because it would require a fourth `Cargo.toml` change.
+Fault injection is compiled only when the runner supplies a dedicated custom Rust cfg (for example `RUSTFLAGS="--cfg successor_migration_conformance"`). The binary must compile all fault hooks out of ordinary/release builds; under the conformance cfg it accepts only enumerated phase names, requires the disposable test database identity, and aborts the current transaction at that phase. A Cargo feature and any fifth implementation file are forbidden without another Owner-approved Spec amendment.
 
 ```text
-IMPLEMENTATION_FILES = 3
+IMPLEMENTATION_FILES = 4
+ADDED_IMPLEMENTATION_FILE = src/store/postgres/admin_recovery_repository/event_replay.rs
+OWNER_DECISION = ALLOW_MINIMAL_EVENT_REPLAY_CLOSURE_EXPANSION
 OWNER_DECISION_REQUIRED = NO
 ```
 
-If implementation cannot be completed in these three files, work stops before creating a fourth file and reports:
+If implementation cannot be completed in these four files, work stops before creating a fifth file and reports:
 
 ```text
 OWNER_DECISION_REQUIRED = YES
-PROPOSED_FOURTH_FILE = <exact path>
+PROPOSED_FIFTH_FILE = <exact path>
 WHY_UNAVOIDABLE = <specific reason>
 SCOPE_IMPACT = <specific impact>
 ```
 
-No implementation agent may self-authorize that expansion.
+No implementation agent may self-authorize any further expansion.
 
 ## 13. Required tests and acceptance matrix
 
@@ -468,7 +509,8 @@ The disposable PostgreSQL suite must cover at least:
 12. test fixture representing the legacy 5,583 archive remains untouched and the tool contains no import/database-switch path;
 13. source SHA mismatch or dirty checkout fails before database access;
 14. concurrent apply attempts serialize to one applied result plus one exact NOOP (or one explicit serialization conflict followed by an exact NOOP), with one audit total;
-15. post-implementation production acceptance uses the real Feishu `agt_cto-agent` identity and the capabilities below.
+15. post-implementation production acceptance uses the real Feishu `agt_cto-agent` identity and the capabilities below;
+16. Admin Recovery replay accepts the exact valid successor event, reconstructs the NEW current visit/version without rewriting history, and rejects malformed successor events covering each section 9.1 invariant.
 
 No production test or apply runs during implementation review.
 
@@ -521,8 +563,10 @@ Independent review must explicitly confirm:
 - exact rerun NOOP;
 - legacy 5,583 archive exclusion;
 - real Feishu Domains/Tasks acceptance;
-- three-file implementation closure;
-- lifecycle activation authorizes only the bounded implementation Contracts, performs no implementation, and leaves production apply unauthorized.
+- four-file implementation closure with only the minimal successor-event recovery replay addition;
+- replay preserves append-only provenance and rejects malformed successor events;
+- all other accepted migration semantics remain unchanged;
+- amendment acceptance authorizes only the bounded implementation Contracts, performs no implementation, and leaves production apply unauthorized.
 
 ## 16. Final frozen fields
 
@@ -554,18 +598,25 @@ LEGACY_5583_IN_SCOPE = NO
 
 TRANSACTION_MODEL = ONE_POSTGRESQL_SERIALIZABLE_TRANSACTION
 NOOP_MODEL = EXACT_RECEIPT_EVENT_AUDIT_CHAIN_AND_POSTSTATE_MATCH
-IMPLEMENTATION_FILES = 3
+IMPLEMENTATION_FILES = 4
+ADDED_IMPLEMENTATION_FILE = src/store/postgres/admin_recovery_repository/event_replay.rs
 
-STATUS = accepted
-INDEPENDENT_REVIEW_RESULT = PASS
-REQUIRED_FIXES = NONE
-SEMANTIC_DELTA_AFTER_REVIEW = LIFECYCLE_ONLY
+PREVIOUS_ACCEPTED_SPEC_HEAD = 1055b71d4c5fc2566c83716b9e845778f95cc8dc
+AMENDMENT_BASE_HEAD = 9ba2d87e94f6d39ffdd6986b5a434546cb91d90c
+AMENDMENT_ID = SUCCESSOR_RECOVERY_REPLAY_CLOSURE_1
+OWNER_DECISION = ALLOW_MINIMAL_EVENT_REPLAY_CLOSURE_EXPANSION
+SEMANTIC_DELTA = MINIMAL_RECOVERY_REPLAY_CLOSURE_ONLY
+
+STATUS = proposed
+READY_FOR_INDEPENDENT_REVIEW = YES
+INDEPENDENT_REVIEW_RESULT = PENDING
 IMPLEMENTATION_AUTHORITY = contracts
-IMPLEMENTATION_AUTHORITY_ACTIVATION = ACCEPTED_ON_MAIN
-IMPLEMENTATION_PERFORMED = NO
+IMPLEMENTATION_AUTHORITY_ACTIVATION = PENDING_AMENDMENT_ACCEPTANCE_ON_MAIN
+IMPLEMENTATION_RESUME_AUTHORIZED_NOW = NO
+IMPLEMENTATION_PERFORMED_IN_THIS_PR = NO
 PRODUCTION_APPLY_AUTHORIZED_NOW = NO
-MERGE_REQUIRED_FOR_ACTIVATION = YES
+MERGE_PERFORMED = NO
 PRODUCTION_CHANGE = NONE
 ```
 
-End of accepted Spec. Merge of this exact accepted head activates only its bounded implementation Contracts; it performs no implementation or database write and does not authorize production apply.
+End of proposed docs-only amendment. No production implementation may resume until this exact amendment is independently reviewed, accepted, and merged; production apply remains unauthorized.
