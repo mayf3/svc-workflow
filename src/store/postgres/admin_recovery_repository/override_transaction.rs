@@ -300,8 +300,26 @@ pub async fn admin_emergency_override(
         }
         Err(error) => return Err(error),
     };
+    // VISIT_ACTIVATION_V1 model detection (activation closure/creation duties
+    // of CTR-ARCH-019 / CTR-VAI-007 apply only to model 3 instances).
+    let (semantic_model_version,): (i16,) = sqlx::query_as(
+        "SELECT semantic_model_version FROM workflow_definition_versions \
+         WHERE definition_version_id = $1",
+    )
+    .bind(instance.definition_version_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    let is_visit_activation = semantic_model_version == 3;
+
     let (assignee, effect) = match command.operation {
         AdminEmergencyOperation::MoveToNode => {
+            if is_visit_activation && target.node_type != "TASK" {
+                let error = RecoveryError::InvalidTarget(
+                    "VISIT_ACTIVATION_V1 MOVE_TO_NODE target must be a TASK node".to_string(),
+                );
+                return commit_failure(tx, command_id, &command, request_hash, error).await;
+            }
             let assignee = match authorization::resolve_non_terminal_assignee(
                 &mut tx,
                 &target,
@@ -317,6 +335,18 @@ pub async fn admin_emergency_override(
                 ) => return commit_failure(tx, command_id, &command, request_hash, error).await,
                 Err(error) => return Err(error),
             };
+            if is_visit_activation {
+                let owner_type_check =
+                    crate::store::postgres::workflow_instance_repository::activation_facts::validate_owner_is_human_or_agent(
+                        &mut tx, assignee,
+                    )
+                    .await
+                    .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+                if let Err(reason) = owner_type_check {
+                    let error = RecoveryError::AssigneeResolutionFailed(reason);
+                    return commit_failure(tx, command_id, &command, request_hash, error).await;
+                }
+            }
             (Some(assignee), "ADVANCE")
         }
         AdminEmergencyOperation::TerminateInstance => {
@@ -374,6 +404,33 @@ pub async fn admin_emergency_override(
     )
     .await
     .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    // VISIT_ACTIVATION_V1: close the source activation in this same
+    // transaction before the new Visit fact is written (fail closed on
+    // missing/closed drift). The closure Event FK is deferred.
+    if is_visit_activation {
+        let closed = crate::store::postgres::workflow_instance_repository::activation_facts::close_activation_by_visit_required(
+            &mut tx,
+            instance_id,
+            source_visit_id,
+            if command.operation == AdminEmergencyOperation::MoveToNode {
+                crate::store::postgres::workflow_instance_repository::activation_facts::CLOSURE_REASON_ADMIN_MOVE
+            } else {
+                crate::store::postgres::workflow_instance_repository::activation_facts::CLOSURE_REASON_ADMIN_TERMINATE
+            },
+            command_id,
+            None,
+        )
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+        if !closed {
+            let error = RecoveryError::InvalidImmutableFacts(
+                "VISIT_ACTIVATION_V1 source visit has no active activation to close"
+                    .to_string(),
+            );
+            return commit_failure(tx, command_id, &command, request_hash, error).await;
+        }
+    }
+
     sqlx::query(
         "INSERT INTO workflow_node_visits
          (node_visit_id, workflow_instance_id, node_id, visit_number,
@@ -388,6 +445,37 @@ pub async fn admin_emergency_override(
     .execute(&mut *tx)
     .await
     .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+
+    // VISIT_ACTIVATION_V1: the target TASK Visit receives its canonical
+    // activation in this same transaction; TERMINATE creates none.
+    if is_visit_activation {
+        if let Some(owner_id) = assignee {
+            let activation_id = Uuid::new_v4();
+            let owner_type: (String,) = sqlx::query_as(
+                "SELECT principal_type::text FROM principals WHERE principal_id = $1",
+            )
+            .bind(owner_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+            let activation_kind = if owner_type.0 == "AGENT" {
+                crate::domain::enums::ActivationKind::DispatchIntent
+            } else {
+                crate::domain::enums::ActivationKind::HumanWorkItem
+            };
+            crate::store::postgres::workflow_instance_repository::activation_facts::insert_activation(
+                &mut tx,
+                activation_id,
+                instance_id,
+                target_visit_id,
+                activation_kind,
+                owner_id,
+                command_id,
+            )
+            .await
+            .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+        }
+    }
 
     let affected = sqlx::query(
         "UPDATE workflow_instances SET current_node_visit_id = $2,

@@ -74,6 +74,27 @@ pub(crate) async fn check_global_workflow_read_role(
     .map_err(storage)
 }
 
+/// The fail-closed server-side mapping of the V6 `GLOBAL_SCHEDULER_READ`
+/// product capability: only an enabled `GLOBAL_SCHEDULER_READ` binding
+/// satisfies it. Existing GLOBAL_WORKFLOW_READER / GLOBAL_WORKFLOW_COORDINATOR
+/// bindings are NOT mapped onto it (V6 §8; no automatic role mapping).
+pub(crate) async fn check_global_scheduler_read(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(
+           SELECT 1 FROM global_role_bindings
+           WHERE principal_id = $1
+             AND role_key = 'GLOBAL_SCHEDULER_READ'
+             AND enabled = TRUE)",
+    )
+    .bind(actor)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)
+}
+
 pub async fn begin_snapshot(
     pool: &PgPool,
 ) -> Result<Transaction<'_, Postgres>, WorkflowQueryError> {

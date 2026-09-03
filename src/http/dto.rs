@@ -341,3 +341,31 @@ pub struct ReplaceOwnerRequest {
 pub struct RevokeRoleBindingRequest {
     pub role_key: String,
 }
+
+// ---------------------------------------------------------------------------
+// VISIT_ACTIVATION_V1 (SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WakeDispatchIntentRequest {
+    pub expected_workflow_state_version: i32,
+    #[serde(default)]
+    pub cause: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WakeDispatchIntentResponse {
+    pub wake_applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub workflow_instance_id: Uuid,
+    pub node_visit_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflow_state_version: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_sequence: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_eligible_at: Option<String>,
+}
