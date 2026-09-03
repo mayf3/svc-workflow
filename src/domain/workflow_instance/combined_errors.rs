@@ -21,6 +21,9 @@ pub enum ReviseContextAndTransitionError {
         actual: i32,
     },
     TransitionNotApplicable(String),
+    /// VISIT_ACTIVATION_V1: legacy-only combined command on a new-model
+    /// instance (deterministic 422, CTR-VAI-012).
+    LegacyCommandNotSupported,
     ContextValidationFailed(String),
     SubmissionValidationFailed(String),
     SizeLimitExceeded(String),
@@ -54,6 +57,12 @@ impl fmt::Display for ReviseContextAndTransitionError {
             ),
             Self::TransitionNotApplicable(detail) => {
                 write!(f, "transition not applicable: {}", detail)
+            }
+            Self::LegacyCommandNotSupported => {
+                write!(
+                    f,
+                    "legacy-only command is not defined for VISIT_ACTIVATION_V1 instances"
+                )
             }
             Self::ContextValidationFailed(detail) => {
                 write!(f, "context validation failed: {}", detail)
@@ -100,7 +109,8 @@ pub fn error_code(error: &ReviseContextAndTransitionError) -> i32 {
         | ReviseContextAndTransitionError::WorkflowStateVersionConflict { .. }
         | ReviseContextAndTransitionError::TransitionNotApplicable(_)
         | ReviseContextAndTransitionError::IdempotencyConflict { .. } => 409,
-        ReviseContextAndTransitionError::ContextValidationFailed(_)
+        ReviseContextAndTransitionError::LegacyCommandNotSupported
+        | ReviseContextAndTransitionError::ContextValidationFailed(_)
         | ReviseContextAndTransitionError::SubmissionValidationFailed(_)
         | ReviseContextAndTransitionError::AssigneeResolutionFailed(_) => 422,
         ReviseContextAndTransitionError::SizeLimitExceeded(_) => 413,
@@ -127,6 +137,9 @@ pub fn error_label(error: &ReviseContextAndTransitionError) -> &'static str {
             "workflow_state_version_conflict"
         }
         ReviseContextAndTransitionError::TransitionNotApplicable(_) => "transition_not_applicable",
+        ReviseContextAndTransitionError::LegacyCommandNotSupported => {
+            "legacy_command_not_supported_for_semantic_model"
+        }
         ReviseContextAndTransitionError::ContextValidationFailed(_) => "context_validation_failed",
         ReviseContextAndTransitionError::SubmissionValidationFailed(_) => {
             "submission_validation_failed"
@@ -206,6 +219,9 @@ impl From<ReviseWorkflowContextError> for ReviseContextAndTransitionError {
             ReviseWorkflowContextError::CurrentNodeNotDraft => Self::CurrentNodeNotDraft,
             ReviseWorkflowContextError::DefinitionVersionRevoked => Self::DefinitionVersionRevoked,
             ReviseWorkflowContextError::DefinitionVersionDraft => Self::DefinitionVersionDraft,
+            ReviseWorkflowContextError::LegacyCommandNotSupported => {
+                Self::LegacyCommandNotSupported
+            }
             ReviseWorkflowContextError::WorkflowStateVersionConflict { expected, actual } => {
                 Self::WorkflowStateVersionConflict { expected, actual }
             }

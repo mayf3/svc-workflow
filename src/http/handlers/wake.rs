@@ -25,9 +25,10 @@ async fn require_global_scheduler_read(
     state: &AppState,
     principal: &AuthenticatedPrincipal,
 ) -> Result<(), ApiError> {
+    let actor = principal.principal_id.into_uuid();
     let has_role = crate::store::postgres::provisioning_repository::check_global_scheduler_read(
         &state.pool,
-        principal.principal_id.into_uuid(),
+        actor,
     )
     .await
     .map_err(|e| {
@@ -35,6 +36,18 @@ async fn require_global_scheduler_read(
         ApiError::service_unavailable("service_unavailable", "storage is unavailable")
     })?;
     if !has_role {
+        // Authenticated-denied protected activation operation: durable
+        // non-sensitive audit (CTR-ARCH-039 / CTR-VAI-014).
+        let _ = sqlx::query(
+            "INSERT INTO workflow_security_audits
+                 (audit_id, principal_id, action, resource_type, details)
+             VALUES ($1, $2, 'WAKE_DISPATCH_INTENT_DENIED', 'WAKE', $3)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(actor)
+        .bind(serde_json::json!({ "reason": "scheduler_read_role_required" }))
+        .execute(&state.pool)
+        .await;
         return Err(ApiError::new(
             axum::http::StatusCode::FORBIDDEN,
             "scheduler_read_role_required",
