@@ -21,6 +21,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Read-side eligibility classification of the current work item.
+///
+/// Wire shape (adjacently tagged): `{"classification":"ACTIONABLE_NOW"}` or
+/// `{"classification":"WAITING_FOR_TIME","nextEligibleAt":"<RFC3339>"}` —
+/// the waiting case carries the effective instant so dispatchers know when
+/// the SAME work turns actionable without a second call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "classification", content = "nextEligibleAt", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkEligibility {
@@ -30,7 +35,7 @@ pub enum WorkEligibility {
     ActionableNow,
     /// The DISPATCH_INTENT activation holds an effective instant in the
     /// future; the SAME work becomes actionable when it is due.
-    WaitingForTime,
+    WaitingForTime(DateTime<Utc>),
 }
 
 /// Internal wide row: what the shared SQL lateral join returns per visit.
@@ -51,7 +56,9 @@ impl EligibilityFactRow {
             // No activation row: pre-0023 legacy work remains actionable.
             (None, _) => WorkEligibility::ActionableNow,
             (Some(_), Some("DISPATCH_INTENT")) => match self.effective_next_eligible_at {
-                Some(effective) if effective > now => WorkEligibility::WaitingForTime,
+                Some(effective) if effective > now => {
+                    WorkEligibility::WaitingForTime(effective)
+                }
                 _ => WorkEligibility::ActionableNow,
             },
             // Open HUMAN_WORK_ITEM activation: timerless by schema CHECK.
@@ -126,7 +133,10 @@ mod tests {
     #[test]
     fn waiting_for_time_carries_future_instant() {
         let future = now() + chrono::Duration::hours(2);
-        assert_eq!(row(Some("DISPATCH_INTENT"), true, Some(future)).classify(now()), WorkEligibility::WaitingForTime);
+        assert_eq!(
+            row(Some("DISPATCH_INTENT"), true, Some(future)).classify(now()),
+            WorkEligibility::WaitingForTime(future)
+        );
     }
 
     #[test]
@@ -142,5 +152,23 @@ mod tests {
         // cannot happen for an open DISPATCH_INTENT. Fail open to actionable
         // rather than inventing a waiting state from nothing.
         assert_eq!(row(Some("DISPATCH_INTENT"), true, None).classify(now()), WorkEligibility::ActionableNow);
+    }
+
+    #[test]
+    fn wire_shape_round_trips_with_next_eligible_at_content() {
+        // B-1 regression: the waiting case MUST serialize its content and
+        // accept it back — unit variants silently drop serde content.
+        let future = now() + chrono::Duration::hours(3);
+        let waiting = row(Some("DISPATCH_INTENT"), true, Some(future)).classify(now());
+        let json = serde_json::to_value(waiting).expect("serialize");
+        assert_eq!(json["classification"], "WAITING_FOR_TIME");
+        assert!(json.get("nextEligibleAt").is_some(), "nextEligibleAt content missing on wire: {json}");
+        let back: WorkEligibility = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(back, waiting);
+        // The actionable case stays a bare classification tag.
+        let actionable = serde_json::to_value(WorkEligibility::ActionableNow).unwrap();
+        assert_eq!(actionable, serde_json::json!({"classification": "ACTIONABLE_NOW"}));
+        let back_actionable: WorkEligibility = serde_json::from_value(actionable).unwrap();
+        assert_eq!(back_actionable, WorkEligibility::ActionableNow);
     }
 }
