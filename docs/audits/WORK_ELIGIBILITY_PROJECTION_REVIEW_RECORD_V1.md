@@ -115,3 +115,38 @@ Frontmatter of `docs/specs/SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1.md`: `sta
 ## Reviewer hygiene statement
 
 No pushes, no merges, no production access. Only writes: this review record file, plus a throwaway test file (created, executed, deleted) and a temp git worktree (created, tested, removed) strictly for verification. Working tree of the review target is clean apart from this record.
+
+---
+
+# RE-AUDIT (fix-once phase) — 2026-09-05
+
+- scope: BLOCKER B-1 fix + no-regression spot-check of prior PASS checkpoints, per re-audit mandate.
+- fix commit: `7c270c7` (`WORK_ELIGIBILITY_PROJECTION_B1_FIX`), on top of reviewed head `d1ec1dc` (spec) / `cfb0134` (impl). At re-audit start the fix was an uncommitted working-tree delta to `eligibility.rs` only; it was committed mid-audit (contents byte-identical to what was tested).
+- delta verified: `git diff d1ec1dc..7c270c7` = exactly `src/application/workflow_instance/eligibility.rs` (+34/−3 by content) plus this audit record file. NO other file changed — no SQL, no migration, no broker file, no spec text, no Cargo.toml. All prior checkpoint conclusions (1-2, 4-8) are structurally unaffected; spot-checked and holding.
+
+## B-1 resolution — VERIFIED FIXED
+
+1. **Type change** (eligibility.rs): `WaitingForTime` is now a newtype variant `WaitingForTime(chrono::DateTime<Utc>)`; `classify` constructs `WorkEligibility::WaitingForTime(effective)` from the same `effective > now` guard (no semantic change — the instant it previously computed and dropped is now carried); doc comment freezes the exact wire shape.
+2. **Independent wire-string check** (throwaway integration test, run then deleted; tree clean after):
+   - `serde_json::to_string(WorkEligibility::WaitingForTime(2026-09-05T12:00:00Z))` → `{"classification":"WAITING_FOR_TIME","nextEligibleAt":"2026-09-05T12:00:00Z"}` — exactly the spec §3 promise (adjacently tagged, RFC3339 content).
+   - `serde_json::to_string(WorkEligibility::ActionableNow)` → `{"classification":"ACTIONABLE_NOW"}` (bare tag).
+   - Both deserialize back with equality — round-trip clean, including the previously-rejected content-bearing payload case.
+3. **Permanent regression coverage**: new unit test `wire_shape_round_trips_with_next_eligible_at_content` asserts classification tag + `nextEligibleAt` presence via `serde_json::Value`, round-trips both variants, and pins the ACTIONABLE_NOW bare-tag shape. B-1 cannot silently regress.
+4. **Tests re-run by reviewer**:
+   - `cargo test --lib eligibility` → **8/8 ok** (7 prior + 1 new regression test).
+   - `cargo test --lib` (full lib binary) → **171 passed, 0 failed**.
+   - Full `cargo test` in THIS reviewer environment: lib binary 171/0, then the suite aborts at `00_upgrade_verification` (`28P01` password authentication to local PostgreSQL) under cargo's fail-fast default; with `--no-fail-fast` all DB-dependent integration binaries fail on the same 28P01 — this reviewer shell has no working local PostgreSQL credentials. This is the identical environment failure A/B-verified on pristine `c4f1fa8` during the original audit; the fix delta touches no DB path, so it cannot affect those tests. The implementer's run reports full suite **171 passed / 0 failed** (upgrade test included) with working credentials — consistent with a unit-only delta. No regression signal.
+
+## Non-blocking notes carried forward / added
+
+- N1 (carried, unchanged): timeline vs current-visit duality in instance detail (disclosed spec §5).
+- N2 (carried, unchanged): clock-at-mapping-time microsecond straddle (disclosed spec §5).
+- N3 (carried, unchanged): per-site join-alias coupling of the eligibility SQL (documented, correct at all three sites).
+- N4 (new, process): fix commit message says "eligibility.rs delta ONLY ... no other file touched" but `7c270c7` also committed this audit record file (`docs/audits/`). Cosmetic commit-message inaccuracy; no code impact.
+- N5 (new, acceptance action item): spec frontmatter still pins `implementation_head: cfb0134`; the implementation is now `7c270c7`. At spec acceptance the implementation_head must be amended to the fixed head (or a successor commit) so the accepted authority pins what actually ships.
+
+## RE-AUDIT VERDICT: PASS
+
+- BLOCKER_UNION: **empty** (B-1 resolved and permanently regression-tested).
+- All non-blocking findings are documentation/process notes; none blocks shipping.
+- Authorization state unchanged by this re-audit: spec remains `proposed` with `implementation_authority: none`; acceptance must pin the fixed implementation head (N5).
