@@ -51,8 +51,8 @@ pub(crate) struct CreateDraftVersionBody {
     pub json_schema_dialect: Option<String>,
     pub validator_version: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    /// Semantic model version: 1 = Legacy (default), 2 = Minimal.
-    /// Omitted or 1 -> Legacy; 2 -> Minimal; any other value is rejected.
+    /// Semantic model: 1 = Legacy (default), 2 = Minimal, 3 = Visit Activation.
+    /// Omitted or 1 -> Legacy; 2/3 keep their explicit model; others are rejected.
     pub semantic_model_version: Option<i16>,
 }
 
@@ -268,10 +268,11 @@ pub(crate) async fn create_draft_version(
     let semantic_model_version = match payload.semantic_model_version {
         None | Some(1) => 1,
         Some(2) => 2,
+        Some(3) => 3,
         Some(other) => {
             return Err(ApiError::unprocessable(
                 "invalid_semantic_model_version",
-                "semanticModelVersion must be 1 (Legacy) or 2 (Minimal)",
+                "semanticModelVersion must be 1 (Legacy), 2 (Minimal), or 3 (Visit Activation)",
             )
             .with_details(serde_json::json!({ "provided": other })));
         }
