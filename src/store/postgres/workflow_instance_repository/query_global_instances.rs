@@ -62,10 +62,26 @@ struct GlobalInstanceRow {
     title: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
+    activation_kind: Option<String>,
+    open_activation_id: Option<Uuid>,
+    effective_next_eligible_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl GlobalInstanceRow {
+    fn eligibility(&self) -> crate::application::workflow_instance::eligibility::WorkEligibility {
+        use crate::application::workflow_instance::eligibility::EligibilityFactRow;
+        EligibilityFactRow {
+            activation_kind: self.activation_kind.clone(),
+            open_activation_id: self.open_activation_id,
+            effective_next_eligible_at: self.effective_next_eligible_at,
+        }
+        .classify(chrono::Utc::now())
+    }
 }
 
 impl From<GlobalInstanceRow> for DomainInstanceSummary {
     fn from(row: GlobalInstanceRow) -> Self {
+        let eligibility = row.eligibility();
         Self {
             workflow_instance_id: row.workflow_instance_id,
             domain_id: row.domain_id,
@@ -83,6 +99,7 @@ impl From<GlobalInstanceRow> for DomainInstanceSummary {
             title: row.title,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            eligibility,
         }
     }
 }
@@ -120,7 +137,10 @@ pub(crate) async fn list_global_instances(
                 nd.node_type::text,
                 (nd.node_type = 'TERMINAL') AS is_terminal,
                 cr.payload->>'title' AS title,
-                wi.created_at, wi.updated_at
+                wi.created_at, wi.updated_at,
+                a_open.activation_kind AS activation_kind,
+                a_open.activation_id AS open_activation_id,
+                eff.effective_next_eligible_at AS effective_next_eligible_at
          FROM workflow_instances wi
          JOIN workflow_definition_versions wdv
            ON wdv.definition_version_id = wi.definition_version_id
@@ -135,6 +155,17 @@ pub(crate) async fn list_global_instances(
          LEFT JOIN workflow_context_revisions cr
            ON cr.context_revision_id = wi.current_context_revision_id
           AND cr.workflow_instance_id = wi.workflow_instance_id
+         LEFT JOIN workflow_activations a_open
+           ON a_open.node_visit_id = v.node_visit_id
+          AND NOT EXISTS (
+            SELECT 1 FROM workflow_activation_closures c
+            WHERE c.activation_id = a_open.activation_id)
+         LEFT JOIN LATERAL (
+           SELECT e.new_next_eligible_at AS effective_next_eligible_at
+           FROM workflow_dispatch_eligibility_events e
+           WHERE e.activation_id = a_open.activation_id
+           ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+           LIMIT 1) eff ON eff.effective_next_eligible_at IS NOT NULL
          WHERE ($1::text IS NULL OR wd.definition_key = $1)
            {lifecycle_clause}
            {status_clause}
