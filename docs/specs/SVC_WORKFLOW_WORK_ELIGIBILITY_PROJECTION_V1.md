@@ -1,13 +1,17 @@
 ---
 spec_id: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
 title: Canonical Work Eligibility Read Projection V1
-status: proposed
+status: accepted
+spec_kind: implementation
+authority_level: governing_spec
+accepted_date: 2026-09-06
 date: 2026-09-05
 type: implementation-spec (read-only projection delta on existing surfaces)
 repo: mayf3/svc-workflow
 base_head: c4f1fa8d9bae7c91d9cc09751cfa8e2195c3911a (github/main == production live)
-implementation_head: 7c270c7 (branch codex/work-eligibility-projection-v1; impl cfb0134 + B-1 wire-shape fix; review record PASS after re-audit)
-implementation_authority: none
+accepted_reviewed_head: 78490a99178c86d648a5aa333f25ddd41dc37888
+final_implementation_head: 7c270c768ea37a5f8f20b2a2c56ede93737e79e3
+implementation_authority: contracts
 production_apply_authority: none
 external_authorities:
   - repository: mayf3/svc-workflow
@@ -21,14 +25,20 @@ supersedes: []
 
 # SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1 — Canonical Work Eligibility Read Projection
 
-> Status: **proposed**. This Spec authorizes no merge and no production apply
-> (`implementation_authority = none`, `production_apply_authority = none`).
-> A complete implementation exists on branch `codex/work-eligibility-projection-v1`
-> @ `7c270c7` (impl `cfb0134` + review B-1 wire-shape fix; independent review
-> record `docs/audits/WORK_ELIGIBILITY_PROJECTION_REVIEW_RECORD_V1.md` = FAIL
-> round 1 with BLOCKER_UNION=[B-1], fixed once, RE-AUDIT **PASS / 0 blockers**;
-> WIP-preservation precedent); acceptance of this Spec is its only
-> authorization path.
+> **ACCEPTED (2026-09-06, Owner exact-head acceptance).** Owner decision
+> ACCEPT EXACT HEAD = YES at `78490a99178c86d648a5aa333f25ddd41dc37888`
+> (remote exact-head stability verified); FINAL_IMPLEMENTATION_HEAD =
+> `7c270c768ea37a5f8f20b2a2c56ede93737e79e3`. Review lifecycle: ROUND_1 FAIL
+> (BLOCKER B-1 serde WAITING_FOR_TIME wire shape) → FIX_ONCE `7c270c7` →
+> RE_AUDIT PASS → FINAL_BLOCKER_UNION = [] (record:
+> `docs/audits/WORK_ELIGIBILITY_PROJECTION_REVIEW_RECORD_V1.md`). Frozen wire
+> contract: `{"classification":"ACTIONABLE_NOW"}` /
+> `{"classification":"WAITING_FOR_TIME","nextEligibleAt":"<RFC3339>"}`.
+> `implementation_authority: none -> contracts`;
+> `production_apply_authority` stays **none** — production deployment of this
+> projection proceeds only under the Owner-dispatched production Goal's slot
+> discipline (REAL_AUTONOMOUS_WORKFLOW_LOOP_V1). No other semantic head may be
+> substituted without a new Owner acceptance.
 
 ## 1. Goal
 
