@@ -202,6 +202,9 @@ pub(crate) async fn load_base(
                 nd.node_type::text AS current_node_type,
                 nd.instructions AS current_node_instructions,
                 nd.primary_advance_transition_id AS current_primary_advance_transition_id,
+                a_open.activation_kind AS activation_kind,
+                a_open.activation_id AS open_activation_id,
+                eff.effective_next_eligible_at AS effective_next_eligible_at,
                 COALESCE(es.event_count, 0) AS event_count,
                 es.min_event_sequence, es.max_event_sequence,
                 es.event_references_consistent
@@ -216,6 +219,17 @@ pub(crate) async fn load_base(
          LEFT JOIN workflow_node_visits nv
            ON nv.node_visit_id = wi.current_node_visit_id
          LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
+         LEFT JOIN workflow_activations a_open
+           ON a_open.node_visit_id = nv.node_visit_id
+          AND NOT EXISTS (
+            SELECT 1 FROM workflow_activation_closures c
+            WHERE c.activation_id = a_open.activation_id)
+         LEFT JOIN LATERAL (
+           SELECT e.new_next_eligible_at AS effective_next_eligible_at
+           FROM workflow_dispatch_eligibility_events e
+           WHERE e.activation_id = a_open.activation_id
+           ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+           LIMIT 1) eff ON eff.effective_next_eligible_at IS NOT NULL
          LEFT JOIN LATERAL (
            SELECT COUNT(*) AS event_count, MIN(event_sequence) AS min_event_sequence,
                   MAX(event_sequence) AS max_event_sequence,

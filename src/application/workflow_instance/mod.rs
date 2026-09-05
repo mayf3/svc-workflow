@@ -9,6 +9,9 @@ pub mod archive;
 pub mod assistance;
 pub mod cancel;
 pub mod create;
+/// Canonical work-eligibility classification shared by read projections
+/// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1).
+pub mod eligibility;
 pub mod execute_transition;
 pub mod idempotency;
 pub mod import;
