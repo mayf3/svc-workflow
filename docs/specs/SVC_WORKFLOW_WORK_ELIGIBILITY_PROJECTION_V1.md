@@ -6,7 +6,7 @@ date: 2026-09-05
 type: implementation-spec (read-only projection delta on existing surfaces)
 repo: mayf3/svc-workflow
 base_head: c4f1fa8d9bae7c91d9cc09751cfa8e2195c3911a (github/main == production live)
-implementation_head: cfb0134 (branch codex/work-eligibility-projection-v1)
+implementation_head: 7c270c7 (branch codex/work-eligibility-projection-v1; impl cfb0134 + B-1 wire-shape fix; review record PASS after re-audit)
 implementation_authority: none
 production_apply_authority: none
 external_authorities:
@@ -24,7 +24,10 @@ supersedes: []
 > Status: **proposed**. This Spec authorizes no merge and no production apply
 > (`implementation_authority = none`, `production_apply_authority = none`).
 > A complete implementation exists on branch `codex/work-eligibility-projection-v1`
-> @ `cfb0134` (WIP-preservation precedent); acceptance of this Spec is its only
+> @ `7c270c7` (impl `cfb0134` + review B-1 wire-shape fix; independent review
+> record `docs/audits/WORK_ELIGIBILITY_PROJECTION_REVIEW_RECORD_V1.md` = FAIL
+> round 1 with BLOCKER_UNION=[B-1], fixed once, RE-AUDIT **PASS / 0 blockers**;
+> WIP-preservation precedent); acceptance of this Spec is its only
 > authorization path.
 
 ## 1. Goal
