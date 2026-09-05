@@ -41,6 +41,9 @@ pub(crate) struct QueryBaseRow {
     pub current_node_type: Option<String>,
     pub current_node_instructions: Option<String>,
     pub current_primary_advance_transition_id: Option<Uuid>,
+    pub activation_kind: Option<String>,
+    pub open_activation_id: Option<Uuid>,
+    pub effective_next_eligible_at: Option<DateTime<Utc>>,
     pub event_count: i64,
     pub min_event_sequence: Option<i32>,
     pub max_event_sequence: Option<i32>,
@@ -48,6 +51,23 @@ pub(crate) struct QueryBaseRow {
 }
 
 impl QueryBaseRow {
+    /// Canonical eligibility classification of the current visit, derived
+    /// from the activation facts already selected by load_base
+    /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1). No activation row
+    /// (pre-0023 legacy work) classifies as actionable, never hidden.
+    pub(crate) fn current_visit_eligibility(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> crate::application::workflow_instance::eligibility::WorkEligibility {
+        use crate::application::workflow_instance::eligibility::EligibilityFactRow;
+        EligibilityFactRow {
+            activation_kind: self.activation_kind.clone(),
+            open_activation_id: self.open_activation_id,
+            effective_next_eligible_at: self.effective_next_eligible_at,
+        }
+        .classify(now)
+    }
+
     pub(crate) fn summary(&self) -> Option<WorkflowInstanceSummary> {
         Some(WorkflowInstanceSummary {
             workflow_instance_id: self.workflow_instance_id,
@@ -121,6 +141,9 @@ impl QueryBaseRow {
                 .then(|| self.current_node_instructions.clone())
                 .flatten(),
             created_at: self.visit_created_at?,
+            // Terminal visits carry no open work; the classifier's
+            // no-open-activation path yields ACTIONABLE_NOW for them.
+            eligibility: self.current_visit_eligibility(chrono::Utc::now()),
         })
     }
 }
@@ -257,6 +280,13 @@ impl VisitRow {
             entered_by_transition_id: self.entered_by_transition_id,
             instructions: include_instructions.then_some(self.instructions).flatten(),
             created_at: self.created_at,
+            // Historical visit listing (instance timeline): only the CURRENT
+            // visit can carry open dispatchable work; any prior visit has by
+            // definition been left via a transition, so its activation (if
+            // any) is closed and its work is actionable/complete history.
+            // Eligibility for dispatch decisions is projected on current-work
+            // surfaces (summaries, detail, worklists), not on the timeline.
+            eligibility: crate::application::workflow_instance::eligibility::WorkEligibility::ActionableNow,
         }
     }
 }

@@ -158,6 +158,11 @@ pub struct NodeVisitItem {
     pub entered_by_transition_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// Canonical eligibility classification of this visit's work, derived
+    /// server-side from existing Visit Activation truth
+    /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1). Terminal visits
+    /// classify as ACTIONABLE_NOW (their instance work is complete).
+    pub eligibility: crate::application::workflow_instance::eligibility::WorkEligibility,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -353,4 +358,9 @@ pub struct DomainInstanceSummary {
     pub title: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Canonical eligibility classification of the current work item,
+    /// derived server-side from existing Visit Activation truth
+    /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1). Legacy work without
+    /// an activation record is classified ACTIONABLE_NOW, never hidden.
+    pub eligibility: crate::application::workflow_instance::eligibility::WorkEligibility,
 }
