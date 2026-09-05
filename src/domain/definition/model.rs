@@ -50,6 +50,8 @@ pub struct WorkflowDefinition {
 /// * `2` = Minimal semantics: supported since the Minimal validator and
 ///   runtime shipped; production create paths can produce it. Which
 ///   semantics apply is decided by this version field alone.
+/// * `3` = Visit Activation semantics: TASK/TERMINAL graphs and canonical
+///   per-visit activation facts; never aliased to Legacy or Minimal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i16)]
 pub enum SemanticModelVersion {
@@ -74,6 +76,7 @@ impl TryFrom<i16> for SemanticModelVersion {
         match value {
             1 => Ok(Self::Legacy),
             2 => Ok(Self::Minimal),
+            3 => Ok(Self::VisitActivation),
             other => Err(format!("invalid semantic_model_version: {other}")),
         }
     }
@@ -103,7 +106,7 @@ pub struct WorkflowDefinitionVersion {
     pub workflow_definition_id: WorkflowDefinitionId,
     pub version_number: i32,
     pub version_status: DefinitionVersionStatus,
-    /// Semantic interpretation version (1 = Legacy, 2 = Minimal). Immutable
+    /// Semantic interpretation (1 = Legacy, 2 = Minimal, 3 = Visit Activation). Immutable
     /// for the lifetime of the version; absent in pre-0019 rows it defaults
     /// to Legacy on read.
     #[serde(default = "default_semantic_model_version")]
@@ -243,14 +246,26 @@ mod tests {
             SemanticModelVersion::Minimal
         );
         assert!(SemanticModelVersion::try_from(0_i16).is_err());
-        assert!(SemanticModelVersion::try_from(3_i16).is_err());
+        assert_eq!(
+            SemanticModelVersion::try_from(3_i16).unwrap(),
+            SemanticModelVersion::VisitActivation
+        );
+        assert!(SemanticModelVersion::try_from(4_i16).is_err());
 
         // Serializes as the DB integer, not a disguised string.
         let json = serde_json::to_string(&SemanticModelVersion::Legacy).unwrap();
         assert_eq!(json, "1");
         let parsed: SemanticModelVersion = serde_json::from_str("2").unwrap();
         assert_eq!(parsed, SemanticModelVersion::Minimal);
-        assert!(serde_json::from_str::<SemanticModelVersion>("3").is_err());
+        assert_eq!(
+            serde_json::from_str::<SemanticModelVersion>("3").unwrap(),
+            SemanticModelVersion::VisitActivation
+        );
+        assert_eq!(
+            serde_json::to_string(&SemanticModelVersion::VisitActivation).unwrap(),
+            "3"
+        );
+        assert!(serde_json::from_str::<SemanticModelVersion>("4").is_err());
     }
 
     #[test]
