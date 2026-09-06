@@ -194,6 +194,15 @@ mod tests {
             },
             provisioning_config: ProvisioningConfig::new(vec![principal_id]),
             auth_v1_canary_config: Default::default(),
+            admission: crate::auth::admission::AdmissionConfig {
+                enabled: false,
+                auth_base_url: String::new(),
+                core_base_url: String::new(),
+                client_id: "svc-workflow".to_string(),
+                client_secret: crate::auth::admission::SecretString::new(String::new()),
+                deadline_ms: crate::auth::admission::ADMISSION_DEADLINE_MS,
+                max_in_flight: 8,
+            },
         };
         (principal, AppState::new(pool, &config))
     }
