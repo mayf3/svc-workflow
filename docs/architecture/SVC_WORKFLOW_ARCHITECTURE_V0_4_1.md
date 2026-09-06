@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_1
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -12,6 +12,12 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+accepted_by: mayf3
+accepted_date: 2026-09-06
+accepted_reviewed_spec_commit: 0a85e909572d92dfe90c5a925f817ee2182336f4
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_CANONICAL_IDENTITY_AUTHORITY_ACCEPTANCE_V1.md
+owner_acceptance_attachment_sha256: 0899cec0aa54725fedc3f130a686fb6331728ac0f8bb09d3bfce5b8139cd822b
 ---
 
 # SVC_WORKFLOW_ARCHITECTURE_V0_4_1 — proposed identity-only bounded successor
