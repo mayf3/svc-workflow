@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -29,6 +29,11 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+accepted_by: mayf3
+accepted_date: 2026-09-06
+accepted_reviewed_spec_commit: 893d36f76702c307ee220dead717f64460b05f49
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2_ACCEPTANCE_V1.md
 ---
 
 # SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2
