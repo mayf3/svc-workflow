@@ -22,7 +22,7 @@ use crate::domain::workflow_instance::errors::{
 pub struct ApiError {
     status: StatusCode,
     code: &'static str,
-    message: &'static str,
+    message: String,
     details: Option<serde_json::Value>,
 }
 
@@ -34,7 +34,7 @@ struct ErrorEnvelope {
 #[derive(Serialize)]
 struct ErrorBody {
     code: &'static str,
-    message: &'static str,
+    message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     details: Option<serde_json::Value>,
 }
@@ -44,7 +44,7 @@ impl ApiError {
         Self {
             status,
             code,
-            message,
+            message: message.into(),
             details: None,
         }
     }
@@ -371,8 +371,19 @@ impl ApiError {
     }
 
     pub fn from_definition_governance(error: DGError) -> Self {
+        if let DGError::GraphValidationFailed(details) = &error {
+            let mut mapped = Self::unprocessable("graph_validation_failed", "graph validation failed");
+            mapped.message = details.message();
+            return mapped.with_details(
+                serde_json::to_value(details).expect("static diagnostics serialize"),
+            );
+        }
         let status_code = error.status_code();
         let (code, message) = match &error {
+            DGError::GraphValidationFailed(_) => unreachable!("handled above"),
+            DGError::InvalidGraphDiagnosticReceipt => {
+                ("internal_consistency_error", "internal consistency error")
+            },
             DGError::NotDomainOwner => ("not_domain_owner", "caller is not a domain owner"),
             DGError::DomainDisabled => ("domain_disabled", "domain is disabled"),
             DGError::DefinitionNotFound => {

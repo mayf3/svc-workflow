@@ -1,3 +1,10 @@
+## 1.6.0 — 2026-09-06
+
+Accepted SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1 adds bounded typed 422
+canonical graph diagnostics on Definition draft replacement/publication and safe
+completed-error replay. Only new graph diagnostic receipts additionally bind graph input; historical
+success/error replay, existing receipt hashes and validator rules are unchanged.
+
 # Changelog
 
 ## V1.5.0 (2026-08-12) — Workflow Assistance V1
