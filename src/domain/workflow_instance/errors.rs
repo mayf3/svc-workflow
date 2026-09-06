@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::auth::admission::AdmissionError;
+
 /// Top-level error type for workflow instance creation operations.
 #[derive(Debug, Clone)]
 pub enum CreateWorkflowInstanceError {
@@ -27,6 +29,11 @@ pub enum CreateWorkflowInstanceError {
     SizeLimitExceeded(String),
     /// Assignee could not be resolved (not found, disabled, or ambiguous).
     AssigneeResolutionFailed(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003):
+    /// the directory observation failed an acceptance predicate, the
+    /// admission window was exhausted, or a directory read failed. The whole
+    /// transaction rolls back — zero business delta.
+    AdmissionFailed(AdmissionError),
     /// Idempotency key conflict: same key, different request hash.
     IdempotencyConflict {
         original_command_id: uuid::Uuid,
@@ -64,6 +71,9 @@ impl fmt::Display for CreateWorkflowInstanceError {
             Self::SizeLimitExceeded(detail) => write!(f, "size limit exceeded: {}", detail),
             Self::AssigneeResolutionFailed(detail) => {
                 write!(f, "assignee resolution failed: {}", detail)
+            }
+            Self::AdmissionFailed(error) => {
+                write!(f, "admission failed: {}", error.sanitized_code())
             }
             Self::IdempotencyConflict {
                 original_command_id,
@@ -114,6 +124,9 @@ pub enum ReviseWorkflowContextError {
     ContextValidationFailed(String),
     /// Request payload exceeds size limits.
     SizeLimitExceeded(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003).
+    /// The whole transaction rolls back — zero business delta.
+    AdmissionFailed(AdmissionError),
     /// Internal consistency error (defensive check failed).
     InternalConsistency(String),
     /// Idempotency key conflict: same key, different request hash.
@@ -154,6 +167,9 @@ impl fmt::Display for ReviseWorkflowContextError {
                 write!(f, "context validation failed: {}", detail)
             }
             Self::SizeLimitExceeded(detail) => write!(f, "size limit exceeded: {}", detail),
+            Self::AdmissionFailed(error) => {
+                write!(f, "admission failed: {}", error.sanitized_code())
+            }
             Self::InternalConsistency(detail) => {
                 write!(f, "internal consistency error: {}", detail)
             }
@@ -347,6 +363,7 @@ pub fn revise_error_code(err: &ReviseWorkflowContextError) -> i32 {
         ReviseWorkflowContextError::WorkflowStateVersionConflict { .. } => 409,
         ReviseWorkflowContextError::ContextValidationFailed(_) => 422,
         ReviseWorkflowContextError::SizeLimitExceeded(_) => 413,
+        ReviseWorkflowContextError::AdmissionFailed(error) => error.sanitized_status(),
         ReviseWorkflowContextError::InternalConsistency(_) => 500,
         ReviseWorkflowContextError::IdempotencyConflict { .. } => 409,
         ReviseWorkflowContextError::CommandStillProcessing => 425,
@@ -391,6 +408,9 @@ pub enum ExecuteWorkflowTransitionError {
     InvalidReturnReferences(String),
     /// Assignee could not be resolved for target node.
     AssigneeResolutionFailed(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003).
+    /// The whole transaction rolls back — zero business delta.
+    AdmissionFailed(AdmissionError),
     /// Internal consistency error (defensive check failed).
     InternalConsistency(String),
     /// Idempotency key conflict: same key, different request hash.
@@ -438,6 +458,9 @@ impl fmt::Display for ExecuteWorkflowTransitionError {
             Self::AssigneeResolutionFailed(detail) => {
                 write!(f, "assignee resolution failed: {}", detail)
             }
+            Self::AdmissionFailed(error) => {
+                write!(f, "admission failed: {}", error.sanitized_code())
+            }
             Self::InternalConsistency(detail) => {
                 write!(f, "internal consistency error: {}", detail)
             }
@@ -481,6 +504,7 @@ pub fn transition_error_code(err: &ExecuteWorkflowTransitionError) -> i32 {
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => 413,
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => 422,
         ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => 422,
+        ExecuteWorkflowTransitionError::AdmissionFailed(error) => error.sanitized_status(),
         ExecuteWorkflowTransitionError::InternalConsistency(_) => 500,
         ExecuteWorkflowTransitionError::IdempotencyConflict { .. } => 409,
         ExecuteWorkflowTransitionError::CommandStillProcessing => 425,
@@ -514,6 +538,7 @@ pub fn transition_error_label(err: &ExecuteWorkflowTransitionError) -> &'static 
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => "size_limit_exceeded",
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => "invalid_return_references",
         ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
+        ExecuteWorkflowTransitionError::AdmissionFailed(error) => error.sanitized_code(),
         ExecuteWorkflowTransitionError::InternalConsistency(_) => "internal_consistency_error",
         ExecuteWorkflowTransitionError::IdempotencyConflict { .. } => "idempotency_conflict",
         ExecuteWorkflowTransitionError::CommandStillProcessing => "command_still_processing",
@@ -536,6 +561,7 @@ pub fn revise_error_label(err: &ReviseWorkflowContextError) -> &'static str {
         }
         ReviseWorkflowContextError::ContextValidationFailed(_) => "context_validation_failed",
         ReviseWorkflowContextError::SizeLimitExceeded(_) => "size_limit_exceeded",
+        ReviseWorkflowContextError::AdmissionFailed(error) => error.sanitized_code(),
         ReviseWorkflowContextError::LegacyCommandNotSupported => {
             "legacy_command_not_supported_for_semantic_model"
         }
