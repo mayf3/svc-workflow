@@ -208,7 +208,8 @@ async fn test_transition_submission_insert_failure_rolls_back() {
     let _guard = TriggerGuard::install_table(&pool, "workflow_submissions", &condition).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, av_id, Some(payload));
-    let err = execute_workflow_transition(&pool, cmd).await;
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(err.is_err());
 
     // No new submission, visit, event, or state change
@@ -239,7 +240,8 @@ async fn test_transition_visit_insert_failure_rolls_back() {
     let _guard = TriggerGuard::install_table(&pool, "workflow_node_visits", &condition).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
-    let err = execute_workflow_transition(&pool, cmd).await;
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -262,7 +264,8 @@ async fn test_transition_instance_update_failure_rolls_back() {
             .await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
-    let err = execute_workflow_transition(&pool, cmd).await;
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -283,7 +286,8 @@ async fn test_transition_event_insert_failure_rolls_back() {
     let _guard = TriggerGuard::install_table(&pool, "workflow_events", &condition).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
-    let err = execute_workflow_transition(&pool, cmd).await;
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -307,7 +311,8 @@ async fn test_transition_receipt_completion_failure_rolls_back() {
     let _guard = TriggerGuard::install_receipt_update(&pool, &condition).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
-    let err = execute_workflow_transition(&pool, cmd).await;
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(err.is_err());
 
     // No new receipt (should be rolled back), no state changes

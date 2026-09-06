@@ -142,5 +142,6 @@ pub(crate) async fn fixture(kind: ImportedNodeKind) -> ImportFixture {
 pub(crate) async fn run(
     fixture: &ImportFixture,
 ) -> Result<ImportLegacyWorkflowInstanceResult, LegacyImportError> {
-    import_legacy_workflow_instance(&fixture.pool, fixture.command.clone()).await
+    import_legacy_workflow_instance(&fixture.pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), fixture.command.clone()).await
 }

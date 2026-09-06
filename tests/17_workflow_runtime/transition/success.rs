@@ -16,7 +16,8 @@ async fn test_transition_draft_to_normal_advance() {
     .await;
 
     let create_cmd = make_command(principal_id, domain_id, ver_id);
-    let create_result = create_workflow_instance(&pool, create_cmd).await.unwrap();
+    let create_result = create_workflow_instance(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), create_cmd).await.unwrap();
 
     let cmd = make_transition_command(
         principal_id,
@@ -25,7 +26,8 @@ async fn test_transition_draft_to_normal_advance() {
         draft_adv_id,
         None,
     );
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 2);
     assert_eq!(result.event_sequence, 2);
@@ -82,7 +84,8 @@ async fn test_transition_normal_to_terminal_advance() {
 
     // Then advance NORMAL→TERMINAL using normal_adv_id
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
 
@@ -129,7 +132,8 @@ async fn test_transition_return_succeeds() {
     });
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(return_payload));
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
 
@@ -168,7 +172,8 @@ async fn test_transition_terminate_succeeds() {
     });
 
     let cmd = make_transition_command(principal_id, instance_id, 2, term_trans_id, Some(payload));
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
 
@@ -200,7 +205,8 @@ async fn test_transition_no_submission_advance() {
 
     // Use normal_adv_id (NORMAL→TERMINAL) which has no submission_schema
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
     assert_eq!(result.submission_id, None);
@@ -225,7 +231,8 @@ async fn test_transition_with_submission_null_schema() {
 
     let payload = serde_json::json!({"result": "completed"});
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, Some(payload));
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
     assert!(result.submission_id.is_some());
@@ -249,7 +256,8 @@ async fn test_transition_state_version_and_event_sequence() {
         create_and_advance_to_normal(&pool, principal_id, domain_id, draft_adv_id, ver_id).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 3);
     assert_eq!(result.event_sequence, 3);
@@ -277,7 +285,8 @@ async fn test_transition_context_revision_unchanged() {
     ).bind(instance_id).fetch_one(&pool).await.unwrap();
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.current_context_revision_id, ctx_before.0);
 }
@@ -300,7 +309,8 @@ async fn test_transition_event_source_target() {
         create_and_advance_to_normal(&pool, principal_id, domain_id, draft_adv_id, ver_id).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     assert_eq!(result.source_node_visit_id, source_visit_id);
 
@@ -330,7 +340,8 @@ async fn test_transition_command_id_matches_event() {
         create_and_advance_to_normal(&pool, principal_id, domain_id, draft_adv_id, ver_id).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let _ = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let _ = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     let receipt: (Uuid,) = sqlx::query_as(
         "SELECT command_id FROM workflow_command_receipts \
@@ -375,7 +386,8 @@ async fn test_transition_submission_digest_readback() {
         normal_adv_id,
         Some(payload.clone()),
     );
-    let result = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let result = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     let sub_digest: (String,) =
         sqlx::query_as("SELECT payload_digest FROM workflow_submissions WHERE submission_id = $1")
@@ -407,7 +419,8 @@ async fn test_transition_exactly_one_event() {
         create_and_advance_to_normal(&pool, principal_id, domain_id, draft_adv_id, ver_id).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv_id, None);
-    let _ = execute_workflow_transition(&pool, cmd).await.unwrap();
+    let _ = execute_workflow_transition(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
 
     // Should be 3 total events: creation + draft→normal + normal→terminal
     let count: i64 =

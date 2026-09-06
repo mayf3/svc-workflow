@@ -24,6 +24,7 @@ use super::*;
 
 fn app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
     let config = HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -147,7 +148,8 @@ async fn create_dlist_instance(
         metadata: json!({"source": "domain-list-test"}),
         context_payload: json!({"title": title}),
     };
-    let created = create_workflow_instance(pool, command)
+    let created = create_workflow_instance(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command)
         .await
         .expect("create instance");
     created.workflow_instance_id
@@ -169,7 +171,8 @@ async fn advance_to_normal(
         transition_definition_id: TransitionId::from_uuid(draft_advance_id),
         submission_payload: Some(json!({"work": "ready"})),
     };
-    execute_workflow_transition(pool, transition)
+    execute_workflow_transition(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition)
         .await
         .expect("advance to normal");
 }
@@ -190,7 +193,8 @@ async fn advance_to_terminal(
         transition_definition_id: TransitionId::from_uuid(normal_advance_id),
         submission_payload: Some(json!({"work": "done"})),
     };
-    execute_workflow_transition(pool, transition)
+    execute_workflow_transition(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition)
         .await
         .expect("advance to terminal");
 }

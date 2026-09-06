@@ -6,6 +6,7 @@ use sqlx::PgPool;
 
 use crate::application::provisioning::ProvisioningConfig;
 use crate::application::workflow_instance::query_service::WorkflowQueryService;
+use crate::auth::admission::{AdmissionClient, AdmissionConfig};
 use crate::auth::{AuthV1CanaryConfig, JwksConfig, JwksVerifier};
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,9 @@ pub struct HttpConfig {
     pub provisioning_config: ProvisioningConfig,
     /// Auth V1 feature flags and allow-list.
     pub auth_v1_canary_config: AuthV1CanaryConfig,
+    /// Canonical identity admission configuration (CTR-CIR-003,
+    /// SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2).
+    pub admission: AdmissionConfig,
 }
 
 impl HttpConfig {
@@ -41,6 +45,7 @@ impl HttpConfig {
         let jwks_config = JwksConfig::from_env()?;
         let provisioning_config = ProvisioningConfig::from_env()?;
         let auth_v1_canary_config = AuthV1CanaryConfig::from_env();
+        let admission = AdmissionConfig::from_env().map_err(|error| error.to_string())?;
 
         Ok(Self {
             bind_addr: SocketAddr::new(ip, port),
@@ -49,6 +54,7 @@ impl HttpConfig {
             jwks_config,
             provisioning_config,
             auth_v1_canary_config,
+            admission,
         })
     }
 }
@@ -71,11 +77,24 @@ pub struct AppState {
     pub provisioning_config: ProvisioningConfig,
     /// Auth V1 feature flags and allow-list (used by write guard).
     pub auth_v1_canary_config: AuthV1CanaryConfig,
+    /// Canonical identity admission client (CTR-CIR-003). `Some` only when
+    /// admission is enabled and construction succeeded; disabled mode keeps
+    /// `None`. A failed construction while enabled is a fail-closed boot
+    /// panic with a sanitized message.
+    pub admission_client: Option<AdmissionClient>,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, config: &HttpConfig) -> Self {
         let auth_verifier = JwksVerifier::new(&config.jwks_config, &config.auth_v1_canary_config);
+        let admission_client = if config.admission.enabled {
+            match AdmissionClient::new(config.admission.clone()) {
+                Ok(client) => Some(client),
+                Err(error) => panic!("admission client construction failed: {error}"),
+            }
+        } else {
+            None
+        };
 
         Self {
             query_service: WorkflowQueryService::new(pool.clone()),
@@ -83,6 +102,7 @@ impl AppState {
             provisioning_config: config.provisioning_config.clone(),
             pool,
             auth_v1_canary_config: config.auth_v1_canary_config.clone(),
+            admission_client,
         }
     }
 }

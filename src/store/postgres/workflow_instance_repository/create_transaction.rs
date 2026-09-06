@@ -8,6 +8,8 @@
 //! 5. INSTANCE_CREATED WorkflowEvent #1
 //! 6. Receipt completion
 
+use std::collections::BTreeSet;
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -18,6 +20,7 @@ use crate::domain::workflow_instance::events::{
     InstanceCreatedEventData, COMMAND_TYPE_CREATE_INSTANCE, EVENT_SCHEMA_VERSION,
     INSTANCE_CREATED_EVENT_TYPE,
 };
+use crate::store::postgres::admission_gate::{self as admission_gate_module, AdmissionGate};
 
 use super::command_receipt::{
     self, complete_receipt, try_insert_receipt, write_attempt_audit, ReceiptReplayResult,
@@ -54,11 +57,19 @@ pub(crate) struct CreateResult {
 /// Enabled status is validated after receipt ownership for stable deterministic replay.
 pub(crate) async fn create_workflow_instance_atomically(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     cmd: CreateWorkflowInstanceCommand,
     request_hash: &str,
 ) -> Result<CreateOutcome, CreateWorkflowInstanceError> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
 
@@ -325,6 +336,34 @@ pub(crate) async fn create_workflow_instance_atomically(
     );
 
     // ---------------------------------------------------------------
+    // CTR-CIR-003: canonical identity admission, inside the committing
+    // transaction and before the first runtime-fact write. The command's
+    // Agent Principal set is the resolved entry-visit assignee (including a
+    // WORKFLOW_CREATOR resolution — it is an assignment fact) plus every
+    // INSTANCE_INPUT_PRINCIPAL identity value persisted in the context
+    // payload. Per-command identical IDs share one still-current observation;
+    // any admission failure rolls the whole transaction back (zero business
+    // delta — no partial write, no deterministic failure receipt, no retry).
+    // ---------------------------------------------------------------
+    let input_keys = admission_gate_module::required_input_principal_keys(
+        &mut tx,
+        definition_version_uuid,
+    )
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+    let input_principal_ids = admission_gate_module::extract_required_input_principal_ids(
+        &input_keys,
+        &cmd.context_payload,
+    )
+    .map_err(CreateWorkflowInstanceError::AssigneeResolutionFailed)?;
+    let mut admission_principals = BTreeSet::from([resolved_assignee_id]);
+    admission_principals.extend(input_principal_ids);
+    admission
+        .admit(admission_principals)
+        .await
+        .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
+
+    // ---------------------------------------------------------------
     // Step 9: Insert WorkflowInstance
     // ---------------------------------------------------------------
     let workflow_state_version = 1i32;
@@ -503,6 +542,11 @@ pub(crate) async fn create_workflow_instance_atomically(
     // ---------------------------------------------------------------
     // Step 14: Commit
     // ---------------------------------------------------------------
+    // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds —
+    // an exhausted budget must not commit (fail closed, zero writes).
+    admission
+        .check_commit_budget()
+        .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;

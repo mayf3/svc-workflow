@@ -8,6 +8,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::workflow_instance_repository::repair_transaction::{
     repair_context_atomically, RepairContextCommand, RepairContextError, RepairContextOutcome,
 };
@@ -32,19 +33,24 @@ fn to_command(request: RepairContextRequest) -> RepairContextCommand {
     }
 }
 
-/// Full read-only dry run: every check runs, nothing is written.
+/// Full read-only dry run: every local check runs, nothing is written. The
+/// gate is always dormant here — planning performs no admission (and no
+/// directory traffic), per CTR-CIR-003's write-scoped rule.
 pub async fn plan_repair_context(
     pool: &PgPool,
     request: RepairContextRequest,
 ) -> Result<RepairContextOutcome, RepairContextError> {
-    repair_context_atomically(pool, &to_command(request), false).await
+    repair_context_atomically(pool, AdmissionGate::disabled(), &to_command(request), false).await
 }
 
 /// Apply the repair: append context revision + pointer update + event +
 /// security audit. Only reachable with an explicit operator decision.
+/// `admission` admits the repaired payload's identity-bearing values before
+/// the context revision is written.
 pub async fn apply_repair_context(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     request: RepairContextRequest,
 ) -> Result<RepairContextOutcome, RepairContextError> {
-    repair_context_atomically(pool, &to_command(request), true).await
+    repair_context_atomically(pool, admission, &to_command(request), true).await
 }

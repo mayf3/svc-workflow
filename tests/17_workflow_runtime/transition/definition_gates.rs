@@ -21,7 +21,8 @@ async fn test_transition_revoked_version_rejected() {
         .bind(ver_id).execute(&pool).await.unwrap();
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
-    let err = execute_workflow_transition(&pool, cmd).await.unwrap_err();
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::DefinitionVersionRevoked
@@ -49,7 +50,8 @@ async fn test_transition_deprecated_version_allowed() {
         .bind(ver_id).execute(&pool).await.unwrap();
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
-    let result = execute_workflow_transition(&pool, cmd).await;
+    let result = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
     assert!(result.is_ok());
 }
 
@@ -80,7 +82,8 @@ async fn test_transition_wrong_version_rejected() {
         create_and_advance_to_normal(&pool, principal_id, domain_id, draft1, ver1).await;
 
     let cmd = make_transition_command(principal_id, instance_id, 2, adv2, None);
-    let err = execute_workflow_transition(&pool, cmd).await.unwrap_err();
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
@@ -103,7 +106,8 @@ async fn test_transition_wrong_source_rejected() {
 
     // Create instance at DRAFT and use RETURN (source=NORMAL) from DRAFT
     let create_cmd = make_command(principal_id, domain_id, ver_id);
-    let create_result = create_workflow_instance(&pool, create_cmd).await.unwrap();
+    let create_result = create_workflow_instance(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), create_cmd).await.unwrap();
 
     let cmd = make_transition_command(
         principal_id,
@@ -112,7 +116,8 @@ async fn test_transition_wrong_source_rejected() {
         ret_id,
         None,
     );
-    let err = execute_workflow_transition(&pool, cmd).await.unwrap_err();
+    let err = execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_)

@@ -27,6 +27,7 @@ impl RunningServer {
         let jwks_url = mock.url.clone();
 
         let config = HttpConfig {
+            admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
             bind_addr: address,
             request_body_max_bytes: body_limit,
             request_timeout_seconds: 30,

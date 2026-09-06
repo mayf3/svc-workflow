@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::application::definition_governance::DefinitionGovernanceError as DGError;
 use crate::application::domain_membership::DomainMembershipError as DMError;
 use crate::application::workflow_instance::query_types::WorkflowQueryError;
+use crate::auth::admission::AdmissionError;
 use crate::domain::provisioning::ProvisioningError as PError;
 use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::errors::{
@@ -151,6 +152,7 @@ impl ApiError {
                 "assignee_resolution_failed",
                 "initial assignee could not be resolved",
             ),
+            E::AdmissionFailed(error) => from_admission(error),
             E::IdempotencyConflict { .. } => {
                 conflict("idempotency_conflict", "idempotency key was reused")
             }
@@ -223,6 +225,7 @@ impl ApiError {
                 "assignee_resolution_failed",
                 "target assignee could not be resolved",
             ),
+            E::AdmissionFailed(error) => from_admission(error),
             E::IdempotencyConflict { .. } => {
                 conflict("idempotency_conflict", "idempotency key was reused")
             }
@@ -416,6 +419,13 @@ impl ApiError {
             DGError::InternalConsistency(_) => {
                 ("internal_consistency_error", "internal consistency error")
             }
+            // Sanitized `admission_*` family (CTR-CIR-003): the label and
+            // status come from the wrapped admission error; internal details
+            // (endpoints, response bodies, secrets) are never surfaced.
+            DGError::AdmissionFailed(error) => (
+                error.sanitized_code(),
+                "definition publish was not admitted",
+            ),
             DGError::StorageError(_) => ("service_unavailable", "storage is unavailable"),
         };
         let mut api_error = Self::new(
@@ -604,6 +614,21 @@ impl IntoResponse for ApiError {
 
 fn not_found(code: &'static str, message: &'static str) -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, code, message)
+}
+
+/// Sanitized mapping for canonical identity admission failures
+/// (CTR-CIR-003). A rejected principal is a business-rule 422 with a stable
+/// `admission_*` code; directory transport/config failures mirror the
+/// repository's `service_unavailable` convention. Internal details (endpoints,
+/// response bodies, secrets) are never surfaced.
+fn from_admission(error: AdmissionError) -> ApiError {
+    let status = StatusCode::from_u16(error.sanitized_status() as u16)
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    ApiError::new(
+        status,
+        error.sanitized_code(),
+        "workflow assignment was not admitted",
+    )
 }
 
 fn forbidden(code: &'static str, message: &'static str) -> ApiError {

@@ -47,6 +47,7 @@ async fn add_member(pool: &PgPool, domain_id: Uuid, principal_id: Uuid) {
 
 fn http_config(jwks_url: &str, allowed_sub: &str) -> HttpConfig {
     HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -114,7 +115,8 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
         ver_id,
         serde_json::json!({"assigneePrincipalId": assignee}),
     );
-    let result = create_workflow_instance(&pool, cmd)
+    let result = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
         .await
         .expect("create for B");
     verify_creation(&pool, &result, creator, domain_id, ver_id).await;
@@ -143,7 +145,8 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
         submission_payload: Some(serde_json::json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        &pool, transition,
+        &pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance to NORMAL");
@@ -196,7 +199,8 @@ async fn assignee_b_worklist_visible_without_domain_membership() {
         ver_id,
         serde_json::json!({"assigneePrincipalId": assignee}),
     );
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
 
     let transition = ExecuteWorkflowTransitionCommand {
         principal_id: PrincipalId::from_uuid(creator),
@@ -208,7 +212,8 @@ async fn assignee_b_worklist_visible_without_domain_membership() {
         submission_payload: Some(serde_json::json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        &pool, transition,
+        &pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance");
@@ -261,7 +266,8 @@ async fn assignee_b_detail_visible_without_domain_membership() {
         ver_id,
         serde_json::json!({"assigneePrincipalId": assignee}),
     );
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
 
     let transition = ExecuteWorkflowTransitionCommand {
         principal_id: PrincipalId::from_uuid(creator),
@@ -273,7 +279,8 @@ async fn assignee_b_detail_visible_without_domain_membership() {
         submission_payload: Some(serde_json::json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        &pool, transition,
+        &pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance");
@@ -335,7 +342,8 @@ async fn assert_create_fails_closed(
             .await
             .unwrap();
     let cmd = make_command_with_payload(creator, domain_id, ver_id, payload);
-    let err = create_workflow_instance(pool, cmd).await.unwrap_err();
+    let err = create_workflow_instance(pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
     assert!(
         matches!(
             err,
@@ -521,7 +529,8 @@ async fn failed_resolution_leaves_no_half_built_instance() {
         ver_id,
         serde_json::json!({"assigneePrincipalId": Uuid::new_v4()}),
     );
-    let err = create_workflow_instance(&pool, cmd).await.unwrap_err();
+    let err = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         CreateWorkflowInstanceError::DomainMembershipRequired
@@ -575,7 +584,8 @@ async fn arbitrary_input_key_resolves_correctly() {
         ver_id,
         serde_json::json!({"targetUserId": assignee}),
     );
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
 
     let transition = ExecuteWorkflowTransitionCommand {
         principal_id: PrincipalId::from_uuid(creator),
@@ -587,7 +597,8 @@ async fn arbitrary_input_key_resolves_correctly() {
         submission_payload: Some(serde_json::json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        &pool, transition,
+        &pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance");
@@ -677,7 +688,8 @@ async fn all_future_input_keys_validated_at_create() {
             "operatorPrincipalId": operator,
         }),
     );
-    let result = create_workflow_instance(&pool, cmd)
+    let result = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
         .await
         .expect("create with all keys");
     assert_eq!(result.workflow_instance_id.to_string().len(), 36);
@@ -693,7 +705,8 @@ async fn regression_workflow_creator_still_resolves() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
     let assignee: (Uuid,) = sqlx::query_as(
         "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id = $1",
@@ -713,7 +726,8 @@ async fn regression_fixed_principal_still_resolves() {
     add_member(&pool, domain_id, fixed_id).await;
     let (_d, ver_id) = seed_published_definition_fixed_principal(&pool, domain_id, fixed_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
     let assignee: (Uuid,) = sqlx::query_as(
         "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id = $1",
@@ -731,7 +745,8 @@ async fn regression_domain_owner_still_resolves() {
     let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_domain_owner(&pool, domain_id).await;
     let cmd = make_command(owner_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, owner_id, domain_id, ver_id).await;
     let assignee: (Uuid,) = sqlx::query_as(
         "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id = $1",

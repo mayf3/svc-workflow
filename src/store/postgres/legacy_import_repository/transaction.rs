@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -6,6 +8,7 @@ use crate::domain::definition::digest;
 use crate::domain::workflow_instance::import::{
     ImportLegacyWorkflowInstanceCommand, LegacyImportError, COMMAND_TYPE, EVENT_TYPE,
 };
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 use super::{receipt, replay, validation};
 
@@ -173,6 +176,7 @@ async fn insert_facts(
 
 pub async fn import(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ImportLegacyWorkflowInstanceCommand,
     request_hash: &str,
 ) -> Result<ImportLegacyWorkflowInstanceResult, LegacyImportError> {
@@ -180,6 +184,12 @@ pub async fn import(
     let key = command.idempotency_key();
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|error| LegacyImportError::StorageError(error.to_string()))?;
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|error| LegacyImportError::StorageError(error.to_string()))?;
     let acquired = receipt::acquire(&mut tx, actor, &key, COMMAND_TYPE, request_hash).await?;
@@ -254,6 +264,24 @@ pub async fn import(
             {
                 return commit_failure(tx, &acquired, &command, request_hash, error).await;
             }
+            // CTR-CIR-003: canonical identity admission — inside the
+            // committing transaction and before the first runtime-fact write.
+            // The import persists the resolved creator and the initial visit
+            // assignee, so both Agent Principals are admitted (identical IDs
+            // share one still-current observation). Any admission failure
+            // rolls the whole transaction back (zero business delta — no
+            // deterministic failure receipt, which would be a forbidden
+            // cached cross-command result).
+            {
+                let mut admission_principals = BTreeSet::from([validated.creator_id]);
+                if let Some(assignee) = validated.assignee_id {
+                    admission_principals.insert(assignee);
+                }
+                admission
+                    .admit(admission_principals)
+                    .await
+                    .map_err(LegacyImportError::AdmissionFailed)?;
+            }
             let result = insert_facts(&mut tx, command_id, &command, validated).await?;
             let body = serde_json::to_value(&result)
                 .map_err(|error| LegacyImportError::StorageError(error.to_string()))?;
@@ -270,6 +298,12 @@ pub async fn import(
                 }),
             )
             .await?;
+            // CTR-CIR-003: total admission-through-commit is bounded to 5
+            // seconds — an exhausted budget must not commit (fail closed,
+            // zero writes).
+            admission
+                .check_commit_budget()
+                .map_err(LegacyImportError::AdmissionFailed)?;
             tx.commit()
                 .await
                 .map_err(|error| LegacyImportError::StorageError(error.to_string()))?;

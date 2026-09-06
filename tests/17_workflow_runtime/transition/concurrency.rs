@@ -40,8 +40,10 @@ async fn test_transition_concurrent_same_key_hash() {
         submission_payload: None,
     };
 
-    let h1 = tokio::spawn(async move { execute_workflow_transition(&pool, cmd1).await });
-    let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2, cmd2).await });
+    let h1 = tokio::spawn(async move { execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await });
+    let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await });
 
     let (r1, r2) = tokio::join!(h1, h2);
     let r1 = r1.unwrap().unwrap();
@@ -73,8 +75,10 @@ async fn test_transition_concurrent_different_key_same_version() {
     let c1 = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let c2 = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
 
-    let h1 = tokio::spawn(async move { execute_workflow_transition(&pool, c1).await });
-    let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2, c2).await });
+    let h1 = tokio::spawn(async move { execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), c1).await });
+    let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), c2).await });
 
     let (r1, r2) = tokio::join!(h1, h2);
     let r1 = r1.unwrap();

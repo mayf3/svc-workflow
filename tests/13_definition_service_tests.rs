@@ -22,6 +22,7 @@ use svc_workflow::application::definition::queries::{
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::domain::definition::error::DefinitionError;
 use svc_workflow::domain::definition::model::SemanticModelVersion;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 // ---------------------------------------------------------------------------
@@ -399,5 +400,7 @@ async fn seed_minimal_and_publish(
         definition_version_id: ver_id,
         expected_revision: None,
     };
-    service.publish_version(pub_cmd).await.expect("publish");
+    service.publish_version(pub_cmd, AdmissionGate::disabled())
+        .await
+        .expect("publish");
 }

@@ -171,6 +171,7 @@ async fn exec_transition(
 ) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
     execute_workflow_transition(
         pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(actor),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -224,7 +225,8 @@ async fn create_v2_instance(
         metadata: serde_json::json!({"source": "v2-test"}),
         context_payload,
     };
-    create_workflow_instance(pool, cmd)
+    create_workflow_instance(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
         .await
         .expect("create v2 instance")
         .workflow_instance_id
@@ -323,6 +325,7 @@ async fn v2_context_key_missing_create_fails() {
 
     let result = create_workflow_instance(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -359,6 +362,7 @@ async fn v2_context_invalid_value_create_fails() {
 
     let result = create_workflow_instance(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator),
             idempotency_key: Uuid::new_v4().to_string(),

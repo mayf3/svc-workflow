@@ -9,6 +9,7 @@ use crate::domain::workflow_instance::combined_errors::{
     error_code, error_label, ReviseContextAndTransitionError,
 };
 use crate::domain::workflow_instance::commands::ReviseContextAndTransitionCommand;
+use crate::store::postgres::admission_gate::{self as admission_gate_module, AdmissionGate};
 
 use super::combined_helpers::{self};
 pub(crate) use super::combined_helpers::{CombinedOutcome, CombinedResult};
@@ -18,11 +19,19 @@ use super::{revise_validation, transition_helpers, transition_validation};
 /// Execute a context revision and the DRAFT primary ADVANCE as one transaction.
 pub(crate) async fn revise_context_and_transition_atomically(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ReviseContextAndTransitionCommand,
     request_hash: &str,
 ) -> Result<CombinedOutcome, ReviseContextAndTransitionError> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;
+
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;
 
@@ -318,6 +327,44 @@ pub(crate) async fn revise_context_and_transition_atomically(
     .await
     .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;
 
+    // ---------------------------------------------------------------
+    // CTR-CIR-003: canonical identity admission, inside the committing
+    // transaction and before the first runtime-fact write. The combined
+    // command persists BOTH a new context revision and the target visit, so
+    // the set is the resolved target-visit assignee (WORKFLOW_CREATOR
+    // resolutions included — an assignment fact) plus every
+    // INSTANCE_INPUT_PRINCIPAL identity value carried by the NEW context
+    // payload. A present-but-invalid identity value is deterministic invalid
+    // input (fail with a durable failure receipt); any admission failure
+    // itself rolls the whole transaction back (zero business delta).
+    // ---------------------------------------------------------------
+    let input_keys = admission_gate_module::required_input_principal_keys(
+        &mut tx,
+        instance.definition_version_id,
+    )
+    .await
+    .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;
+    let input_principal_ids =
+        match admission_gate_module::extract_required_input_principal_ids(
+            &input_keys,
+            &command.context_payload,
+        ) {
+            Ok(ids) => ids,
+            Err(detail) => deterministic_failure!(
+                ReviseContextAndTransitionError::AssigneeResolutionFailed(detail)
+            ),
+        };
+    {
+        let mut admission_principals = input_principal_ids;
+        if let Some(assignee) = target_assignee {
+            admission_principals.push(assignee);
+        }
+        admission
+            .admit(admission_principals)
+            .await
+            .map_err(ReviseContextAndTransitionError::AdmissionFailed)?;
+    }
+
     let new_context_revision_id = Uuid::new_v4();
     let submission_id = Uuid::new_v4();
     let target_visit_id = Uuid::new_v4();
@@ -413,6 +460,11 @@ pub(crate) async fn revise_context_and_transition_atomically(
         &response_digest,
     )
     .await?;
+    // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds —
+    // an exhausted budget must not commit (fail closed, zero writes).
+    admission
+        .check_commit_budget()
+        .map_err(ReviseContextAndTransitionError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;

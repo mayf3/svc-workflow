@@ -10,6 +10,7 @@ use crate::domain::workflow_instance::recovery::{
     AdminEmergencyOperation, AdminEmergencyOverrideCommand, RecoveryError,
     COMMAND_TYPE_ADMIN_EMERGENCY_OVERRIDE,
 };
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 use super::{authorization, receipt, snapshot};
 
@@ -146,6 +147,7 @@ async fn read_source_node(
 
 pub async fn admin_emergency_override(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: AdminEmergencyOverrideCommand,
     request_hash: &str,
 ) -> Result<AdminEmergencyOverrideResult, RecoveryError> {
@@ -153,6 +155,12 @@ pub async fn admin_emergency_override(
     let instance_id = command.workflow_instance_id.into_uuid();
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
     let acquired = receipt::acquire(
@@ -359,6 +367,20 @@ pub async fn admin_emergency_override(
             (None, "TERMINATE")
         }
     };
+    // CTR-CIR-003: canonical identity admission — inside the committing
+    // transaction and before the first runtime-fact write (assistance-case
+    // voiding and activation closure included). The override persists an
+    // assignment fact only for MOVE_TO_NODE, whose resolved assignee is
+    // admitted (a WORKFLOW_CREATOR resolution is an assignment fact);
+    // TERMINATE_INSTANCE persists no assignment, so the set is empty and
+    // acceptance is trivially satisfied. Any admission failure rolls the
+    // whole transaction back (zero business delta — no deterministic
+    // failure receipt, which would be a forbidden cached cross-command
+    // result).
+    admission
+        .admit(assignee)
+        .await
+        .map_err(RecoveryError::AdmissionFailed)?;
     let maximum_visit_number: Option<i32> = sqlx::query_scalar(
         "SELECT MAX(visit_number) FROM workflow_node_visits
          WHERE workflow_instance_id = $1 AND node_id = $2",
@@ -566,6 +588,11 @@ pub async fn admin_emergency_override(
         }),
     )
     .await?;
+    // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds —
+    // an exhausted budget must not commit (fail closed, zero writes).
+    admission
+        .check_commit_budget()
+        .map_err(RecoveryError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|error| RecoveryError::StorageError(error.to_string()))?;

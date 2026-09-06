@@ -20,6 +20,7 @@ use crate::domain::workflow_instance::events::{
     ContextRevisedEventData, COMMAND_TYPE_REVISE_CONTEXT, CONTEXT_REVISED_EVENT_TYPE,
     EVENT_SCHEMA_VERSION,
 };
+use crate::store::postgres::admission_gate::{self as admission_gate_module, AdmissionGate};
 
 use super::command_receipt::{
     self, complete_receipt, try_insert_receipt, write_attempt_audit, ReceiptReplayResult,
@@ -58,11 +59,19 @@ pub(crate) struct ReviseResult {
 /// Execute the full atomic revision workflow inside a single transaction.
 pub(crate) async fn revise_workflow_context_atomically(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     cmd: ReviseWorkflowContextCommand,
     request_hash: &str,
 ) -> Result<ReviseOutcome, ReviseWorkflowContextError> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
 
@@ -382,6 +391,57 @@ pub(crate) async fn revise_workflow_context_atomically(
     }
 
     // ---------------------------------------------------------------
+    // Step 9b: CTR-CIR-003 canonical identity admission — inside the
+    // committing transaction and before the context revision is written.
+    // The revision persists every INSTANCE_INPUT_PRINCIPAL identity value of
+    // the NEW payload, so each value that corresponds to a definition key is
+    // admission-checked (missing keys persist nothing and stay governed by
+    // the existing read/transition fail-closed behavior). A present-but-
+    // invalid identity value is deterministic invalid input with a durable
+    // failure receipt; any admission failure itself rolls the whole
+    // transaction back (zero business delta).
+    // ---------------------------------------------------------------
+    let input_keys = admission_gate_module::required_input_principal_keys(
+        &mut tx,
+        instance.definition_version_id,
+    )
+    .await
+    .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+    let input_principal_ids =
+        match admission_gate_module::extract_required_input_principal_ids(
+            &input_keys,
+            &cmd.context_payload,
+        ) {
+            Ok(ids) => ids,
+            Err(detail) => {
+                let err = ReviseWorkflowContextError::ContextValidationFailed(detail);
+                let status_code =
+                    crate::domain::workflow_instance::errors::revise_error_code(&err);
+                let error_code =
+                    crate::domain::workflow_instance::errors::revise_error_label(&err);
+                let response_body = serde_json::json!({"error": error_code});
+                let response_digest = digest::compute_sha256(error_code.as_bytes());
+                complete_receipt(
+                    &mut tx,
+                    actual_command_id,
+                    status_code,
+                    &response_body,
+                    &response_digest,
+                )
+                .await
+                .map_err(map_create_err)?;
+                tx.commit()
+                    .await
+                    .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+                return Err(err);
+            }
+        };
+    admission
+        .admit(input_principal_ids)
+        .await
+        .map_err(ReviseWorkflowContextError::AdmissionFailed)?;
+
+    // ---------------------------------------------------------------
     // Step 10: Compute digests
     // ---------------------------------------------------------------
     let new_payload_digest = digest::compute_json_digest(&cmd.context_payload)
@@ -500,6 +560,11 @@ pub(crate) async fn revise_workflow_context_atomically(
     // ---------------------------------------------------------------
     // Step 15: Commit
     // ---------------------------------------------------------------
+    // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds —
+    // an exhausted budget must not commit (fail closed, zero writes).
+    admission
+        .check_commit_budget()
+        .map_err(ReviseWorkflowContextError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;

@@ -6,6 +6,7 @@ use svc_workflow::application::workflow_instance::admin_repair::{
     apply_repair_context, plan_repair_context, RepairContextRequest,
 };
 use svc_workflow::http::{self, AppState, HttpConfig};
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::migrations;
 use uuid::Uuid;
 
@@ -180,7 +181,31 @@ async fn run_repair_command(
     };
 
     let outcome = if cli.apply {
-        apply_repair_context(pool, request).await
+        // CTR-CIR-003: the apply path follows the deployment's admission
+        // configuration from the environment (dormant unless explicitly
+        // enabled); the repaired payload's identity-bearing values are
+        // admitted inside the committing transaction.
+        let configured = match svc_workflow::auth::admission::AdmissionConfig::from_env() {
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("repair-context: admission configuration error: {error}");
+                std::process::exit(2);
+            }
+        };
+        if configured.enabled {
+            let admission_client =
+                match svc_workflow::auth::admission::AdmissionClient::new(configured) {
+                    Ok(client) => client,
+                    Err(error) => {
+                        eprintln!("repair-context: admission configuration error: {error}");
+                        std::process::exit(2);
+                    }
+                };
+            let admission = AdmissionGate::new(Some(&admission_client));
+            apply_repair_context(pool, admission, request).await
+        } else {
+            apply_repair_context(pool, AdmissionGate::disabled(), request).await
+        }
     } else {
         plan_repair_context(pool, request).await
     };

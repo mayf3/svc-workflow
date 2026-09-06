@@ -54,6 +54,7 @@ async fn override_rejects_projection_drift_before_writing_any_fact() {
     .unwrap();
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(stale.creator, stale.instance, 1, advance, None),
     )
     .await
@@ -89,6 +90,7 @@ async fn replay_rejects_event_that_branches_back_to_an_old_context() {
     let fixture = seed_recovery_fixture(&pool).await;
     let revised = revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(fixture.creator),
             idempotency_key: Uuid::new_v4().to_string(),

@@ -222,19 +222,33 @@ pub trait DefinitionRepository {
     /// the service computed `precomputed_digest` and when this method
     /// re-reads the graph inside the transaction, the digest mismatch
     /// causes a `ConcurrentModification` error (caller retries).
+    ///
+    /// `admission` is the canonical identity admission gate (CTR-CIR-003):
+    /// the graph's identity literals were admitted by the caller BEFORE this
+    /// transaction opened; inside the transaction the gate only binds the
+    /// database statement deadline to the remaining admission budget and
+    /// re-checks the budget before commit, so a publish can never commit
+    /// outside the 5-second admission-through-commit window. Dormant mode is
+    /// a no-op.
     async fn atomic_publish(
         &self,
         version_id: Uuid,
         actor_principal_id: Uuid,
         precomputed_digest: &str,
         expected_revision: Option<&str>,
+        admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
     /// Execute a complete deprecation inside a single transaction.
+    ///
+    /// `deprecation_reason` is recorded atomically with the status flip
+    /// (CTR-CIR-003: SOURCE_IDENTITY_UNRESOLVED stop-new provenance for the
+    /// two held versions); `None` writes NULL.
     async fn atomic_deprecate(
         &self,
         version_id: Uuid,
         actor_principal_id: Uuid,
+        deprecation_reason: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError>;
 
     /// Execute a complete revocation inside a single transaction.

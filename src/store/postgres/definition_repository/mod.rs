@@ -230,12 +230,14 @@ impl DefinitionRepository for PgDefinitionRepository {
         actor_principal_id: uuid::Uuid,
         precomputed_digest: &str,
         expected_revision: Option<&str>,
+        admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         self.atomic_publish_inner(
             version_id,
             actor_principal_id,
             precomputed_digest,
             expected_revision,
+            admission,
         )
         .await
     }
@@ -244,8 +246,9 @@ impl DefinitionRepository for PgDefinitionRepository {
         &self,
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
+        deprecation_reason: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
-        self.atomic_deprecate_inner(version_id, actor_principal_id)
+        self.atomic_deprecate_inner(version_id, actor_principal_id, deprecation_reason)
             .await
     }
 

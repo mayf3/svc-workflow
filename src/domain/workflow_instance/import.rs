@@ -92,6 +92,10 @@ pub enum LegacyImportError {
     AssigneeResolutionFailed(String),
     ContextValidationFailed(String),
     SizeLimitExceeded(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003):
+    /// the imported creator/assignee Principal was not admitted by the
+    /// directory. The whole transaction rolls back — zero business delta.
+    AdmissionFailed(crate::auth::admission::AdmissionError),
     ExternalReferenceConflict,
     IdempotencyConflict,
     CommandStillProcessing,
@@ -120,6 +124,7 @@ impl LegacyImportError {
             | Self::CreatorResolutionFailed(_)
             | Self::AssigneeResolutionFailed(_)
             | Self::ContextValidationFailed(_) => 422,
+            Self::AdmissionFailed(error) => error.sanitized_status(),
             Self::VersionNotPublished => 409,
             Self::InternalConsistency(_) | Self::StorageError(_) => 500,
         }
@@ -143,6 +148,7 @@ impl LegacyImportError {
             Self::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
             Self::ContextValidationFailed(_) => "context_validation_failed",
             Self::SizeLimitExceeded(_) => "size_limit_exceeded",
+            Self::AdmissionFailed(error) => error.sanitized_code(),
             Self::ExternalReferenceConflict => "external_reference_conflict",
             Self::IdempotencyConflict => "idempotency_conflict",
             Self::CommandStillProcessing => "command_still_processing",

@@ -157,6 +157,7 @@ async fn explicit_v2_creation_runs_minimal_runtime() {
         "req",
         ver_id,
         None,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
     )
     .await
     .expect("publish v2 version");
@@ -164,6 +165,7 @@ async fn explicit_v2_creation_runs_minimal_runtime() {
     // 5. Create an instance: Minimal Runtime must dispatch and pick entry A.
     let instance = create_workflow_instance(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -215,6 +217,7 @@ async fn explicit_v2_creation_runs_minimal_runtime() {
         let t = trans_ids[key];
         execute_workflow_transition(
             &pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             ExecuteWorkflowTransitionCommand {
                 principal_id: PrincipalId::from_uuid(actor),
                 idempotency_key: Uuid::new_v4().to_string(),

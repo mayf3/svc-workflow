@@ -148,5 +148,6 @@ pub(crate) async fn create_combined_instance(
 ) -> CreateWorkflowInstanceResult {
     let mut command = make_command(principal_id, domain_id, version_id);
     command.context_payload = initial_context;
-    create_workflow_instance(pool, command).await.unwrap()
+    create_workflow_instance(pool,
+svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await.unwrap()
 }

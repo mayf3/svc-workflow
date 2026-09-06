@@ -21,6 +21,7 @@ use svc_workflow::application::definition::queries::{
 };
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::domain::definition::error::DefinitionError;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,7 @@ async fn test_published_to_deprecated() {
     let dep_cmd = DeprecateVersion {
         actor_principal_id: principal_id,
         definition_version_id: ver_id,
+        deprecation_reason: None,
     };
     let deprecated = service
         .deprecate_version(dep_cmd)
@@ -83,6 +85,7 @@ async fn test_deprecated_to_revoked() {
         .deprecate_version(DeprecateVersion {
             actor_principal_id: principal_id,
             definition_version_id: ver_id,
+            deprecation_reason: None,
         })
         .await
         .expect("deprecate");
@@ -110,6 +113,7 @@ async fn test_invalid_lifecycle_transition() {
     let dep_cmd = DeprecateVersion {
         actor_principal_id: principal_id,
         definition_version_id: ver_id,
+        deprecation_reason: None,
     };
     let err = service
         .deprecate_version(dep_cmd)
@@ -241,5 +245,7 @@ async fn seed_minimal_and_publish(
         definition_version_id: ver_id,
         expected_revision: None,
     };
-    service.publish_version(pub_cmd).await.expect("publish");
+    service.publish_version(pub_cmd, AdmissionGate::disabled())
+        .await
+        .expect("publish");
 }
