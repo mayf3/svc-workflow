@@ -10,6 +10,8 @@ mod claims;
 mod jwks_verifier;
 mod principal;
 
+pub mod admission;
+
 pub use auth_context::AuthContext;
 pub use auth_mode::{validate_env, JwksConfig};
 pub use canary::AuthV1CanaryConfig;

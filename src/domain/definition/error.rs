@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::auth::admission::AdmissionError;
+
 /// Top-level error type for definition operations.
 #[derive(Debug, Clone)]
 pub enum DefinitionError {
@@ -37,6 +39,12 @@ pub enum DefinitionError {
     DigestFailure(String),
     /// Concurrent modification detected (optimistic lock).
     ConcurrentModification(String),
+    /// Canonical identity admission rejected the write (CTR-CIR-003):
+    /// an identity literal carried by the published graph/context schema
+    /// failed a directory acceptance predicate, or the directory validator
+    /// timed out / was unavailable. Sanitized — never carries secrets or
+    /// internal endpoint details.
+    AdmissionFailed(AdmissionError),
     /// Generic storage error (wraps underlying DB error message).
     StorageError(String),
 }
@@ -70,6 +78,7 @@ impl fmt::Display for DefinitionError {
             Self::ConcurrentModification(detail) => {
                 write!(f, "concurrent modification: {}", detail)
             }
+            Self::AdmissionFailed(error) => write!(f, "admission failed: {}", error),
             Self::StorageError(detail) => write!(f, "storage error: {}", detail),
         }
     }

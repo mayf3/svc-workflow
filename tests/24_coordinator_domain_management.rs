@@ -34,6 +34,7 @@ use svc_workflow::http::{self, AppState, HttpConfig};
 
 fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
     let config = HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,

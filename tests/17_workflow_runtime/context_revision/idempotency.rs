@@ -7,7 +7,8 @@ async fn test_revise_same_key_hash_replays_same_revision() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let r = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let r = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -18,10 +19,12 @@ async fn test_revise_same_key_hash_replays_same_revision() {
         serde_json::json!({"v": 2}),
     );
     cmd.idempotency_key = idem_key.clone();
-    let r1 = revise_workflow_context(&pool, cmd.clone())
+    let r1 = revise_workflow_context(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
         .await
         .expect("first");
-    let r2 = revise_workflow_context(&pool, cmd).await.expect("replay");
+    let r2 = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("replay");
     assert_eq!(
         r1.current_context_revision_id,
         r2.current_context_revision_id
@@ -33,7 +36,8 @@ async fn test_revise_replay_does_not_increase_state_version() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let r = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let r = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -44,11 +48,13 @@ async fn test_revise_replay_does_not_increase_state_version() {
         serde_json::json!({"v": 2}),
     );
     cmd.idempotency_key = idem_key.clone();
-    let r1 = revise_workflow_context(&pool, cmd.clone())
+    let r1 = revise_workflow_context(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
         .await
         .expect("first");
     assert_eq!(r1.workflow_state_version, 2);
-    let r2 = revise_workflow_context(&pool, cmd).await.expect("replay");
+    let r2 = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("replay");
     assert_eq!(
         r2.workflow_state_version, 2,
         "replay must not increase state version"
@@ -68,7 +74,8 @@ async fn test_revise_same_key_different_payload_conflict() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let r = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let r = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -79,7 +86,8 @@ async fn test_revise_same_key_different_payload_conflict() {
         serde_json::json!({"v": "A"}),
     );
     cmd_a.idempotency_key = idem_key.clone();
-    let _ = revise_workflow_context(&pool, cmd_a).await.expect("first");
+    let _ = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await.expect("first");
     let mut cmd_b = make_revise_command(
         principal_id,
         r.workflow_instance_id,
@@ -87,7 +95,8 @@ async fn test_revise_same_key_different_payload_conflict() {
         serde_json::json!({"v": "B"}),
     );
     cmd_b.idempotency_key = idem_key;
-    let err = revise_workflow_context(&pool, cmd_b).await.unwrap_err();
+    let err = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await.unwrap_err();
     assert!(matches!(
         &err,
         ReviseWorkflowContextError::IdempotencyConflict { .. }
@@ -99,7 +108,8 @@ async fn test_revise_conflict_writes_attempt_audit() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let r = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let r = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -110,7 +120,8 @@ async fn test_revise_conflict_writes_attempt_audit() {
         serde_json::json!({"v": "A"}),
     );
     cmd_a.idempotency_key = idem_key.clone();
-    let _ = revise_workflow_context(&pool, cmd_a).await.expect("first");
+    let _ = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await.expect("first");
     let mut cmd_b = make_revise_command(
         principal_id,
         r.workflow_instance_id,
@@ -118,7 +129,8 @@ async fn test_revise_conflict_writes_attempt_audit() {
         serde_json::json!({"v": "B"}),
     );
     cmd_b.idempotency_key = idem_key.clone();
-    let _ = revise_workflow_context(&pool, cmd_b).await;
+    let _ = revise_workflow_context(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await;
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_command_attempt_audits WHERE idempotency_key = $1",
     )

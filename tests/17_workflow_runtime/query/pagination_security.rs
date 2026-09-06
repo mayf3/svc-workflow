@@ -12,6 +12,7 @@ async fn assigned_worklist_desc_keyset_has_no_duplicates_or_gaps() {
         expected.insert(created.workflow_instance_id);
         execute_workflow_transition(
             &pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             make_transition_command(
                 seed.creator,
                 created.workflow_instance_id,

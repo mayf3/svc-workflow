@@ -40,6 +40,7 @@ fn build_config(
     allowed_sub: &str,
 ) -> (axum::Router, AppState) {
     let config = HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -175,7 +176,8 @@ async fn create_and_advance(
         context_payload: json!({"title": "worklist"}),
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
-        pool, command,
+        pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command,
     )
     .await
     .expect("create instance");
@@ -190,7 +192,8 @@ async fn create_and_advance(
         submission_payload: Some(json!({"work": "ready"})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        pool, transition,
+        pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance to normal");
@@ -217,7 +220,8 @@ async fn create_draft_only(
         context_payload: json!({"title": "draft"}),
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
-        pool, command,
+        pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command,
     )
     .await
     .expect("create draft instance");
@@ -921,7 +925,8 @@ async fn role_binding_revoked_hides_items() {
         submission_payload: Some(json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        &pool, transition,
+        &pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance to terminal");

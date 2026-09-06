@@ -10,6 +10,7 @@ use sqlx::PgPool;
 
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::workflow_instance_repository::create_transaction;
 
 use super::idempotency::compute_request_hash;
@@ -38,12 +39,18 @@ impl From<create_transaction::CreateResult> for CreateWorkflowInstanceResult {
 
 /// Create a new workflow instance atomically.
 ///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003): the
+/// command's monotonic admission start is captured here at service entry,
+/// before the transaction opens. Dormant mode (`AdmissionGate::disabled()`)
+/// preserves the pre-admission behavior exactly.
+///
 /// # Errors
 ///
 /// Returns `CreateWorkflowInstanceError` for all validation, authorization,
-/// and infrastructure failures.
+/// admission, and infrastructure failures.
 pub async fn create_workflow_instance(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: CreateWorkflowInstanceCommand,
 ) -> Result<CreateWorkflowInstanceResult, CreateWorkflowInstanceError> {
     // 1. Compute the identity-independent request hash before business validation.
@@ -65,10 +72,16 @@ pub async fn create_workflow_instance(
     pre_validate_principal_exists(pool, principal_uuid).await?;
 
     // 3. Execute atomic creation. All deterministic business and size checks happen
-    // after receipt ownership and before the first runtime fact is written.
-    let outcome =
-        create_transaction::create_workflow_instance_atomically(pool, command, &request_hash)
-            .await?;
+    // after receipt ownership and before the first runtime fact is written;
+    // directory admission runs inside the same transaction, still before
+    // any runtime fact (CTR-CIR-003).
+    let outcome = create_transaction::create_workflow_instance_atomically(
+        pool,
+        admission,
+        command,
+        &request_hash,
+    )
+    .await?;
 
     // 4. Map outcome to public result
     match outcome {

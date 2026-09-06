@@ -1,6 +1,7 @@
 //! H-5: Domain authorization integration tests.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::application::definition::commands::{PublishVersion, ValidateDraftVersion};
 use svc_workflow::application::definition::queries::GetDefinition;
 use svc_workflow::application::definition::queries::ListDefinitionVersions;
@@ -163,7 +164,7 @@ async fn test_disabled_domain_blocks_write() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     match result.unwrap_err() {
         DefinitionError::DomainDisabled => {}

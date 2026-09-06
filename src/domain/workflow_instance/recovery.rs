@@ -123,6 +123,9 @@ pub enum RecoveryError {
     InvalidImmutableFacts(String),
     InvalidTarget(String),
     AssigneeResolutionFailed(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003).
+    /// The whole transaction rolls back — zero business delta.
+    AdmissionFailed(crate::auth::admission::AdmissionError),
     IdempotencyConflict,
     CommandStillProcessing,
     InternalConsistency(String),
@@ -145,6 +148,7 @@ impl RecoveryError {
             Self::InvalidInput(_) | Self::InvalidTarget(_) | Self::AssigneeResolutionFailed(_) => {
                 422
             }
+            Self::AdmissionFailed(error) => error.sanitized_status(),
             Self::BeforeSnapshotDigestMismatch { .. }
             | Self::WorkflowStateVersionConflict { .. }
             | Self::IdempotencyConflict => 409,
@@ -168,6 +172,7 @@ impl RecoveryError {
             Self::InvalidImmutableFacts(_) => "invalid_immutable_facts",
             Self::InvalidTarget(_) => "invalid_target",
             Self::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
+            Self::AdmissionFailed(error) => error.sanitized_code(),
             Self::IdempotencyConflict => "idempotency_conflict",
             Self::CommandStillProcessing => "command_still_processing",
             Self::InternalConsistency(_) => "internal_consistency_error",

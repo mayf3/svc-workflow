@@ -120,6 +120,7 @@ async fn submission_insert_failure_rolls_back_new_context_revision() {
     .await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, instance_id, 1, advance_id),
     )
     .await
@@ -147,6 +148,7 @@ async fn instance_update_failure_rolls_back_all_new_facts() {
     .await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, instance_id, 1, advance_id),
     )
     .await
@@ -174,6 +176,7 @@ async fn event_insert_failure_rolls_back_projection_and_facts() {
     .await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, instance_id, 1, advance_id),
     )
     .await
@@ -202,6 +205,7 @@ async fn receipt_completion_failure_rolls_back_everything_including_receipt() {
     .await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, instance_id, 1, advance_id),
     )
     .await

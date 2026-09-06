@@ -30,10 +30,12 @@ async fn concurrent_same_key_combined_commands_return_same_result() {
     let command = make_combined_command(principal_id, instance_id, 1, advance_id);
     let other_pool = create_pool().await;
     let other_command = command.clone();
-    let first = tokio::spawn(async move { revise_context_and_transition(&pool, command).await });
+    let first = tokio::spawn(async move { revise_context_and_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await });
     let second =
         tokio::spawn(
-            async move { revise_context_and_transition(&other_pool, other_command).await },
+            async move { revise_context_and_transition(&other_pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), other_command).await },
         );
     let (first, second) = tokio::join!(first, second);
     let first = first.unwrap().unwrap();
@@ -54,10 +56,12 @@ async fn concurrent_different_key_combined_commands_linearize_on_instance() {
     let second_command = make_combined_command(principal_id, instance_id, 1, advance_id);
     let other_pool = create_pool().await;
     let first =
-        tokio::spawn(async move { revise_context_and_transition(&pool, first_command).await });
+        tokio::spawn(async move { revise_context_and_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), first_command).await });
     let second =
         tokio::spawn(
-            async move { revise_context_and_transition(&other_pool, second_command).await },
+            async move { revise_context_and_transition(&other_pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), second_command).await },
         );
     let (first, second) = tokio::join!(first, second);
     let first = first.unwrap();
@@ -86,9 +90,11 @@ async fn combined_and_context_revision_cannot_both_commit_same_version() {
     );
     let other_pool = create_pool().await;
     let combined_handle =
-        tokio::spawn(async move { revise_context_and_transition(&pool, combined).await });
+        tokio::spawn(async move { revise_context_and_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), combined).await });
     let revision_handle =
-        tokio::spawn(async move { revise_workflow_context(&other_pool, revision).await });
+        tokio::spawn(async move { revise_workflow_context(&other_pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), revision).await });
     let (combined, revision) = tokio::join!(combined_handle, revision_handle);
     assert_ne!(combined.unwrap().is_ok(), revision.unwrap().is_ok());
 
@@ -111,9 +117,11 @@ async fn combined_and_transition_cannot_both_commit_same_version() {
     let transition = make_transition_command(principal_id, instance_id, 1, advance_id, None);
     let other_pool = create_pool().await;
     let combined_handle =
-        tokio::spawn(async move { revise_context_and_transition(&pool, combined).await });
+        tokio::spawn(async move { revise_context_and_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), combined).await });
     let transition_handle =
-        tokio::spawn(async move { execute_workflow_transition(&other_pool, transition).await });
+        tokio::spawn(async move { execute_workflow_transition(&other_pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition).await });
     let (combined, transition) = tokio::join!(combined_handle, transition_handle);
     assert_ne!(combined.unwrap().is_ok(), transition.unwrap().is_ok());
 

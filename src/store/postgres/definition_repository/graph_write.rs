@@ -2,6 +2,15 @@
 //!
 //! Handles atomic replacement of a DRAFT version's graph
 //! (nodes and transitions) inside a single transaction.
+//!
+//! CTR-CIR-003 note: this path DOES persist identity literals
+//! (`fixed_principal_id` values, plus the context schema that may carry
+//! default/enum/example identity values for INSTANCE_INPUT_PRINCIPAL keys).
+//! A DRAFT is not executable truth, so no admission fires here — publish is
+//! the single authoritative gate where every persisted identity literal is
+//! admitted before the version becomes runnable (see
+//! `admission_gate::collect_definition_publish_identity_literals` and
+//! `DefinitionService::publish_version`).
 
 use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::{NodeDefinition, TransitionDefinition};

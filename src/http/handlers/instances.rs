@@ -20,6 +20,7 @@ use crate::http::dto::{
 };
 use crate::http::error::ApiError;
 use crate::http::AppState;
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 use super::{idempotency_key, path_uuid, require_scope};
 
@@ -53,7 +54,10 @@ pub(crate) async fn create(
         metadata: payload.metadata,
         context_payload: payload.context_payload,
     };
-    let result = create_workflow_instance(&state.pool, command)
+    // Canonical identity admission gate (CTR-CIR-003): `Some` only when the
+    // deployment enabled admission; dormant mode keeps existing behavior.
+    let admission = AdmissionGate::new(state.admission_client.as_ref());
+    let result = create_workflow_instance(&state.pool, admission, command)
         .await
         .map_err(ApiError::from_create)?;
     let response = CreateWorkflowInstanceResponse::from(result);

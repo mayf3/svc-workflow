@@ -10,3 +10,5 @@ mod publish;
 mod reads;
 mod status_changes;
 mod validation;
+
+pub use status_changes::SOURCE_IDENTITY_UNRESOLVED;

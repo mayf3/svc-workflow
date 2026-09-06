@@ -12,7 +12,8 @@ async fn test_disabled_principal_rejected() {
         .await
         .expect("disable");
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let err = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let err = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -26,7 +27,8 @@ async fn test_no_domain_membership_rejected() {
     let pool = create_pool().await;
     let (principal_id, domain_id) = seed_principal_and_domain(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
-    let err = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let err = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -41,7 +43,8 @@ async fn test_cross_domain_principal_rejected() {
     let (principal_a, _domain_a) = seed_principal_domain_with_owner(&pool).await;
     let (_principal_b, domain_b) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_b).await;
-    let err = create_workflow_instance(&pool, make_command(principal_a, domain_b, ver_id))
+    let err = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_a, domain_b, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -64,7 +67,8 @@ async fn test_disabled_domain_owner_assignee_rejected() {
         .execute(&pool)
         .await
         .expect("disable owner");
-    let err = create_workflow_instance(&pool, make_command(caller_id, domain_id, ver_id))
+    let err = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(caller_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -84,7 +88,8 @@ async fn test_disabled_fixed_principal_assignee_rejected() {
         .await
         .expect("disable");
     let (_d, ver_id) = seed_published_definition_fixed_principal(&pool, domain_id, fixed_id).await;
-    let err = create_workflow_instance(&pool, make_command(principal_id, domain_id, ver_id))
+    let err = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(

@@ -28,6 +28,7 @@ use crate::domain::definition::digest;
 use crate::domain::workflow_instance::events::{
     ContextRevisedEventData, CONTEXT_REVISED_EVENT_TYPE, EVENT_SCHEMA_VERSION,
 };
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 pub const REPAIR_SECURITY_AUDIT_ACTION: &str = "REPAIR_CONTEXT_COMMITTED";
 
@@ -92,6 +93,11 @@ pub enum RepairContextError {
     PayloadNotSuperset(Vec<String>),
     PayloadAddsNonRequiredKeys(Vec<String>),
     InvariantViolation(String),
+    /// Canonical identity admission rejected the repair (CTR-CIR-003): an
+    /// identity-bearing context value of the repaired payload was not
+    /// admitted by the directory. The whole transaction rolls back — zero
+    /// business delta.
+    AdmissionFailed(crate::auth::admission::AdmissionError),
     InternalConsistency(String),
     StorageError(String),
 }
@@ -127,6 +133,9 @@ impl std::fmt::Display for RepairContextError {
             Self::InvariantViolation(detail) => {
                 write!(f, "post-repair invariant violation: {detail}")
             }
+            Self::AdmissionFailed(error) => {
+                write!(f, "admission failed: {}", error.sanitized_code())
+            }
             Self::InternalConsistency(detail) => write!(f, "internal consistency: {detail}"),
             Self::StorageError(detail) => write!(f, "storage error: {detail}"),
         }
@@ -141,11 +150,19 @@ impl std::error::Error for RepairContextError {}
 /// plan is returned, and the transaction rolls back — nothing is written.
 pub async fn repair_context_atomically(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     cmd: &RepairContextCommand,
     apply: bool,
 ) -> Result<RepairContextOutcome, RepairContextError> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|e| RepairContextError::StorageError(e.to_string()))?;
+
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|e| RepairContextError::StorageError(e.to_string()))?;
 
@@ -376,6 +393,9 @@ pub async fn repair_context_atomically(
     //    enabled principal (mirrors create-time validation)
     // ------------------------------------------------------------------
     let mut invariant_violations: Vec<String> = Vec::new();
+    // CTR-CIR-003: identity values the repaired payload persists — collected
+    // while the invariant loop parses each required key.
+    let mut invariant_candidate_ids: Vec<Uuid> = Vec::new();
     for key in &required_input_keys {
         let Some(raw) = cmd.context_payload.get(key) else {
             invariant_violations.push(format!("missing required assignee key '{key}'"));
@@ -389,6 +409,7 @@ pub async fn repair_context_atomically(
             invariant_violations.push(format!("assignee key '{key}' is not a valid UUID"));
             continue;
         };
+        invariant_candidate_ids.push(candidate);
         let principal: Option<(bool,)> =
             sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
                 .bind(candidate)
@@ -456,6 +477,20 @@ pub async fn repair_context_atomically(
             invariant_violations.join("; "),
         ));
     }
+
+    // ------------------------------------------------------------------
+    // 8b. CTR-CIR-003 canonical identity admission — inside the committing
+    //     transaction and before the context revision is written. The repair
+    //     persists the identity-bearing INSTANCE_INPUT values it adds, so
+    //     each parsed candidate is admitted (identical IDs share one
+    //     still-current observation). Dry runs never reach this point. Any
+    //     admission failure rolls the whole transaction back (zero business
+    //     delta — no partial write, no retry).
+    // ------------------------------------------------------------------
+    admission
+        .admit(invariant_candidate_ids)
+        .await
+        .map_err(RepairContextError::AdmissionFailed)?;
 
     // ------------------------------------------------------------------
     // 9. Apply: append revision -> update pointer -> CONTEXT_REVISED event
@@ -610,6 +645,13 @@ pub async fn repair_context_atomically(
     .await
     .map_err(|e| RepairContextError::StorageError(e.to_string()))?;
 
+    // ------------------------------------------------------------------
+    // 10. Commit (budget-checked per CTR-CIR-003: total
+    //     admission-through-commit bounded to 5 seconds — fail closed)
+    // ------------------------------------------------------------------
+    admission
+        .check_commit_budget()
+        .map_err(RepairContextError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|e| RepairContextError::StorageError(e.to_string()))?;

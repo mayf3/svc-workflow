@@ -232,7 +232,8 @@ async fn create_and_advance_to_normal(
 ) -> Uuid {
     let cmd = make_command_with_payload(creator, domain_id, ver_id, context_payload);
     let created =
-        svc_workflow::application::workflow_instance::create::create_workflow_instance(pool, cmd)
+        svc_workflow::application::workflow_instance::create::create_workflow_instance(pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
             .await
             .expect("create instance");
 
@@ -246,7 +247,8 @@ async fn create_and_advance_to_normal(
         submission_payload: Some(json!({})),
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-        pool, transition,
+        pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
     )
     .await
     .expect("advance to normal");
@@ -508,7 +510,8 @@ async fn outgoing_target_instance_input_principal_from_draft() {
         ver_id,
         json!({"reviewerPrincipalId": reviewer_principal}),
     );
-    let created = create_workflow_instance(&pool, cmd)
+    let created = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
         .await
         .expect("create instance");
 

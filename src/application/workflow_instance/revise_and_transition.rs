@@ -4,6 +4,7 @@ use sqlx::PgPool;
 
 use crate::domain::workflow_instance::combined_errors::ReviseContextAndTransitionError;
 use crate::domain::workflow_instance::commands::ReviseContextAndTransitionCommand;
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::workflow_instance_repository::combined_transaction;
 
 use super::idempotency::compute_combined_request_hash;
@@ -34,8 +35,13 @@ impl From<combined_transaction::CombinedResult> for ReviseContextAndTransitionRe
 }
 
 /// Revise DRAFT context and execute its primary ADVANCE in one transaction.
+///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003); the
+/// monotonic admission start is captured here at service entry. Dormant mode
+/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
 pub async fn revise_context_and_transition(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ReviseContextAndTransitionCommand,
 ) -> Result<ReviseContextAndTransitionResult, ReviseContextAndTransitionError> {
     pre_validate_principal_exists(pool, command.principal_id.into_uuid()).await?;
@@ -52,6 +58,7 @@ pub async fn revise_context_and_transition(
 
     let outcome = combined_transaction::revise_context_and_transition_atomically(
         pool,
+        admission,
         command,
         &request_hash,
     )

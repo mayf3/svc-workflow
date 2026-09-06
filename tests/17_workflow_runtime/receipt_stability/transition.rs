@@ -43,7 +43,8 @@ async fn missing_principal_is_an_identity_failure_without_a_receipt() {
     let command = make_transition_command(missing, Uuid::new_v4(), 1, Uuid::new_v4(), None);
     let key = command.idempotency_key.clone();
     assert!(matches!(
-        execute_workflow_transition(&pool, command).await,
+        execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
         Err(ExecuteWorkflowTransitionError::PrincipalNotFound)
     ));
     let count: i64 = sqlx::query_scalar(
@@ -69,7 +70,8 @@ async fn disabled_principal_failure_survives_reenable() {
     )
     .await;
     let created =
-        create_workflow_instance(&pool, make_command(principal_id, domain_id, version_id))
+        create_workflow_instance(&pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, version_id))
             .await
             .unwrap();
     sqlx::query("UPDATE principals SET enabled = FALSE WHERE principal_id = $1")
@@ -86,7 +88,8 @@ async fn disabled_principal_failure_survives_reenable() {
     );
     let key = command.idempotency_key.clone();
     assert!(matches!(
-        execute_workflow_transition(&pool, command.clone()).await,
+        execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await,
         Err(ExecuteWorkflowTransitionError::PrincipalDisabled)
     ));
     sqlx::query("UPDATE principals SET enabled = TRUE WHERE principal_id = $1")
@@ -95,7 +98,8 @@ async fn disabled_principal_failure_survives_reenable() {
         .await
         .unwrap();
     assert!(matches!(
-        execute_workflow_transition(&pool, command).await,
+        execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
         Err(ExecuteWorkflowTransitionError::PrincipalDisabled)
     ));
     assert_eq!(receipt(&pool, principal_id, &key).await.1, 403);
@@ -114,7 +118,8 @@ async fn submission_size_failure_replays_the_exact_persisted_detail() {
     )
     .await;
     let created =
-        create_workflow_instance(&pool, make_command(principal_id, domain_id, version_id))
+        create_workflow_instance(&pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, version_id))
             .await
             .unwrap();
     let command = make_transition_command(
@@ -126,9 +131,11 @@ async fn submission_size_failure_replays_the_exact_persisted_detail() {
     );
     let key = command.idempotency_key.clone();
 
-    let first_detail = size_detail(execute_workflow_transition(&pool, command.clone()).await);
+    let first_detail = size_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
     let first_receipt = receipt(&pool, principal_id, &key).await;
-    let replay_detail = size_detail(execute_workflow_transition(&pool, command).await);
+    let replay_detail = size_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
     let replay_receipt = receipt(&pool, principal_id, &key).await;
 
     assert_eq!(first_detail, "submission payload exceeds 1 MiB");
@@ -166,9 +173,11 @@ async fn invalid_return_reference_replays_the_exact_detail() {
     );
     let key = command.idempotency_key.clone();
 
-    let first = invalid_reference_detail(execute_workflow_transition(&pool, command.clone()).await);
+    let first = invalid_reference_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
     let stored = receipt(&pool, principal_id, &key).await;
-    let replay = invalid_reference_detail(execute_workflow_transition(&pool, command).await);
+    let replay = invalid_reference_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
     assert_eq!(replay, first);
     assert_eq!(stored.2["detail"], first);
 }
@@ -187,7 +196,8 @@ async fn target_assignee_failure_survives_reenable_with_exact_detail() {
     )
     .await;
     let created =
-        create_workflow_instance(&pool, make_command(principal_id, domain_id, version_id))
+        create_workflow_instance(&pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, version_id))
             .await
             .unwrap();
     sqlx::query("UPDATE principals SET enabled = FALSE WHERE principal_id = $1")
@@ -204,14 +214,16 @@ async fn target_assignee_failure_survives_reenable_with_exact_detail() {
     );
     let key = command.idempotency_key.clone();
 
-    let first = assignee_detail(execute_workflow_transition(&pool, command.clone()).await);
+    let first = assignee_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
     let stored = receipt(&pool, principal_id, &key).await;
     sqlx::query("UPDATE principals SET enabled = TRUE WHERE principal_id = $1")
         .bind(target_id)
         .execute(&pool)
         .await
         .unwrap();
-    let replay = assignee_detail(execute_workflow_transition(&pool, command).await);
+    let replay = assignee_detail(execute_workflow_transition(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
     assert_eq!(replay, first);
     assert_eq!(stored.2["detail"], first);
 }
@@ -229,7 +241,8 @@ async fn state_version_conflict_survives_the_version_becoming_current() {
     )
     .await;
     let created =
-        create_workflow_instance(&pool, make_command(principal_id, domain_id, version_id))
+        create_workflow_instance(&pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, version_id))
             .await
             .unwrap();
     let command = make_transition_command(
@@ -241,7 +254,8 @@ async fn state_version_conflict_survives_the_version_becoming_current() {
     );
     let key = command.idempotency_key.clone();
     assert!(matches!(
-        execute_workflow_transition(&pool, command.clone()).await,
+        execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await,
         Err(
             ExecuteWorkflowTransitionError::WorkflowStateVersionConflict {
                 expected: 2,
@@ -251,6 +265,7 @@ async fn state_version_conflict_survives_the_version_becoming_current() {
     ));
     revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_revise_command(
             principal_id,
             created.workflow_instance_id,
@@ -261,7 +276,8 @@ async fn state_version_conflict_survives_the_version_becoming_current() {
     .await
     .unwrap();
     assert!(matches!(
-        execute_workflow_transition(&pool, command).await,
+        execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
         Err(
             ExecuteWorkflowTransitionError::WorkflowStateVersionConflict {
                 expected: 2,

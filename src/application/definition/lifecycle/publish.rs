@@ -10,6 +10,9 @@ use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::graph;
 use crate::domain::definition::model::WorkflowGraph;
 use crate::domain::enums::DefinitionVersionStatus;
+use crate::store::postgres::admission_gate::{
+    self as admission_gate_module, AdmissionGate,
+};
 
 use super::super::commands::PublishVersion;
 use super::super::repository::DefinitionRepository;
@@ -22,9 +25,22 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     /// holds the version row lock across digest consistency check and
     /// status update in a single transaction, serializing against any
     /// concurrent ReplaceDraftGraph.
+    ///
+    /// `admission` is the canonical identity admission gate (CTR-CIR-003):
+    /// before the publishing transaction opens, every identity literal the
+    /// version would make executable — every FIXED_PRINCIPAL principal and
+    /// every default/enum/example identity literal the context schema carries
+    /// for an INSTANCE_INPUT_PRINCIPAL key — must be admitted by the exact
+    /// Auth/Agent-core directory reads, fail-closed. Draft/reopen paths
+    /// persist literals too, but nothing authoritative: a DRAFT is not
+    /// executable truth, so publish is the single authoritative gate
+    /// (CTR-CIR-003: "corrected-source publish"). Dormant mode
+    /// (`AdmissionGate::disabled()`) preserves the pre-admission behavior
+    /// exactly.
     pub async fn publish_version(
         &self,
         cmd: PublishVersion,
+        admission: AdmissionGate<'_>,
     ) -> Result<crate::domain::definition::model::WorkflowDefinitionVersion, DefinitionError> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
@@ -89,6 +105,33 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // Validate fixed principals exist
         self.validate_fixed_principals(&nodes).await?;
 
+        // -------------------------------------------------------------------
+        // CTR-CIR-003 (SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2):
+        // canonical identity admission for publish-time identity literals.
+        // "Apply this admission rule to corrected-source publish/defaults/
+        // enums ... Validate all supplied role identities and all
+        // identity-bearing values reachable in the resulting
+        // Context/configuration." The principal set is every FIXED_PRINCIPAL
+        // in the graph plus every identity literal the context schema
+        // supplies for an INSTANCE_INPUT_PRINCIPAL key; a present-but-invalid
+        // literal (non-string / non-UUID) is rejected above persistence via
+        // the INSTANCE_INPUT grammar error family. Admission runs BEFORE the
+        // publishing transaction; any admission failure fails the whole
+        // publish closed (zero business delta — the version stays DRAFT).
+        // -------------------------------------------------------------------
+        let identity_literals = admission_gate_module::collect_definition_publish_identity_literals(
+            &nodes,
+            version.context_schema.as_ref(),
+        )
+        .map_err(DefinitionError::GraphValidationFailed)?;
+        admission
+            .admit(identity_literals)
+            .await
+            .map_err(DefinitionError::AdmissionFailed)?;
+        admission
+            .check_commit_budget()
+            .map_err(DefinitionError::AdmissionFailed)?;
+
         // Compute digest
         let node_key_map: HashMap<_, _> = nodes
             .iter()
@@ -114,6 +157,10 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // B-1: Atomic publish inside a single transaction.
         // expected_revision is verified inside the transaction alongside
         // the digest consistency check, eliminating any race window.
+        // The gate rides along to bind the transaction's statement deadline
+        // to the remaining admission budget and to re-check the budget before
+        // commit (CTR-CIR-003); a graph drift after admission fails the
+        // digest consistency check, so no un-admitted literal can commit.
         let published = self
             .repo
             .atomic_publish(
@@ -121,6 +168,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                 cmd.actor_principal_id,
                 &computed_digest,
                 cmd.expected_revision.as_deref(),
+                admission,
             )
             .await?;
 
