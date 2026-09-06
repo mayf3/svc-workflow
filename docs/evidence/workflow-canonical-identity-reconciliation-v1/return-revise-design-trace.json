@@ -1,0 +1,134 @@
+{
+  "kind": "DESIGN_ACCEPTANCE_FIXTURE_NOT_EXECUTED",
+  "sourceObservation": "2026-09-06T19:18:39.79095+08:00",
+  "sourceArtifactSha256": "dd6a167eb456edec335e131b28b420a7c66bef1a90284030e7ece31344e2b124",
+  "source": {
+    "instanceId": "44e3e53e-8d1c-4a23-a36a-820deb9903d6",
+    "definitionVersionId": "4b11fcc0-223a-4f7b-bc43-1aceaf36ef69",
+    "domainId": "10000000-0000-0000-0000-000000000100",
+    "currentNodeKey": "propose",
+    "currentVisitId": "aa30be56-9d2c-5e37-8748-c8f95ddf22ef",
+    "expectedStateVersion": 2,
+    "contextRevisionId": "c86c0eda-b927-428d-9c25-e5a484e12a13",
+    "originalCreator": "95eab282-22c7-46a2-8580-abfef4942cdc",
+    "currentAssignee": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+    "externalReference": null,
+    "historical99Overlap": true
+  },
+  "proposedSuccessorCreator": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+  "fixtureIds": {
+    "successorInstance": "382c7dc5-9eac-59b2-985c-a74a8e659974",
+    "correctedDefinitionVersion": "ac2974d6-edea-54f1-992a-fb7a08b7e570",
+    "initialVisit": "7fe1908a-0868-5173-be9f-6b4e4d2f98b2",
+    "initialContext": "d6edacb2-91f0-5ceb-8093-bdc32b5a3309",
+    "efficiencyVisit1": "948bf26b-c4ed-57ed-b7a8-2e212be1e33d",
+    "advanceSubmission1": "2653a01f-3108-5e89-b640-5fbbc75fe4ec",
+    "returnedDraftVisit": "5dac0390-d458-5913-abfb-dfb9cd189a5a",
+    "returnSubmission": "58b85804-5a4d-594a-b2e7-04c8f05562cf",
+    "revisedContext": "07950738-263d-5746-849c-42d158b9cda8",
+    "efficiencyVisit2": "feec9136-7eb4-5d8f-8448-84294cb8ac8e",
+    "advanceSubmission2": "8da9be88-be85-5bd0-a3df-3489c8883144",
+    "migrationActor": "0e51ecfa-2c1c-51c4-a14c-6e127f43b4ad"
+  },
+  "identityPrerequisites": [
+    "95eab282-22c7-46a2-8580-abfef4942cdc -> b21ddb23-42f6-47c4-a27f-bc44950e554c exact documented efficiency external_ref alias/workspace chain",
+    "b6b033c4-90ba-40aa-a338-304da442cab7 ->25a6789f-daa5-4600-a764-b0209b9c8e19 exact Auth external_ref/historical/current workspace chain; independently review new candidate"
+  ],
+  "steps": [
+    {
+      "operation": "bounded migration",
+      "actor": "0e51ecfa-2c1c-51c4-a14c-6e127f43b4ad",
+      "sourceExpectedVersion": 2,
+      "sourceAfterVersion": 3,
+      "successorVersion": 1,
+      "successorNode": "propose",
+      "visit": "7fe1908a-0868-5173-be9f-6b4e4d2f98b2",
+      "context": "d6edacb2-91f0-5ceb-8093-bdc32b5a3309",
+      "contextRevisionNumber": 1,
+      "createdBy": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "contextFactCreatedBy": "0e51ecfa-2c1c-51c4-a14c-6e127f43b4ad",
+      "sourceBusinessFields": "unchanged; sealed old rows preserved; source closed"
+    },
+    {
+      "operation": "advance-to-efficiency-check",
+      "actor": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "expectedVersion": 1,
+      "afterVersion": 2,
+      "node": "efficiency_check",
+      "visit": "948bf26b-c4ed-57ed-b7a8-2e212be1e33d",
+      "submission": "2653a01f-3108-5e89-b640-5fbbc75fe4ec",
+      "context": "d6edacb2-91f0-5ceb-8093-bdc32b5a3309",
+      "submissionPayload": {
+        "summary": "Submit the preserved research task for efficiency review"
+      }
+    },
+    {
+      "operation": "return-to-propose-from-efficiency",
+      "actor": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "expectedVersion": 2,
+      "afterVersion": 3,
+      "node": "propose",
+      "visit": "5dac0390-d458-5913-abfb-dfb9cd189a5a",
+      "submission": "58b85804-5a4d-594a-b2e7-04c8f05562cf",
+      "submissionPayload": {
+        "reason": "Recheck original task acceptance criteria",
+        "rootCauseNodeVisitId": "aa30be56-9d2c-5e37-8748-c8f95ddf22ef",
+        "relatedSubmissionIds": [
+          "2653a01f-3108-5e89-b640-5fbbc75fe4ec"
+        ],
+        "reasonCode": "ACCEPTANCE_CRITERIA_RECHECK"
+      },
+      "eventSourceEvidence": {
+        "originWorkflowInstanceId": "44e3e53e-8d1c-4a23-a36a-820deb9903d6",
+        "rootCauseNodeVisitId": "aa30be56-9d2c-5e37-8748-c8f95ddf22ef"
+      },
+      "ordinaryEventReferences": "successor-local only"
+    },
+    {
+      "operation": "revise",
+      "actor": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "expectedVersion": 3,
+      "afterVersion": 4,
+      "currentVisitUnchanged": "5dac0390-d458-5913-abfb-dfb9cd189a5a",
+      "context": "07950738-263d-5746-849c-42d158b9cda8",
+      "previousRevisionId": "d6edacb2-91f0-5ceb-8093-bdc32b5a3309",
+      "contextRevisionNumber": 2,
+      "newContextCreatedBy": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "businessDelta": "authorized creator updates acceptanceCriteria; no personnel input is fixed by the migration"
+    },
+    {
+      "operation": "advance-to-efficiency-check",
+      "actor": "b21ddb23-42f6-47c4-a27f-bc44950e554c",
+      "expectedVersion": 4,
+      "afterVersion": 5,
+      "node": "efficiency_check",
+      "visit": "feec9136-7eb4-5d8f-8448-84294cb8ac8e",
+      "submission": "8da9be88-be85-5bd0-a3df-3489c8883144",
+      "context": "07950738-263d-5746-849c-42d158b9cda8",
+      "submissionPayload": {
+        "summary": "Resubmit the creator-revised research task for efficiency review"
+      }
+    }
+  ],
+  "denials": [
+    {
+      "actor": "95eab282-22c7-46a2-8580-abfef4942cdc",
+      "case": "same lineage; source historical creator but no current full successor visibility",
+      "expected": "no source-evidence disclosure through successor; no RETURN/revise write; no old-identity alias permission"
+    },
+    {
+      "actor": "0e51ecfa-2c1c-51c4-a14c-6e127f43b4ad",
+      "case": "migration operator alone",
+      "expected": "no creator rights"
+    },
+    {
+      "case": "replace rootCauseNodeVisitId with an unrelated real Instance Visit",
+      "expected": "zero-write reference denial"
+    },
+    {
+      "case": "disabled Domain or unavailable canonical admission",
+      "expected": "zero-write denial"
+    }
+  ],
+  "limits": "Fixture allocations are not production targets or observed successful transitions. No payload feasibility/live HR result is claimed. Actual state/role/context checks and accepted independent identity/stewardship authority are required before execution. The exact graph edges exist in source structural evidence; meaningful test execution follows accepted implementation."
+}
