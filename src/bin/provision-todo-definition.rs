@@ -22,6 +22,7 @@ use svc_workflow::application::definition::commands::{
     RawTransitionDefinition, ReplaceDraftGraph,
 };
 use svc_workflow::application::definition::DefinitionService;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 const EFFICIENCY_MANAGER_KEY: &str = "EFFICIENCY_MANAGER_PRINCIPAL_ID";
@@ -412,7 +413,12 @@ async fn run() -> Result<(), ProvisioningError> {
     ).bind(def_id).bind(file.version.version_number).fetch_optional(&pool).await?.is_some() {
         println!("Already PUBLISHED");
     } else {
-        svc.publish_version(PublishVersion { actor_principal_id: actor, definition_version_id: ver_id, expected_revision: None })
+        svc.publish_version(
+            PublishVersion { actor_principal_id: actor, definition_version_id: ver_id, expected_revision: None },
+            // Provisioning writes are not corrected-source publishes; admission
+            // dormant (CTR-CIR-003 publish gate not exercised by this bin).
+            AdmissionGate::disabled(),
+        )
             .await.map_err(|e| ProvisioningError::ServiceError(e.to_string()))?;
         println!("Published version {}", file.version.version_number);
     }

@@ -145,14 +145,28 @@ impl PgDefinitionRepository {
     /// last-known digest (if supplied).  Both are verified against the
     /// re-computed digest inside the transaction, making optimistic
     /// concurrency control atomic with the status write.
+    ///
+    /// CTR-CIR-003: the graph's identity literals were admitted by the
+    /// caller before this transaction opened; the gate binds the database
+    /// statement deadline to the remaining admission budget and re-checks
+    /// the budget before commit (dormant mode issues no statement and always
+    /// passes).
     pub(super) async fn atomic_publish_inner(
         &self,
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
         precomputed_digest: &str,
         expected_revision: Option<&str>,
+        admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let mut tx = self.pool.begin().await.map_err(map_db_error)?;
+
+        // CTR-CIR-003: the database statement deadline must be no later than
+        // the 5-second admission-through-commit bound. No-op in dormant mode.
+        admission
+            .bind_statement_deadline(&mut tx)
+            .await
+            .map_err(map_db_error)?;
 
         // 1. Lock version with FOR UPDATE and verify DRAFT
         let version: Option<WorkflowDefinitionVersion> =
@@ -294,6 +308,11 @@ impl PgDefinitionRepository {
         .map_err(map_db_error)?;
 
         // 8. Commit
+        // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds
+        // — an exhausted budget must not commit (fail closed, zero writes).
+        admission
+            .check_commit_budget()
+            .map_err(DefinitionError::AdmissionFailed)?;
         tx.commit().await.map_err(map_db_error)?;
 
         // Re-read and return
@@ -301,10 +320,15 @@ impl PgDefinitionRepository {
     }
 
     /// Execute a complete deprecation inside a single transaction.
+    ///
+    /// `deprecation_reason` (CTR-CIR-003 SOURCE_IDENTITY_UNRESOLVED
+    /// stop-new provenance) is written in the SAME transaction as the status
+    /// flip; `None` writes NULL. No instance/visit/history row is touched.
     pub(super) async fn atomic_deprecate_inner(
         &self,
         version_id: uuid::Uuid,
         actor_principal_id: uuid::Uuid,
+        deprecation_reason: Option<&str>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let mut tx = self.pool.begin().await.map_err(map_db_error)?;
 
@@ -370,17 +394,19 @@ impl PgDefinitionRepository {
             _ => {}
         }
 
-        // Write deprecate status inside tx
+        // Write deprecate status inside tx; the reason is recorded in the
+        // same transaction (CTR-CIR-003 SOURCE_IDENTITY_UNRESOLVED provenance).
         sqlx::query(
             r#"
             UPDATE workflow_definition_versions
             SET version_status = 'DEPRECATED', deprecated_at = now(),
-                deprecated_by_principal_id = $1, updated_at = now()
+                deprecated_by_principal_id = $1, deprecation_reason = $3, updated_at = now()
             WHERE definition_version_id = $2
             "#,
         )
         .bind(actor_principal_id)
         .bind(version_id)
+        .bind(deprecation_reason)
         .execute(&mut *tx)
         .await
         .map_err(map_db_error)?;

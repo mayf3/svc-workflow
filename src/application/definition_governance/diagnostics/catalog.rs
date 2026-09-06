@@ -8,6 +8,8 @@ pub(super) fn correction(code: &str) -> Option<&'static str> {
         "DUPLICATE_ORDER_INDEX" => "Give every node a unique order index.",
         "FIXED_PRINCIPAL_MISSING_ID" => "Supply an exact principal ID for the fixed owner reference.",
         "GRAPH_VALIDATION_REJECTED" => "The canonical graph was rejected; inspect the full graph against its semantic model rules.",
+        "INSTANCE_INPUT_LITERAL_NOT_STRING" => "Use an exact principal UUID string for the identity literal in the context schema.",
+        "INSTANCE_INPUT_LITERAL_NOT_UUID" => "Use an exact principal UUID for the identity literal in the context schema.",
         "INSTANCE_INPUT_PRINCIPAL_INVALID_KEY" => "Use a valid single segment input key for the owner reference.",
         "INSTANCE_INPUT_PRINCIPAL_MISSING_KEY" => "Supply an input key for the instance input owner reference.",
         "INVALID_CONTEXT_SCHEMA" => "Fix the context schema using supported local references.",

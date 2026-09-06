@@ -4,6 +4,7 @@
 //! M-6: concurrent CreateDefinition uniqueness.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use std::collections::HashMap;
 use svc_workflow::application::definition::commands::{
     CreateDefinition, PublishVersion, ReplaceDraftGraph,
@@ -32,7 +33,7 @@ async fn test_digest_readback_consistency() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await
         .expect("publish should succeed");
 

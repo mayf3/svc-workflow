@@ -1,6 +1,7 @@
 //! H-4: Lifecycle actor fields integration tests.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::application::definition::commands::{
     DeprecateVersion, PublishVersion, RevokeVersion,
 };
@@ -20,7 +21,7 @@ async fn test_publish_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await
         .expect("publish should succeed");
 
@@ -50,7 +51,7 @@ async fn test_deprecate_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await
         .expect("publish");
 
@@ -58,6 +59,7 @@ async fn test_deprecate_sets_actor() {
         .deprecate_version(DeprecateVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            deprecation_reason: None,
         })
         .await
         .expect("deprecate");
@@ -90,7 +92,7 @@ async fn test_revoke_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await
         .expect("publish");
 
@@ -125,7 +127,7 @@ async fn test_three_stage_actors_all_preserved() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await
         .expect("publish");
 
@@ -133,6 +135,7 @@ async fn test_three_stage_actors_all_preserved() {
         .deprecate_version(DeprecateVersion {
             actor_principal_id: owner,
             definition_version_id: version_id,
+            deprecation_reason: None,
         })
         .await
         .expect("deprecate");

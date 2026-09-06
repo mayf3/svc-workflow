@@ -25,11 +25,18 @@
 //! the pre-admission behavior. Activation is a separate reviewed production
 //! step.
 //!
-//! Surfaces that CANNOT_INTRODUCE_AGENT_ASSIGNMENT (out of scope for this
-//! wiring step, each with its reason):
-//! - definition publish identity literals (`graph_write.rs`) — source-graph
-//!   conservation is the corrected-source publish step of CTR-CIR-003 and is
-//!   sequenced as a later reconciliation step;
+//! Surfaces wired for canonical identity admission:
+//! - workflow instance create / transition / revise / revise-and-transition /
+//!   admin recovery (assignment-producing runtime commands);
+//! - definition publish identity literals (CTR-CIR-003: "Apply this admission
+//!   rule to corrected-source publish/defaults/enums ... Validate all
+//!   supplied role identities and all identity-bearing values reachable in
+//!   the resulting Context/configuration"). Draft/reopen persist literals
+//!   too, but a DRAFT is not executable truth — publish is the authoritative
+//!   gate where the version becomes runnable, so admission fires there only.
+//!
+//! Surfaces that CANNOT_INTRODUCE_AGENT_ASSIGNMENT (out of scope, each with
+//! its reason):
 //! - source stop-new — the reconciliation operator's source-closure command,
 //!   a later step of the same Spec;
 //! - lineage operator — CTR-CIR-004 migration apply, whose identities are
@@ -46,6 +53,9 @@ use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::auth::admission::{AdmissionClient, AdmissionError};
+use crate::domain::definition::error::GraphValidationError;
+use crate::domain::definition::model::NodeDefinition;
+use crate::domain::enums::AssigneeRefType;
 
 /// Per-command admission gate.
 ///
@@ -194,6 +204,155 @@ pub(crate) fn extract_required_input_principal_ids(
     Ok(ids)
 }
 
+/// Graph-validation error codes mirroring the INSTANCE_INPUT grammar family
+/// of `domain/definition/graph/assignee_validation.rs`.
+const INSTANCE_INPUT_LITERAL_NOT_STRING: &str = "INSTANCE_INPUT_LITERAL_NOT_STRING";
+const INSTANCE_INPUT_LITERAL_NOT_UUID: &str = "INSTANCE_INPUT_LITERAL_NOT_UUID";
+
+/// Pure extraction of every identity literal a definition publish would make
+/// executable (CTR-CIR-003: "Validate all supplied role identities and all
+/// identity-bearing values reachable in the resulting
+/// Context/configuration").
+///
+/// Two sources, deduplicated into one distinct set:
+/// 1. every FIXED_PRINCIPAL `fixed_principal_id` in the graph — collected
+///    without type pre-filtering: the admission Auth directory read itself
+///    rejects a missing/noncanonical/non-active principal (404/422 maps to
+///    admission rejection), which IS the canonical Agent check;
+/// 2. every identity literal the context schema carries for an
+///    INSTANCE_INPUT_PRINCIPAL node's `assignee_input_key`: the `default`,
+///    `enum` and `examples` values at that flat property path. Only
+///    string-form UUIDs are identity literals (mirroring
+///    `extract_required_input_principal_ids`); a present-but-invalid value in
+///    an identity-bearing position is rejected BEFORE any persistence as a
+///    graph-validation error.
+///
+/// Draft replacement persists the same literals, but a DRAFT is not
+/// executable truth; publish is the authoritative gate where admission fires
+/// (CTR-CIR-003: "corrected-source publish").
+pub fn collect_definition_publish_identity_literals(
+    nodes: &[NodeDefinition],
+    context_schema: Option<&serde_json::Value>,
+) -> Result<BTreeSet<Uuid>, Vec<GraphValidationError>> {
+    let mut literals: BTreeSet<Uuid> = BTreeSet::new();
+    let mut errors: Vec<GraphValidationError> = Vec::new();
+
+    for node in nodes {
+        let Some(assignee_ref) = &node.assignee_ref else {
+            continue;
+        };
+        match assignee_ref.ref_type {
+            AssigneeRefType::FixedPrincipal => {
+                if let Some(principal) = assignee_ref.fixed_principal_id {
+                    literals.insert(principal.into_uuid());
+                }
+            }
+            AssigneeRefType::InstanceInputPrincipal => {
+                let Some(key) = &assignee_ref.assignee_input_key else {
+                    continue;
+                };
+                collect_schema_identity_literals(
+                    context_schema,
+                    key,
+                    &mut literals,
+                    &mut errors,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(literals)
+    } else {
+        Err(errors)
+    }
+}
+
+/// Extract the `default`, `enum` and `examples` identity literals at the
+/// flat property path `properties.<key>` of the context schema, appending
+/// graph-validation errors for any present-but-invalid value.
+fn collect_schema_identity_literals(
+    context_schema: Option<&serde_json::Value>,
+    key: &str,
+    literals: &mut BTreeSet<Uuid>,
+    errors: &mut Vec<GraphValidationError>,
+) {
+    let Some(property) = context_schema
+        .and_then(|schema| schema.get("properties"))
+        .and_then(|properties| properties.get(key))
+    else {
+        // No declared property: nothing authoritative is supplied by the
+        // schema; per-creation inputs remain governed by the runtime seams.
+        return;
+    };
+
+    // `default`: a single value.
+    inspect_identity_literal(
+        property.get("default"),
+        key,
+        "default",
+        literals,
+        errors,
+    );
+
+    // `enum` / `examples`: arrays of values.
+    for keyword in ["enum", "examples"] {
+        if let Some(values) = property.get(keyword).and_then(|v| v.as_array()) {
+            for (index, value) in values.iter().enumerate() {
+                inspect_identity_literal(
+                    Some(value),
+                    key,
+                    &format!("{keyword}[{index}]"),
+                    literals,
+                    errors,
+                );
+            }
+        }
+    }
+}
+
+/// Validate one schema-positioned identity value: only string-form UUIDs are
+/// identity literals; anything else in an identity-bearing position is a
+/// validation error (CTR-CIR-003 requires invalid/stale input to be rejected
+/// before persisting an identity-bearing Context value).
+fn inspect_identity_literal(
+    value: Option<&serde_json::Value>,
+    key: &str,
+    position: &str,
+    literals: &mut BTreeSet<Uuid>,
+    errors: &mut Vec<GraphValidationError>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let Some(raw) = value.as_str() else {
+        errors.push(GraphValidationError::new(
+            INSTANCE_INPUT_LITERAL_NOT_STRING,
+            format!(
+                "context_schema property '{key}' {position} carries a non-string value; \
+                 identity literals must be exact Principal UUID strings"
+            ),
+        ));
+        return;
+    };
+    match Uuid::parse_str(raw) {
+        Ok(principal) => {
+            literals.insert(principal);
+        }
+        Err(_) => {
+            errors.push(GraphValidationError::new(
+                INSTANCE_INPUT_LITERAL_NOT_UUID,
+                format!(
+                    "context_schema property '{key}' {position} carries '{raw}' which is not a \
+                     UUID; identity literals must be exact Principal UUIDs (display name / \
+                     email / legacy id resolution is forbidden)"
+                ),
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +421,223 @@ mod tests {
         gate.admit([Uuid::new_v4(), Uuid::new_v4()])
             .await
             .expect("dormant admission is a no-op");
+    }
+
+    // ---- definition publish identity-literal extraction (CTR-CIR-003) ----
+
+    use crate::domain::definition::model::AssigneeRef;
+    use crate::domain::enums::NodeType;
+    use crate::domain::ids::{DefinitionVersionId, NodeId, PrincipalId};
+
+    fn node(
+        node_key: &str,
+        ref_type: AssigneeRefType,
+        fixed: Option<Uuid>,
+        input_key: Option<&str>,
+    ) -> NodeDefinition {
+        NodeDefinition {
+            node_id: NodeId::from_uuid(Uuid::new_v4()),
+            definition_version_id: DefinitionVersionId::from_uuid(Uuid::new_v4()),
+            node_key: node_key.to_string(),
+            display_name: "Node".to_string(),
+            order_index: 0,
+            node_type: NodeType::NORMAL,
+            assignee_ref: Some(AssigneeRef {
+                ref_type,
+                fixed_principal_id: fixed.map(PrincipalId::from_uuid),
+                assignee_input_key: input_key.map(|s| s.to_string()),
+            }),
+            instructions: None,
+            primary_advance_transition_id: None,
+            metadata: None,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    fn schema_property(key: &str, property: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": [key],
+            "properties": { key: property }
+        })
+    }
+
+    #[test]
+    fn collects_fixed_principals_and_dedupes() {
+        let agent = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let nodes = vec![
+            node("a", AssigneeRefType::FixedPrincipal, Some(agent), None),
+            node("b", AssigneeRefType::FixedPrincipal, Some(agent), None),
+            node("c", AssigneeRefType::FixedPrincipal, Some(other), None),
+            node("d", AssigneeRefType::WorkflowCreator, None, None),
+            node(
+                "e",
+                AssigneeRefType::InstanceInputPrincipal,
+                None,
+                Some("owner"),
+            ),
+        ];
+        let literals =
+            collect_definition_publish_identity_literals(&nodes, None).expect("no schema errors");
+        assert_eq!(literals, BTreeSet::from([agent, other]));
+    }
+
+    #[test]
+    fn collects_default_enum_and_examples_literals() {
+        let default = Uuid::new_v4();
+        let enum_a = Uuid::new_v4();
+        let enum_b = Uuid::new_v4();
+        let example = Uuid::new_v4();
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("owner"),
+        )];
+        let schema = schema_property(
+            "owner",
+            serde_json::json!({
+                "type": "string",
+                "default": default.to_string(),
+                "enum": [enum_a.to_string(), enum_b.to_string(), default.to_string()],
+                "examples": [example.to_string()],
+            }),
+        );
+        let literals = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect("schema literals valid");
+        assert_eq!(
+            literals,
+            BTreeSet::from([default, enum_a, enum_b, example]),
+            "each distinct schema literal collected exactly once"
+        );
+    }
+
+    #[test]
+    fn schema_literal_dedupes_with_fixed_principal() {
+        let agent = Uuid::new_v4();
+        let nodes = vec![
+            node("work", AssigneeRefType::FixedPrincipal, Some(agent), None),
+            node(
+                "pick",
+                AssigneeRefType::InstanceInputPrincipal,
+                None,
+                Some("owner"),
+            ),
+        ];
+        let schema = schema_property(
+            "owner",
+            serde_json::json!({ "type": "string", "default": agent.to_string() }),
+        );
+        let literals = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect("schema literals valid");
+        assert_eq!(literals, BTreeSet::from([agent]));
+    }
+
+    #[test]
+    fn non_uuid_string_literal_is_rejected_naming_key_and_position() {
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("owner"),
+        )];
+        let schema = schema_property(
+            "owner",
+            serde_json::json!({ "type": "string", "default": "display name" }),
+        );
+        let errors = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect_err("non-UUID identity literal must be rejected");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].code, "INSTANCE_INPUT_LITERAL_NOT_UUID");
+        assert!(
+            errors[0].message.contains("'owner'") && errors[0].message.contains("default"),
+            "error names the property path: {}",
+            errors[0].message
+        );
+    }
+
+    #[test]
+    fn non_string_literal_is_rejected() {
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("owner"),
+        )];
+        let schema = schema_property("owner", serde_json::json!({ "type": "string", "default": 42 }));
+        let errors = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect_err("non-string identity literal must be rejected");
+        assert_eq!(errors[0].code, "INSTANCE_INPUT_LITERAL_NOT_STRING");
+    }
+
+    #[test]
+    fn enum_positions_name_the_index() {
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("owner"),
+        )];
+        let good = Uuid::new_v4();
+        let schema = schema_property(
+            "owner",
+            serde_json::json!({
+                "type": "string",
+                "enum": [good.to_string(), "agent-123"],
+            }),
+        );
+        let errors = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect_err("invalid enum entry must be rejected");
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].message.contains("enum[1]") && errors[0].message.contains("agent-123"),
+            "error names the keyword position: {}",
+            errors[0].message
+        );
+    }
+
+    #[test]
+    fn missing_property_or_schema_is_skipped_not_an_error() {
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("absent_key"),
+        )];
+        // Property absent for the key.
+        let schema = schema_property(
+            "other",
+            serde_json::json!({ "type": "string", "default": "junk" }),
+        );
+        let literals = collect_definition_publish_identity_literals(&nodes, Some(&schema))
+            .expect("absent property contributes nothing");
+        assert!(literals.is_empty());
+
+        // No schema at all (IIP schema coverage is enforced elsewhere).
+        let nodes = vec![node(
+            "work",
+            AssigneeRefType::InstanceInputPrincipal,
+            None,
+            Some("owner"),
+        )];
+        let literals =
+            collect_definition_publish_identity_literals(&nodes, None).expect("no schema");
+        assert!(literals.is_empty());
+
+        // Fixed principals still collected alongside.
+        let fixed = Uuid::new_v4();
+        let nodes = vec![
+            node("a", AssigneeRefType::FixedPrincipal, Some(fixed), None),
+            node(
+                "w",
+                AssigneeRefType::InstanceInputPrincipal,
+                None,
+                Some("absent_key"),
+            ),
+        ];
+        let literals =
+            collect_definition_publish_identity_literals(&nodes, None).expect("collected");
+        assert_eq!(literals, BTreeSet::from([fixed]));
     }
 }

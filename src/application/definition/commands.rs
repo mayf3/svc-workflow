@@ -92,6 +92,11 @@ pub struct PublishVersion {
 pub struct DeprecateVersion {
     pub actor_principal_id: Uuid,
     pub definition_version_id: Uuid,
+    /// Optional reason token recorded atomically with the status flip
+    /// (CTR-CIR-003: the source-only stop-new plan deprecates the two held
+    /// versions "atomically recording SOURCE_IDENTITY_UNRESOLVED"). `None`
+    /// writes NULL and preserves the pre-existing behavior exactly.
+    pub deprecation_reason: Option<String>,
 }
 
 /// Revoke a PUBLISHED or DEPRECATED version -> REVOKED.
