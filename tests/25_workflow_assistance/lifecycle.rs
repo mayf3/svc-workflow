@@ -46,6 +46,7 @@ async fn admin_override_voids_open_assistance(pool: PgPool) {
     let case = request_case(&pool, &fixture).await;
     admin_emergency_override(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         AdminEmergencyOverrideCommand {
             principal_id: PrincipalId::from_uuid(fixture.admin),
             idempotency_key: Uuid::new_v4().to_string(),

@@ -189,7 +189,8 @@ pub(crate) async fn create_and_advance_to_normal(
     ver_id: Uuid,
 ) -> (Uuid, Uuid, Uuid) {
     let create_cmd = make_command(principal_id, domain_id, ver_id);
-    let create_result = create_workflow_instance(pool, create_cmd)
+    let create_result = create_workflow_instance(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), create_cmd)
         .await
         .expect("create");
     let instance_id = create_result.workflow_instance_id;
@@ -204,7 +205,8 @@ pub(crate) async fn create_and_advance_to_normal(
         submission_payload: None,
     };
 
-    let trans_result = execute_workflow_transition(pool, trans_cmd)
+    let trans_result = execute_workflow_transition(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), trans_cmd)
         .await
         .expect("advance to normal");
     (

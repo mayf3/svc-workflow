@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::domain::workflow_instance::import::{
     CreatorResolution, ImportLegacyWorkflowInstanceCommand, LegacyImportError, COMMAND_TYPE,
 };
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::legacy_import_repository;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,11 +96,17 @@ async fn ensure_principal_exists(
         .ok_or(LegacyImportError::PrincipalNotFound)
 }
 
+/// Import one legacy ADC record as a workflow instance.
+///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003); the
+/// monotonic admission start is captured here at service entry. Dormant mode
+/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
 pub async fn import_legacy_workflow_instance(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ImportLegacyWorkflowInstanceCommand,
 ) -> Result<ImportLegacyWorkflowInstanceResult, LegacyImportError> {
     ensure_principal_exists(pool, command.principal_id.into_uuid()).await?;
     let request_hash = compute_legacy_import_request_hash(&command)?;
-    legacy_import_repository::import(pool, command, &request_hash).await
+    legacy_import_repository::import(pool, admission, command, &request_hash).await
 }

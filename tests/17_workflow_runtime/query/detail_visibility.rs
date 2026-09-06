@@ -86,6 +86,7 @@ async fn detail_visibility_priority_and_full_dto_are_authoritative() {
 
     let non_primary_error = execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -103,6 +104,7 @@ async fn detail_visibility_priority_and_full_dto_are_authoritative() {
 
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,

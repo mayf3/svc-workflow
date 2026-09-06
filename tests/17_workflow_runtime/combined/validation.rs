@@ -30,6 +30,7 @@ async fn combined_requires_workflow_creator() {
     let other_principal = seed_second_principal(&pool).await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(other_principal, created.workflow_instance_id, 1, advance_id),
     )
     .await
@@ -65,6 +66,7 @@ async fn combined_requires_current_visit_assignee_independently() {
     .await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(creator_id, created.workflow_instance_id, 1, advance_id),
     )
     .await
@@ -81,6 +83,7 @@ async fn combined_is_draft_only() {
     let (principal_id, advance_id, _, created) = basic_instance(&pool).await;
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             principal_id,
             created.workflow_instance_id,
@@ -94,6 +97,7 @@ async fn combined_is_draft_only() {
 
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, created.workflow_instance_id, 2, advance_id),
     )
     .await
@@ -110,6 +114,7 @@ async fn combined_accepts_only_primary_advance() {
     let (principal_id, _, secondary_id, created) = basic_instance(&pool).await;
     let error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, created.workflow_instance_id, 1, secondary_id),
     )
     .await
@@ -169,7 +174,8 @@ async fn combined_validates_both_payload_schemas_without_partial_facts() {
             make_combined_command(principal_id, created.workflow_instance_id, 1, advance_id);
         command.context_payload = context;
         command.submission_payload = submission;
-        let error = revise_context_and_transition(&pool, command)
+        let error = revise_context_and_transition(&pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command)
             .await
             .unwrap_err();
         if expected_context_error {
@@ -203,6 +209,7 @@ async fn combined_rejects_stale_state_version_and_revoked_definition() {
     let (principal_id, advance_id, _, created) = basic_instance(&pool).await;
     let stale = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, created.workflow_instance_id, 2, advance_id),
     )
     .await
@@ -232,6 +239,7 @@ async fn combined_rejects_stale_state_version_and_revoked_definition() {
     .unwrap();
     let revoked = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(principal_id, created.workflow_instance_id, 1, advance_id),
     )
     .await

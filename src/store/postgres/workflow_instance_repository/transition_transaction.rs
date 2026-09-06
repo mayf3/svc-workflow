@@ -17,6 +17,7 @@ use crate::domain::definition::digest;
 use crate::domain::enums::NodeType;
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 use super::transition_helpers::{self};
 pub(crate) use super::transition_helpers::{TransitionOutcome, TransitionResult};
@@ -39,11 +40,19 @@ use super::transition_validation::{
 /// ADVANCE, RETURN, or TERMINATE with optional submission handling.
 pub(crate) async fn execute_workflow_transition_atomically(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     cmd: ExecuteWorkflowTransitionCommand,
     request_hash: &str,
 ) -> Result<TransitionOutcome, ExecuteWorkflowTransitionError> {
     let mut tx = pool
         .begin()
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    // CTR-CIR-003: the database statement deadline must be no later than the
+    // 5-second admission-through-commit bound. No-op in dormant mode.
+    admission
+        .bind_statement_deadline(&mut tx)
         .await
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
@@ -490,6 +499,21 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // ---------------------------------------------------------------
+    // Step 13b: CTR-CIR-003 canonical identity admission — inside the
+    // committing transaction and before the first runtime-fact write. The
+    // transition's Agent Principal set is the resolved target-visit assignee
+    // (a TERMINAL target resolves to None: no assignment fact is persisted,
+    // so the acceptance set is empty). A WORKFLOW_CREATOR resolution is an
+    // assignment fact and is admitted. Any admission failure rolls the whole
+    // transaction back (zero business delta — no deterministic failure
+    // receipt, which would be a forbidden cached cross-command result).
+    // ---------------------------------------------------------------
+    admission
+        .admit(target_assignee_id)
+        .await
+        .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+
+    // ---------------------------------------------------------------
     // Step 14: Compute target visit_number
     // ---------------------------------------------------------------
     let visit_number: (Option<i32>,) = sqlx::query_as(
@@ -664,6 +688,11 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 19: Commit
     // ---------------------------------------------------------------
+    // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds —
+    // an exhausted budget must not commit (fail closed, zero writes).
+    admission
+        .check_commit_budget()
+        .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
     tx.commit()
         .await
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;

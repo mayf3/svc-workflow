@@ -8,6 +8,7 @@ use crate::domain::workflow_instance::recovery::{
     AdminEmergencyOverrideCommand, RebuildProjectionCommand, RecoveryError, WorkflowProjection,
     COMMAND_TYPE_ADMIN_EMERGENCY_OVERRIDE, COMMAND_TYPE_REBUILD_PROJECTION,
 };
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::admin_recovery_repository;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,12 +136,20 @@ pub async fn rebuild_projection(
     admin_recovery_repository::rebuild_projection(pool, command, &request_hash).await
 }
 
+/// Administrative emergency override (move to node / terminate).
+///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003): the
+/// override's target assignee (when the operation assigns work) is admitted
+/// inside the committing transaction. Dormant mode
+/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
 pub async fn admin_emergency_override(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: AdminEmergencyOverrideCommand,
 ) -> Result<AdminEmergencyOverrideResult, RecoveryError> {
     validate_key(&command.command_schema_version, &command.idempotency_key)?;
     ensure_principal_exists(pool, command.principal_id.into_uuid()).await?;
     let request_hash = override_hash(&command)?;
-    admin_recovery_repository::admin_emergency_override(pool, command, &request_hash).await
+    admin_recovery_repository::admin_emergency_override(pool, admission, command, &request_hash)
+        .await
 }

@@ -34,6 +34,7 @@ fn build_app(
     allowed_delegating_sub: &str,
 ) -> axum::Router {
     let config = HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -276,7 +277,8 @@ async fn create_instance(
         metadata: serde_json::Value::Object(serde_json::Map::new()),
         context_payload: serde_json::Value::Object(serde_json::Map::new()),
     };
-    let result = create_workflow_instance(pool, command)
+    let result = create_workflow_instance(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command)
         .await
         .expect("create workflow instance via app service");
     result.workflow_instance_id
@@ -748,6 +750,7 @@ async fn obo_verifier_auth_context_correct() {
     let pool = create_pool().await;
     let mock = common::MockJwksServer::start().await;
     let config = HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,

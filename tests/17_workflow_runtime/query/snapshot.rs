@@ -32,6 +32,7 @@ async fn detail_snapshot_is_wholly_before_or_after_a_concurrent_transition() {
             command_barrier.wait().await;
             execute_workflow_transition(
                 &command_pool,
+                svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
                 make_transition_command(
                     creator,
                     instance,
@@ -108,6 +109,7 @@ async fn repeatable_read_detail_stays_pre_revision_when_later_read_is_blocked() 
     );
     let revised = revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(seed.creator),
             idempotency_key: Uuid::new_v4().to_string(),

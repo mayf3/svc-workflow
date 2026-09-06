@@ -117,7 +117,8 @@ impl Drop for TriggerGuard {
 async fn seeded_instance(pool: &PgPool) -> (Uuid, Uuid) {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(pool, domain_id).await;
-    let r = create_workflow_instance(pool, make_command(principal_id, domain_id, ver_id))
+    let r = create_workflow_instance(pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     (principal_id, r.workflow_instance_id)
@@ -138,6 +139,7 @@ async fn test_revise_revision_insert_failure_rolls_back() {
 
     let err = revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await;
@@ -211,6 +213,7 @@ async fn test_revise_event_insert_failure_rolls_back() {
 
     let err = revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await;
