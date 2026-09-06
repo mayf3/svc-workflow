@@ -1,9 +1,16 @@
 ---
 spec_id: SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1
-status: proposed
+status: accepted
+accepted_date: 2026-09-06
+accepted_by: mayf3
+accepted_reviewed_head: 78323394c6c6d82a14657bdfd6589419fdbb6dff
+independent_review_result: ACCEPT
+independent_review_blockers: NONE
+acceptance_delta_class: lifecycle_provenance_only
+semantic_delta_from_reviewed_head: none
 spec_kind: implementation
 authority_level: governing_spec
-implementation_authority: none
+implementation_authority: contracts
 scope:
   - mayf3/svc-workflow
   - definition-governance-graph-validation-diagnostics
