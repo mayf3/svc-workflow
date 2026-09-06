@@ -11,7 +11,9 @@
 //! Handler layer never calls the receipt or audit primitives directly.
 //! All authorization originates here or in [`DefinitionService`].
 
+mod diagnostics;
 mod receipt;
+pub use diagnostics::GraphDiagnostics;
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -54,6 +56,8 @@ pub enum DefinitionGovernanceError {
     DirectTokenRequired,
     IdempotencyConflict,
     CommandStillProcessing,
+    GraphValidationFailed(GraphDiagnostics),
+    InvalidGraphDiagnosticReceipt,
     InternalConsistency(String),
     StorageError(String),
 }
@@ -72,7 +76,10 @@ impl DefinitionGovernanceError {
             Self::DirectTokenRequired => "direct_token_required",
             Self::IdempotencyConflict => "idempotency_conflict",
             Self::CommandStillProcessing => "command_still_processing",
-            Self::InternalConsistency(_) => "internal_consistency_error",
+            Self::GraphValidationFailed(_) => "graph_validation_failed",
+            Self::InvalidGraphDiagnosticReceipt | Self::InternalConsistency(_) => {
+                "internal_consistency_error"
+            },
             Self::StorageError(_) => "service_unavailable",
         }
     }
@@ -88,7 +95,8 @@ impl DefinitionGovernanceError {
             | Self::RevisionConflict
             | Self::IdempotencyConflict => 409,
             Self::CommandStillProcessing => 425,
-            Self::InternalConsistency(_) => 500,
+            Self::GraphValidationFailed(_) => 422,
+            Self::InvalidGraphDiagnosticReceipt | Self::InternalConsistency(_) => 500,
             Self::StorageError(_) => 503,
         }
     }
@@ -119,8 +127,10 @@ impl From<DefinitionError> for DefinitionGovernanceError {
             DefinitionError::DefinitionKeyConflict => Self::DefinitionKeyConflict,
             DefinitionError::ConcurrentModification(_) => Self::RevisionConflict,
             DefinitionError::InvalidLifecycleTransition => Self::DefinitionNotEditable,
-            DefinitionError::GraphValidationFailed(_)
-            | DefinitionError::SchemaValidationFailed(_)
+            DefinitionError::GraphValidationFailed(errors) => {
+                Self::GraphValidationFailed(GraphDiagnostics::project(errors))
+            },
+            DefinitionError::SchemaValidationFailed(_)
             | DefinitionError::DigestFailure(_) => {
                 Self::InternalConsistency(format!("validation error: {}", e))
             }
@@ -169,6 +179,7 @@ pub async fn governance_create_definition(
             Ok(result)
         },
         serde_json::json!({"domainId": domain_id, "definitionKey": definition_key}),
+        None,
     )
     .await
 }
@@ -212,6 +223,7 @@ pub async fn governance_create_draft_version(
             Ok(result)
         },
         serde_json::json!({"workflowDefinitionId": def_id}),
+        None,
     )
     .await
 }
@@ -227,6 +239,13 @@ pub async fn governance_replace_draft_graph(
     nodes: Vec<RawNodeDefinition>,
     transitions: Vec<RawTransitionDefinition>,
 ) -> Result<(), DefinitionGovernanceError> {
+    // Additional identity is attached only to new completed graph rejections.
+    // Preserve the historical receipt hash and unrelated success/error replay.
+    let receipt_command = serde_json::json!({
+        "definitionVersionId": definition_version_id,
+        "contextSchema": context_schema, "nodes": nodes, "transitions": transitions,
+    });
+    let graph_input_hash = compute_receipt_hash(&receipt_command);
     let version_id = definition_version_id;
     let cs = context_schema;
     let nd = nodes;
@@ -250,6 +269,7 @@ pub async fn governance_replace_draft_graph(
             Ok(())
         },
         serde_json::json!({"definitionVersionId": version_id}),
+        Some(graph_input_hash),
     )
     .await
 }
@@ -282,6 +302,7 @@ pub async fn governance_publish_version(
             Ok(result)
         },
         serde_json::json!({"definitionVersionId": vid, "expectedRevision": exp_for_receipt}),
+        None,
     )
     .await
 }
@@ -311,6 +332,7 @@ pub async fn governance_archive_definition(
             Ok(result)
         },
         serde_json::json!({"workflowDefinitionId": def_id}),
+        None,
     )
     .await
 }
@@ -336,6 +358,7 @@ async fn governance_with_receipt<F, Fut, T>(
     _request_id: &str,
     business_logic: F,
     command: serde_json::Value,
+    graph_input_hash: Option<String>,
 ) -> Result<T, DefinitionGovernanceError>
 where
     F: FnOnce(DefinitionService<PgDefinitionRepository>, serde_json::Value) -> Fut,
@@ -351,6 +374,8 @@ where
         &serde_json::json!({ "commandType": command_type, "command": serde_json::to_value(&command).unwrap_or_default() }),
     );
 
+    let diagnostic_hash = graph_input_hash.unwrap_or_else(|| request_hash.clone());
+
     let receipt: AcquireReceipt = acquire_receipt(
         &mut tx,
         actor_id,
@@ -365,7 +390,7 @@ where
         tx.commit()
             .await
             .map_err(|e| DefinitionGovernanceError::StorageError(e.to_string()))?;
-        return handle_receipt_result(receipt);
+        return handle_receipt_result(receipt, &diagnostic_hash);
     }
 
     let repo = PgDefinitionRepository::new(pool.clone());
@@ -405,7 +430,12 @@ where
         }
         Err(def_err) => {
             let gov_err: DefinitionGovernanceError = def_err.into();
-            let error_response = serde_json::json!({"error": gov_err.label()});
+            let error_response = match &gov_err {
+                DefinitionGovernanceError::GraphValidationFailed(details) => {
+                    serde_json::json!({"error": gov_err.label(), "details": details, "graphInputHash": diagnostic_hash})
+                },
+                _ => serde_json::json!({"error": gov_err.label()}),
+            };
             let status = gov_err.status_code() as i32;
 
             if !matches!(

@@ -1,3 +1,14 @@
+## Definition diagnostic compatibility (1.6.0)
+
+Previously opaque canonical graph failures now return 422 graph_validation_failed.
+The accepted diagnostic Spec freezes bounded static details and readable rule names.
+New completed diagnostic receipts require the new safe decoder. A rollback artifact
+must retain that decoder; no destructive receipt cleanup or automatic unknown-attempt
+replay is allowed. Historical replacement receipt hash and success/error replay remain unchanged.
+Only newly completed graph diagnostics store and check an additional full graph
+input hash, so a corrected input using that failed attempt key conflicts. Existing
+incomplete successful-write input binding remains outside this diagnostic scope.
+
 # Compatibility Policy
 
 **Policy:** `strict_backward_compatible`
