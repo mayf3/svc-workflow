@@ -543,13 +543,17 @@ async fn publish_admits_every_identity_literal_and_publishes() {
 
     // The directory must have observed BOTH literals: the FIXED_PRINCIPAL
     // agent and the schema default identity value.
-    let principals = distinct_auth_principals(&stub.requests());
+    // Admission reads fan out concurrently; assert the SET of admitted
+    // principals, not their wire order.
+    let mut principals = distinct_auth_principals(&stub.requests());
+    principals.sort();
+    let mut expected = vec![
+        format!("{}/agent", agent_one),
+        format!("{}/agent", agent_two_id(&agent_two_schema)),
+    ];
+    expected.sort();
     assert_eq!(
-        principals,
-        vec![
-            format!("{}/agent", agent_one),
-            format!("{}/agent", agent_two_id(&agent_two_schema)),
-        ],
+        principals, expected,
         "exactly the two distinct identity literals admitted: {principals:?}"
     );
     // Fresh token per exact read audience per command.
