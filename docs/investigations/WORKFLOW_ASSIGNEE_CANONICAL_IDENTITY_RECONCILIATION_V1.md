@@ -58,3 +58,16 @@ This preflight classification is the author's assessment pending independent sem
 No display-name/normalized-prefix mapping, no rewriting old Principal agent_id to merge identities, no overwriting published graph/old Visit/context/receipt, no swapping Instance DefinitionVersion, no arbitrary reassignment API, no generic migration framework, no proposed fleet operator replay. Preserve invalid rows as explicit no-send classifications until governed disposition is known.
 
 Next: obtain exact runtime workspace binding and qualified equivalence where old external_ref is null; verify CTO accepted pair current history/gates; distinguish all source semantic model versions and future creation validation; build a reviewed exact source/active-instance plan with atomic append-only facts. Only then request the irreducible exact-head semantic acceptance. Actual HR >=3 real items across >=2 Domains and >=2 Agents remains entirely unverified.
+
+
+## Follow-up observations and independent preflight result
+
+OBS-WACI-007: current-model-and-input-facts.json confirms all 203 current items are model1; definition-version-models.json confirms all 55 bad published source versions are model1 (all published:99 model1,1 model3). Source repair cannot silently create new Legacy intake through cloned replacement model1 versions.
+
+OBS-WACI-008: fresh protected runtime-workspace-snapshot.json has 88 mappings, SHA256315ac692a7b4c0074ec092a5d961d7ef818e5a9189d78dba2e86cd5cb49411dc. HR/writer exact historical paths match production. CTO has no override, so falls back to its runtime-owned workspace. This does not negate the separately accepted exact CTO identity pair.
+
+OBS-WACI-009: 2026-09-06T18:36:08+08 CTO exception readback: OLD enabled role bindings9, NEW0, ever-assigned instances58, OLD historical visits112. Original accepted plan requires111 visits. Therefore original count eligibility fails before apply; do not weaken its gate or replace its frozen history silently. Provenance cto-exception-eligibility-counts.json.
+
+Independent semantic preflight at74ec339166969d699cbec74e9edc3c159a19e757 is recorded in semantic-preflight-review.md. It confirms no REUSE for the new responsibility tuples; a model1 exact-plan same-node successor exception would need Product/Architecture successor plus implementation child. Null old external_ref alone is not ambiguity: qualified exact Auth agent_id, historical registry/workspace, recovery successor binding and current canonical Agent can establish equivalence. Review is not Spec acceptance or implementation audit.
+
+Next authoring must jointly close current responsibility and source behavior. Do not take a same-node visit repair as sufficient if immutable source assignments can recreate drift on later transitions. Evaluate the already designed explicit model3 successor-instance migration against the minimal exact affected graphs; if a new bounded Legacy exception is necessary, expose that semantic delta for Owner exact-head acceptance. Do not build a generic migration engine or silently widen identity reconciliation into a mass workflow-model conversion. Canonical future sources, preserved existing business semantics and immutable history must all be shown in the concrete plan.
