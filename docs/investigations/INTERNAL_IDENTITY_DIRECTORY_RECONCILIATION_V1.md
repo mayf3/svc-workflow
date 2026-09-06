@@ -62,7 +62,7 @@ holders are AGENT principals). Auth issuance enforces `machine_grant_missing` fo
 audience without a MachineAccessGrant, so ANY token-bearing read necessarily involves a
 grant tuple; the dedicated model added two per-purpose tuples for one consumer.
 
-## 3. Disposition
+## 3. Disposition (candidate artifact updated in audit repair r1)
 
 CASE A (existing generic read sufficient): NO — no surface at either base permits an
 arbitrary authenticated internal principal to perform the minimal read.
@@ -88,11 +88,15 @@ Prepare the smallest canonical identity-directory read Authority:
   `agent-directory` / scope `agent.directory.read`; success is exactly
   `{agentId, exists, enabled}` (existence as data; observationDigest dropped); malformed
   input, ambiguity, storage-error and deadline semantics retained.
-- svc focused amendment `SVC_WORKFLOW_DIRECTORY_DEPENDENCY_AMENDMENT_V1`: CTR-CIR-003's
-  admission orchestration re-pins its two external dependencies to the successor Specs and
-  replaces the dedicated-Service-identity sentence with the generic internal-directory
-  contract; every other Goal contract is unchanged. Workflow still validates
-  exists/active/enabled fail-closed before any assignment persistence.
+- svc whole-authority successor `SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2`
+  (supersedes V1): CTR-CIR-003's admission orchestration re-pins its two external
+  dependencies to the successor Specs and replaces the dedicated-Service-identity
+  sentence cluster with the generic internal-directory contract; every other Goal
+  contract is carried forward verbatim. Workflow still validates
+  exists/active/enabled fail-closed before any assignment persistence. (An initial
+  focused-amendment vehicle was rejected by independent semantic audit as unlawful
+  partial supersession under this repository's SPEC_GOVERNANCE_V0 §9.1/9.2 and replaced
+  by this whole-authority successor in the single bounded repair.)
 
 ## 4. Reuse map (what is NOT rewritten)
 
