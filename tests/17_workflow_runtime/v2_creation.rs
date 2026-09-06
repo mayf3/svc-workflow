@@ -157,6 +157,7 @@ async fn explicit_v2_creation_runs_minimal_runtime() {
         "req",
         ver_id,
         None,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
     )
     .await
     .expect("publish v2 version");

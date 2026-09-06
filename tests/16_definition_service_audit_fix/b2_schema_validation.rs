@@ -1,6 +1,7 @@
 //! B-2: JSON Schema validation integration tests.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::application::definition::commands::PublishVersion;
 use svc_workflow::domain::definition::error::DefinitionError;
 
@@ -81,7 +82,7 @@ async fn test_valid_context_schema_can_publish() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_ok(),
@@ -111,7 +112,7 @@ async fn test_invalid_schema_rejected_during_publish() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(result.is_err(), "invalid schema should be rejected");
     match result.unwrap_err() {
@@ -157,7 +158,7 @@ async fn test_https_ref_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(result.is_err(), "https ref should be rejected");
     let err = result.unwrap_err();
@@ -199,7 +200,7 @@ async fn test_file_ref_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(result.is_err(), "file ref should be rejected");
 }
@@ -233,7 +234,7 @@ async fn test_local_fragment_ref_allowed() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_ok(),
@@ -263,7 +264,7 @@ async fn test_invalid_schema_version_stays_draft() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
 
     let status: (String,) = sqlx::query_as(

@@ -1,6 +1,7 @@
 //! H-2: Assignee rules integration tests.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::application::definition::commands::{
     CreateDraftVersion, PublishVersion, ReplaceDraftGraph,
 };
@@ -253,7 +254,7 @@ async fn test_fixed_principal_disabled_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(result.is_err(), "disabled principal should be rejected");
     match result.unwrap_err() {
@@ -277,7 +278,7 @@ async fn test_terminal_without_assignee_allowed() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_ok(),
@@ -414,7 +415,7 @@ async fn instance_input_principal_node_publishes() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_ok(),

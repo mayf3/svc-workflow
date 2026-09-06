@@ -419,6 +419,13 @@ impl ApiError {
             DGError::InternalConsistency(_) => {
                 ("internal_consistency_error", "internal consistency error")
             }
+            // Sanitized `admission_*` family (CTR-CIR-003): the label and
+            // status come from the wrapped admission error; internal details
+            // (endpoints, response bodies, secrets) are never surfaced.
+            DGError::AdmissionFailed(error) => (
+                error.sanitized_code(),
+                "definition publish was not admitted",
+            ),
             DGError::StorageError(_) => ("service_unavailable", "storage is unavailable"),
         };
         let mut api_error = Self::new(

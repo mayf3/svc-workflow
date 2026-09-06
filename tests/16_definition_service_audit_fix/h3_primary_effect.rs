@@ -1,6 +1,7 @@
 //! H-3: Primary transition must be ADVANCE integration tests.
 
 use super::*;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::application::definition::commands::PublishVersion;
 use svc_workflow::domain::definition::error::DefinitionError;
 
@@ -27,7 +28,7 @@ async fn test_primary_effect_not_advance_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_err(),
@@ -60,7 +61,7 @@ async fn test_primary_advance_allowed() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        })
+        }, AdmissionGate::disabled())
         .await;
     assert!(
         result.is_ok(),

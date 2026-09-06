@@ -32,6 +32,7 @@ use svc_workflow::application::definition_governance::{
 use svc_workflow::domain::definition::error::DefinitionError;
 use svc_workflow::domain::definition::model::SemanticModelVersion;
 use svc_workflow::domain::definition::model::WorkflowDefinition;
+use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 // ==========================================================================
@@ -57,11 +58,14 @@ async fn seed_minimal_and_publish(
         .await
         .expect("should replace draft graph");
     service
-        .publish_version(PublishVersion {
-            actor_principal_id: actor_id,
-            definition_version_id: version_id,
-            expected_revision: None,
-        })
+        .publish_version(
+            PublishVersion {
+                actor_principal_id: actor_id,
+                definition_version_id: version_id,
+                expected_revision: None,
+            },
+            AdmissionGate::disabled(),
+        )
         .await
         .expect("should publish");
 }
@@ -792,12 +796,22 @@ async fn test_concurrent_publish_expected_revision_race() {
         governance_publish_version(
             &pool_a, owner_id, &key_a, "req-a", ver_id,
             None, // no expected_revision - pure race on version lock
+            AdmissionGate::disabled(),
         )
         .await
     });
 
     let handle_b = tokio::spawn(async move {
-        governance_publish_version(&pool_b, owner_id, &key_b, "req-b", ver_id, None).await
+        governance_publish_version(
+            &pool_b,
+            owner_id,
+            &key_b,
+            "req-b",
+            ver_id,
+            None,
+            AdmissionGate::disabled(),
+        )
+        .await
     });
 
     let (result_a, result_b) = tokio::join!(handle_a, handle_b);
@@ -973,6 +987,7 @@ async fn test_stale_expected_revision_returns_revision_conflict() {
         "req-stale",
         ver_id,
         Some("stale-digest-that-does-not-match".to_string()),
+        AdmissionGate::disabled(),
     )
     .await
     .expect_err("stale expected_revision must fail");
@@ -1137,6 +1152,7 @@ async fn test_cross_domain_publish_returns_404() {
         "cross",
         ver_a,
         None,
+        AdmissionGate::disabled(),
     )
     .await
     .expect_err("cross-domain publish must fail");

@@ -358,6 +358,13 @@ pub(crate) async fn publish_version(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-");
 
+    // Canonical identity admission gate (CTR-CIR-003): `Some` only when the
+    // deployment enabled admission; dormant mode keeps existing behavior.
+    // The monotonic admission start is captured here, before any transaction.
+    let admission = crate::store::postgres::admission_gate::AdmissionGate::new(
+        state.admission_client.as_ref(),
+    );
+
     let result = governance_publish_version(
         &state.pool,
         principal.principal_id.into_uuid(),
@@ -365,6 +372,7 @@ pub(crate) async fn publish_version(
         request_id,
         payload.version_id,
         payload.expected_revision,
+        admission,
     )
     .await
     .map_err(ApiError::from_definition_governance)?;
@@ -483,6 +491,13 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             "invalid_lifecycle_transition",
             "invalid lifecycle status transition",
         ),
+        E::AdmissionFailed(error) => {
+            // Sanitized `admission_*` family (CTR-CIR-003); never surfaces
+            // internal endpoint/body details.
+            let status = axum::http::StatusCode::from_u16(error.sanitized_status() as u16)
+                .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+            ApiError::new(status, error.sanitized_code(), "definition publish was not admitted")
+        }
         E::StorageError(detail) => {
             tracing::error!(error = %detail, "definition storage error");
             ApiError::service_unavailable("service_unavailable", "storage is unavailable")

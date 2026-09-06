@@ -8,5 +8,6 @@ pub mod queries;
 pub mod repository;
 mod service;
 
+pub use lifecycle::SOURCE_IDENTITY_UNRESOLVED;
 pub use repository::DefinitionRepository;
 pub use service::DefinitionService;

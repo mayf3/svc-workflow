@@ -24,8 +24,10 @@ use crate::application::definition::commands::{
     RawTransitionDefinition, ReplaceDraftGraph,
 };
 use crate::application::definition::DefinitionService;
+use crate::auth::admission::AdmissionError;
 use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::{WorkflowDefinition, WorkflowDefinitionVersion};
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::definition_repository::PgDefinitionRepository;
 use crate::store::postgres::domain_role_repository::write_security_audit;
 use crate::store::postgres::provisioning_repository::{
@@ -59,6 +61,10 @@ pub enum DefinitionGovernanceError {
     GraphValidationFailed(GraphDiagnostics),
     InvalidGraphDiagnosticReceipt,
     InternalConsistency(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003).
+    /// Sanitized: `label()` is the stable `admission_*` code and
+    /// `status_code()` the sanitized status of the wrapped error.
+    AdmissionFailed(AdmissionError),
     StorageError(String),
 }
 
@@ -80,6 +86,7 @@ impl DefinitionGovernanceError {
             Self::InvalidGraphDiagnosticReceipt | Self::InternalConsistency(_) => {
                 "internal_consistency_error"
             },
+            Self::AdmissionFailed(error) => error.sanitized_code(),
             Self::StorageError(_) => "service_unavailable",
         }
     }
@@ -97,6 +104,7 @@ impl DefinitionGovernanceError {
             Self::CommandStillProcessing => 425,
             Self::GraphValidationFailed(_) => 422,
             Self::InvalidGraphDiagnosticReceipt | Self::InternalConsistency(_) => 500,
+            Self::AdmissionFailed(error) => error.sanitized_status() as u16,
             Self::StorageError(_) => 503,
         }
     }
@@ -134,6 +142,7 @@ impl From<DefinitionError> for DefinitionGovernanceError {
             | DefinitionError::DigestFailure(_) => {
                 Self::InternalConsistency(format!("validation error: {}", e))
             }
+            DefinitionError::AdmissionFailed(error) => Self::AdmissionFailed(error),
             DefinitionError::StorageError(d) => Self::StorageError(d),
         }
     }
@@ -275,6 +284,11 @@ pub async fn governance_replace_draft_graph(
 }
 
 /// Publish a version (idempotent).
+///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003): the
+/// publish flow admits every identity literal the version would make
+/// executable BEFORE the publishing transaction opens. Dormant mode
+/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
 pub async fn governance_publish_version(
     pool: &PgPool,
     actor_id: Uuid,
@@ -282,6 +296,7 @@ pub async fn governance_publish_version(
     request_id: &str,
     version_id: Uuid,
     expected_revision: Option<String>,
+    admission: AdmissionGate<'_>,
 ) -> Result<WorkflowDefinitionVersion, DefinitionGovernanceError> {
     let vid = version_id;
     let exp_for_receipt = expected_revision.clone();
@@ -292,13 +307,13 @@ pub async fn governance_publish_version(
         idempotency_key,
         COMMAND_TYPE_PUBLISH,
         request_id,
-        |service, _cmd: serde_json::Value| async move {
+        move |service, _cmd: serde_json::Value| async move {
             let cmd = PublishVersion {
                 actor_principal_id: actor_id,
                 definition_version_id: vid,
                 expected_revision,
             };
-            let result = service.publish_version(cmd).await?;
+            let result = service.publish_version(cmd, admission).await?;
             Ok(result)
         },
         serde_json::json!({"definitionVersionId": vid, "expectedRevision": exp_for_receipt}),
@@ -430,6 +445,17 @@ where
         }
         Err(def_err) => {
             let gov_err: DefinitionGovernanceError = def_err.into();
+
+            // CTR-CIR-003: an admission failure must yield zero business
+            // delta AND no stored receipt — a stored receipt would be a
+            // cached cross-command result, which CTR-CIR-003 forbids. Roll
+            // the whole receipt transaction back so the SAME idempotency key
+            // can retry against an admitting directory.
+            if matches!(gov_err, DefinitionGovernanceError::AdmissionFailed(_)) {
+                let _ = tx.rollback().await;
+                return Err(gov_err);
+            }
+
             let error_response = match &gov_err {
                 DefinitionGovernanceError::GraphValidationFailed(details) => {
                     serde_json::json!({"error": gov_err.label(), "details": details, "graphInputHash": diagnostic_hash})
