@@ -1,18 +1,73 @@
 ---
-authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_0
-status: superseded
+authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_1
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
 production_apply_authority: none
 governed_by:
-  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
+  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V7
 supersedes:
-  - SVC_WORKFLOW_ARCHITECTURE_V0_3_1
-superseded_by: SVC_WORKFLOW_ARCHITECTURE_V0_4_1
+  - SVC_WORKFLOW_ARCHITECTURE_V0_4_0
+superseded_by: null
 owners:
   - mayf3
+accepted_by: mayf3
+accepted_date: 2026-09-06
+accepted_reviewed_spec_commit: 0a85e909572d92dfe90c5a925f817ee2182336f4
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_CANONICAL_IDENTITY_AUTHORITY_ACCEPTANCE_V1.md
+owner_acceptance_attachment_sha256: 0899cec0aa54725fedc3f130a686fb6331728ac0f8bb09d3bfce5b8139cd822b
 ---
+
+# SVC_WORKFLOW_ARCHITECTURE_V0_4_1 — proposed identity-only bounded successor
+
+This is a whole-authority candidate, not an accepted change. It contains the complete predecessor body below so no reader-side composition across files is required. Predecessor lifecycle, PR state, source observations, reviewed-head records and old version labels in that reproduced body remain historical provenance only; they do not accept this candidate. Its substantive baseline obligations are fully restated here, with the sole explicit WACI exception above/below governing the exact frozen scope. Outside that scope the baseline obligations remain unchanged. The predecessor remains accepted and the repository authority map is unchanged until a separate Owner exact-head acceptance and atomic lifecycle transaction.
+
+Predecessor source: SVC_WORKFLOW_ARCHITECTURE_V0_4_0 at e297ff1f3913133058d97bb30bcf8f63b3e137f9; file SHA256 45040e43e9a1ce9335a1a239178144f2c7ca5f9de52ed0f0ee177cefd85ac0cd.
+
+## Identity-only exception: WACI-V1
+
+The Owner instruction on 2026-09-06 is to keep previous business behavior, including choosing canonical personnel per creation. Fresh evidence shows 9 affected Legacy versions use INSTANCE_INPUT_PRINCIPAL and 2 use multiple ADVANCE choices. Converting them to model3 would change owner/branch semantics. This candidate therefore chooses a finite identity-only exception rather than a graph-model conversion.
+
+The exact source scope is docs/evidence/workflow-canonical-identity-reconciliation-v1/scope.json, SHA256 99e35b9b64275787e8516d7df4cefa7e147e6a940b68e3b69c4c89652b1338c0:203 observed Instance/Visit/version tuples,55 affected published source versions,69 total inspection versions. This is an upper bound and observation, never a count-forcing selection rule. No runtime discovery may widen it. Newly discovered work is classified and held for a separately reviewed exact-scope authority change; it is never silently added to this exception.
+
+DEC-WACI-001 (proposed, Owner mayf3): preserve workflow behavior while replacing provably equivalent stale Principal references in a one-time exact plan. Names, normalized agent IDs and intuition are not identity evidence. Auth owns the exact Principal/agent_id/type/status relation and Agent Definition owns exact enabled Agent existence.
+
+CTR-WACI-001 — The only additional Legacy intake permitted is through exact identity-corrected successor versions of this frozen source set, and only after the complete paired source/instance plan is reviewed. These versions retain semantic_model_version1, graph topology, node and transition keys/types/order, ADVANCE/RETURN choices, submission schemas, context/revise semantics, and per-creation personnel selection. Only exact identity-bearing values and explicit reconciliation provenance may differ. No other new Legacy definition, semantic change, template family or arbitrary runtime replacement is authorized. Ordinary unrelated new traffic remains model3. This finite exception is the sole WACI-specific departure from the predecessor no-new-Legacy-intake rule; it is not a general Legacy authoring mode.
+
+CTR-WACI-002 — Published predecessors remain immutable and must be deprecated atomically with activating their approved corrected successors. Every still-published affected predecessor is addressed; correcting only the newest version is insufficient. Callers select the corrected source via existing Definition lifecycle/catalog surfaces and audited source configuration changes, not a hidden mutable Principal remapper. Owner fields still accept per-creation exact canonical Principal selection with their original role meaning; no fixed-person specialization, new default person or topology simplification is implied.
+
+CTR-WACI-003 — Current work whose current or future reachable assignment needs reconciliation may move only by an exact preassigned identity-only successor Instance of the same model1 and business node, bound to the approved corrected DefinitionVersion and a new Context fact. The original Instance's Definition/model, Context rows, Visits, Submissions, Events, Receipts and attribution are never rewritten. The source is closed for further business writes by an immutable migration lineage/closure fact in the same transaction that creates the successor, target Visit, dedicated Events, Receipt and audit. This changes neither existing ordinary assignment semantics nor existing CTO/fleet exceptions. Original source history remains readable and visibly links to its successor; it must not be disguised as successful completion or cancellation of the business task.
+
+CTR-WACI-004 — The successor preserves exact current business position, all context business values, creator provenance, artifact bindings and relevant prior submission/RETURN evidence. Only mechanically proven identity-valued Context or per-instance owner fields may change in the new snapshot, with old/new path/value evidence. A successor that loses a required upstream submission, RETURN reference, revision capability, permission, branch choice or business invariant is ineligible. The child must freeze an executable preservation model before implementation; resemblance of graphs is not proof.
+
+CTR-WACI-005 — All changes remain exact-plan, append-only, fail-closed and atomic. No fuzzy pair selection, arbitrary OLD/NEW flags, generic migration service, second Principal identity store, same-Visit owner update, original Instance rebind, completed-task reactivation, Auth/client/Grant rewrite or HR proxy transition. Invalid and unprovable assignments stay explicitly classified no-send; no automatic cancellation/archive/deletion follows from an identity failure. Domain authority transfer is not implied by identity equivalence; any required exact least-privilege Domain tuple change must be listed and independently authorized in the child, with no global role changes.
+
+CTR-WACI-006 — Acceptance of this parent selects only the finite semantic exception. It grants no implementation or production permission itself. A separately accepted implementation child must close graph/context/history compatibility, target bound plan, failure/replay/recovery, tests and actual HR acceptance. No accepted-looking metadata, plan, audit or deployment receipt alone satisfies the full Goal. Native Owner authentication and actual new semantic exact-head acceptance remain gates; routine work already authorized by the Goal is not a reason for repeated Owner orchestration.
+
+CTR-WACI-007 — Bounded source evidence exception. Only a source/successor pair in the accepted frozen WACI plan may expose sealed source Visits, Submissions and Context revisions to its successor. Ancestor depth is exactly one; the source must not itself be a successor, and neither endpoint may be reused in another migration. Both Instances belong to the same Domain, with an exact node-key correspondence. This explicitly replaces the retained same-Instance-only RETURN-reference rule for typed WACI source evidence only. Ordinary Event foreign-key references still belong to the Event's own Instance. Old UUIDs are retained as origin-bearing evidence, never relabeled as successor facts. Lineage does not grant access: source evidence through the successor requires the actual actor to have current full successor visibility under the existing Domain Owner, current-assignee, or creator-on-DRAFT predicate, and the Domain to be enabled. Historical-participant-only visibility, unrelated actors, disabled Domains and unrelated source facts do not qualify. The implementation child must define sealed membership, replay validation and the same predicates for read and command use.
+
+CTR-WACI-008 — Bounded creator stewardship and business reference. The successor's created_by_principal_id is the exact currently valid original creator, or the proved canonical successor of that same creator fixed in the accepted per-Instance plan. The operator is never substituted. This is an explicit per-Instance transfer of creator stewardship, including creator-only revise after RETURN to DRAFT; equivalence evidence alone does not authorize it before acceptance. Original source creator attribution remains immutable, and migration actor/provenance remain separate. Within the frozen203 scope, this exception may cover only the exact53 observed overlaps with the historical99 protected draft tuples when individually eligible; it expressly replaces the historical no-successor restriction for those approved overlap tuples alone and leaves all99 source rows immutable. Missing creator proof blocks that row. The original external_reference remains uniquely owned by the source row; the successor stores NULL and exposes a typed inherited business-reference projection pointing to that source and its one successor. Lookup by external reference returns the original identity and explicit closure/successor linkage. It cannot silently redirect commands, create a second reference owner, or free the original uniqueness reservation.
+
+CTR-WACI-009 — Canonical assignment admission. Retaining per-create personnel choice means choice among currently valid canonical identities. Before an affected corrected source accepts identity-bearing configuration or a command persists any Agent assignment or personnel Context value, Workflow must obtain fresh authoritative exact Principal/type/status/cardinality and Agent existence/enabled validation. Dispatch-time rejection alone does not satisfy this obligation. Direct creation, revise, revise-and-transition, future transitions and administrative assignment-producing paths must not bypass it. Missing, disabled, ambiguous or unavailable validation commits no new assignment or Context value. The owning Auth/dsh authorities and actual backend caller authorization must exist before implementation; this parent does not supply a new service identity, Grant, HR impersonation or external endpoint authority.
+
+CTR-WACI-010 — Exact unresolved-source intake hold. The two frozen published versions 9b07afc4-d3a2-456d-8b96-13fdffbaf995 (agent_self_task_v1 version1) and e01d1f3a-661b-468f-9eda-0506abaa5c0b (idea_pool_v1 version2) contain Auth-missing fixed identities ...0020/...0030 with no proved successor. Under the separately accepted child and audited exact plan, they may be deprecated without a replacement version, with a durable SOURCE_IDENTITY_UNRESOLVED disposition and no new intake. This is the sole exception to CTR-WACI-002's paired activation rule. Their graphs, all current tasks and historical facts remain intact; no cancellation, completion, archival, replacement owner, auto-redirect or silent fallback is authorized. Existing assignments remain explicitly classified/no-send where unresolved. This preserves business records while preventing more invalid assignments; it does not mean the affected real work is obsolete or the overall Goal is complete. Reopening intake or selecting replacement owners requires exact proved equivalence or separately accepted business authority. No other source version may use this hold exception. Source hold acceptance must be explicit in the final Owner packet.
+
+ACC-WACI-008 verifies CTR-010 by exact two-version disposition, deprecation receipt and new-create denial, unchanged source graphs/current task facts, no fallback, no guessed owner and an explicit unresolved-work census that prevents premature completion.
+
+ACC-WACI-005 verifies CTR-007 with exact one-level sealed membership, same-Domain/node relations, actual successor full-visibility predicates, a same-lineage unauthorized denial, typed old-fact identifiers and deterministic replay. Ordinary cross-Instance Event references continue to fail.
+ACC-WACI-006 verifies CTR-008 with creator/draft/RETURN inventory, every historical99 overlap disposition, immutable source creator values, separate operator audit, creator-only revise after RETURN, inherited reference lookup and duplicate external-reference denial.
+ACC-WACI-007 verifies CTR-009 with negative identity inputs through every affected assignment-producing surface, resolver unavailability with zero persisted business delta, different valid personnel choices and exact external authorization evidence.
+
+ACC-WACI-001 verifies CTR-001/002 using before/after graph/schema digests and every owner-input/multiple-ADVANCE case; changing personnel flexibility or business branch choices fails.
+ACC-WACI-002 verifies CTR-003/004 with current-node, Context, upstream Submission, RETURN and revision traces plus immutable source-row digests. Unavailable or guessed history linkage fails.
+ACC-WACI-003 verifies CTR-005 on wrong/missing/disabled/duplicate mapping, plan drift, excluded identity, concurrent transition and every mutation failure. All failures commit zero business writes; no scope expansion occurs.
+ACC-WACI-004 verifies CTR-006 by exact source/authority/plan/review and runtime evidence. Completion requires all current work classified,100% valid canonical resolution,canonical future sources/new-instance proof and normal HR>=3 real items across>=2Domains and>=2Agents with self-read/self-transition,zero duplicate/fallback,and health.
+
+The new CTR-WACI identifiers own these selected exceptions; historical predecessor Contract IDs keep their historical meaning under their original authority. Whole-authority lifecycle transition must replace the predecessor atomically with backlinks and local authority map only after exact-head acceptance. No such lifecycle action is performed in this proposal.
+
+## Complete baseline restatement (historical source labels retained)
 
 # svc-workflow Serial Visit-Activation Architecture v0.4.0
 
