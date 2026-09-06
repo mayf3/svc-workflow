@@ -1,6 +1,7 @@
 //! PostgreSQL storage layer.
 
 pub mod admin_recovery_repository;
+pub mod admission_gate;
 pub mod definition_repository;
 pub mod domain_role_repository;
 pub(crate) mod import_receipt_validation;

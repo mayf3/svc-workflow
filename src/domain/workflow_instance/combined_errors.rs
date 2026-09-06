@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use crate::auth::admission::AdmissionError;
 use super::errors::{ExecuteWorkflowTransitionError, ReviseWorkflowContextError};
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,9 @@ pub enum ReviseContextAndTransitionError {
     SubmissionValidationFailed(String),
     SizeLimitExceeded(String),
     AssigneeResolutionFailed(String),
+    /// Canonical identity admission rejected the command (CTR-CIR-003).
+    /// The whole transaction rolls back — zero business delta.
+    AdmissionFailed(AdmissionError),
     InternalConsistency(String),
     IdempotencyConflict {
         original_command_id: uuid::Uuid,
@@ -74,6 +78,9 @@ impl fmt::Display for ReviseContextAndTransitionError {
             Self::AssigneeResolutionFailed(detail) => {
                 write!(f, "assignee resolution failed: {}", detail)
             }
+            Self::AdmissionFailed(error) => {
+                write!(f, "admission failed: {}", error.sanitized_code())
+            }
             Self::InternalConsistency(detail) => {
                 write!(f, "internal consistency error: {}", detail)
             }
@@ -113,6 +120,7 @@ pub fn error_code(error: &ReviseContextAndTransitionError) -> i32 {
         | ReviseContextAndTransitionError::ContextValidationFailed(_)
         | ReviseContextAndTransitionError::SubmissionValidationFailed(_)
         | ReviseContextAndTransitionError::AssigneeResolutionFailed(_) => 422,
+        ReviseContextAndTransitionError::AdmissionFailed(error) => error.sanitized_status(),
         ReviseContextAndTransitionError::SizeLimitExceeded(_) => 413,
         ReviseContextAndTransitionError::CommandStillProcessing => 425,
         ReviseContextAndTransitionError::DefinitionVersionDraft
@@ -148,6 +156,7 @@ pub fn error_label(error: &ReviseContextAndTransitionError) -> &'static str {
         ReviseContextAndTransitionError::AssigneeResolutionFailed(_) => {
             "assignee_resolution_failed"
         }
+        ReviseContextAndTransitionError::AdmissionFailed(error) => error.sanitized_code(),
         ReviseContextAndTransitionError::InternalConsistency(_) => "internal_consistency_error",
         ReviseContextAndTransitionError::IdempotencyConflict { .. } => "idempotency_conflict",
         ReviseContextAndTransitionError::CommandStillProcessing => "command_still_processing",
@@ -193,6 +202,9 @@ impl From<ExecuteWorkflowTransitionError> for ReviseContextAndTransitionError {
             ExecuteWorkflowTransitionError::AssigneeResolutionFailed(detail) => {
                 Self::AssigneeResolutionFailed(detail)
             }
+            ExecuteWorkflowTransitionError::AdmissionFailed(error) => {
+                Self::AdmissionFailed(error)
+            }
             ExecuteWorkflowTransitionError::InternalConsistency(detail) => {
                 Self::InternalConsistency(detail)
             }
@@ -231,6 +243,7 @@ impl From<ReviseWorkflowContextError> for ReviseContextAndTransitionError {
             ReviseWorkflowContextError::SizeLimitExceeded(detail) => {
                 Self::SizeLimitExceeded(detail)
             }
+            ReviseWorkflowContextError::AdmissionFailed(error) => Self::AdmissionFailed(error),
             ReviseWorkflowContextError::InternalConsistency(detail) => {
                 Self::InternalConsistency(detail)
             }

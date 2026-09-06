@@ -134,7 +134,7 @@ impl fmt::Display for RejectionReason {
 
 /// Sanitized admission errors: `Display` and `Debug` never include secrets,
 /// Authorization headers or response bodies.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdmissionError {
     /// Invalid or incomplete admission configuration.
     Config(String),
@@ -186,6 +186,32 @@ impl fmt::Display for AdmissionError {
 
 impl std::error::Error for AdmissionError {}
 
+impl AdmissionError {
+    /// Stable, sanitized client-facing error label. Never contains secrets,
+    /// endpoint URLs, response bodies or internal details (CTR-CIR-003).
+    pub fn sanitized_code(&self) -> &'static str {
+        match self {
+            Self::Config(_) => "admission_configuration",
+            Self::Timeout => "admission_timeout",
+            Self::Unavailable => "admission_unavailable",
+            Self::Denied { .. } => "admission_denied",
+            Self::Rejected { .. } => "admission_rejected",
+            Self::MalformedResponse { .. } => "admission_malformed_response",
+        }
+    }
+
+    /// HTTP-style status for the sanitized label, following the repo's
+    /// business-rule convention: a principal that failed admission is a 422
+    /// business rejection; transport/configuration failures of the directory
+    /// validator surface as 503 (mirroring `StorageError` handling).
+    pub fn sanitized_status(&self) -> i32 {
+        match self {
+            Self::Config(_) | Self::Unavailable | Self::MalformedResponse { .. } => 503,
+            Self::Timeout | Self::Denied { .. } | Self::Rejected { .. } => 422,
+        }
+    }
+}
+
 /// Successful observation of one Agent Principal across both directory reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdmittedAgent {
@@ -220,6 +246,22 @@ pub struct AdmissionConfig {
 }
 
 impl AdmissionConfig {
+    /// Dormant-mode configuration: admission disabled, no endpoints required.
+    /// Matches the `from_env` default so construction never fails and the
+    /// runtime keeps its pre-admission behavior unchanged (dormant deploy;
+    /// activation is a separate reviewed production step).
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            auth_base_url: String::new(),
+            core_base_url: String::new(),
+            client_id: DEFAULT_CLIENT_ID.to_string(),
+            client_secret: SecretString::new(String::new()),
+            deadline_ms: ADMISSION_DEADLINE_MS,
+            max_in_flight: DEFAULT_MAX_IN_FLIGHT,
+        }
+    }
+
     pub fn from_env() -> Result<Self, AdmissionError> {
         let enabled = std::env::var(ENV_ENABLED).ok().as_deref() == Some("1");
         let auth_base_url = std::env::var(ENV_AUTH_BASE_URL).unwrap_or_default();
@@ -1475,6 +1517,70 @@ mod tests {
         let rendered = format!("{config:?}");
         assert!(!rendered.contains("test-secret"));
         assert!(rendered.contains("SecretString(***)"));
+    }
+
+    #[test]
+    fn sanitized_codes_and_statuses_are_stable_and_detail_free() {
+        let principal = Uuid::new_v4();
+        let cases: Vec<(AdmissionError, &'static str, i32)> = vec![
+            (
+                AdmissionError::Rejected {
+                    principal,
+                    reason: RejectionReason::AgentDisabled,
+                },
+                "admission_rejected",
+                422,
+            ),
+            (AdmissionError::Timeout, "admission_timeout", 422),
+            (AdmissionError::Unavailable, "admission_unavailable", 503),
+            (
+                AdmissionError::Denied {
+                    endpoint: Endpoint::CoreRead,
+                    status: 503,
+                    code: "synthetic_503".to_string(),
+                },
+                "admission_denied",
+                422,
+            ),
+            (
+                AdmissionError::MalformedResponse {
+                    endpoint: Endpoint::AuthRead,
+                    reason: "bad shape".to_string(),
+                },
+                "admission_malformed_response",
+                503,
+            ),
+            (
+                AdmissionError::Config("missing endpoint".to_string()),
+                "admission_configuration",
+                503,
+            ),
+        ];
+        for (error, code, status) in cases {
+            assert_eq!(error.sanitized_code(), code);
+            assert_eq!(error.sanitized_status(), status);
+            // The sanitized label never embeds the internal detail strings.
+            assert!(!error.sanitized_code().contains("synthetic"));
+            assert!(!error.sanitized_code().contains("bad shape"));
+        }
+    }
+
+    #[test]
+    fn disabled_config_matches_from_env_default() {
+        let disabled = AdmissionConfig::disabled();
+        assert!(!disabled.enabled);
+        assert_eq!(disabled.deadline_ms, ADMISSION_DEADLINE_MS);
+        assert_eq!(disabled.max_in_flight, DEFAULT_MAX_IN_FLIGHT);
+        // The disabled config is identical to the from_env default, whose
+        // construction never fails; the HTTP client itself is only built for
+        // enabled configs (AppState::new), so empty endpoints are fine here.
+        let enabled = AdmissionConfig {
+            enabled: true,
+            auth_base_url: "http://127.0.0.1:1".to_string(),
+            core_base_url: "http://127.0.0.1:2".to_string(),
+            ..AdmissionConfig::disabled()
+        };
+        assert!(AdmissionClient::new(enabled).is_ok());
     }
 
     // ---- from_env tests (serialized; they mutate process env) ----
