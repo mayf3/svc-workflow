@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -25,7 +25,7 @@ external_authorities:
     revision: bc88cc81477a38da5c52f9a8503413cf67f30ee2
     relation: depends_on
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2
 owners:
   - mayf3
 accepted_by: mayf3
