@@ -1,0 +1,244 @@
+   Compiling svc-workflow v0.1.0 (/Users/yanfenma/workspace/worktrees/svc-authoring-usability-v1)
+warning: unused import: `tokio::net::TcpListener`
+  --> tests/common/mod.rs:30:5
+   |
+30 | use tokio::net::TcpListener;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::io::AsyncWriteExt`
+  --> tests/common/mod.rs:29:5
+   |
+29 | use tokio::io::AsyncWriteExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `svc-workflow` (test "29_model3_authoring_conformance") generated 2 warnings (run `cargo fix --test "29_model3_authoring_conformance" -p svc-workflow` to apply 1 suggestion)
+warning: `svc-workflow` (test "30_definition_graph_diagnostics") generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.31s
+     Running unittests src/lib.rs (target/debug/deps/svc_workflow-21c73d36ac6763b6)
+
+running 175 tests
+test application::definition::lifecycle::validation::tests::check_external_refs_empty_object ... ok
+test application::definition::lifecycle::validation::tests::check_external_refs_nested_local_ref ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_allows_bare_hash ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_allows_local_fragment ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_invalid_type ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_dynamic_ref_external ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_file_ref ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_https_ref ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_invalid_keyword_structure ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_nested_external_ref ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_rejects_relative_ref ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_valid_object ... ok
+test application::definition::lifecycle::validation::tests::validate_json_schema_valid_with_dialect ... ok
+test application::definition_governance::diagnostics::tests::catalog_is_complete_bounded_and_sanitizer_safe ... ok
+test application::definition_governance::diagnostics::tests::corrupt_receipt_fails_closed ... ok
+test application::definition_governance::diagnostics::tests::projection_deduplicates_sorts_caps_and_ignores_untrusted_strings ... ok
+test application::definition_governance::receipt::tests::historical_error_decodes_and_new_receipt_is_closed ... ok
+test application::workflow_instance::create::tests::every_deterministic_failure_body_round_trips_through_replay_mapping ... ok
+test application::workflow_instance::eligibility::tests::closed_activation_is_actionable_now ... ok
+test application::workflow_instance::eligibility::tests::due_at_exact_instant_is_actionable ... ok
+test application::workflow_instance::eligibility::tests::due_dispatch_intent_is_actionable_now ... ok
+test application::workflow_instance::eligibility::tests::human_work_item_has_no_timer_and_is_actionable ... ok
+test application::workflow_instance::eligibility::tests::legacy_no_activation_row_is_actionable_now ... ok
+test application::workflow_instance::eligibility::tests::no_effective_instant_with_open_dispatch_intent_is_actionable ... ok
+test application::workflow_instance::eligibility::tests::waiting_for_time_carries_future_instant ... ok
+test application::workflow_instance::eligibility::tests::wire_shape_round_trips_with_next_eligible_at_content ... ok
+test application::workflow_instance::execute_transition::tests::every_deterministic_failure_body_round_trips_through_replay_mapping ... ok
+test auth::auth_context::tests::auth_context_creation ... ok
+test auth::auth_context::tests::obo_auth_context ... ok
+test auth::auth_mode::tests::jwks_config_rejects_file_scheme ... ok
+test auth::auth_mode::tests::jwks_config_rejects_userinfo ... ok
+test auth::auth_mode::tests::jwks_config_valid_http ... ok
+test auth::auth_mode::tests::jwks_config_valid_https ... ok
+test auth::auth_mode::tests::validate_env_accepts_clean ... ok
+test auth::auth_mode::tests::validate_env_rejects_jwt_secret ... ok
+test auth::canary::tests::config_default_is_disabled ... ok
+test auth::canary::tests::is_active_requires_all_fields ... ok
+test auth::canary::tests::write_active_requires_write_enabled ... ok
+test auth::claims::tests::scope_item_pattern ... ok
+test auth::claims::tests::v1_scope_accepts_unknown_scopes ... ok
+test auth::claims::tests::v1_scope_accepts_valid ... ok
+test auth::claims::tests::v1_scope_rejects_consecutive_spaces ... ok
+test auth::claims::tests::v1_scope_rejects_duplicates ... ok
+test auth::claims::tests::v1_scope_rejects_empty ... ok
+test auth::claims::tests::v1_scope_rejects_leading_space ... ok
+test auth::claims::tests::v1_scope_rejects_non_ascii ... ok
+test auth::claims::tests::v1_scope_rejects_trailing_space ... ok
+test auth::claims::tests::v1_scope_rejects_unsorted ... ok
+test auth::claims::tests::v1_time_accepts_within_skew ... ok
+test auth::claims::tests::v1_time_rejects_excessive_ttl ... ok
+test auth::claims::tests::v1_time_rejects_exp_before_iat ... ok
+test auth::claims::tests::v1_time_rejects_exp_equal_iat ... ok
+test auth::claims::tests::v1_time_rejects_expired ... ok
+test auth::claims::tests::v1_time_rejects_expired_beyond_skew ... ok
+test auth::claims::tests::v1_time_rejects_future_iat_beyond_skew ... ok
+test auth::claims::tests::v1_time_rejects_future_nbf ... ok
+test auth::claims::tests::v1_time_valid ... ok
+test auth::jwks_verifier::tests::find_key_matches_kid ... ok
+test domain::definition::digest_tests::tests::different_context_schema_produces_different_digest ... ok
+test domain::definition::digest_tests::tests::different_instructions_produces_different_digest ... ok
+test domain::definition::digest_tests::tests::different_json_key_order_same_digest ... ok
+test domain::definition::digest_tests::tests::different_node_order_same_digest ... ok
+test domain::definition::digest_tests::tests::different_submission_schema_produces_different_digest ... ok
+test domain::definition::digest_tests::tests::different_timestamps_do_not_affect_digest ... ok
+test domain::definition::digest_tests::tests::different_transition_order_same_digest ... ok
+test domain::definition::digest_tests::tests::same_semantics_produces_same_digest ... ok
+test domain::definition::graph::minimal_validator_tests::advance_cycle_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::advance_to_terminal_allowed ... ok
+test domain::definition::graph::minimal_validator_tests::context_principal_single_segment_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::context_principal_without_key_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::creator_assignee_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::diamond_advance_graph_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::domain_owner_assignee_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::draft_node_type_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::fixed_principal_assignee_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::fixed_principal_without_id_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::isolated_task_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::multi_outgoing_advance_branch_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::multi_segment_context_principal_path_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::no_entry_task_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::order_index_is_irrelevant_to_v2_legality ... ok
+test domain::definition::graph::minimal_validator_tests::primary_advance_transition_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::return_to_descendant_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::return_to_self_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::return_to_strict_advance_ancestor_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::single_task_to_terminal_is_legal ... ok
+test domain::definition::graph::minimal_validator_tests::task_without_assignee_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::terminal_with_assignee_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::terminal_with_outgoing_rejected ... ok
+test domain::definition::graph::minimal_validator_tests::terminate_effect_rejected_even_to_terminal ... ok
+test domain::definition::graph::minimal_validator_tests::terminate_effect_rejected_to_non_terminal ... ok
+test domain::definition::graph::minimal_validator_tests::two_entry_tasks_rejected ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_draft_and_normal_node_kinds ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_fixed_principal_without_id ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_instance_input_principal_owner ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_multiple_advance_edges ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_primary_path_cycle ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_return_to_later_task ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_return_to_terminal ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_task_without_owner ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_task_without_primary_advance ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_terminal_with_owner_or_outgoing ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_terminate_to_task ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_two_entry_tasks ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_rejects_unreachable_node ... ok
+test domain::definition::graph::visit_activation_validator_tests::v1_valid_graph_accepts ... ok
+test domain::definition::graph_helpers::tests::directed_chain_all_reachable ... ok
+test domain::definition::graph_helpers::tests::isolated_node_not_reachable ... ok
+test domain::definition::graph_helpers::tests::node_only_connected_via_reverse_edge_not_reachable ... ok
+test domain::definition::graph_helpers::tests::node_only_reachable_via_backwards_edge_not_reachable ... ok
+test domain::definition::graph_helpers::tests::return_edge_does_not_help_unreachable_nodes ... ok
+test domain::definition::graph_tests::draft_assignee_not_workflow_creator ... ok
+test domain::definition::graph_tests::duplicate_order_index ... ok
+test domain::definition::graph_tests::every_instance_input_key_must_be_covered ... ok
+test domain::definition::graph_tests::fixed_principal_missing_id ... ok
+test domain::definition::graph_tests::instance_input_key_covered_by_context_schema_passes ... ok
+test domain::definition::graph_tests::instance_input_key_must_be_covered_by_context_schema ... ok
+test domain::definition::graph_tests::instance_input_key_without_context_schema_rejected ... ok
+test domain::definition::graph_tests::invalid_json_schema_not_checked_by_graph_validation ... ok
+test domain::definition::graph_tests::multiple_draft_nodes ... ok
+test domain::definition::graph_tests::no_draft_node ... ok
+test domain::definition::graph_tests::no_terminal_node ... ok
+test domain::definition::graph_tests::node_not_reachable_from_draft ... ok
+test domain::definition::graph_tests::non_terminal_missing_primary ... ok
+test domain::definition::graph_tests::primary_points_to_lower_order_index ... ok
+test domain::definition::graph_tests::primary_to_done_is_advance ... ok
+test domain::definition::graph_tests::primary_trunk_has_cycle ... ok
+test domain::definition::graph_tests::return_is_primary_rejected ... ok
+test domain::definition::graph_tests::return_to_higher_order_rejected ... ok
+test domain::definition::graph_tests::return_to_terminal_rejected ... ok
+test domain::definition::graph_tests::self_loop_transition ... ok
+test domain::definition::graph_tests::terminal_has_outgoing_transition ... ok
+test domain::definition::graph_tests::terminate_to_non_terminal_rejected ... ok
+test domain::definition::graph_tests::terminate_to_terminal_identified ... ok
+test domain::definition::graph_tests::unexpected_fixed_principal_on_non_fixed_type ... ok
+test domain::definition::graph_tests::valid_three_node_trunk_passes ... ok
+test domain::definition::model::tests::missing_semantic_model_version_deserializes_to_legacy ... ok
+test domain::definition::model::tests::semantic_model_version_roundtrips_as_integer ... ok
+test domain::enums::tests::definition_version_status_values ... ok
+test domain::enums::tests::enum_display_and_parse ... ok
+test domain::enums::tests::enum_unknown_variant ... ok
+test domain::enums::tests::receipt_status_transition_allowed ... ok
+test domain::ids::tests::id_display_and_parse ... ok
+test domain::ids::tests::id_roundtrip ... ok
+test domain::ids::tests::ids_are_distinct_types ... ok
+test domain::workflow_instance::import::tests::server_derived_identifiers_are_identical_and_canonical ... ok
+test domain::workflow_instance::import::tests::snapshot_digest_has_a_stable_jcs_golden_value ... ok
+test http::dto::tests::actor_fields_are_rejected ... ok
+test http::error::tests::idempotency_conflict_is_opaque ... ok
+test http::error::tests::invalid_return_references_exposes_detail ... ok
+test http::error::tests::storage_is_retryable_but_consistency_is_not ... ok
+test http::handlers::health::tests::expected_migration_version_matches_latest_migration_file ... ok
+test http::handlers::health::tests::readiness_requires_the_complete_exact_ledger ... ok
+test http::handlers::provisioning::tests::only_direct_agents_pass_claim_authorization ... ok
+test http::handlers::submissions::tests::after_cursor_none_when_both_absent ... ok
+test http::handlers::submissions::tests::after_cursor_rejects_invalid_timestamp ... ok
+test http::handlers::submissions::tests::after_cursor_rejects_invalid_uuid ... ok
+test http::handlers::submissions::tests::after_cursor_rejects_missing_after_created_at ... ok
+test http::handlers::submissions::tests::after_cursor_rejects_missing_after_id ... ok
+test http::handlers::submissions::tests::after_cursor_valid_pair ... ok
+test http::handlers::tests::validates_idempotency_key_contract ... ok
+test http::handlers::worklists::tests::cursor_parsing_none_when_both_absent ... ok
+test http::handlers::worklists::tests::cursor_parsing_rejects_invalid_timestamp ... ok
+test http::handlers::worklists::tests::cursor_parsing_rejects_invalid_uuid ... ok
+test http::handlers::worklists::tests::cursor_parsing_rejects_missing_before_created_at ... ok
+test http::handlers::worklists::tests::cursor_parsing_rejects_missing_before_id ... ok
+test http::handlers::worklists::tests::cursor_parsing_valid_pair ... ok
+test store::postgres::admin_recovery_repository::event_replay::trusted_fleet_successor_tests::exact_pair_allowlist_has_unique_deterministic_migration_ids ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::arbitrary_payload_is_bounded_and_total ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::malformed_related_submissions_reported ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::malformed_root_cause_reports_invalid_uuid ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::missing_all_required_fields_reports_each ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::missing_single_field_reports_only_it ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::root_cause_never_silently_ignored ... ok
+test store::postgres::workflow_instance_repository::transition_validation::tests::valid_return_payload_has_no_contract_errors ... ok
+
+test result: ok. 175 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/19_domain_owner_definition_governance.rs (target/debug/deps/19_domain_owner_definition_governance-fa18a1c97ed1269e)
+
+running 25 tests
+test test_archive_idempotent ... ok
+test test_archived_definition_rejects_new_versions ... ok
+test test_concurrent_publish_expected_revision_race ... ok
+test test_cross_domain_archive_returns_404 ... ok
+test test_cross_domain_create_draft_returns_404 ... ok
+test test_cross_domain_publish_returns_404 ... ok
+test test_cross_domain_replace_graph_returns_404 ... ok
+test test_domain_member_cannot_create ... ok
+test test_global_admin_not_auto_owner ... ok
+test test_governance_create_definition_idempotent ... ok
+test test_idempotency_key_conflict ... ok
+test test_non_owner_cannot_archive ... ok
+test test_non_owner_cannot_create_via_governance ... ok
+test test_non_owner_cannot_get_detail ... ok
+test test_non_owner_cannot_list ... ok
+test test_nonexistent_id_returns_404 ... ok
+test test_owner_get_definition_detail ... ok
+test test_owner_governance_archive ... ok
+test test_owner_governance_create_definition ... ok
+test test_owner_governance_create_draft ... ok
+test test_owner_governance_publish ... ok
+test test_owner_list_definitions ... ok
+test test_owner_other_domain_definition_not_found ... ok
+test test_owner_revoked_before_write ... ok
+test test_stale_expected_revision_returns_revision_conflict ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.07s
+
+     Running tests/29_model3_authoring_conformance.rs (target/debug/deps/29_model3_authoring_conformance-766c7d8f63129b35)
+
+running 1 test
+test model3_http_authoring_roundtrips_through_repository_and_publish ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+
+     Running tests/30_definition_graph_diagnostics.rs (target/debug/deps/30_definition_graph_diagnostics-430f03aacc3e3fe0)
+
+running 1 test
+test canonical_failures_are_actionable_atomic_and_replayable_over_tcp ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.42s
+
