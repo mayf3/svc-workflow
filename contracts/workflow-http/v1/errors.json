@@ -90,7 +90,8 @@
       "invalid_input": "invalid request input",
       "invalid_return_references": "return references are invalid (details.detail carries the specific missing/invalid RETURN contract field)",
       "invalid_assistance_payload": "assistance payload is invalid",
-      "invalid_filter": "query filter is invalid for this assistance view"
+      "invalid_filter": "query filter is invalid for this assistance view",
+      "graph_validation_failed": "canonical graph rejection; details.errors contains bounded stable rule codes and static corrections, details.truncated reports omitted rules; message names the first rule with underscores rendered as spaces"
     },
     "425": {
       "command_still_processing": "command is still processing"

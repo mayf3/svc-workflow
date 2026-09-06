@@ -20,10 +20,26 @@ pub(super) fn compute_receipt_hash(payload: &serde_json::Value) -> String {
 /// Map a non-owned receipt outcome to the appropriate error or response.
 pub(super) fn handle_receipt_result<T>(
     receipt: AcquireReceipt,
+    diagnostic_hash: &str,
 ) -> Result<T, DefinitionGovernanceError>
 where
     T: serde::de::DeserializeOwned,
 {
+    if let AcquireReceipt::Replay {
+        response_status,
+        response_body,
+        ..
+    } = &receipt
+    {
+        if response_body
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            == Some("graph_validation_failed")
+            && *response_status != 422
+        {
+            return Err(invalid_graph_receipt());
+        }
+    }
     match receipt {
         AcquireReceipt::Replay {
             response_status: 200,
@@ -34,7 +50,44 @@ where
                 "failed to deserialize replayed response".to_string(),
             )
         }),
-        AcquireReceipt::Replay { response_body, .. } => {
+        AcquireReceipt::Replay {
+            response_status,
+            response_body,
+            ..
+        } => {
+            if response_body
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                == Some("graph_validation_failed")
+            {
+                if response_status != 422 {
+                    return Err(invalid_graph_receipt());
+                }
+                let Some(stored_hash) = response_body
+                    .get("graphInputHash")
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    return Err(invalid_graph_receipt());
+                };
+                if stored_hash.len() != 64
+                    || !stored_hash
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
+                    return Err(invalid_graph_receipt());
+                }
+                let decoded = error_from_receipt_body(&response_body);
+                if matches!(
+                    decoded,
+                    DefinitionGovernanceError::InvalidGraphDiagnosticReceipt
+                ) {
+                    return Err(decoded);
+                }
+                if stored_hash != diagnostic_hash {
+                    return Err(DefinitionGovernanceError::IdempotencyConflict);
+                }
+                return Err(decoded);
+            }
             Err(error_from_receipt_body(&response_body))
         }
         AcquireReceipt::Conflict { .. } => Err(DefinitionGovernanceError::IdempotencyConflict),
@@ -47,6 +100,19 @@ where
 
 fn error_from_receipt_body(body: &serde_json::Value) -> DefinitionGovernanceError {
     match body.get("error").and_then(serde_json::Value::as_str) {
+        Some("graph_validation_failed") => {
+            if body.as_object().map(|o| o.len()) != Some(3) {
+                return invalid_graph_receipt();
+            }
+            match body
+                .get("details")
+                .cloned()
+                .and_then(super::GraphDiagnostics::from_receipt)
+            {
+                Some(details) => DefinitionGovernanceError::GraphValidationFailed(details),
+                None => invalid_graph_receipt(),
+            }
+        }
         Some("not_domain_owner") => DefinitionGovernanceError::NotDomainOwner,
         Some("domain_disabled") => DefinitionGovernanceError::DomainDisabled,
         Some("definition_not_found") => DefinitionGovernanceError::DefinitionNotFound,
@@ -62,5 +128,32 @@ fn error_from_receipt_body(body: &serde_json::Value) -> DefinitionGovernanceErro
         _ => DefinitionGovernanceError::InternalConsistency(
             "completed receipt contains an unknown error".to_string(),
         ),
+    }
+}
+
+fn invalid_graph_receipt() -> DefinitionGovernanceError {
+    DefinitionGovernanceError::InvalidGraphDiagnosticReceipt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn historical_error_decodes_and_new_receipt_is_closed() {
+        assert_eq!(
+            error_from_receipt_body(&serde_json::json!({"error":"definition_not_found"})),
+            DefinitionGovernanceError::DefinitionNotFound
+        );
+        let raw = serde_json::json!({"error":"graph_validation_failed","details":{"errors":[{"code":"SELF_LOOP","message":"SQL secret"}],"truncated":false}});
+        assert_eq!(error_from_receipt_body(&raw), invalid_graph_receipt());
+        let result: Result<(), _> = handle_receipt_result(
+            AcquireReceipt::Replay {
+                response_status: 200,
+                response_body: raw,
+                command_id: uuid::Uuid::new_v4(),
+            },
+            "unused",
+        );
+        assert!(result.is_err());
     }
 }

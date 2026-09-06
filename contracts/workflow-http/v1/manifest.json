@@ -1,13 +1,13 @@
 {
-  "serial": "V1-2026-08-12",
+  "serial": "V1-2026-09-06",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.5.0",
+  "contract_version": "1.6.0",
   "contract_scope": "runtime",
   "title": "Workflow Runtime HTTP Contract V1 (Current-State Re-freeze)",
   "owner_repository": "svc-workflow",
-  "owner_head_sha": "efcf0f515ec29600c459e660ce8aa84546c5aee3",
-  "owner_tree_sha": "6e40a8e7cb846983b638c602594cb8315dfa6d68",
-  "owner_semantics": "OWNER_HEAD_SHA and OWNER_TREE_SHA reference the fixed Workflow Assistance V1 implementation snapshot (commit efcf0f5, tree 6e40a8e). These are NOT the Contract Bundle delivery commit.",
+  "owner_head_sha": "39279e34ff3124f8ca6f4269f9dab737a28aed75",
+  "owner_tree_sha": "846e324afad220605a5612641364d28bda1e880d",
+  "owner_semantics": "Owner head and tree pin the accepted diagnostic authority implementation base. The implementation delivery commit is recorded separately in the implementation conformance report.",
   "digest_algorithm": "SHA-256",
   "digest_spec_version": "1.0.0",
   "bundle_file_set": [
@@ -23,10 +23,10 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "b261f1b3121f2b3dba48dfc4094421503fb75a75572f44b9322048b99b5a9b92",
-  "bundle_digest": "f7ce39b6f053f8665139c4594c4d24322bfbafc35c0284bb18218a21ed834e89",
-  "compatibility_policy": "strict_backward_compatible",
-  "created_at": "2026-08-12T02:19:44Z",
+  "schema_digest": "1628c204b083d30771d9d7b2badc6e1b89e09b7c89a16239227401718bd1328c",
+  "bundle_digest": "ece23f5cf78cdb1d17a64b621024b79fd623f7787ba82ed99bbda96963b69332",
+  "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics",
+  "created_at": "2026-09-06T11:00:00Z",
   "author": "IMPLEMENTATION_AGENT",
-  "description": "Workflow Assistance V1 additive runtime contract: Visit-scoped request, Owner escalate/resolve, caller-scoped inboxes/detail, minimal Coordinator HUMAN_REQUIRED projection, and transition fail-closed semantics."
+  "description": "Adds accepted bounded Definition graph diagnostics and safe receipt replay; other HTTP behavior remains unchanged."
 }

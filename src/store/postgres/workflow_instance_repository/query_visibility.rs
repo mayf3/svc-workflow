@@ -202,7 +202,7 @@ pub(crate) async fn load_base(
                 nd.node_type::text AS current_node_type,
                 nd.instructions AS current_node_instructions,
                 nd.primary_advance_transition_id AS current_primary_advance_transition_id,
-                a_open.activation_kind AS activation_kind,
+                a_open.activation_kind::TEXT AS activation_kind,
                 a_open.activation_id AS open_activation_id,
                 eff.effective_next_eligible_at AS effective_next_eligible_at,
                 COALESCE(es.event_count, 0) AS event_count,

@@ -158,6 +158,17 @@ permission or existence failure, preventing cross-domain object existence leaks.
 - `definition_version_immutable` (409) — version is not in DRAFT status
 - `definition_not_editable` (409) — definition is archived
 - `revision_conflict` (409) — expectedRevision does not match current digest
+- `graph_validation_failed` (422) — authorized draft replacement or publication
+  rejected by canonical graph validation. Details contain sorted unique
+  `errors: [{code,message}]` (1–32 static safe corrections) and `truncated`.
+  The top-level message names the first rule with underscores rendered as spaces.
+  Raw validator/server strings are never copied. Exact bounds and catalog are
+  SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1. Completed graph failures replay
+  identically; corrected input with the same key conflicts. Replacement receipts
+  preserve the historical request hash. Only newly completed graph diagnostic
+  receipts carry an additional full graph input hash checked on replay. Historical
+  success/error receipt replay remains unchanged. Their pre-existing incomplete
+  input binding is not broadened into a successful-write idempotency redesign.
 
 ---
 
