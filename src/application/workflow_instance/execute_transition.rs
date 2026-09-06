@@ -10,6 +10,7 @@ use sqlx::PgPool;
 
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::workflow_instance_repository::transition_transaction;
 
 use super::idempotency::compute_transition_request_hash;
@@ -42,12 +43,18 @@ impl From<transition_transaction::TransitionResult> for ExecuteWorkflowTransitio
 
 /// Execute a workflow transition atomically.
 ///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003): the
+/// command's monotonic admission start is captured here at service entry,
+/// before the transaction opens. Dormant mode (`AdmissionGate::disabled()`)
+/// preserves the pre-admission behavior exactly.
+///
 /// # Errors
 ///
 /// Returns `ExecuteWorkflowTransitionError` for all validation, authorization,
-/// version conflict, and infrastructure failures.
+/// version conflict, admission, and infrastructure failures.
 pub async fn execute_workflow_transition(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ExecuteWorkflowTransitionCommand,
 ) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
     // 1. Compute the identity-independent request hash before business validation.
@@ -66,9 +73,12 @@ pub async fn execute_workflow_transition(
     let principal_uuid = command.principal_id.into_uuid();
     pre_validate_principal_exists(pool, principal_uuid).await?;
 
-    // 3. Execute atomic transition. Submission size is checked inside the receipt.
+    // 3. Execute atomic transition. Submission size is checked inside the receipt;
+    // directory admission runs inside the same transaction, before any
+    // runtime fact is written (CTR-CIR-003).
     let outcome = transition_transaction::execute_workflow_transition_atomically(
         pool,
+        admission,
         command,
         &request_hash,
     )

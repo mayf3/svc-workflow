@@ -36,7 +36,8 @@ async fn request_vs_transition_is_serialized_without_orphan_case(pool: PgPool) {
     });
     let transition_task = tokio::spawn(async move {
         transition_barrier.wait().await;
-        execute_workflow_transition(&transition_pool, transition).await
+        execute_workflow_transition(&transition_pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition).await
     });
     barrier.wait().await;
     let request_result = request_task.await.unwrap();
@@ -84,7 +85,8 @@ async fn request_vs_transition_is_serialized_without_orphan_case(pool: PgPool) {
 async fn owner_resolve_detail_latest_version_then_agent_transition(pool: PgPool) {
     let fixture = setup(&pool).await;
     let case = request_case(&pool, &fixture).await;
-    let transition_error = execute_workflow_transition(&pool, transition_command(&fixture, 2))
+    let transition_error = execute_workflow_transition(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition_command(&fixture, 2))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -94,6 +96,7 @@ async fn owner_resolve_detail_latest_version_then_agent_transition(pool: PgPool)
 
     let combined_error = revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ReviseContextAndTransitionCommand {
             principal_id: PrincipalId::from_uuid(fixture.agent),
             idempotency_key: Uuid::new_v4().to_string(),

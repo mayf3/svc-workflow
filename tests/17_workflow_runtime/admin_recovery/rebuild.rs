@@ -336,6 +336,7 @@ async fn rebuild_accepts_revise_combined_transition_and_admin_event_matrices() {
     let revise_fixture = seed_recovery_fixture(&pool).await;
     revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(revise_fixture.creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -361,6 +362,7 @@ async fn rebuild_accepts_revise_combined_transition_and_admin_event_matrices() {
     .unwrap();
     revise_context_and_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_combined_command(
             combined_fixture.creator,
             combined_fixture.instance,
@@ -394,6 +396,7 @@ async fn rebuild_accepts_revise_combined_transition_and_admin_event_matrices() {
     .unwrap();
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             transition_fixture.creator,
             transition_fixture.instance,

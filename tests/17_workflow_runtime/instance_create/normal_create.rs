@@ -9,7 +9,8 @@ async fn test_create_success_wf_creator() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
 }
 
@@ -19,7 +20,8 @@ async fn test_create_success_domain_owner_assignee() {
     let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_domain, ver_id) = seed_published_definition_domain_owner(&pool, domain_id).await;
     let cmd = make_command(owner_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, owner_id, domain_id, ver_id).await;
 }
 
@@ -34,7 +36,8 @@ async fn test_create_success_fixed_principal_assignee() {
     let (_domain, ver_id) =
         seed_published_definition_fixed_principal(&pool, domain_id, fixed_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
 }
 
@@ -45,7 +48,8 @@ async fn test_create_all_records_present() {
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
     let idem_key = cmd.idempotency_key.clone();
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
     let receipt: (String, i32,) = sqlx::query_as(
         "SELECT receipt_status::TEXT, response_status FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
@@ -60,7 +64,8 @@ async fn test_create_current_pointers_correct() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
     let inst: (Uuid, Uuid) = sqlx::query_as(
         "SELECT current_context_revision_id, current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",
@@ -75,7 +80,8 @@ async fn test_create_event_field_matrix_correct() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     let ev: (Option<Uuid>, Uuid, Uuid, Option<Uuid>, i32, i32, Uuid) = sqlx::query_as(
         "SELECT source_node_visit_id, target_node_visit_id, context_revision_id, submission_id, old_workflow_state_version, new_workflow_state_version, actor_principal_id FROM workflow_events WHERE workflow_instance_id = $1",
     ).bind(result.workflow_instance_id).fetch_one(&pool).await.expect("event");
@@ -94,7 +100,8 @@ async fn test_create_context_digest_readback() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     let (payload_digest,): (String,) = sqlx::query_as(
         "SELECT payload_digest FROM workflow_context_revisions WHERE context_revision_id = $1",
     )
@@ -114,7 +121,8 @@ async fn test_create_response_digest_readback() {
     let (_domain, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let cmd = make_command(principal_id, domain_id, ver_id);
     let idem_key = cmd.idempotency_key.clone();
-    let result = create_workflow_instance(&pool, cmd).await.expect("create");
+    let result = create_workflow_instance(&pool,
+    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
     let (response_digest,): (String,) = sqlx::query_as(
         "SELECT response_digest FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
     ).bind(principal_id).bind(&idem_key).fetch_one(&pool).await.expect("receipt");

@@ -11,6 +11,7 @@ use sqlx::PgPool;
 
 use crate::domain::workflow_instance::commands::ReviseWorkflowContextCommand;
 use crate::domain::workflow_instance::errors::ReviseWorkflowContextError;
+use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::workflow_instance_repository::revise_transaction;
 
 use super::idempotency::compute_revise_request_hash;
@@ -39,12 +40,17 @@ impl From<revise_transaction::ReviseResult> for ReviseWorkflowContextResult {
 
 /// Revise the workflow context atomically.
 ///
+/// `admission` is the canonical identity admission gate (CTR-CIR-003); the
+/// monotonic admission start is captured here at service entry. Dormant mode
+/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
+///
 /// # Errors
 ///
 /// Returns `ReviseWorkflowContextError` for all validation, authorization,
-/// version conflict, and infrastructure failures.
+/// admission, version conflict, and infrastructure failures.
 pub async fn revise_workflow_context(
     pool: &PgPool,
+    admission: AdmissionGate<'_>,
     command: ReviseWorkflowContextCommand,
 ) -> Result<ReviseWorkflowContextResult, ReviseWorkflowContextError> {
     // 1. Pre-validate principal existence and enabled status
@@ -64,10 +70,15 @@ pub async fn revise_workflow_context(
         &command.context_payload,
     )?;
 
-    // 4. Execute atomic revision
-    let outcome =
-        revise_transaction::revise_workflow_context_atomically(pool, command, &request_hash)
-            .await?;
+    // 4. Execute atomic revision — directory admission runs inside the same
+    // transaction, before the context revision is written (CTR-CIR-003)
+    let outcome = revise_transaction::revise_workflow_context_atomically(
+        pool,
+        admission,
+        command,
+        &request_hash,
+    )
+    .await?;
 
     // 5. Map outcome to public result
     match outcome {

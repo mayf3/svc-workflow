@@ -22,6 +22,7 @@ use super::*;
 
 fn jwks_config(bind_addr: std::net::SocketAddr, jwks_url: &str) -> HttpConfig {
     HttpConfig {
+        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
         bind_addr,
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,

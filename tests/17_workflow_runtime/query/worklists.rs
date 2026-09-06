@@ -9,6 +9,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
     let created = create_query_instance(&pool, &seed).await;
     let advanced = execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -85,6 +86,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
 
     let returned = execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,
@@ -127,6 +129,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
 
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -139,6 +142,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
     .unwrap();
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,
@@ -168,6 +172,7 @@ async fn assigned_worklist_keeps_deprecated_and_revoked_instances_with_stable_bl
     let created = create_query_instance(&pool, &seed).await;
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -247,6 +252,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
     let first = create_query_instance(&pool, &seed).await;
     revise_workflow_context(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(seed.creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -269,7 +275,8 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
     .await;
     let mut fixed_command = make_command(seed.creator, seed.domain, fixed_version);
     fixed_command.context_payload = serde_json::json!({"title": "fixed-draft"});
-    let fixed = create_workflow_instance(&pool, fixed_command)
+    let fixed = create_workflow_instance(&pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), fixed_command)
         .await
         .unwrap();
 
@@ -304,6 +311,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
 
     execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         make_transition_command(
             seed.creator,
             first.workflow_instance_id,
@@ -419,6 +427,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     for cycle in 0..26 {
         let advanced = execute_workflow_transition(
             &pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             make_transition_command(
                 seed.creator,
                 created.workflow_instance_id,
@@ -432,6 +441,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
         state += 1;
         execute_workflow_transition(
             &pool,
+            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             make_transition_command(
                 seed.assignee,
                 created.workflow_instance_id,

@@ -224,6 +224,7 @@ async fn create_instance(
 ) -> Uuid {
     let result = create_workflow_instance(
         pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -257,6 +258,7 @@ async fn run_transition(
 ) {
     let result = execute_workflow_transition(
         pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(actor),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -337,6 +339,7 @@ async fn v2_dogfood_normal_completion() {
     // No further transition may execute on a completed instance.
     let extra = execute_workflow_transition(
         &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(hr_agent),
             idempotency_key: Uuid::new_v4().to_string(),
