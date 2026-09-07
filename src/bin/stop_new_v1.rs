@@ -2,8 +2,7 @@
 // definition versions (V2 CTR-CIR-003 final paragraph + runbook
 // SOURCE_ONLY_STOP_NEW_V1). Governed lifecycle API only: atomic deprecation
 // with recorded reason; no direct SQL; no delete/cancel/assignee rewrite.
-use svc_workflow::application::definition::commands::DeprecateVersion;
-use svc_workflow::application::definition::service::DefinitionService;
+use svc_workflow::application::definition::{commands::DeprecateVersion, DefinitionService, SOURCE_IDENTITY_UNRESOLVED};
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
 
 #[tokio::main]
@@ -20,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .deprecate_version(DeprecateVersion {
                 actor_principal_id: actor,
                 definition_version_id: vid.parse()?,
-                deprecation_reason: Some(svc_workflow::application::definition::lifecycle::SOURCE_IDENTITY_UNRESOLVED.into()),
+                deprecation_reason: Some(SOURCE_IDENTITY_UNRESOLVED.into()),
             })
             .await?;
         println!("DEPRECATED {} -> status={:?}", vid, out.version_status);
