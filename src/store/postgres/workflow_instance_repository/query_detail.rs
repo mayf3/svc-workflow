@@ -100,13 +100,25 @@ async fn load_outgoing(
             }
             _ => return Err(internal("unknown target assignee reference type")),
         };
+        // Availability follows the immutable repair lineage edge (migration
+        // 0025): when the resolved assignee is a stale naked-name Principal
+        // with a unique canonical successor, the successor's enabled status
+        // decides — a disabled stale principal no longer breaks resolution
+        // once the repair line exists. No lineage row -> identical behavior
+        // to before (the target Principal itself).
         let target_available = if row.target_node_type == "TERMINAL" {
             true
         } else if let Some(target) = target_assignee {
+            let effective_target =
+                crate::store::postgres::identity_successor::resolve_current_principal(
+                    &mut **tx, target,
+                )
+                .await
+                .map_err(map_storage)?;
             sqlx::query_scalar::<_, bool>(
                 "SELECT COALESCE((SELECT enabled FROM principals WHERE principal_id = $1), FALSE)",
             )
-            .bind(target)
+            .bind(effective_target.unwrap_or(target))
             .fetch_one(&mut **tx)
             .await
             .map_err(map_storage)?
@@ -344,9 +356,13 @@ pub async fn list_node_visits(
         "SELECT v.node_visit_id, v.workflow_instance_id, v.node_id,
                 n.definition_version_id AS node_definition_version_id,
                 n.node_key, n.display_name, n.node_type::text, v.visit_number,
-                v.assignee_principal_id, v.entered_by_transition_id,
+                v.assignee_principal_id,
+                wisl.canonical_agent_id AS assignee_canonical_agent_id,
+                v.entered_by_transition_id,
                 n.instructions, v.created_at
          FROM workflow_node_visits v JOIN workflow_node_definitions n ON n.node_id = v.node_id
+         LEFT JOIN workflow_identity_successor_lines wisl
+           ON wisl.source_principal_id = v.assignee_principal_id
          WHERE v.workflow_instance_id = $1 AND ($2 OR v.assignee_principal_id = $3)
            AND ($4::timestamptz IS NULL OR (v.created_at, v.node_visit_id) > ($4, $5))
          ORDER BY v.created_at ASC, v.node_visit_id ASC LIMIT $6",

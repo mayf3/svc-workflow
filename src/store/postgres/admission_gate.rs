@@ -56,6 +56,7 @@ use crate::auth::admission::{AdmissionClient, AdmissionError};
 use crate::domain::definition::error::GraphValidationError;
 use crate::domain::definition::model::NodeDefinition;
 use crate::domain::enums::AssigneeRefType;
+use crate::store::postgres::identity_successor::resolve_current_principal;
 
 /// Per-command admission gate.
 ///
@@ -66,6 +67,7 @@ use crate::domain::enums::AssigneeRefType;
 #[derive(Clone, Copy)]
 pub struct AdmissionGate<'a> {
     client: Option<&'a AdmissionClient>,
+    pool: Option<&'a sqlx::PgPool>,
     start: Instant,
 }
 
@@ -74,17 +76,29 @@ impl<'a> AdmissionGate<'a> {
     pub fn disabled() -> Self {
         Self {
             client: None,
+            pool: None,
             start: Instant::now(),
         }
     }
 
     /// Build the gate at app-service entry; the monotonic command start is
-    /// captured here, before the transaction opens (CTR-CIR-003).
+    /// captured here, before the transaction opens (CTR-CIR-003). Without a
+    /// pool the principal set is admitted verbatim (dormant-lineage deploy).
     pub fn new(client: Option<&'a AdmissionClient>) -> Self {
         Self {
             client,
+            pool: None,
             start: Instant::now(),
         }
+    }
+
+    /// Wire the Workflow read pool so `admit` resolves each principal through
+    /// the immutable `workflow_identity_successor_lines` lineage BEFORE the
+    /// directory reads (CTR-CIR-001/004): admission then evaluates the
+    /// CANONICAL identity, not the stale naked-name source.
+    pub fn with_pool(mut self, pool: Option<&'a sqlx::PgPool>) -> Self {
+        self.pool = pool;
+        self
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -146,7 +160,41 @@ impl<'a> AdmissionGate<'a> {
             return Ok(());
         };
         let distinct: BTreeSet<Uuid> = principals.into_iter().collect();
+        let distinct = self.canonicalize_principals(distinct).await?;
         client.admit(self.start, &distinct).await.map(|_| ())
+    }
+
+    /// Map the command's principals through the immutable identity-successor
+    /// lineage so admission evaluates the CANONICAL identity (CTR-CIR-003 as
+    /// read through CTR-CIR-001/004).
+    ///
+    /// `resolve_current_principal` follows AT MOST ONE edge:
+    /// - a lineage row exists                -> the canonical successor;
+    /// - no lineage row (the common case)    -> the source itself, unchanged;
+    /// - the source absent from the Workflow `principals` projection entirely
+    ///   -> ALSO the source, unchanged: the pinned directory reads remain the
+    ///   authority that observes and rejects such a principal — dropping it
+    ///   here would silently admit an unknown identity.
+    ///
+    /// A lineage read failure fails closed (`Unavailable`): admission must not
+    /// evaluate a stale identity it could have canonicalized. Without a pool
+    /// (unit tests / dormant deploy) the set passes through verbatim.
+    pub async fn canonicalize_principals(
+        &self,
+        principals: impl IntoIterator<Item = Uuid>,
+    ) -> Result<BTreeSet<Uuid>, AdmissionError> {
+        let Some(pool) = self.pool else {
+            return Ok(principals.into_iter().collect());
+        };
+        let mut mapped = BTreeSet::new();
+        for principal in principals {
+            mapped.insert(match resolve_current_principal(pool, principal).await {
+                Ok(Some(resolved)) => resolved,
+                Ok(None) => principal,
+                Err(_) => return Err(AdmissionError::Unavailable),
+            });
+        }
+        Ok(mapped)
     }
 }
 
@@ -421,6 +469,21 @@ mod tests {
         gate.admit([Uuid::new_v4(), Uuid::new_v4()])
             .await
             .expect("dormant admission is a no-op");
+    }
+
+    #[tokio::test]
+    async fn gate_without_pool_maps_principals_identity() {
+        // No pool wired (unit-test / dormant deploy): the canonicalization
+        // surface `admit` delegates to must be the identity mapping — no
+        // lineage resolution, no principal dropped.
+        let gate = AdmissionGate::new(None);
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let mapped = gate
+            .canonicalize_principals([a, b, a])
+            .await
+            .expect("identity mapping");
+        assert_eq!(mapped, BTreeSet::from([a, b]));
     }
 
     // ---- definition publish identity-literal extraction (CTR-CIR-003) ----

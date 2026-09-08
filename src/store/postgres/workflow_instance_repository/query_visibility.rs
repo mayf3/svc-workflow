@@ -196,6 +196,7 @@ pub(crate) async fn load_base(
                 nv.workflow_instance_id AS visit_instance_id,
                 nv.node_id AS current_node_id, nv.visit_number,
                 nv.assignee_principal_id AS current_assignee_principal_id,
+                wisl.canonical_agent_id AS current_assignee_canonical_agent_id,
                 nv.entered_by_transition_id, nv.created_at AS visit_created_at,
                 nd.definition_version_id AS node_definition_version_id,
                 nd.node_key AS current_node_key, nd.display_name AS current_node_display_name,
@@ -219,6 +220,12 @@ pub(crate) async fn load_base(
          LEFT JOIN workflow_node_visits nv
            ON nv.node_visit_id = wi.current_node_visit_id
          LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
+         -- Identity repair lineage (migration 0025): read-projection
+         -- enrichment ONLY. Surfaces the canonical agent id recorded for a
+         -- stale naked-name assignee Principal; the assignee UUID itself is
+         -- never rewritten and no historical fact is touched.
+         LEFT JOIN workflow_identity_successor_lines wisl
+           ON wisl.source_principal_id = nv.assignee_principal_id
          LEFT JOIN workflow_activations a_open
            ON a_open.node_visit_id = nv.node_visit_id
           AND NOT EXISTS (

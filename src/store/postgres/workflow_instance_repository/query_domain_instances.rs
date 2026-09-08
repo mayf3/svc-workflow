@@ -63,6 +63,7 @@ struct DomainInstanceRow {
     definition_key: String,
     created_by_principal_id: Uuid,
     current_assignee_principal_id: Option<Uuid>,
+    current_assignee_canonical_agent_id: Option<String>,
     node_id: Uuid,
     node_key: String,
     node_display_name: String,
@@ -98,6 +99,7 @@ impl From<DomainInstanceRow> for DomainInstanceSummary {
             definition_key: row.definition_key,
             created_by_principal_id: row.created_by_principal_id,
             current_assignee_principal_id: row.current_assignee_principal_id,
+            current_assignee_canonical_agent_id: row.current_assignee_canonical_agent_id,
             current_node: PublicNodeSummary {
                 node_id: row.node_id,
                 node_key: row.node_key,
@@ -147,6 +149,7 @@ pub(crate) async fn list_domain_instances(
                 wi.definition_version_id, wd.definition_key,
                 wi.created_by_principal_id,
                 v.assignee_principal_id AS current_assignee_principal_id,
+                wisl.canonical_agent_id AS current_assignee_canonical_agent_id,
                 nd.node_id, nd.node_key,
                 nd.display_name AS node_display_name,
                 nd.node_type::text,
@@ -167,6 +170,10 @@ pub(crate) async fn list_domain_instances(
          JOIN workflow_node_definitions nd
            ON nd.node_id = v.node_id
           AND nd.definition_version_id = wi.definition_version_id
+         -- Identity repair lineage (migration 0025): read-projection
+         -- enrichment ONLY; the assignee UUID is never rewritten.
+         LEFT JOIN workflow_identity_successor_lines wisl
+           ON wisl.source_principal_id = v.assignee_principal_id
          LEFT JOIN workflow_context_revisions cr
            ON cr.context_revision_id = wi.current_context_revision_id
           AND cr.workflow_instance_id = wi.workflow_instance_id
