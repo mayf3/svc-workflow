@@ -201,7 +201,8 @@ async fn run_repair_command(
                         std::process::exit(2);
                     }
                 };
-            let admission = AdmissionGate::new(Some(&admission_client));
+            let admission =
+                AdmissionGate::new(Some(&admission_client)).with_pool(Some(&pool));
             apply_repair_context(pool, admission, request).await
         } else {
             apply_repair_context(pool, AdmissionGate::disabled(), request).await

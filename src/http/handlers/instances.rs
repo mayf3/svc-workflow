@@ -56,7 +56,8 @@ pub(crate) async fn create(
     };
     // Canonical identity admission gate (CTR-CIR-003): `Some` only when the
     // deployment enabled admission; dormant mode keeps existing behavior.
-    let admission = AdmissionGate::new(state.admission_client.as_ref());
+    let admission =
+        AdmissionGate::new(state.admission_client.as_ref()).with_pool(Some(&state.pool));
     let result = create_workflow_instance(&state.pool, admission, command)
         .await
         .map_err(ApiError::from_create)?;
