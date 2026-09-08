@@ -4,6 +4,7 @@ status: proposed
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
+production_apply_authority: none
 date: 2026-09-09
 scope:
   - svc-workflow due Dispatch Intent read (GET /internal/v1/dispatch-intents)
@@ -37,8 +38,8 @@ SUCCESS_OUTCOME = a consumer holding GLOBAL_SCHEDULER_READ can, by passing the
 BLOCKER_BEING_CLOSED = confirmed starvation: with >100 due intents where the
        first 100 already have execution attempts (still due, not yet
        transitioned), the server re-returns the same first window every poll
-       and intents 101+ are unreachable (Owner ruling B2, 2026-09-09;
-       authorized as the goal's minimal continuation exception)
+       and intents 101+ are unreachable (required by Owner ruling B2,
+       2026-09-09; scoped by the goal's minimal continuation exception)
 ```
 
 This is a read-path amendment to exactly ONE endpoint. It adds NO workflow
@@ -67,6 +68,11 @@ afterDispatchIntentId UUID (a dispatchIntentId previously returned by this
   `invalid_pagination`.
 - Absent both ⇒ behavior is BYTE-IDENTICAL to CTR-VAI-009 (existing
   consumers unaffected; verified by an unchanged-response snapshot test).
+- Error precedence: cursor validation (422) is handler-side and precedes the
+  in-snapshot role check (403) — "with cursor parameters" in ACC-DKC-006
+  means VALID cursors. The extractor takes the cursor params as strings and
+  parses them in-handler (typed `Option<DateTime>` fields would surface axum
+  extraction rejections as 400, not the mandated 422).
 
 ### CTR-DKC-002 — selection and ordering (cursor key == order key)
 
@@ -96,14 +102,39 @@ page, no offset, no count/totalCount, no totalPages, no opaque cursor token,
 no hasMore. Exhaustion is signaled ONLY by `items.length < limit` (consumer
 rule, restated from the external consumer contract).
 
-### CTR-DKC-004 — monotonic safety under concurrent eligibility changes
+### CTR-DKC-004 — feed safety under concurrent writes (the actual invariant)
 
-Within one sweep, eligibility only moves LATER: WAKE sets current
-nextEligibleAt to server-now (≥ any prior due value); SCHEDULER_DEFER moves
-later. An intent whose eligibility moves mid-sweep lands BEHIND the cursor
-and is picked up on the NEXT sweep — it is never lost. Closures only shrink
-the due set. The keyset is therefore stable within a sweep and safe across
-sweeps; no locking beyond the existing REPEATABLE READ snapshot is added.
+The load-bearing guarantees, stated exactly (verified against the current
+writers):
+
+1. An already-RETURNED due row's key NEVER moves backward. The only
+   value-changing writer today, WAKE, is a durable no-op (`ALREADY_DUE`)
+   on intents whose current nextEligibleAt ≤ server now — i.e. on every
+   row the due feed can return. Already-returned rows are therefore never
+   re-exposed with a different key, and never mutated by wake.
+2. Entries and moves land at/after the cursor EXCEPT three bounded cases,
+   each of which leaves the intent DUE and caught by the NEXT (cursorless,
+   hence exhaustive) sweep:
+   - a not-yet-due deferred intent woken mid-sweep: applied wake writes
+     new = wake-transaction now() < previous (this is the only
+     earlier-than-before move, and it can only ENTER the due set); if the
+     wake transaction's now() predates the cursor row's stored value but
+     commits between pages, the intent sorts before the cursor for this
+     sweep;
+   - a brand-new activation created mid-sweep: `initial_next_eligible_at`
+     = the CREATION transaction's now() (in-tx start), so a
+     long-running creation transaction committing mid-sweep can sort
+     before the cursor;
+   - an exact-timestamp tie with a smaller `activation_id`.
+3. Closures, cancel and archive only shrink the due set.
+
+Conclusion: a sweep with continuation is exhaustion-complete up to those
+bounded mid-sweep cases; every sweep restarts cursorless and is therefore
+exhaustive; nothing is lost. (The external consumer additionally dedupes by
+its one-attempt fence, so repeated observations are harmless.) No locking
+beyond the existing per-request REPEATABLE READ snapshot is added.
+(SCHEDULER_DEFER is a reserved cause class with no writer today; any future
+defer authority must preserve guarantee 1 and is out of scope here.)
 
 ### CTR-DKC-005 — boundaries kept
 
@@ -157,4 +188,7 @@ Authored as a docs-only candidate on the visit-activation lineage (base
 and the production bytes). Per repo governance, implementation begins only
 after this Spec is accepted and present in the implementation PR base. The
 external dsh consumer deploys only after this contract is accepted,
-implemented, and deployed.
+implemented, and deployed. At acceptance/merge time, the accepted
+SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1.md gains a reciprocal amended-by
+backlink on CTR-VAI-009 (this candidate does not modify the accepted spec
+file itself).
