@@ -901,3 +901,69 @@ async fn identity_repair_operator_end_to_end_conformance() {
 
     phase_fail_closed().await;
 }
+
+/// Admission (CTR-CIR-003) must evaluate the CANONICAL identity: the gate's
+/// principal mapping — the exact surface `AdmissionGate::admit` delegates to
+/// before the pinned directory reads — resolves a principal carrying a
+/// lineage edge to its successor, passes a lineage-less principal through
+/// unchanged, and is the identity mapping when no pool is wired (dormant
+/// deploy / unit tests).
+#[tokio::test]
+async fn admission_resolves_principals_through_identity_lineage() {
+    use std::collections::BTreeSet;
+
+    let pool = common::create_pool().await;
+    let source =
+        seed_agent_principal(&pool, "admission-lineage-probe-agent", "Admission Lineage Probe")
+            .await;
+    let successor = seed_agent_principal(
+        &pool,
+        "agt_admission-lineage-probe-agent",
+        "Canonical Admission Lineage Probe",
+    )
+    .await;
+    let stranger =
+        seed_agent_principal(&pool, "admission-lineage-stranger-agent", "Admission Stranger")
+            .await;
+
+    // Same row shape the offline operator writes (append-only table).
+    sqlx::query(
+        "INSERT INTO workflow_identity_successor_lines \
+         (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id, \
+          classification, evidence, repair_reason) \
+         VALUES ($1, $2, 'admission-lineage-probe-agent', 'agt_admission-lineage-probe-agent', \
+          'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR', '{\"probe\":true}'::jsonb, \
+          'admission canonicalization probe')",
+    )
+    .bind(source)
+    .bind(successor)
+    .execute(&pool)
+    .await
+    .expect("insert lineage row");
+
+    // Pool wired: the lineage edge maps source -> successor; the stranger has
+    // no edge and passes through unchanged.
+    let gate = AdmissionGate::disabled().with_pool(Some(&pool));
+    let mapped = gate
+        .canonicalize_principals([source, successor, stranger])
+        .await
+        .expect("canonicalize");
+    assert_eq!(
+        mapped,
+        BTreeSet::from([successor, stranger]),
+        "lineage edge -> successor; no edge -> unchanged"
+    );
+
+    // No pool wired: identity mapping, nothing dropped.
+    let gate = AdmissionGate::disabled();
+    let mapped = gate
+        .canonicalize_principals([source, stranger])
+        .await
+        .expect("identity mapping");
+    assert_eq!(mapped, BTreeSet::from([source, stranger]));
+
+    // No cleanup: the surface is append-only (UPDATE/DELETE rejected by
+    // trigger); the row stays as operator-written evidence, like the
+    // conformance run above. Fresh principals per run keep UNIQUE(source)
+    // satisfied.
+}
