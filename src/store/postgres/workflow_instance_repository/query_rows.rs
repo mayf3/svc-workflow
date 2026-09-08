@@ -33,6 +33,7 @@ pub(crate) struct QueryBaseRow {
     pub current_node_id: Option<Uuid>,
     pub visit_number: Option<i32>,
     pub current_assignee_principal_id: Option<Uuid>,
+    pub current_assignee_canonical_agent_id: Option<String>,
     pub entered_by_transition_id: Option<Uuid>,
     pub visit_created_at: Option<DateTime<Utc>>,
     pub node_definition_version_id: Option<Uuid>,
@@ -136,6 +137,7 @@ impl QueryBaseRow {
             },
             visit_number: self.visit_number?,
             assignee_principal_id: self.current_assignee_principal_id,
+            assignee_canonical_agent_id: self.current_assignee_canonical_agent_id.clone(),
             entered_by_transition_id: self.entered_by_transition_id,
             instructions: include_instructions
                 .then(|| self.current_node_instructions.clone())
@@ -259,6 +261,7 @@ pub(crate) struct VisitRow {
     pub node_type: String,
     pub visit_number: i32,
     pub assignee_principal_id: Option<Uuid>,
+    pub assignee_canonical_agent_id: Option<String>,
     pub entered_by_transition_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -277,6 +280,7 @@ impl VisitRow {
             },
             visit_number: self.visit_number,
             assignee_principal_id: self.assignee_principal_id,
+            assignee_canonical_agent_id: self.assignee_canonical_agent_id,
             entered_by_transition_id: self.entered_by_transition_id,
             instructions: include_instructions.then_some(self.instructions).flatten(),
             created_at: self.created_at,
@@ -286,7 +290,8 @@ impl VisitRow {
             // any) is closed and its work is actionable/complete history.
             // Eligibility for dispatch decisions is projected on current-work
             // surfaces (summaries, detail, worklists), not on the timeline.
-            eligibility: crate::application::workflow_instance::eligibility::WorkEligibility::ActionableNow,
+            eligibility:
+                crate::application::workflow_instance::eligibility::WorkEligibility::ActionableNow,
         }
     }
 }

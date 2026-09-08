@@ -363,7 +363,8 @@ pub(crate) async fn publish_version(
     // The monotonic admission start is captured here, before any transaction.
     let admission = crate::store::postgres::admission_gate::AdmissionGate::new(
         state.admission_client.as_ref(),
-    );
+    )
+    .with_pool(Some(&state.pool));
 
     let result = governance_publish_version(
         &state.pool,

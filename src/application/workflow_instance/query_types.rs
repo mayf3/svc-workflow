@@ -155,6 +155,14 @@ pub struct NodeVisitItem {
     pub visit_number: i32,
     /// `None` is the canonical representation for a Terminal visit.
     pub assignee_principal_id: Option<Uuid>,
+    /// Canonical auth-side agent id of the assignee, when the assignee
+    /// Principal is a stale naked-name principal with an immutable repair
+    /// lineage line (migration 0025,
+    /// SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2). Read-projection
+    /// enrichment ONLY: `assignee_principal_id` is never rewritten, history
+    /// stays byte-identical. `None` when the assignee is canonical or has no
+    /// lineage line yet (still unresolved).
+    pub assignee_canonical_agent_id: Option<String>,
     pub entered_by_transition_id: Option<Uuid>,
     pub instructions: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -353,6 +361,11 @@ pub struct DomainInstanceSummary {
     pub definition_key: String,
     pub created_by_principal_id: Uuid,
     pub current_assignee_principal_id: Option<Uuid>,
+    /// Canonical auth-side agent id of the current assignee, when the
+    /// assignee Principal is a stale naked-name principal with an immutable
+    /// repair lineage line (migration 0025). Read-projection enrichment
+    /// ONLY; see `NodeVisitItem::assignee_canonical_agent_id`.
+    pub current_assignee_canonical_agent_id: Option<String>,
     pub current_node: PublicNodeSummary,
     pub is_terminal: bool,
     pub title: Option<String>,

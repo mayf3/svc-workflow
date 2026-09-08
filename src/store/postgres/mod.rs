@@ -4,6 +4,7 @@ pub mod admin_recovery_repository;
 pub mod admission_gate;
 pub mod definition_repository;
 pub mod domain_role_repository;
+pub mod identity_successor;
 pub(crate) mod import_receipt_validation;
 pub mod legacy_import_repository;
 pub mod migrations;
