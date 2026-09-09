@@ -84,7 +84,25 @@ name or stored `canonical_agent_id` routing; generic Principal lookup; implicit
 redirect; dispatch, Session admission, Transition, retry, or replacement
 Instance creation. This authority adds no database table or migration.
 
-## 3. Current state and observations
+## 3. Authority and dependencies
+
+```text
+PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+IDENTITY_LINEAGE_AUTHORITY = SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2
+PRODUCT_DIRECTION = SVC_WORKFLOW_PRODUCT_BOUNDARY_V7
+ARCHITECTURE = SVC_WORKFLOW_ARCHITECTURE_V0_4_1
+IMPLEMENTATION_AUTHORITY = contracts only after acceptance and merge
+EXTERNAL_AUTHORITY = mayf3/dsh-agent-core
+  AGENT_CORE_EXACT_PRINCIPAL_AGENT_RESOLUTION_V2
+  @ 5a5395246e7cbd7412101167d8a99042c15db1aa
+AUTHORITY_CONFLICT = NONE after selecting a new additive endpoint
+```
+
+This Spec governs only svc-workflow behavior. It neither changes nor accepts
+the external resolver authority. A dsh consumer change requires its own
+accepted local authority after this contract is accepted and pinned.
+
+## 4. Current State
 
 ### STATE-DAR-001 — first real subject is blocked before delivery
 
@@ -96,65 +114,106 @@ Instance creation. This authority adds no database table or migration.
 - Historical assignee: `61819256-07e1-4bd0-adea-e93e51243fa1`.
 - Recorded successor: `9e3adced-575f-4fb2-b351-f7698b59127d`.
 - Result: the intent is active and due; no successful delivery fact was found.
+- Basis: `OBS-DAR-001`, `OBS-DAR-002`, `OBS-DAR-003`, `EVD-DAR-001`.
+
+## 5. Observations
 
 ### OBS-DAR-001 — due feed preserves the historical owner
 
-At source main, `query_dispatch_intents.rs` projects the activation's
-`owner_principal_id`. Accepted `CTR-VAI-009` and `CTR-DKC-002/003` freeze the
-seven-field feed and its no-cursor compatibility. Changing that field's meaning
-or adding an eighth field would alter an accepted contract.
+- Subject: due Dispatch Intent projection.
+- Repository/source: `mayf3/svc-workflow`,
+  `src/store/postgres/workflow_instance_repository/query_dispatch_intents.rs`.
+- Commit: `f525d5575906bcdb46a246194f77a67c21a19604`.
+- Environment: source main.
+- Observed at: 2026-09-09.
+- Method: exact source and accepted-Contract read.
+- Result: the query projects the activation's `owner_principal_id`; accepted
+  `CTR-VAI-009` and `CTR-DKC-002/003` freeze the seven-field feed and its
+  no-cursor compatibility.
+- Provenance: named source file and accepted Specs in this repository.
 
 ### OBS-DAR-002 — an accepted exact lineage already exists
 
-Migration `0025_workflow_identity_successor_lines.sql` provides one immutable
-row per stale source Principal; `identity_successor::resolve_current_principal`
-returns the exact successor for one edge and otherwise the exact source. Query
-visibility/detail already consume the same lineage without rewriting the
-NodeVisit assignee.
+- Subject: Workflow identity successor projection.
+- Repository/source: `mayf3/svc-workflow`, migration 0025 and
+  `src/store/postgres/identity_successor.rs`.
+- Commit: `f525d5575906bcdb46a246194f77a67c21a19604`.
+- Environment: source main plus production database read-only census.
+- Observed at: 2026-09-09.
+- Method: exact source read and read-only production query.
+- Result: one immutable row per stale source is supported; the helper returns
+  the exact successor for one edge and otherwise the source. Query visibility
+  and detail already consume the lineage without rewriting the NodeVisit.
+- Provenance: migration/source paths above and the Goal runtime census record.
 
 ### OBS-DAR-003 — direct Auth resolution of the historical subject fails closed
 
-Fresh Auth read-back showed the historical Principal carries a non-canonical
-stored Agent ID, while the recorded successor is active and carries the expected
-canonical Agent ID. The accepted dsh exact resolver rejects the historical
-stored ID grammar. Replacing that rejection with name normalization or a local
-Agent-ID fallback would violate its authority.
+- Subject: exact Auth Principal-to-Agent resolution for the frozen real subject.
+- Repository/source: production Auth read surface plus accepted dsh resolver.
+- Commit/artifact: dsh main
+  `5a5395246e7cbd7412101167d8a99042c15db1aa`; production read at the time below.
+- Environment: production loopback Auth and deployed dsh runtime.
+- Observed at: 2026-09-09.
+- Method: exact Principal UUID lookup and deployed resolver call.
+- Result: historical Principal stores a non-canonical Agent ID; recorded
+  successor is active with the expected canonical Agent ID; the dsh exact
+  resolver rejects the historical stored-ID grammar.
+- Provenance: sanitized Goal census; no secret or credential bytes retained.
 
-## 4. Claims and evidence
+## 6. Claims and assumptions
 
 ### CLM-DAR-001 — the missing seam is dispatch-bound lineage projection
 
 - Support state: SUPPORTED.
-- Source observations: `OBS-DAR-001`, `OBS-DAR-002`, `OBS-DAR-003`.
-- Relation: the due feed correctly preserves assignment history and Auth
-  correctly fails closed; the already accepted Workflow lineage is the only
-  formal bridge, but no dispatch-bound read exposes it.
-- Sufficiency: enough to select a new bounded read surface.
-- Limitations: not implementation, deployment, credential, Grant, Session, or
-  business-completion evidence.
+- Supported by evidence: `EVD-DAR-001`.
+- Contradicted by evidence: none known.
+- Uncertainty: production observations are time-bound; all identity and
+  dispatch predicates require fresh read-back before controlled apply.
 
-## 5. Decisions
+## 7. Evidence relations
+
+### EVD-DAR-001 — current facts support a bounded missing-seam claim
+
+- Source observations: `OBS-DAR-001`, `OBS-DAR-002`, `OBS-DAR-003`.
+- Target: `CLM-DAR-001`, `STATE-DAR-001`.
+- Relation: SUPPORTS.
+- Bound coordinates: svc main `f525d5575906bcdb46a246194f77a67c21a19604`,
+  dsh main `5a5395246e7cbd7412101167d8a99042c15db1aa`, production
+  subject and read-back observed 2026-09-09.
+- Strength/sufficiency: sufficient to select a new dispatch-bound read rather
+  than mutate the due feed, Auth mapping or historical assignment.
+- Limitations: does not prove implementation, deployment, caller credentials,
+  Grant, Session delivery or business completion.
+- Provenance: named source/authority paths and sanitized Goal census.
+
+## 8. Decisions
 
 ### DEC-DAR-001 — add a dispatch-bound resolution read
 
-Add one internal read endpoint that binds Instance, NodeVisit and Dispatch
-Intent and returns historical plus resolver Principal identities. It is not a
-generic `Principal -> Principal` directory.
+- Decision owner: `mayf3/svc-workflow` maintainers.
+- Decision: add one internal read endpoint that binds Instance, NodeVisit and
+  Dispatch Intent and returns historical plus resolver Principal identities.
+- Rejected alternatives: `ALT-DAR-001`, `ALT-DAR-002`.
+- Reason: preserve existing due-feed and assignment meanings while exposing the
+  already accepted lineage only at the delivery obligation where it is needed.
 
 ### DEC-DAR-002 — keep Auth as the Agent identity authority
 
-Workflow returns only Principal UUIDs and lineage kind. The caller must invoke
-the accepted external Auth exact resolver and exact local Agent-definition
-validation. `workflow_identity_successor_lines.canonical_agent_id` remains
-audit evidence and MUST NOT be returned or used for routing.
+- Decision owner: `mayf3/svc-workflow` maintainers.
+- Decision: Workflow returns only Principal UUIDs and lineage kind; the caller
+  must invoke the external Auth exact resolver and Agent-definition validation.
+- Rejected alternatives: `ALT-DAR-003`, `ALT-DAR-004`.
+- Reason: Workflow lineage is provenance, not current Agent identity authority.
 
 ### DEC-DAR-003 — fail closed on drift
 
-If the supplied coordinates are not the one current, active, due Dispatch
-Intent or lineage is inconsistent, return no identity. Never return a stale
-positive result and never repair automatically.
+- Decision owner: `mayf3/svc-workflow` maintainers.
+- Decision: if coordinates are not the current active due Dispatch Intent or
+  lineage is inconsistent, return no identity and perform no repair.
+- Rejected alternative: stale positive reuse or automatic lineage repair.
+- Reason: a wrong-target admission is worse than a visible no-delivery outcome.
 
-## 6. Contracts
+## 9. Contracts
 
 ### CTR-DAR-001 — exact endpoint and closed schema
 
@@ -268,7 +327,7 @@ Rollback restores the exact binary/config preimage. Because the endpoint is
 read-only and adds no storage, rollback deletes no facts. After any unknown
 deployment outcome, inspect process, binary and health state before retrying.
 
-## 7. Acceptance
+## 10. Acceptance
 
 ### ACC-DAR-001 — closed wire surface
 
@@ -326,29 +385,65 @@ deployment outcome, inspect process, binary and health state before retrying.
 | `CTR-DAR-005` | `ACC-DAR-001` | YES |
 | `CTR-DAR-006` | `ACC-DAR-005` | YES |
 
-## 8. Alternatives
+## 11. Alternatives and disposition
 
-- Changing due-feed `ownerPrincipalId` to the successor: rejected; it collapses
-  immutable assignment history into delivery identity and changes an accepted
-  existing surface.
-- Adding `resolverPrincipalId` to the due-feed row: rejected for V1; it changes
-  the exact seven-field contract for every consumer.
-- Routing from lineage `canonical_agent_id`: rejected; Workflow evidence is not
-  current Auth/Agent authority.
-- Auth-side display-name normalization, hard-coded UUID mapping or multi-hop
-  aliases: rejected; wrong-target and privilege-confusion risk.
-- Rebinding the Visit or creating a replacement Instance: rejected; historical
+### ALT-DAR-001 — replace due-feed owner with successor
+
+- Disposition: rejected.
+- Reason: it collapses immutable assignment history into delivery identity and
+  changes an accepted existing surface.
+- What would reopen: whole-authority supersession explicitly choosing new feed
+  semantics; not needed for this Goal.
+
+### ALT-DAR-002 — add a resolver field to the due feed
+
+- Disposition: rejected for V1.
+- Reason: it changes the exact seven-field contract for every consumer.
+- What would reopen: a separately justified feed-versioning requirement.
+
+### ALT-DAR-003 — route from recorded canonical Agent ID
+
+- Disposition: rejected.
+- Reason: Workflow evidence is not current Auth/Agent authority.
+- What would reopen: none under the current authority split.
+
+### ALT-DAR-004 — normalize or alias identity outside accepted lineage
+
+- Disposition: rejected.
+- Reason: Auth-side display-name normalization, hard-coded UUID mapping or
+  multi-hop aliases create wrong-target and privilege-confusion risk.
+- What would reopen: a separately accepted Auth identity model; not present.
+
+### ALT-DAR-005 — mutate existing business facts
+
+- Disposition: rejected.
+- Reason: rebinding the Visit or creating a replacement Instance is historical
   mutation/business substitution and explicitly outside the Goal.
+- What would reopen: none for the frozen real subject.
 
-## 9. Author status
+## 12. Migration, compatibility, and rollback
 
 ```text
-OPEN_OWNER_DECISIONS = DEC-DAR-001 acceptance
+MIGRATION = NONE; migration 0025 is reused read-only
+COMPATIBILITY = additive endpoint; due feed, wake, worklist and detail unchanged
+ROLLBACK = restore exact svc binary/config preimage; delete no facts
+EMERGENCY_CONTAINMENT = disable or roll back the new endpoint/consumer only
+```
+
+No accepted authority is superseded. This new bounded surface refines existing
+activation and lineage authorities without changing their stable Contract IDs.
+
+## 13. Open questions and author status
+
+```text
+OPEN_OWNER_DECISIONS = accept or reject DEC-DAR-001..003 at exact reviewed head
 NORMATIVE_TBD = NONE
+UNRESOLVED_AUTHORITY_CONFLICT = NONE
 PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 6
 CONTRACTS_WITH_ACCEPTANCE = 6
 AUTHORING_READY_FOR_REVIEW = YES
+READY_TO_MARK_ACCEPTED = NO
 IMPLEMENTATION_READY = NO
 PRODUCTION_READY = NO
 NEXT_ACTION = independent exact-head semantic review
