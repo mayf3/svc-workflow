@@ -10,10 +10,10 @@ scope:
   - svc-workflow due Dispatch Intent read (GET /internal/v1/dispatch-intents)
   - keyset continuation only; no scheduler semantics
 governed_by:
-  - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 (amends CTR-VAI-009; all other
-    CTR-VAI contracts unchanged)
-  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
-  - SVC_WORKFLOW_ARCHITECTURE_V0_4_0
+  - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 (accepted on main; amends
+    CTR-VAI-009; all other CTR-VAI contracts unchanged)
+  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V7 (current main authority)
+  - SVC_WORKFLOW_ARCHITECTURE_V0_4_1 (current main authority)
 external_authorities:
   - dsh-agent-core AGENT_CORE_WORKFLOW_AGENT_EXECUTION_V1 (candidate, same
     closure round) — the sole motivating consumer; its CTR-WAE-001b consumes
@@ -183,12 +183,19 @@ COALESCE expression; handler auth path untouched. No migration.
 
 ## 6. Sequencing
 
-Authored as a docs-only candidate on the visit-activation lineage (base
-6191ce4 — the lineage carrying accepted SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-and the production bytes). Per repo governance, implementation begins only
-after this Spec is accepted and present in the implementation PR base. The
-external dsh consumer deploys only after this contract is accepted,
-implemented, and deployed. At acceptance/merge time, the accepted
+Authored as a docs-only candidate on CURRENT MAIN (base 5e37d9a, the
+authority branch — main already contains the accepted Visit Activation
+lineage and has advanced to Product Boundary V7 / Architecture v0.4.1; an
+earlier candidate revision sat on the pre-merge impl/visit-activation-v1
+branch @ 6191ce4 and was rebased per Owner exact-head review B-O2). Narrow
+impact recheck at rebase time: the due-feed surface this Spec amends is
+byte-identical between 6191ce4 and current main
+(`query_dispatch_intents.rs`, `handlers/dispatch_intents.rs`,
+`wake_transaction.rs` — empty diff), so every CTR fact verified against the
+impl-branch code holds verbatim on main. Per repo governance, implementation
+begins only after this Spec is accepted and present in the implementation PR
+base. The external dsh consumer deploys only after this contract is
+accepted, implemented, and deployed. At acceptance/merge time, the accepted
 SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1.md gains a reciprocal amended-by
 backlink on CTR-VAI-009 (this candidate does not modify the accepted spec
 file itself).
