@@ -253,6 +253,20 @@ transaction. Missing scope follows normal Auth denial; missing binding returns
 `403 scheduler_read_role_required`. The response never discloses whether supplied
 coordinates exist before both authorization gates pass.
 
+Every success and every authenticated denial MUST append one durable,
+non-sensitive protected-read audit record before publishing the HTTP response,
+as required by `SVC_WORKFLOW_ARCHITECTURE_V0_4_1#CTR-ARCH-039`. The audit binds
+the authenticated actor, operation, request/correlation identity, timestamp and
+closed outcome class (`SUCCESS`, `AUTHORIZATION_DENIED`,
+`DISPATCH_INTENT_NOT_CURRENT`, or `DISPATCH_IDENTITY_UNAVAILABLE`). A denial
+record MUST NOT disclose resolved identity fields or distinguish which hidden
+coordinate predicate failed. Required audit is retained for exactly 365 days
+through the existing audit lifecycle. If the audit append or its durable
+confirmation is unavailable, publication fails closed with `503
+audit_unavailable` and no identity body; the response MUST NOT be published from
+a cached positive result. The business/identity snapshot itself remains
+read-only; the audit is the only write authorized by this read operation.
+
 Inside that snapshot, all predicates are conjunctive:
 
 1. Instance exists, is not cancelled/archived, and its current NodeVisit equals
@@ -290,23 +304,24 @@ recorded `canonical_agent_id` as current identity authority.
 ### CTR-DAR-004 — trust and use boundary
 
 The response is a time-indexed Workflow observation. It grants no authority to
-act as either Principal and is not a lease. A dispatcher uses only the returned
-`resolverPrincipalId` as the UUID input to the separately authorized Auth exact
-resolver. Auth and the destination Agent registry must independently return one
-enabled canonical Agent before admission. Any later drift fails closed; there is
-no cached positive reuse across admission attempts or poll passes.
+act as either Principal and is not a lease. svc-workflow MUST publish both
+`assignedPrincipalId` and `resolverPrincipalId` with their distinct meanings,
+even when their UUID values are equal for `DIRECT`; it MUST NOT collapse one into
+the other or claim an Agent resolution. Assignment ownership, target own-context
+visibility and historical events continue to use Workflow authority.
 
-The dispatcher ledger records both `assignedPrincipalId` and
-`resolverPrincipalId` plus `resolutionKind`; they must never be collapsed into
-one field. Assignment ownership, target own-context visibility and historical
-events continue to use Workflow authority, not the dispatcher's ledger.
+External consumers remain governed by their own accepted authority. This Spec
+only declares interoperability: `resolverPrincipalId` is the exact Principal
+UUID intended for a separately authorized external exact-Principal resolution;
+the response itself never proves an Agent, Session admission or delivery.
 
 ### CTR-DAR-005 — compatibility and zero mutation
 
 The existing due-feed request/response, seven fields, ordering, continuation,
 wake behavior, activation facts, NodeVisit rows, worklist/detail responses and
 error meanings remain byte-for-meaning unchanged. This endpoint performs zero
-business, audit-repair, eligibility, receipt or lineage writes. It introduces no
+business, identity-repair, eligibility, receipt or lineage writes. Its only
+write is the required protected-read audit in `CTR-DAR-002`. It introduces no
 schema migration and no generic alias semantics.
 
 ### CTR-DAR-006 — controlled release
@@ -335,15 +350,20 @@ deployment outcome, inspect process, binary and health state before retrying.
 - Method/environment: handler plus HTTP contract tests in an isolated database.
 - Expected: exact success keys; malformed/unknown/duplicate inputs rejected;
   existing due/wake snapshots unchanged.
-- Failure: any extra field, changed existing response or write.
+- Failure: any extra field, changed existing response, business/identity/
+  eligibility/lineage write, or missing required protected-read audit.
 
 ### ACC-DAR-002 — authorization matrix
 
 - Contracts: `CTR-DAR-002`.
 - Method/environment: real scope verifier with role fixtures.
 - Expected: only `workflow.read` plus enabled `GLOBAL_SCHEDULER_READ` succeeds;
-  role-less/disabled/other-role callers fail with zero identity disclosure.
-- Failure: client-side-only gate or implicit role equivalence.
+  role-less/disabled/other-role authenticated callers fail with zero identity
+  disclosure; success and authenticated denial each append one sanitized audit
+  before response publication; forced audit outage returns `503
+  audit_unavailable` with no identity body and no cached publication.
+- Failure: client-side-only gate, implicit role equivalence, response before
+  durable audit, sensitive denial audit, missing audit or fail-open audit outage.
 
 ### ACC-DAR-003 — lineage and drift matrix
 
@@ -357,11 +377,12 @@ deployment outcome, inspect process, binary and health state before retrying.
 ### ACC-DAR-004 — no Agent-ID shortcut
 
 - Contracts: `CTR-DAR-003`, `CTR-DAR-004`.
-- Method/environment: composed fixture with misleading lineage
-  `canonical_agent_id`, display-name collision and Auth resolver stub.
-- Expected: Workflow never returns/uses an Agent ID; only exact returned UUID is
-  passed to Auth; Auth failure admits zero Runs.
-- Failure: routing from Workflow evidence or fallback.
+- Method/environment: repository/HTTP response fixture with misleading lineage
+  `canonical_agent_id` and display-name collision.
+- Expected: Workflow never returns or uses an Agent ID; both Principal UUID
+  fields retain their named meanings, including an equal-valued DIRECT result.
+- Failure: any Agent-ID field, routing claim, display-name dependency or collapse
+  of assignment identity into resolver identity.
 
 ### ACC-DAR-005 — production read-only proof
 
@@ -370,6 +391,7 @@ deployment outcome, inspect process, binary and health state before retrying.
   for the frozen real subject, before any wake or dsh poller enablement.
 - Expected: exact assigned Principal preserved; exact recorded successor returned
   as resolver Principal; zero Workflow version/Event/eligibility/receipt delta;
+  exactly one sanitized protected-read success audit precedes the response;
   health and ready remain green; rollback remains executable.
 - Failure: wrong coordinates, mutation, missing receipt, unhealthy service or
   unresolved deployment outcome.
