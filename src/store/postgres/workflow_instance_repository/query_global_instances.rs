@@ -141,7 +141,7 @@ pub(crate) async fn list_global_instances(
                 (nd.node_type = 'TERMINAL') AS is_terminal,
                 cr.payload->>'title' AS title,
                 wi.created_at, wi.updated_at,
-                a_open.activation_kind AS activation_kind,
+                a_open.activation_kind::text AS activation_kind,
                 a_open.activation_id AS open_activation_id,
                 eff.effective_next_eligible_at AS effective_next_eligible_at
          FROM workflow_instances wi

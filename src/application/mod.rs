@@ -4,6 +4,7 @@
 //! and storage operations. This layer does not depend on HTTP or
 //! external frameworks.
 
+pub mod coordinator_control_plane;
 pub mod definition;
 pub mod definition_governance;
 pub mod domain_membership;
