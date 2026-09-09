@@ -116,20 +116,51 @@ pub(crate) async fn list_members(
 // PUT /internal/v1/domains/{domainId}/members/{principalId}
 // ---------------------------------------------------------------------------
 
-/// Add a principal as DOMAIN_MEMBER of a domain.
+/// Add a principal to a domain (explicit role grammar,
+/// SVC_WORKFLOW_DOMAIN_MEMBERSHIP_CONTROL_PLANE_V1 CTR-DMC-001).
 ///
-/// The target principal must have completed self-projection
+/// Body is OPTIONAL for backward compatibility: absent body or absent
+/// `role` ⇒ `DOMAIN_MEMBER`. A present-but-malformed body (unknown role
+/// string, unknown field) is 400 `invalid_input` — never silently
+/// reinterpreted. The target principal must have completed self-projection
 /// (`PUT /internal/v1/principals/me`).
 ///
-/// Idempotent: re-adding an existing member returns success.
+/// `role=DOMAIN_OWNER` ⇒ 403 `domain_owner_delegation_forbidden` (frozen
+/// single-owner invariant); duplicate DOMAIN_MEMBER add with a new
+/// idempotency key ⇒ 409 `already_member`.
 pub(crate) async fn add_member(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
     headers: HeaderMap,
     Path((domain_id, target_principal_id)): Path<(Uuid, Uuid)>,
+    body: axum::body::Bytes,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_scope(&principal, "workflow.execute")?;
     require_direct_token(&principal)?;
+
+    // Empty body ⇒ default DOMAIN_MEMBER (backward compatible); a
+    // non-empty body must parse exactly (deny_unknown_fields ⇒ 400
+    // invalid_input, CTR-DMC-001; parse detail stays in debug logs).
+    let role = if body.is_empty() {
+        domain_membership::DomainMembershipRole::DomainMember
+    } else {
+        let parsed: Result<crate::http::dto::AddMemberRequest, _> =
+            serde_json::from_slice(&body);
+        match parsed {
+            Ok(req) => req
+                .role
+                .unwrap_or(domain_membership::DomainMembershipRole::DomainMember),
+            Err(e) => {
+                tracing::debug!(error = %e, "invalid add-member request body");
+                return Err(ApiError::new(
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "invalid_input",
+                    "add-member request body is invalid (expected {\"role\": \"DOMAIN_MEMBER\" | \"DOMAIN_OWNER\"})",
+                ));
+            }
+        }
+    };
+
     let key = idempotency_key(&headers)?;
     let request_id = headers
         .get("x-request-id")
@@ -142,6 +173,7 @@ pub(crate) async fn add_member(
         &key,
         domain_id,
         target_principal_id,
+        role,
         request_id,
     )
     .await

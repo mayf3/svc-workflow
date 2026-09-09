@@ -708,27 +708,39 @@ paths:
   /internal/v1/domains/{domainId}/members/{principalId}:
     put:
       operationId: addDomainMember
-      summary: Add a principal as DOMAIN_MEMBER (must be self-projected)
+      summary: Add a principal to the domain (explicit role grammar; must be self-projected)
       tags: [domains]
       parameters:
         - $ref: "#/components/parameters/DomainId"
         - $ref: "#/components/parameters/PrincipalIdPath"
         - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberRequest"
       security:
         - bearerAuth: []
       responses:
         "200":
-          description: Member added or already exists
+          description: Member added (grants DOMAIN_MEMBER; role omitted defaults to DOMAIN_MEMBER)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MemberAddResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: already_member (enabled DOMAIN_MEMBER binding exists, new logical command), idempotency_conflict, or principal_is_owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: removeDomainMember
       summary: Remove a DOMAIN_MEMBER binding
@@ -1702,6 +1714,20 @@ components:
             - $ref: "#/components/schemas/MemberListCursor"
       required: [items, next_cursor]
 
+    AddMemberRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [DOMAIN_MEMBER, DOMAIN_OWNER]
+          description: >-
+            Role to grant. DOMAIN_MEMBER is the only actionable grant;
+            DOMAIN_OWNER is accepted by the grammar but rejected 403
+            domain_owner_delegation_forbidden under the frozen single-owner
+            invariant.
+      description: >-
+        Optional body; absent body or absent role defaults to DOMAIN_MEMBER.
     MemberAddResponse:
       type: object
       additionalProperties: false
