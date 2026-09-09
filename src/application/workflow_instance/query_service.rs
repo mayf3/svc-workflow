@@ -118,12 +118,17 @@ impl WorkflowQueryService {
         &self,
         actor_principal_id: uuid::Uuid,
         limit: i64,
+        cursor: Option<(
+            chrono::DateTime<chrono::Utc>,
+            uuid::Uuid,
+        )>,
     ) -> Result<Vec<crate::store::postgres::workflow_instance_repository::query_dispatch_intents::DueDispatchIntent>, WorkflowQueryError>
     {
         crate::store::postgres::workflow_instance_repository::query_dispatch_intents::list_due_dispatch_intents(
             &self.pool,
             actor_principal_id,
             limit,
+            cursor,
         )
         .await
     }
