@@ -191,8 +191,8 @@ Require a direct token with `workflow.read` and one enabled server-side
 Reader, Coordinator, Domain role or possession of an ID implies this role.
 Role check and fact resolution occur in one read-only `REPEATABLE READ`
 transaction. Missing scope follows normal Auth denial; missing binding returns
-`403 scheduler_read_role_required`. Denials produce the existing protected-read
-audit class without leaking whether supplied coordinates exist.
+`403 scheduler_read_role_required`. The response never discloses whether supplied
+coordinates exist before both authorization gates pass.
 
 Inside that snapshot, all predicates are conjunctive:
 
