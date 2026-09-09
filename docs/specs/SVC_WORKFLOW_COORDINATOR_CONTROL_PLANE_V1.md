@@ -302,6 +302,17 @@ invalid_input             422  字段校验失败（displayName/reason/role/UUID
 
 不暴露 raw SQL / storage detail（error envelope 四要素不变）。
 
+对 Owner directive §12 错误码清单的显式映射（"至少稳定保留"逐项对账）：
+`not_found`/`forbidden` = 既有通用码，保持；`already_member` = member add
+的幂等成功语义（非错误码，OBS-CP-002），response 稳定可判定；`domain_owner_missing`
+= 新增（CTR-CP-002）；`identity_not_found` = 新增（DEC-CP-007）；
+`identity_ambiguous` = 属下游 discovery 面（name→UUID），服务端 exact-UUID
+输入不可能歧义，不声明；`idempotency_conflict` = 既有，保持；
+`invalid_state` = 既有 lifecycle conflict 家族码承载
+（`already_cancelled`/`instance_archived`/`instance_not_terminal`/
+`already_archived`——语义更精确，全部保持）；`binding_conflict` = 新增
+（DEC-CP-005）。
+
 ### CTR-CP-004 — Audit / idempotency（directive §13）
 
 全部 coordinator 写面（W1–W3 复用既有、N3/N6 新增）必须：
