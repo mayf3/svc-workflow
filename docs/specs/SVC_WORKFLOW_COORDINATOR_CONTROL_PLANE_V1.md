@@ -76,7 +76,7 @@ coarse scope；下游 Broker（dsh-agent-core，另行 Spec）不复制 role log
 **Amends `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1`（accepted）**，两处：
 
 1. §3 permission matrix 的 `GLOBAL_WORKFLOW_COORDINATOR` 列扩展：
-   新增本 Spec §9 CTR-CM-001 冻结的放宽行与新增行；READER 列与
+   新增本 Spec §9 CTR-CP-001 冻结的放宽行与新增行；READER 列与
    `SERVER_GATE (global list) = GLOBAL_WORKFLOW_READER OR
    GLOBAL_WORKFLOW_COORDINATOR` 逐字不变。
 2. §8 rejected alternative「Coordinator to HR main — rejected: role
@@ -130,7 +130,8 @@ READER_V1。
 - 不新增 identity authority；不做实例 assignee 修复（那是
   CANONICAL_IDENTITY_RECONCILIATION_V2 的 frozen scope）。
 - Role grant（GLOBAL_WORKFLOW_COORDINATOR → HR）**不在本 Spec 内执行**；
-  §11 只冻结 grant plan，apply 是 separately owner-authorized production step。
+  §11.1/§11.2 冻结 bootstrap provisioning 语义与五门执行 gate——门满即
+  可执行、无需再次询问产品方向（Owner 本指令即授权）。
 - 不做 `if agent == HR` / principal 硬编码特判；角色判定只查
   `global_role_bindings` / `domain_role_bindings`。
 
@@ -310,34 +311,6 @@ POST   /internal/v1/domains/{domainId}/binding-reconcile/apply
 - reconcile apply 返回 `{outcome: applied|already_applied|noop, …}`；
   幂等 replay 返回原 outcome（OBS-CP-003）。
 
-### CTR-CP-006 — member add 三态 outcome 契约（B2 冻结；V1 实现增量）
-
-「transport replay」（同一 Idempotency-Key）与「logical duplicate」（新
-Idempotency-Key 但成员已存在）是**两件事**，V1 起响应与审计必须可区分：
-
-```text
-首次逻辑添加（binding 实际建立）：
-  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"added"}
-  恰一条 member_added governance/security audit（result=success）
-
-同一 Idempotency-Key replay：
-  返回原 completed receipt 的原 response（outcome="added"）
-  零第二次 mutation、零第二条 member_added business audit
-  （receipt/attempt audit 照常记录这次 replay）
-
-新 Idempotency-Key + target 已是 enabled DOMAIN_MEMBER：
-  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"already_member"}
-  DB_BINDING_MUTATION = NO（不执行 upsert 写）
-  SECOND member_added audit = NO
-  允许 receipt/attempt audit 记录该 no-op；若写 governance/security
-  audit，result 必须显式标记 already_member/noop，
-  禁止伪装成第二条 member_added/result=success
-```
-
-`outcome` 字段由下游 Broker 原样保留（转发不裁剪、不翻译）。remove 响应
-保持现状 `{domainId, principalId, role:"DOMAIN_MEMBER", enabled:false}`
-（OBS-CP-002b）。
-
 ### CTR-CP-003 — Error table（新增码，全部进 Broker declarer 表）
 
 ```text
@@ -390,6 +363,34 @@ member add 的三态审计纪律按 CTR-CP-006：`already_member` no-op 绝不�
 - transition/assignee 授权不变；coordinator 不是 implicit assignee。
 - cleanup 语义（cancel→verify→archive；archived=no-op）是**下游编排
   纪律**，svc 不建 cleanup 状态机（directive non-goals）。
+
+### CTR-CP-006 — member add 三态 outcome 契约（B2 冻结；V1 实现增量）
+
+「transport replay」（同一 Idempotency-Key）与「logical duplicate」（新
+Idempotency-Key 但成员已存在）是**两件事**，V1 起响应与审计必须可区分：
+
+```text
+首次逻辑添加（binding 实际建立）：
+  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"added"}
+  恰一条 member_added governance/security audit（result=success）
+
+同一 Idempotency-Key replay：
+  返回原 completed receipt 的原 response（outcome="added"）
+  零第二次 mutation、零第二条 member_added business audit
+  （receipt/attempt audit 照常记录这次 replay）
+
+新 Idempotency-Key + target 已是 enabled DOMAIN_MEMBER：
+  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"already_member"}
+  DB_BINDING_MUTATION = NO（不执行 upsert 写）
+  SECOND member_added audit = NO
+  允许 receipt/attempt audit 记录该 no-op；若写 governance/security
+  audit，result 必须显式标记 already_member/noop，
+  禁止伪装成第二条 member_added/result=success
+```
+
+`outcome` 字段由下游 Broker 原样保留（转发不裁剪、不翻译）。remove 响应
+保持现状 `{domainId, principalId, role:"DOMAIN_MEMBER", enabled:false}`
+（OBS-CP-002b）。
 
 ## 10. Acceptance
 
