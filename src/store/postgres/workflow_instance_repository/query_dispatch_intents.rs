@@ -43,10 +43,20 @@ fn storage(error: sqlx::Error) -> WorkflowQueryError {
 /// REPEATABLE READ snapshot that performs the query; a missing binding
 /// yields `WorkflowQueryError::SchedulerReadRoleRequired` (403
 /// `scheduler_read_role_required` at the HTTP boundary).
+///
+/// `cursor` is the exclusive keyset continuation of
+/// SVC_WORKFLOW_DISPATCH_INTENT_KEYSET_CONTINUATION_V1 (CTR-DKC-001/002):
+/// `(afterNextEligibleAt, afterDispatchIntentId)`, both-or-neither enforced
+/// at the HTTP boundary. The row-value comparison reuses the SAME
+/// COALESCE(latest eligibility event, initial) expression that the existing
+/// ORDER BY uses — cursor key == order key — so paging walks the feed
+/// without gaps or repeats; a caller sending no cursor observes
+/// byte-identical CTR-VAI-009 behavior.
 pub(crate) async fn list_due_dispatch_intents(
     pool: &sqlx::PgPool,
     actor: Uuid,
     limit: i64,
+    cursor: Option<(chrono::DateTime<chrono::Utc>, Uuid)>,
 ) -> Result<Vec<DueDispatchIntent>, WorkflowQueryError> {
     let mut tx = query_visibility::begin_snapshot(pool).await?;
 
@@ -57,8 +67,70 @@ pub(crate) async fn list_due_dispatch_intents(
         return Err(WorkflowQueryError::SchedulerReadRoleRequired);
     }
 
-    let intents: Vec<DueDispatchIntent> = sqlx::query_as(
-        r#"
+    // The keyset filter repeats the exact COALESCE expression aliased as
+    // "nextEligibleAt" (row-value comparisons cannot reference the alias),
+    // keeping cursor semantics identical to the sort semantics.
+    const KEYSET_FILTER: &str = r#"
+           AND (COALESCE(
+                    (SELECT e.new_next_eligible_at
+                       FROM workflow_dispatch_eligibility_events e
+                      WHERE e.activation_id = a.activation_id
+                      ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+                      LIMIT 1),
+                    a.initial_next_eligible_at
+                ),
+                a.activation_id) > ($2, $3)"#;
+
+    let (sql, has_cursor): (String, bool) = match cursor {
+        Some(_) => (
+            format!(
+                r#"
+        SELECT a.activation_id           AS "dispatchIntentId",
+               a.node_visit_id           AS "nodeVisitId",
+               a.workflow_instance_id    AS "workflowInstanceId",
+               a.owner_principal_id      AS "ownerPrincipalId",
+               COALESCE(
+                   (SELECT e.new_next_eligible_at
+                      FROM workflow_dispatch_eligibility_events e
+                     WHERE e.activation_id = a.activation_id
+                     ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+                     LIMIT 1),
+                   a.initial_next_eligible_at
+               )                         AS "nextEligibleAt",
+               a.activation_at           AS "createdAt",
+               COALESCE(
+                   (SELECT e.created_at
+                      FROM workflow_dispatch_eligibility_events e
+                     WHERE e.activation_id = a.activation_id
+                     ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+                     LIMIT 1),
+                   a.created_at
+               )                         AS "updatedAt"
+          FROM workflow_activations a
+          JOIN workflow_instances wi
+            ON wi.workflow_instance_id = a.workflow_instance_id
+          LEFT JOIN workflow_activation_closures c
+            ON c.activation_id = a.activation_id
+         WHERE a.activation_kind = 'DISPATCH_INTENT'
+           AND c.activation_id IS NULL
+           AND wi.cancelled = FALSE
+           AND wi.archived_at IS NULL
+           AND COALESCE(
+                   (SELECT e.new_next_eligible_at
+                      FROM workflow_dispatch_eligibility_events e
+                     WHERE e.activation_id = a.activation_id
+                     ORDER BY e.created_at DESC, e.eligibility_event_id DESC
+                     LIMIT 1),
+                   a.initial_next_eligible_at
+               ) <= now(){KEYSET_FILTER}
+         ORDER BY "nextEligibleAt", a.activation_id
+         LIMIT $1
+        "#
+            ),
+            true,
+        ),
+        None => (
+            r#"
         SELECT a.activation_id           AS "dispatchIntentId",
                a.node_visit_id           AS "nodeVisitId",
                a.workflow_instance_id    AS "workflowInstanceId",
@@ -99,12 +171,19 @@ pub(crate) async fn list_due_dispatch_intents(
                ) <= now()
          ORDER BY "nextEligibleAt", a.activation_id
          LIMIT $1
-        "#,
-    )
-    .bind(limit)
-    .fetch_all(&mut *tx)
-    .await
-    .map_err(storage)?;
+        "#
+            .to_string(),
+            false,
+        ),
+    };
+
+    let mut query = sqlx::query_as::<_, DueDispatchIntent>(&sql).bind(limit);
+    if has_cursor {
+        let (after_ts, after_id) = cursor.expect("cursor presence checked");
+        query = query.bind(after_ts).bind(after_id);
+    }
+    let intents: Vec<DueDispatchIntent> =
+        query.fetch_all(&mut *tx).await.map_err(storage)?;
 
     tx.commit().await.map_err(storage)?;
     Ok(intents)
