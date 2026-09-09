@@ -1,11 +1,21 @@
 ---
 spec_id: SVC_WORKFLOW_DISPATCH_INTENT_KEYSET_CONTINUATION_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
 production_apply_authority: none
 date: 2026-09-09
+accepted_date: 2026-09-09
+acceptance_authority_basis: >-
+  Owner exact-head acceptance (PR mayf3/svc-workflow#33, ACCEPT=YES at
+  67a092b98984b740eeb03d5534b73ed2d206bb44 on current main authority V7 /
+  Architecture v0.4.1, second gate after the first REVISE round closed
+  B-O2); prior chain: independent semantic review REVISE -> fix -> delta
+  re-review ACCEPT_READY. This commit is the lifecycle transaction only: the
+  accepted contract text is byte-identical to the accepted head except this
+  frontmatter.
+accepted_reviewed_head: 67a092b98984b740eeb03d5534b73ed2d206bb44
 scope:
   - svc-workflow due Dispatch Intent read (GET /internal/v1/dispatch-intents)
   - keyset continuation only; no scheduler semantics
