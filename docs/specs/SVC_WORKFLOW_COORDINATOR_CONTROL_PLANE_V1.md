@@ -162,7 +162,7 @@ READER_V1。
 | S4 | Coordinator domain list/get | C | 无端点；`domains` 表列齐全（domain_key UNIQUE, display_name, enabled, created_at, updated_at） |
 | S5 | Coordinator domain update | C | 无端点 |
 | S6 | GET domain owner | C | 无端点；仅 `PUT` 存在 |
-| S7 | Member list/add/remove | B | `GET/POST/DELETE /internal/v1/domains/{domainId}/members(/{principalId})` 存在；application 层 `check_domain_owner`-only → `NotDomainOwner` |
+| S7 | Member list/add/remove | B | `GET /internal/v1/domains/{domainId}/members`（list）、`PUT …/members/{principalId}`（add，Idempotency-Key 必带）、`DELETE …/members/{principalId}`（remove，Idempotency-Key 必带）；application 层 `check_domain_owner`-only → `NotDomainOwner`（routes @ src/http/mod.rs:148-159） |
 | S8 | cancel/archive | B | 端点+幂等+receipt 在（`compute_cancel_request_hash` / `compute_archive_request_hash`，`workflow_command_receipts`）；application 层 DOMAIN_OWNER-only（「Only DOMAIN_OWNER may cancel instances in their domain」）；错误表齐（`not_domain_owner`/`already_cancelled`/`instance_archived`/`invalid_reason`/`idempotency_conflict`/`command_still_processing`） |
 | S9 | Binding reconcile plan/apply | C | 缺；DB 兜底 = `idx_drb_single_owner` 部分唯一索引（at most one enabled DOMAIN_OWNER per domain）+ `idx_drb_domain_principal_role`（per (domain,principal,role) 唯一） |
 | S10 | Receipts / audit | A | `workflow_command_receipts` + `workflow_command_attempt_audits` + `workflow_security_audits`（migrations/0005）；`command_type` 为自由 TEXT（新命令种类零 migration） |
@@ -173,10 +173,20 @@ READER_V1。
 - OBS-CP-001 — cancel/archive 的 HTTP 层只查 `workflow.execute` scope；
   DOMAIN_OWNER 判定在 application 事务层（`cancel.rs`/`archive.rs` 头注 +
   事务内 `check_domain_owner` 等价校验），因此放宽点唯一且在事务层。
-- OBS-CP-002 — member add 已幂等（重复 add 返回成功语义）、remove 只移除
-  `DOMAIN_MEMBER`（显式不影响 `DOMAIN_OWNER`），并有
-  `principal_not_registered`/`principal_disabled`/`principal_is_owner`
-  目标校验——B 类放宽只需动「caller 是谁」，不动目标校验。
+- OBS-CP-002 — member add 已幂等（同一 Idempotency-Key replay 经 receipt
+  状态机返回原 outcome）、remove 只移除 `DOMAIN_MEMBER`（显式不影响
+  `DOMAIN_OWNER`），并有 `principal_not_registered`/`principal_disabled`/
+  `principal_is_owner` 目标校验——B 类放宽只需动「caller 是谁」，不动目标
+  校验。**当前实现的诚实边界（本 Spec 的 delta 驱动点之一）**：对「新
+  Idempotency-Key + target 已是 enabled DOMAIN_MEMBER」，add 现状会继续走
+  upsert、重复写一条 `member_added/result=success` security audit，并返回
+  与首次完全相同的普通 success response（`{domainId, principalId, role}`，
+  无 outcome 字段）——即「logical duplicate」与「首次添加」在响应与审计上
+  不可区分。V1 以 CTR-CP-006 冻结三态 outcome 契约修复此点。
+- OBS-CP-002b — remove 对目标 binding 不存在返回 `member_not_found`
+  （DomainMembershipError::MemberNotFound → error.rs 映射 404 语义，
+  label `member_not_found`），响应形状
+  `{domainId, principalId, role:"DOMAIN_MEMBER", enabled:false}`。
 - OBS-CP-003 — `workflow_command_receipts` 的幂等键唯一索引是
   `(principal_id, idempotency_key)`；replay 返回原 outcome 的机制由
   receipt 状态机承载（同 cancel/archive/create_domain 现状）。
@@ -226,15 +236,25 @@ READER_V1。
   ∈ {DOMAIN_OWNER, DOMAIN_MEMBER}/reason）；plan 纯只读并列 blockers；
   apply 校验 exact preimage（source binding 仍 enabled 且 binding_id 一致、
   target principal 仍存在且 enabled、target 无该 role enabled binding），
-  任一不匹配 → 409 `binding_conflict` 零 mutation。
+  任一不匹配 → 409 `binding_conflict` 零 mutation。**source principal 的
+  `enabled` 不作为 plan/apply 前置**（见 DEC-CP-007）——历史/stale principal
+  已被 disable 恰恰可能是需要 reconciliation 的原因。
 - DEC-CP-006（owner reconcile 复用 owner-swap）— role=DOMAIN_OWNER 的
   apply 复用 `replace_owner` 原子语义（单事务 disable 旧 + establish 新，
   OBS-CP-004）；role=DOMAIN_MEMBER 的 apply 在单事务内完成旧 binding
   disable + 新 binding establish，杜绝半迁移。
-- DEC-CP-007（identity 错误码）— 服务端输入是 exact UUID：目标/来源
-  principal 不存在或 disabled → `identity_not_found`（404/422 按 hit 面）。
-  `identity_ambiguous` 是下游 discovery 面（name→UUID 搜索）的错误码，本
-  服务端按 exact UUID 查询**不可能**产生歧义，不声明该码。
+- DEC-CP-007（reconcile identity 语义，B5 冻结）— from 与 to 的要求
+  **不对称**：
+  - `fromPrincipalId`：必须 principal exists + 该 domain 该 role 的
+    exact source binding preimage exists（enabled）；**source principal
+    enabled = NOT REQUIRED**。
+  - `toPrincipalId`：必须 principal exists **且** enabled。
+  错误冻结：malformed UUID/role/reason → 422 `invalid_input`；exact UUID
+  不存在 → 404 `identity_not_found`；target principal exists 但 disabled →
+  403 `principal_disabled`；source principal disabled 但 exact active
+  source binding exists → **允许 plan/apply**（这是 identity repair 的
+  正常输入，不是错误）。`identity_ambiguous` 仍只属于上游 canonical
+  discovery（name→UUID 搜索）面，本服务端 exact-UUID endpoint 不声明该码。
 - DEC-CP-008（reconcile 授权）— plan 与 apply 都 coordinator-only
   （DOMAIN_OWNER 不需要、也不获得 reconcile 面；与 directive §15 一致）。
 - DEC-CP-009（读面 scope）— N1/N2/N4 用 `workflow.read`；N3/N5/N6 与全部
@@ -279,12 +299,44 @@ POST   /internal/v1/domains/{domainId}/binding-reconcile/apply
   无 offset/page/total）。
 - get owner 返回 `{domainId, ownerPrincipalId, ownerDisplayName|null,
   ownerEnabled}`（ownerDisplayName 取 principals projection，缺省 null）。
-- reconcile plan 返回只读判定：
-  `{sourceBindingExists, sourceEnabled, targetPrincipalExists,
-  targetPrincipalEnabled, targetHasEnabledBinding, singleOwnerInvariantOk,
-  plan, blockers[]}`；plan 恒 200（blockers 以列表表达，非错误）。
+- reconcile plan 返回只读判定（B5 冻结的显式四元 source 判定 + 三元
+  target 判定）：
+  `{sourcePrincipalExists, sourcePrincipalEnabled, sourceBindingExists,
+  sourceBindingEnabled, targetPrincipalExists, targetPrincipalEnabled,
+  targetHasEnabledBinding, singleOwnerInvariantOk, plan, blockers[]}`；
+  plan 恒 200（blockers 以列表表达，非错误）；source principal disabled
+  只体现在 `sourcePrincipalEnabled=false`，**不构成 blocker**（前提是
+  exact source binding 仍 enabled 存在）。
 - reconcile apply 返回 `{outcome: applied|already_applied|noop, …}`；
   幂等 replay 返回原 outcome（OBS-CP-003）。
+
+### CTR-CP-006 — member add 三态 outcome 契约（B2 冻结；V1 实现增量）
+
+「transport replay」（同一 Idempotency-Key）与「logical duplicate」（新
+Idempotency-Key 但成员已存在）是**两件事**，V1 起响应与审计必须可区分：
+
+```text
+首次逻辑添加（binding 实际建立）：
+  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"added"}
+  恰一条 member_added governance/security audit（result=success）
+
+同一 Idempotency-Key replay：
+  返回原 completed receipt 的原 response（outcome="added"）
+  零第二次 mutation、零第二条 member_added business audit
+  （receipt/attempt audit 照常记录这次 replay）
+
+新 Idempotency-Key + target 已是 enabled DOMAIN_MEMBER：
+  200 {domainId, principalId, role:"DOMAIN_MEMBER", outcome:"already_member"}
+  DB_BINDING_MUTATION = NO（不执行 upsert 写）
+  SECOND member_added audit = NO
+  允许 receipt/attempt audit 记录该 no-op；若写 governance/security
+  audit，result 必须显式标记 already_member/noop，
+  禁止伪装成第二条 member_added/result=success
+```
+
+`outcome` 字段由下游 Broker 原样保留（转发不裁剪、不翻译）。remove 响应
+保持现状 `{domainId, principalId, role:"DOMAIN_MEMBER", enabled:false}`
+（OBS-CP-002b）。
 
 ### CTR-CP-003 — Error table（新增码，全部进 Broker declarer 表）
 
@@ -292,10 +344,13 @@ POST   /internal/v1/domains/{domainId}/binding-reconcile/apply
 domain_owner_missing      404  无 enabled DOMAIN_OWNER（get owner / plan）
 binding_conflict          409  preimage 不匹配 / target 冲突 / 单 owner
                                invariant 冲突（apply）
-identity_not_found        404|422  reconcile 输入 principal 不存在或 disabled
-invalid_input             422  字段校验失败（displayName/reason/role/UUID）
+identity_not_found        404  reconcile 输入 exact UUID 不存在（from 或 to）
+principal_disabled        403  reconcile TARGET principal exists 但 disabled
+                               （from principal disabled 非错误，DEC-CP-007）
+invalid_input             422  字段校验失败（displayName/reason/role/malformed
+                               UUID）
 （既有码全部保持：not_found / forbidden / not_domain_owner /
- already_member 语义（幂等 add 成功路径） / already_cancelled /
+ member_not_found（remove，OBS-CP-002b）/ already_cancelled /
  instance_archived / idempotency_conflict / command_still_processing /
  invalid_cursor / global_coordinator_required / invalid_reason …）
 ```
@@ -304,8 +359,9 @@ invalid_input             422  字段校验失败（displayName/reason/role/UUID
 
 对 Owner directive §12 错误码清单的显式映射（"至少稳定保留"逐项对账）：
 `not_found`/`forbidden` = 既有通用码，保持；`already_member` = member add
-的幂等成功语义（非错误码，OBS-CP-002），response 稳定可判定；`domain_owner_missing`
-= 新增（CTR-CP-002）；`identity_not_found` = 新增（DEC-CP-007）；
+logical-duplicate 的**成功 outcome**（非错误码，CTR-CP-006 三态契约），
+response 稳定可判定；`domain_owner_missing` = 新增（CTR-CP-002）；
+`identity_not_found` = 新增（DEC-CP-007，仅「exact UUID 不存在」）；
 `identity_ambiguous` = 属下游 discovery 面（name→UUID），服务端 exact-UUID
 输入不可能歧义，不声明；`idempotency_conflict` = 既有，保持；
 `invalid_state` = 既有 lifecycle conflict 家族码承载
@@ -320,8 +376,10 @@ authenticated actor + server-side role check + Idempotency-Key +
 `workflow_command_receipts` durable receipt（新 command_type：
 `domain.update` / `domain.binding_reconcile`）+ security/attempt audit 落
 既有三表 + response 可 read-after-write。同 key replay 返回原 outcome、
-零重复 mutation；新 logical request 撞已完成状态返回稳定业务 outcome
-（member add 幂等语义，OBS-CP-002）。
+零重复 mutation；新 logical request 撞已完成状态返回稳定业务 outcome。
+member add 的三态审计纪律按 CTR-CP-006：`already_member` no-op 绝不产生
+第二条 `member_added/result=success`；若落 governance audit，result 显式
+标记 already_member/noop。
 
 ### CTR-CP-005 — Lifecycle invariants（unchanged, verbatim）
 
@@ -340,9 +398,18 @@ authenticated actor + server-side role check + Idempotency-Key +
   cancel→read-back→archive→read-back；每步 server response 即验收依据。
 - ACC-CP-002 — member 面：coordinator 跨域 add（幂等 replay 稳定）、
   list、remove；member 自读（`principals/me/domains`）出现/消失一致。
-- ACC-CP-003 — reconcile：fixture 域上 plan（blockers 正确枚举）→ apply →
-  旧 binding disabled + 新 binding enabled 原子生效 → replay 返回原
-  outcome → 篡改 preimage 后 apply 409 `binding_conflict` 零 mutation。
+- ACC-CP-003 — reconcile：fixture 域上 plan（blockers 正确枚举；source
+  principal disabled + source binding enabled 的输入必须可 plan/apply，
+  sourcePrincipalEnabled=false 仅作显式字段呈现）→ apply → 旧 binding
+  disabled + 新 binding enabled 原子生效 → replay 返回原 outcome →
+  篡改 preimage 后 apply 409 `binding_conflict` 零 mutation → target
+  principal disabled 时 403 `principal_disabled` → 目标 UUID 不存在时 404
+  `identity_not_found`。
+- ACC-CP-003b — member add 三态（CTR-CP-006）：首次 add → outcome=added +
+  恰一条 member_added audit；同 key replay → 原 response、零第二条
+  business audit；新 key + 已存在成员 → outcome=already_member +
+  DB_BINDING_MUTATION=NO + 零第二条 member_added audit（若落 audit 必须带
+  already_member/noop 标记）。
 - ACC-CP-004 — DOMAIN_MEMBER 对本 Spec 全部面 fail-closed（403）。
 - ACC-CP-005 — DOMAIN_OWNER：own-domain member/cancel/archive 保持 PASS；
   他域全部 403；set owner / domain update / reconcile 403。
@@ -351,17 +418,53 @@ authenticated actor + server-side role check + Idempotency-Key +
   不能 delete 任何东西、不能绕过 lifecycle（active→archive 仍 4xx）。
 - ACC-CP-007 — 既有错误码字节不回归（DEC-CP-002）；repo 测试套件全绿。
 - ACC-CP-008 — role grant 未随本 Spec 执行（frontmatter
-  `role_applied_by_this_spec: false`）；grant 按 §11 单独授权。
+  `role_applied_by_this_spec: false`）；grant 按 §11 五门授权。
 
 ## 11. Migration, compatibility, and rollback
 
-- 部署顺序：本 Spec 实现部署 **先于** dsh broker 能力面部署（下游 Spec
-  依赖本 wire contract）；role grant（coordinator → HR
-  dc702687-6515-4a2a-91ae-e572a9bbd766，admin
-  `PUT /internal/v1/admin/global-role-bindings/{principalId}` body
-  `{roleKey:"GLOBAL_WORKFLOW_COORDINATOR", enabled:true}`，Idempotency-Key
-  + pre/post enumeration per READER_V1 §6 checklist 形态）在其后、
-  separately owner-authorized 执行。
+### 11.1 Bootstrap provisioning vs runtime admin fallback（B7 冻结）
+
+两个语义必须分离，不得混同：
+
+```text
+RUNTIME_ADMIN_API_FALLBACK = NO
+  HR runtime（GLOBAL_WORKFLOW_COORDINATOR 身份）永远不得把
+  /internal/v1/admin/* 当作治理旁路——CTR-CP-001 矩阵 admin 行 DENY
+  不变，directive §15 负向边界不变。
+
+OWNER_AUTHORIZED_BOOTSTRAP_ROLE_PROVISIONING = YES
+  GLOBAL_WORKFLOW_COORDINATOR 角色本身的首次 grant/revoke 是
+  bootstrap/control-plane provisioning，必须由更高权限 provisioning
+  authority（Owner/admin 通道）执行——HR 不能给自己授权。
+  走现有正式 provisioning path：Idempotency-Key + pre-read + apply +
+  post-read + audit evidence（admin
+  PUT /internal/v1/admin/global-role-bindings/{principalId}，
+  body {roleKey:"GLOBAL_WORKFLOW_COORDINATOR", enabled:true}）。
+  这是 provisioning，不是 HR runtime fallback。
+```
+
+### 11.2 Role-grant execution gate（本 Owner 指令冻结；满足后无需再问产品方向）
+
+当且仅当以下五门**全部**满足，本 Goal 授权执行
+「grant enabled GLOBAL_WORKFLOW_COORDINATOR to resolved canonical HR
+principal」：
+
+1. 本 governing Spec accepted + merged；
+2. svc implementation tests PASS；
+3. svc backend controlled deployment PASS；
+4. fresh formal canonical identity resolution（正式 canonical discovery
+   路径，非 hard-coded UUID）**唯一**解析到 HR；
+5. resolved canonical principal 与历史 expected identity 不冲突
+   （历史 UUID `dc702687-6515-4a2a-91ae-e572a9bbd766` 仅作
+   expected/read-back evidence，不是 identity authority）。
+
+fresh resolution mismatch → `STOP / IDENTITY_MISMATCH`：不猜、不自动改成
+另一个 principal、不得对未解析主体 apply。
+
+### 11.3 Deployment order
+
+- 本 Spec 实现部署 **先于** dsh broker 能力面部署（下游 Spec 依赖本
+  wire contract）；role grant 按 §11.2 五门在其后执行。
 - 数据库：**零 migration**（C 类端点全部用既有表/索引；OBS-CP-003/004、
   S10）。`database_migration_required: false`。
 - 兼容：全部既有码/端点行为对 DOMAIN_OWNER、READER、admin、dispatch 面
