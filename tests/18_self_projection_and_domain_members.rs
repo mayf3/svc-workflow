@@ -662,3 +662,288 @@ async fn my_domains_accepts_obo_token_for_self_scoped_read() {
         &domain_id.to_string()
     );
 }
+
+// ---------------------------------------------------------------------------
+// SVC_WORKFLOW_DOMAIN_MEMBERSHIP_CONTROL_PLANE_V1 (role grammar +
+// already_member + domain_owner_delegation_forbidden)
+// ---------------------------------------------------------------------------
+
+async fn do_put_idem_body(
+    app: axum::Router,
+    path: &str,
+    token: &str,
+    key: &str,
+    body: &str,
+) -> (u16, Value) {
+    let req = Request::builder()
+        .method("PUT")
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("idempotency-key", key)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let status = resp.status().as_u16();
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or(json!({})))
+}
+
+async fn count_member_added_audits(
+    pool: &sqlx::PgPool,
+    owner_id: Uuid,
+    domain_id: Uuid,
+    member_id: Uuid,
+) -> i64 {
+    let resource = format!("{domain_id}/{member_id}");
+    sqlx::query_scalar(
+        "SELECT count(*) FROM workflow_security_audits \
+         WHERE principal_id = $1 AND action = 'member_added' AND resource_id = $2",
+    )
+    .bind(owner_id)
+    .bind(resource)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+/// ACC-DMC-001: explicit role=DOMAIN_MEMBER grants member; response carries
+/// the granted role. Also covers the truly absent body (no content-type).
+#[tokio::test]
+async fn add_member_explicit_role_domain_member() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) =
+        do_put_idem_body(app, &path, &owner_token, "role-key-1", r#"{"role":"DOMAIN_MEMBER"}"#)
+            .await;
+    assert_eq!(status, 200, "explicit DOMAIN_MEMBER: {body:?}");
+    assert_eq!(body["role"].as_str().unwrap(), "DOMAIN_MEMBER");
+    assert_eq!(body["principalId"].as_str().unwrap(), &member_id.to_string());
+
+    // Absent body entirely (no content-type, no bytes) keeps the default.
+    let other = Uuid::new_v4();
+    sqlx::query("INSERT INTO principals (principal_id, principal_type, display_name, email, enabled) VALUES ($1, 'AGENT', 'other-agent', NULL, TRUE)")
+        .bind(other).execute(&pool).await.unwrap();
+    let app = build_app(pool.clone(), &mock.url);
+    let req = Request::builder()
+        .method("PUT")
+        .uri(format!("/internal/v1/domains/{domain_id}/members/{other}"))
+        .header("authorization", format!("Bearer {owner_token}"))
+        .header("idempotency-key", "role-key-2")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+}
+
+/// ACC-DMC-002: logical duplicate with a NEW key is 409 already_member —
+/// no duplicate binding, no second success audit row.
+#[tokio::test]
+async fn add_member_logical_duplicate_returns_already_member() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s1, _) = do_put_idem_body(app, &path, &owner_token, "dup-key-1", "{}").await;
+    assert_eq!(s1, 200);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s2, b2) = do_put_idem_body(app, &path, &owner_token, "dup-key-2", "{}").await;
+    assert_eq!(s2, 409, "logical duplicate: {b2:?}");
+    assert_eq!(b2["error"]["code"], "already_member");
+
+    // exactly one enabled binding
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM domain_role_bindings \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER' AND enabled = TRUE",
+    )
+    .bind(domain_id)
+    .bind(member_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+
+    // exactly one member_added audit row for the real mutation only
+    let audits = count_member_added_audits(&pool, owner_id, domain_id, member_id).await;
+    assert_eq!(audits, 1, "duplicate must not fabricate a second audit row");
+}
+
+/// ACC-DMC-003: replay returns the STORED outcome of each key — the grant
+/// key keeps returning 200, the duplicate key keeps returning 409.
+#[tokio::test]
+async fn already_member_outcome_is_replay_stable() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s1, _) = do_put_idem_body(app, &path, &owner_token, "replay-a", "{}").await;
+    assert_eq!(s1, 200);
+    let app = build_app(pool.clone(), &mock.url);
+    let (s2, _) = do_put_idem_body(app, &path, &owner_token, "replay-b", "{}").await;
+    assert_eq!(s2, 409);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s1r, b1r) = do_put_idem_body(app, &path, &owner_token, "replay-a", "{}").await;
+    assert_eq!(s1r, 200, "grant-key replay must return the stored 200: {b1r:?}");
+    assert_eq!(b1r["principalId"].as_str().unwrap(), &member_id.to_string());
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s2r, b2r) = do_put_idem_body(app, &path, &owner_token, "replay-b", "{}").await;
+    assert_eq!(s2r, 409, "duplicate-key replay must return the stored 409: {b2r:?}");
+    assert_eq!(b2r["error"]["code"], "already_member");
+
+    // still exactly one binding + one audit row after all replays
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM domain_role_bindings \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER' AND enabled = TRUE",
+    )
+    .bind(domain_id)
+    .bind(member_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+    let audits = count_member_added_audits(&pool, owner_id, domain_id, member_id).await;
+    assert_eq!(audits, 1);
+}
+
+/// ACC-DMC-004: role=DOMAIN_OWNER is 403 domain_owner_delegation_forbidden,
+/// creates no binding, and is replay-stable through the receipt.
+#[tokio::test]
+async fn add_member_domain_owner_role_forbidden() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) =
+        do_put_idem_body(app, &path, &owner_token, "owner-role-1", r#"{"role":"DOMAIN_OWNER"}"#)
+            .await;
+    assert_eq!(status, 403, "DOMAIN_OWNER delegation: {body:?}");
+    assert_eq!(body["error"]["code"], "domain_owner_delegation_forbidden");
+
+    // no member binding was created and no audit row written
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM domain_role_bindings \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER' AND enabled = TRUE",
+    )
+    .bind(domain_id)
+    .bind(member_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 0);
+    let audits = count_member_added_audits(&pool, owner_id, domain_id, member_id).await;
+    assert_eq!(audits, 0);
+
+    // replay of the same key returns the stored 403 (receipt-completed)
+    let app = build_app(pool.clone(), &mock.url);
+    let (status2, body2) =
+        do_put_idem_body(app, &path, &owner_token, "owner-role-1", r#"{"role":"DOMAIN_OWNER"}"#)
+            .await;
+    assert_eq!(status2, 403);
+    assert_eq!(body2["error"]["code"], "domain_owner_delegation_forbidden");
+}
+
+/// ACC-DMC-005: malformed grammar (unknown role, unknown field) is 400
+/// invalid_input and never silently reinterpreted.
+#[tokio::test]
+async fn add_member_unknown_role_rejected() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status, body) =
+        do_put_idem_body(app, &path, &owner_token, "bad-role-1", r#"{"role":"ADMIN"}"#).await;
+    assert_eq!(status, 400, "unknown role: {body:?}");
+    assert_eq!(body["error"]["code"], "invalid_input");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (status2, body2) = do_put_idem_body(
+        app,
+        &path,
+        &owner_token,
+        "bad-role-2",
+        r#"{"role":"DOMAIN_MEMBER","extra":1}"#,
+    )
+    .await;
+    assert_eq!(status2, 400, "unknown field: {body2:?}");
+    assert_eq!(body2["error"]["code"], "invalid_input");
+
+    // nothing was granted
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM domain_role_bindings \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER' AND enabled = TRUE",
+    )
+    .bind(domain_id)
+    .bind(member_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 0);
+}
+
+/// ACC-DMC-003 (hash dimension): the same key with a different role is a
+/// different logical command ⇒ 409 idempotency_conflict.
+#[tokio::test]
+async fn add_member_same_key_different_role_conflict() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s1, _) = do_put_idem_body(app, &path, &owner_token, "same-key-x", "{}").await;
+    assert_eq!(s1, 200);
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s2, b2) = do_put_idem_body(
+        app,
+        &path,
+        &owner_token,
+        "same-key-x",
+        r#"{"role":"DOMAIN_OWNER"}"#,
+    )
+    .await;
+    assert_eq!(s2, 409, "same key different role: {b2:?}");
+    assert_eq!(b2["error"]["code"], "idempotency_conflict");
+}
+
+/// Regression guard: remove-then-re-add across separate commands is legal
+/// (already_member only fires on a concurrent enabled binding).
+#[tokio::test]
+async fn remove_then_re_add_is_allowed() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_id, domain_id, member_id) = seed_owner_member_scenario(&pool).await;
+    let owner_token = direct_token(owner_id, "workflow.execute", &mock.key_pair);
+    let path = format!("/internal/v1/domains/{domain_id}/members/{member_id}");
+
+    let app = build_app(pool.clone(), &mock.url);
+    let (s1, _) = do_put_idem_body(app, &path, &owner_token, "cycle-1", "{}").await;
+    assert_eq!(s1, 200);
+    let app = build_app(pool.clone(), &mock.url);
+    let (sd, _) = do_del_idem(app, &path, &owner_token, "cycle-del").await;
+    assert_eq!(sd, 200);
+    let app = build_app(pool.clone(), &mock.url);
+    let (s2, b2) = do_put_idem_body(app, &path, &owner_token, "cycle-2", "{}").await;
+    assert_eq!(s2, 200, "re-add after remove: {b2:?}");
+}

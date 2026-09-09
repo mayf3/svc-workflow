@@ -342,6 +342,19 @@ pub struct RevokeRoleBindingRequest {
     pub role_key: String,
 }
 
+/// `PUT /internal/v1/domains/{domainId}/members/{principalId}` body
+/// (SVC_WORKFLOW_DOMAIN_MEMBERSHIP_CONTROL_PLANE_V1 CTR-DMC-001).
+///
+/// Absent body / absent `role` ⇒ `DOMAIN_MEMBER` (backward compatible);
+/// unknown fields and unknown role strings are rejected (deny_unknown_fields
+/// ⇒ 400 invalid_input). The role grammar itself lives in the application
+/// layer (`DomainMembershipRole`).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AddMemberRequest {
+    pub role: Option<crate::application::domain_membership::DomainMembershipRole>,
+}
+
 // ---------------------------------------------------------------------------
 // VISIT_ACTIVATION_V1 (SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1)
 // ---------------------------------------------------------------------------

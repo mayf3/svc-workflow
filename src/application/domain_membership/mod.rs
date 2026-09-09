@@ -45,6 +45,8 @@ pub enum DomainMembershipError {
     DomainNotFound,
     NotDomainOwner,
     PrincipalIsOwner,
+    AlreadyMember,
+    OwnerDelegationForbidden,
     MemberNotFound,
     DirectTokenRequired,
     IdempotencyConflict,
@@ -63,6 +65,8 @@ impl DomainMembershipError {
             Self::DomainNotFound => "domain_not_found",
             Self::NotDomainOwner => "not_domain_owner",
             Self::PrincipalIsOwner => "principal_is_owner",
+            Self::AlreadyMember => "already_member",
+            Self::OwnerDelegationForbidden => "domain_owner_delegation_forbidden",
             Self::MemberNotFound => "member_not_found",
             Self::DirectTokenRequired => "direct_token_required",
             Self::IdempotencyConflict => "idempotency_conflict",
@@ -85,13 +89,57 @@ impl DomainMembershipError {
     pub fn status_code(&self) -> u16 {
         match self {
             Self::PrincipalNotRegistered | Self::DomainNotFound | Self::MemberNotFound => 404,
-            Self::PrincipalDisabled | Self::NotDomainOwner | Self::DirectTokenRequired => 403,
+            Self::PrincipalDisabled
+            | Self::NotDomainOwner
+            | Self::DirectTokenRequired
+            | Self::OwnerDelegationForbidden => 403,
             Self::PrincipalProjectionConflict
             | Self::PrincipalIsOwner
+            | Self::AlreadyMember
             | Self::IdempotencyConflict => 409,
             Self::CommandStillProcessing => 425,
             Self::InternalConsistency(_) => 500,
             Self::StorageError(_) => 503,
+        }
+    }
+}
+
+/// Role grammar of the member-management surface
+/// (SVC_WORKFLOW_DOMAIN_MEMBERSHIP_CONTROL_PLANE_V1 CTR-DMC-001/002).
+///
+/// `DOMAIN_MEMBER` is the actionable grant. `DOMAIN_OWNER` is accepted by
+/// the wire grammar but rejected with a stable 403 under the frozen
+/// single-owner invariant (`DOMAIN_OWNER_CAN_MANAGE_DOMAIN_OWNER=false`);
+/// see SVC_WORKFLOW_DOMAIN_OWNER_DELEGATION_V1 for the parked delta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainMembershipRole {
+    DomainMember,
+    DomainOwner,
+}
+
+impl DomainMembershipRole {
+    /// Stable wire string (also the `domain_role_bindings.role_key` value).
+    pub fn as_role_key(self) -> &'static str {
+        match self {
+            Self::DomainMember => "DOMAIN_MEMBER",
+            Self::DomainOwner => "DOMAIN_OWNER",
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DomainMembershipRole {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "DOMAIN_MEMBER" => Ok(Self::DomainMember),
+            "DOMAIN_OWNER" => Ok(Self::DomainOwner),
+            _ => Err(serde::de::Error::custom(format!(
+                "unknown role `{}`; expected DOMAIN_MEMBER or DOMAIN_OWNER",
+                value
+            ))),
         }
     }
 }
@@ -281,15 +329,25 @@ pub async fn list_members(
 // Domain Member Add
 // ---------------------------------------------------------------------------
 
-/// Add a principal as a DOMAIN_MEMBER of a domain.
+/// Add a principal to a domain with an explicit role grammar
+/// (CTR-DMC-001..004).
 ///
-/// Transaction: verify owner + receipt + check target + upsert + audit + complete.
+/// `role=DOMAIN_MEMBER` (the default at the HTTP layer): grant, or 409
+/// `already_member` when an enabled DOMAIN_MEMBER binding already exists
+/// (new logical command — no silent upsert success, no mutation, no
+/// success audit).
+/// `role=DOMAIN_OWNER`: 403 `domain_owner_delegation_forbidden` — the
+/// frozen single-owner invariant expressed on this surface; replay-stable
+/// via the command receipt, never a silent DOMAIN_MEMBER grant.
+///
+/// Transaction: verify owner + receipt + checks + insert + audit + complete.
 pub async fn add_member(
     pool: &PgPool,
     actor_id: Uuid,
     idempotency_key: &str,
     domain_id: Uuid,
     target_principal_id: Uuid,
+    role: DomainMembershipRole,
     request_id: &str,
 ) -> Result<serde_json::Value, DomainMembershipError> {
     // Business transaction (auth checks done at HTTP layer).
@@ -310,12 +368,14 @@ pub async fn add_member(
         return Err(DomainMembershipError::DomainNotFound);
     }
 
-    // 2. Acquire idempotent receipt
+    // 2. Acquire idempotent receipt (hash covers the role dimension —
+    // two different logical commands can never share a key, CTR-DMC-004)
     let request_hash = compute_receipt_hash(&serde_json::json!({
         "commandType": COMMAND_TYPE_MEMBER_ADD,
         "actorId": actor_id,
         "domainId": domain_id,
         "targetPrincipalId": target_principal_id,
+        "role": role.as_role_key(),
     }));
     let receipt = acquire_receipt(
         &mut tx,
@@ -333,7 +393,16 @@ pub async fn add_member(
         return handle_receipt_result(receipt);
     }
 
-    // 3. Verify target principal exists and is enabled
+    // 3. Role grammar: DOMAIN_OWNER delegation is forbidden under the frozen
+    // single-owner invariant (CTR-DMC-002). Receipt-completed so the replay
+    // of the same key returns the same 403 stably.
+    if role == DomainMembershipRole::DomainOwner {
+        let err = DomainMembershipError::OwnerDelegationForbidden;
+        complete_and_return_error(tx, receipt.command_id(), &err).await?;
+        return Err(err);
+    }
+
+    // 4. Verify target principal exists and is enabled
     let target_enabled =
         domain_role_repository::check_principal_enabled(pool, target_principal_id).await?;
     match target_enabled {
@@ -350,7 +419,7 @@ pub async fn add_member(
         Some(true) => {}
     }
 
-    // 4. Verify target is not already DOMAIN_OWNER
+    // 5. Verify target is not already DOMAIN_OWNER
     let is_owner = domain_role_repository::check_has_role(
         &mut tx,
         domain_id,
@@ -364,15 +433,32 @@ pub async fn add_member(
         return Err(err);
     }
 
-    // 5. Upsert DOMAIN_MEMBER binding
+    // 6. Logical-duplicate guard (CTR-DMC-003): an already-enabled
+    // DOMAIN_MEMBER binding with a NEW command is 409 already_member —
+    // no second mutation, no success audit, replay-stable via receipt.
+    let already_member = domain_role_repository::check_has_role(
+        &mut tx,
+        domain_id,
+        target_principal_id,
+        "DOMAIN_MEMBER",
+    )
+    .await?;
+    if already_member {
+        let err = DomainMembershipError::AlreadyMember;
+        complete_and_return_error(tx, receipt.command_id(), &err).await?;
+        return Err(err);
+    }
+
+    // 7. Insert DOMAIN_MEMBER binding
     domain_role_repository::insert_member_binding(&mut tx, domain_id, target_principal_id).await?;
 
-    // 6. Write security audit
+    // 8. Write security audit
     let details = serde_json::json!({
         "operation": "member_added",
         "actorPrincipalId": actor_id,
         "targetPrincipalId": target_principal_id,
         "domainId": domain_id,
+        "targetRole": role.as_role_key(),
         "requestId": request_id,
         "result": "success",
     });
@@ -386,11 +472,11 @@ pub async fn add_member(
     )
     .await?;
 
-    // 7. Complete receipt
+    // 9. Complete receipt
     let response = serde_json::json!({
         "domainId": domain_id,
         "principalId": target_principal_id,
-        "role": "DOMAIN_MEMBER",
+        "role": role.as_role_key(),
     });
     complete_receipt(&mut tx, receipt.command_id(), 200, &response).await?;
 

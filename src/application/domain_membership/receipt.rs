@@ -49,6 +49,10 @@ fn error_from_receipt_body(body: &serde_json::Value) -> DomainMembershipError {
         Some("domain_not_found") => DomainMembershipError::DomainNotFound,
         Some("not_domain_owner") => DomainMembershipError::NotDomainOwner,
         Some("principal_is_owner") => DomainMembershipError::PrincipalIsOwner,
+        Some("already_member") => DomainMembershipError::AlreadyMember,
+        Some("domain_owner_delegation_forbidden") => {
+            DomainMembershipError::OwnerDelegationForbidden
+        }
         Some("member_not_found") => DomainMembershipError::MemberNotFound,
         Some("direct_token_required") => DomainMembershipError::DirectTokenRequired,
         Some("idempotency_conflict") => DomainMembershipError::IdempotencyConflict,
