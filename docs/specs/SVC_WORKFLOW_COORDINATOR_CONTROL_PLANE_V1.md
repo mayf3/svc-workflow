@@ -1,10 +1,25 @@
 ---
 spec_id: SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1
 title: GLOBAL_WORKFLOW_COORDINATOR Control Plane V1 (domain admin, member governance, cross-domain cancel/archive, binding reconcile)
-status: proposed
+status: accepted
+accepted_date: 2026-09-09
+accepted_by: mayf3
+accepted_reviewed_head: 5b0038ba2f903189004ad4198f02f08a2af753e4
+acceptance_review_verdict: PASS
+acceptance_authority_basis: >-
+  Owner EXACT-HEAD ACCEPTANCE = YES (mayf3, 2026-09-09) binding this exact
+  semantic head 5b0038ba2f903189004ad4198f02f08a2af753e4 (reviewed base
+  4bbbbe9f08a1aaeca9ff621d719fe4479cb4ddb8) with SHIP_BLOCKERS = 0 and
+  INDEPENDENT_REVIEW = PASS / SEMANTIC_DELTA_AFTER_FINAL_REVIEW = NONE.
+  Goal directive WORKFLOW_COORDINATOR_CONTROL_PLANE_V1. Acceptance
+  transaction is lifecycle/authority metadata only: every §1-§14 contract
+  byte below the frontmatter is preserved. Role grant and production apply
+  remain governed by §11 (five-gate bootstrap provisioning; NOT executed by
+  this acceptance).
+acceptance_record: docs/reports/SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1_ACCEPTANCE_V1.md
 spec_kind: implementation
 authority_level: governing_spec
-implementation_authority: none
+implementation_authority: contracts
 production_apply_authority: none
 scope:
   - mayf3/svc-workflow
@@ -37,6 +52,16 @@ database_migration_required: false
 ---
 
 # SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1
+
+> **ACCEPTED（2026-09-09，Owner EXACT-HEAD ACCEPTANCE，lifecycle-only
+> transaction）。** Owner mayf3 绑定 exact reviewed semantic head
+> `5b0038ba2f903189004ad4198f02f08a2af753e4`（reviewed base `4bbbbe9f…`；
+> upstream main 其后前进至 f525d55（PR #34 dispatch-intent 实现），与本
+> Spec 单新文件零重叠，PR #35 MERGEABLE/CLEAN 复核通过）。本 acceptance
+> 事务仅变更 lifecycle/authority metadata：`status: proposed -> accepted`、
+> `implementation_authority: none -> contracts`；`production_apply_authority`
+> 保持 `none`，role grant 按 §11 五门另行执行——本 acceptance 不执行任何
+> grant、部署或 mutation。下方原 authoring 轮 STATUS 段保留为历史记录。
 
 > **STATUS = proposed (docs-only Draft PR).** 本轮只提交 docs-only Draft PR，
 > 不实现、不接受、不 merge、不做任何 role grant、不做任何 production mutation。
