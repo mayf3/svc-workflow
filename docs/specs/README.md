@@ -43,5 +43,15 @@ Adoption is forward-only and does not bulk-migrate legacy documents.
 |---|---|---|---|---|---|
 | `SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1` | accepted | invariant | none | repository development process | none |
 | `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | implementation | contracts | one-time Principal successor migration | none |
+| `SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V1` | superseded | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_DISPATCH_INTENT_KEYSET_CONTINUATION_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_INVALID_RETURN_REFERENCES_HTTP_422_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_TRUSTED_FLEET_PRINCIPAL_CUTOVER_V1` | proposed | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
+| `SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1` | accepted | —(待补) | —(待补) | —(待补) | —(待补) |
 
 Update this index when a governing Spec is accepted or superseded. The table is a discovery aid; each Spec's exact frontmatter and revision remain authoritative.
