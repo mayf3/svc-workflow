@@ -336,6 +336,26 @@ pub struct ReplaceOwnerRequest {
     pub new_owner_principal_id: Uuid,
 }
 
+/// PATCH /internal/v1/domains/{domainId} — V1 allows displayName only
+/// (SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 DEC-CP-003).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateDomainRequest {
+    pub display_name: String,
+}
+
+/// POST /internal/v1/domains/{domainId}/binding-reconcile/{plan|apply}.
+/// Both principal ids are exact canonical UUIDs (downstream canonical
+/// discovery; never name-derived).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BindingReconcileRequest {
+    pub role: String,
+    pub from_principal_id: Uuid,
+    pub to_principal_id: Uuid,
+    pub reason: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeRoleBindingRequest {
