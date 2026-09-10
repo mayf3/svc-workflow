@@ -8,6 +8,9 @@ date: 2026-09-11
 type: implementation-spec (one DB classification fact + one create-request field + one due-set conjunct + one summary field, with explicit amendments to two accepted feed contracts and one versioned HTTP contract)
 repo: mayf3/svc-workflow
 base_head: dd235dcf755e5007061874f19a3f1552b786c8c4 (github/main, re-fetched 2026-09-11)
+scope:
+  - mayf3/svc-workflow (workflow_instances classification fact, create marking, due-feed predicate, domain/global summary projection, 0026 migration)
+  - mayf3/dsh-agent-core (declared broker companion delta only, CTR-WEC-006 — authored and governed in that repository)
 implementation_authority: none
 production_apply_authority: none
 governed_by:
@@ -16,20 +19,25 @@ governed_by:
 external_authorities:
   - repository: mayf3/svc-workflow
     authority_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 (accepted — CTR-VAI-004
-      activation-kind derivation and CTR-VAI-009 due-set selection, amended by
-      AMENDMENT A of this Spec)
+      activation-kind derivation and CTR-VAI-009 due-set selection; amended by
+      AMENDMENT A in §3 of this Spec)
+    relation: constrained_by
   - repository: mayf3/svc-workflow
     authority_id: SVC_WORKFLOW_DISPATCH_INTENT_KEYSET_CONTINUATION_V1 (accepted —
-      CTR-DKC-002 result-set freeze, amended by AMENDMENT B of this Spec)
+      CTR-DKC-002 result-set freeze; amended by AMENDMENT B in §3 of this Spec)
+    relation: constrained_by
   - repository: mayf3/svc-workflow
     authority_id: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1 (accepted — two-variant
       eligibility projection; NOT amended; this Spec adds no blocked state)
+    relation: constrained_by
   - repository: mayf3/dsh-agent-core
     authority_id: AGENT_CORE_WORKFLOW_AGENT_EXECUTION_V2 (accepted @ b1fb7c0 — the due
-      -feed consumer; consumed UNCHANGED, interoperates_with)
+      -feed consumer; consumed UNCHANGED)
+    relation: interoperates_with
   - repository: mayf3/dsh-agent-core
     authority_id: AGENT_CORE_WORKFLOW_BROKER_ERROR_PRESERVATION_V1 (accepted @ b1fb7c0 —
-      governs 403 passthrough on the declared broker companion delta, depends_on)
+      governs 403 passthrough on the declared broker companion delta, CTR-WEC-006)
+    relation: depends_on
 supersedes: []
 superseded_by: null
 owners:
@@ -83,7 +91,14 @@ of existing rows; no HR identity or coordinator authority expansion.
 
 This Spec is the single authority artifact for the semantic delta; the accepted
 contracts it narrows are amended HERE, in the open, per the repository rule that a
-semantic change to accepted contract meaning names and amends its authority.
+semantic change to accepted contract meaning names and amends its authority. The
+governance form is the repo's accepted named-amendment precedent:
+SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 (accepted, dd235dc) carries
+`supersedes: []` while amending GLOBAL_WORKFLOW_READER_V1 §3 in-body with an explicit
+non-supersession declaration — the same form used here. This Spec DOES NOT supersede
+VISIT_ACTIVATION_IMPL_V1 or DISPATCH_INTENT_KEYSET_CONTINUATION_V1: both survive in
+full except for the exact deltas named below (whole-authority supersession would
+retire entire accepted feed contracts for a one-conjunct delta).
 
 ### AMENDMENT A — SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 / CTR-VAI-009
 
@@ -116,15 +131,25 @@ admissible business work).
 ### AMENDMENT C — versioned HTTP contract `contracts/workflow-http/v1/openapi.yaml`
 
 `DomainInstanceSummary` (:1397, `additionalProperties: false`) gains one property
-`executionClass` (string enum `BUSINESS | NON_BUSINESS_TEST`). The schema marks it
-REQUIRED: the column is NOT NULL DEFAULT 'BUSINESS', so every post-deploy binary emits
-it on every summary; old binaries omit it (wire-tolerant in both directions — new
-fields are ignored by existing clients; strict validators run against conformance
-fixtures served by the new binary). changelog.md gains the entry; conformance fixtures
-and digests are refreshed in the same implementation closure. This amendment
-DELIBERATELY breaks the silence precedent of WORK_ELIGIBILITY_PROJECTION_V1 (which
-added `eligibility` without touching this contract): the contract is amended in the
-same transaction instead of being left stale.
+`execution_class` (string enum `BUSINESS | NON_BUSINESS_TEST`). WIRE NAMING IS
+TWO-CONVENTION BY DESIGN and must not be "normalized" by implementation: the summary
+object is snake_case on the wire (`DomainInstanceSummary` derives plain `Serialize`
+with no rename attribute — `workflow_instance_id`, `current_assignee_canonical_agent_id`,
+`eligibility`; openapi properties snake_case), so the summary property is
+`execution_class`; the CREATE request body stays camelCase
+(`CreateWorkflowInstanceRequest` is `#[serde(rename_all = "camelCase")]`, so the
+request field is `executionClass`), matching the existing per-endpoint conventions
+frozen by compatibility.md rule 2. The schema marks the new summary property REQUIRED:
+the column is NOT NULL DEFAULT 'BUSINESS', so every post-deploy binary emits it on
+every summary; old binaries omit it (wire-tolerant in both directions — new fields are
+ignored by existing clients; strict validators run against conformance fixtures served
+by the new binary), and the changelog entry states that pre-deploy binaries omit the
+field explicitly (the dual-timeline pattern applied to a schema field). changelog.md
+gains the entry; conformance fixtures and digests are refreshed in the same
+implementation closure. This amendment DELIBERATELY breaks the silence precedent of
+WORK_ELIGIBILITY_PROJECTION_V1 (which added `eligibility` without touching this
+contract): the contract is amended in the same transaction instead of being left
+stale.
 
 ### PRODUCT_BOUNDARY_V7 reconciliation
 
@@ -208,7 +233,9 @@ existing rows — including historical test garbage — are NOT reclassified; th
 inventory belongs to WORKFLOW_DATA_HYGIENE_V1). DEC-WEC-004: the only dispatch delta
 is the single AMENDMENT A conjunct; no consumer, protocol, gate, or row-shape change.
 DEC-WEC-005: read-side closure is class-only positive visibility in the shared
-summary struct (T11), with the versioned contract amended in-transaction (AMENDMENT C).
+summary struct (T11), wire name `execution_class` (snake_case summary convention;
+create body stays `executionClass`), with the versioned contract amended
+in-transaction (AMENDMENT C).
 DEC-WEC-006: the broker companion delta (one optional create-argument passthrough +
 summary field passthrough; zero authority logic in the broker) is REQUIRED and
 declared now, because broker `workflow_execute.create_instance` is the normal
@@ -238,8 +265,11 @@ enabled = TRUE)` — the identical in-tx predicate family as cancel/archive. Fai
 403 `not_domain_owner` as a deterministic failure class on the receipt-first create
 path (byte-identical retry replays the stored 403; changed body ⇒ idempotency
 conflict; fresh key ⇒ fresh attempt), checked after request identity/schema
-authorization and before the first runtime-fact write. No new role, grant, scope, or
-credential exists; the class field carries no identity and selects no caller.
+authorization and before the first runtime-fact write. The class applies at the single
+shared create transaction for ALL semantic model versions; on non-model-3 instances
+(which never write activation facts, CTR-VAI-012 lineage) it is classification-only.
+No new role, grant, scope, or credential exists; the class field carries no identity
+and selects no caller.
 
 ### CTR-WEC-003 — Due-feed narrowing (implements AMENDMENTS A+B)
 
@@ -254,9 +284,10 @@ business feed (class immutability makes the exclusion permanent).
 ### CTR-WEC-004 — Class-only positive visibility (implements AMENDMENT C)
 
 `DomainInstanceSummary` (shared by the domain and global list surfaces) exposes
-`executionClass` and nothing else new: no private detail, no cross-domain widening,
-no eligibility/blocked semantics, no second scheduler subject. Worklists, detail
-visibility, and all other read surfaces are unchanged.
+`execution_class` (snake_case wire, per AMENDMENT C's two-convention split) and
+nothing else new: no private detail, no cross-domain widening, no eligibility/blocked
+semantics, no second scheduler subject. Worklists, detail visibility, and all other
+read surfaces are unchanged.
 
 ### CTR-WEC-005 — Ingress dispositions and forbidden authorities
 
@@ -273,11 +304,11 @@ second dispatch gate.
 
 The dsh-side implementation closure adds one optional passthrough argument
 (`executionClass`) to broker `workflow_execute.create_instance` and the
-`executionClass` field to the domain/global summary passthroughs. The broker performs
-zero authority logic — svc enforces CTR-WEC-002 and fails closed; denials preserve
-the exact svc error family through the broker per AGENT_CORE_WORKFLOW_BROKER_ERROR_
-PRESERVATION_V1. This Spec's acceptance does not authorize the dsh delta; the dsh
-counterpart follows that repository's own governance, referencing this Spec as its
+`execution_class` summary field to the domain/global summary passthroughs. The broker
+performs zero authority logic — svc enforces CTR-WEC-002 and fails closed; denials
+preserve the exact svc error family through the broker per AGENT_CORE_WORKFLOW_BROKER_
+ERROR_PRESERVATION_V1. This Spec's acceptance does not authorize the dsh delta; the
+dsh counterpart follows that repository's own governance, referencing this Spec as its
 svc-side authority.
 
 ## 10. Acceptance mapping
@@ -288,12 +319,12 @@ none` — production activation is a separately gated deployment step.
 
 | ACC | Contracts | Method / environment | Expected / failure condition |
 |---|---|---|---|
-| ACC-WEC-001 | CTR-WEC-001 | migration rehearsal on isolated DB; information_schema readback | enum + column exist with NOT NULL DEFAULT 'BUSINESS'; all pre-migration rows read BUSINESS; EXPECTED_MIGRATION_VERSION = 26; zero row rewrites |
+| ACC-WEC-001 | CTR-WEC-001 | migration rehearsal on isolated DB; information_schema readback (T5d) | enum + column exist with NOT NULL DEFAULT 'BUSINESS'; all pre-migration rows read BUSINESS (T5d); EXPECTED_MIGRATION_VERSION = 26; zero row rewrites |
 | ACC-WEC-002 | CTR-WEC-002 | T5a/T5c/T5e/T5f/T5g/T5k matrix, isolated | owner+mark ⇒ NON_BUSINESS_TEST persisted; member/admin/coordinator/cross-domain mark ⇒ 403 replayed deterministic zero-delta; unknown value ⇒ 422 zero-delta; unmarked ⇒ byte-identical legacy behavior |
-| ACC-WEC-003 | CTR-WEC-003 | T5a/T5b/T5j, isolated with due and future intents mixed | marked+due row absent from feed; marked+wake ⇒ 200 receipt and still absent; keyset cursor walk over a class-mixed window returns the identical BUSINESS row sequence and key immobility holds |
-| ACC-WEC-004 | CTR-WEC-004 | T5i + openapi/conformance suite | summaries expose executionClass on both surfaces; READER (non-scheduler) sees it under the unchanged gate; refreshed openapi validates; conformance digests updated |
+| ACC-WEC-003 | CTR-WEC-003 | T5a/T5b/T5h/T5j, isolated with due and future intents mixed | marked+due row absent from feed; marked+wake ⇒ 200 receipt and still absent; T5h: the SAME marked instance remains present in its assignee worklist and its transition stays executable (targeted path intact, zero worklist filtering) while business-feed presence stays zero; keyset cursor walk over a class-mixed window returns the identical BUSINESS row sequence and key immobility holds |
+| ACC-WEC-004 | CTR-WEC-004 | T5i + openapi/conformance suite | summaries expose execution_class on both surfaces; READER (non-scheduler) sees it under the unchanged gate; refreshed openapi validates; conformance digests updated |
 | ACC-WEC-005 | CTR-WEC-005 | T5m + seed-script guard test | seed-script and import rows read BUSINESS and produce zero feed entries; grep proves no heuristic classifier exists in the closure |
-| ACC-WEC-006 | CTR-WEC-006 | dsh-side closure tests (its own governance) | broker absent-arg ⇒ BUSINESS; owner+arg ⇒ NON_BUSINESS_TEST; non-owner+arg ⇒ 403 family preserved through broker envelope |
+| ACC-WEC-006 | CTR-WEC-006 | T5l, dsh-side closure tests (its own governance) | broker absent-arg ⇒ BUSINESS; owner+arg ⇒ NON_BUSINESS_TEST; non-owner+arg ⇒ 403 family preserved through broker envelope |
 
 Coverage: CTR-WEC-001..006 all covered; 6/6.
 
@@ -317,18 +348,24 @@ and it would change the frozen WAE protocol rather than the feed predicate.
 ## 12. Migration, compatibility and rollback
 
 One additive migration (0026). Rollback before facts exist = restore code preimage
-(column may remain, inert). Rollback after deployment = the class column is
-read-side-inert if the conjunct is reverted: no data migration is required in either
-direction, and no committed instance fact is ever rewritten. Deployment order vs the
-dsh consumer is unconstrained for THIS delta (the narrowing only removes rows the
-consumer must not treat as business work; CTR-WAE-001b ordering continues to govern
-the keyset build itself).
+(column may remain, inert). Rollback of the AMENDMENT A conjunct after deployment
+RE-ADMITS existing NON_BUSINESS_TEST rows to the business feed until the fix
+redeploys — the class column itself is data-inert in both directions (no data
+migration is ever required), but the exclusion invariant lives in the query, so
+reverting the query reverts the guarantee; containment therefore targets the feed
+conjunct, never row rewrites. "Deployment order unconstrained for THIS delta" is
+compatible with AMENDMENT B's CTR-WAE-001b preservation because the conjunct adds no
+new ordering constraint — an excluded row can never be the mid-sweep-consistent
+return of business work — and the keyset build's svc-before-poller ordering continues
+to govern unchanged.
 
 ## 13. Open questions
 
 ```text
 OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
+UNRESOLVED_AUTHORITY_CONFLICT = NONE (AMENDMENTS A/B/C name their authorities and preserve everything except the exact declared deltas; the named-amendment form follows the accepted coordinator-control-plane precedent)
+PARTIAL_SUPERSESSION = NONE (supersedes = []; VISIT_ACTIVATION_IMPL_V1 and DISPATCH_INTENT_KEYSET_CONTINUATION_V1 survive in full except the declared conjunct/field)
 IMPLEMENTATION_READY = NO (activates on acceptance with implementation_authority: contracts)
 PRODUCTION_READY = NO
 ```
