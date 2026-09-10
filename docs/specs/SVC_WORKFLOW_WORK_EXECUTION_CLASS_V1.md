@@ -1,17 +1,23 @@
 ---
 spec_id: SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1
 title: Work Execution Class — explicit BUSINESS / NON_BUSINESS_TEST classification with governed marking
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 date: 2026-09-11
 type: implementation-spec (one DB classification fact + one create-request field + one due-set conjunct + one summary field, with explicit amendments to two accepted feed contracts and one versioned HTTP contract)
 repo: mayf3/svc-workflow
 base_head: dd235dcf755e5007061874f19a3f1552b786c8c4 (github/main, re-fetched 2026-09-11)
+accepted_date: 2026-09-11
+accepted_by: mayf3
+accepted_reviewed_head: a62e12afad423515a06c0c99b9a4c3f7a0b82a00
+independent_review_result: PASS
+independent_review_blockers: 0
+independent_review_record: mayf3/svc-workflow#39 / pullrequestreview-5173123572
 scope:
   - mayf3/svc-workflow (workflow_instances classification fact, create marking, due-feed predicate, domain/global summary projection, 0026 migration)
   - mayf3/dsh-agent-core (declared broker companion delta only, CTR-WEC-006 — authored and governed in that repository)
-implementation_authority: none
+implementation_authority: contracts
 production_apply_authority: none
 governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V7
@@ -45,6 +51,15 @@ owners:
 ---
 
 # SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1 — explicit BUSINESS / NON_BUSINESS_TEST classification
+
+> **ACCEPTED (2026-09-11, Owner exact-head acceptance).** Owner decision ACCEPT EXACT
+> HEAD = YES at `a62e12afad423515a06c0c99b9a4c3f7a0b82a00` (base
+> `dd235dcf755e5007061874f19a3f1552b786c8c4`, HEAD_UNCHANGED_SINCE_REVIEW = YES,
+> CURRENT_MAIN_DRIFT = NO); final independent exact-head review = PASS /
+> SHIP_BLOCKERS = 0 (record: mayf3/svc-workflow#39 / pullrequestreview-5173123572).
+> `implementation_authority: none -> contracts`; `production_apply_authority` stays
+> **none**. This acceptance transaction is lifecycle/provenance only — every §1–§13
+> semantic byte below is preserved verbatim from the accepted head.
 
 ## 1. Goal
 
