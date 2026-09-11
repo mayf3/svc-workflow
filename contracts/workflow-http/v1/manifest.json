@@ -1,7 +1,7 @@
 {
   "serial": "V1-2026-09-06",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.6.0",
+  "contract_version": "1.7.0",
   "contract_scope": "runtime",
   "title": "Workflow Runtime HTTP Contract V1 (Current-State Re-freeze)",
   "owner_repository": "svc-workflow",
@@ -23,8 +23,8 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "1628c204b083d30771d9d7b2badc6e1b89e09b7c89a16239227401718bd1328c",
-  "bundle_digest": "ece23f5cf78cdb1d17a64b621024b79fd623f7787ba82ed99bbda96963b69332",
+  "schema_digest": "83b0693eb602620baf718b0bf2a3082bdec6342b8bc029b885ebd5a3d9d880c7",
+  "bundle_digest": "a2b41862e9e78ed0ddb5da0763fbe9268de1b3f990cbd233007eda500534f081",
   "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics",
   "created_at": "2026-09-06T11:00:00Z",
   "author": "IMPLEMENTATION_AGENT",

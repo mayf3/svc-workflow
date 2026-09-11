@@ -131,6 +131,7 @@ impl ApiError {
                 "domain_membership_required",
                 "active domain membership is required",
             ),
+            E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
             E::DefinitionVersionNotFound => not_found(
                 "definition_version_not_found",
                 "definition version not found",

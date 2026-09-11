@@ -17,6 +17,9 @@ pub enum CreateWorkflowInstanceError {
     DomainDisabled,
     /// Caller has no membership binding for the target domain.
     DomainMembershipRequired,
+    /// Marking NON_BUSINESS_TEST requires an enabled DOMAIN_OWNER binding
+    /// (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1 / CTR-WEC-002).
+    NotDomainOwner,
     /// Workflow definition version not found.
     DefinitionVersionNotFound,
     /// The version is not in PUBLISHED state.
@@ -56,6 +59,9 @@ impl fmt::Display for CreateWorkflowInstanceError {
             Self::DomainDisabled => write!(f, "domain is disabled"),
             Self::DomainMembershipRequired => {
                 write!(f, "caller must have an active domain membership binding")
+            }
+            Self::NotDomainOwner => {
+                write!(f, "marking NON_BUSINESS_TEST requires an enabled domain owner")
             }
             Self::DefinitionVersionNotFound => write!(f, "definition version not found"),
             Self::VersionNotPublished => write!(f, "definition version is not PUBLISHED"),

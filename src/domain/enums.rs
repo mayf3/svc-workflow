@@ -147,6 +147,23 @@ make_enum!(
 );
 
 make_enum!(
+    WorkflowExecutionClass,
+    "workflow_execution_class",
+    (Business, "BUSINESS"),
+    (NonBusinessTest, "NON_BUSINESS_TEST"),
+);
+
+impl WorkflowExecutionClass {
+    /// Canonical DB/wire label (CTR-WEC-001).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Business => "BUSINESS",
+            Self::NonBusinessTest => "NON_BUSINESS_TEST",
+        }
+    }
+}
+
+make_enum!(
     AssigneeRefType,
     "assignee_ref_type",
     (WorkflowCreator, "WORKFLOW_CREATOR"),

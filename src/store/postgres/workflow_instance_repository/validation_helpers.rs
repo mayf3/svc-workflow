@@ -286,6 +286,7 @@ pub(crate) fn deterministic_error_code(err: &CreateWorkflowInstanceError) -> i32
         CreateWorkflowInstanceError::DomainDisabled => 403,
         CreateWorkflowInstanceError::PrincipalDisabled => 403,
         CreateWorkflowInstanceError::DomainMembershipRequired => 403,
+        CreateWorkflowInstanceError::NotDomainOwner => 403,
         CreateWorkflowInstanceError::CrossDomainViolation => 403,
         CreateWorkflowInstanceError::VersionNotPublished => 409,
         CreateWorkflowInstanceError::ContextValidationFailed(_) => 422,
@@ -303,6 +304,7 @@ pub(crate) fn deterministic_error_label(err: &CreateWorkflowInstanceError) -> &'
         CreateWorkflowInstanceError::PrincipalNotFound => "principal_not_found",
         CreateWorkflowInstanceError::PrincipalDisabled => "principal_disabled",
         CreateWorkflowInstanceError::DomainMembershipRequired => "domain_membership_required",
+        CreateWorkflowInstanceError::NotDomainOwner => "not_domain_owner",
         CreateWorkflowInstanceError::CrossDomainViolation => "cross_domain_violation",
         CreateWorkflowInstanceError::DefinitionVersionNotFound => "definition_version_not_found",
         CreateWorkflowInstanceError::VersionNotPublished => "version_not_published",
@@ -333,6 +335,7 @@ pub(super) fn is_deterministic_error(err: &CreateWorkflowInstanceError) -> bool 
             | CreateWorkflowInstanceError::DomainNotFound
             | CreateWorkflowInstanceError::DomainDisabled
             | CreateWorkflowInstanceError::DomainMembershipRequired
+            | CreateWorkflowInstanceError::NotDomainOwner
             | CreateWorkflowInstanceError::DefinitionVersionNotFound
             | CreateWorkflowInstanceError::VersionNotPublished
             | CreateWorkflowInstanceError::CrossDomainViolation

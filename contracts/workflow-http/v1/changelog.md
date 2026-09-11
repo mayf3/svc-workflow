@@ -1,3 +1,29 @@
+## 1.7.0 — 2026-09-11
+
+Accepted SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1 adds an explicit machine-readable
+work execution class (BUSINESS | NON_BUSINESS_TEST) as a Workflow-DB-owned fact:
+
+- `POST /internal/v1/workflow-instances` accepts an OPTIONAL camelCase body field
+  `executionClass` (enum `BUSINESS | NON_BUSINESS_TEST`). Absent = BUSINESS =
+  exactly the prior behavior. `NON_BUSINESS_TEST` requires an enabled
+  DOMAIN_OWNER binding on the target domain and fails with deterministic
+  403 `not_domain_owner` otherwise (receipt-replayed like any deterministic
+  create failure). Unknown values fail with 422 `invalid_input` before any
+  persistence. The field participates in the create request hash: same
+  idempotency key + changed executionClass => 409 `idempotency_conflict`
+  (never a replay under the old class).
+- `DomainInstanceSummary` (domain + global instance lists) gains a REQUIRED
+  `execution_class` property (snake_case, per this endpoint's naming
+  convention). Pre-deploy binaries omit the field; post-deploy binaries always
+  emit it. This is class-only positive visibility — no private detail, no
+  blocked state, no eligibility change.
+- The dispatch-intents due feed narrows by the same stored class
+  (NON_BUSINESS_TEST rows are never returned); cursor/keyset/row-shape/role
+  gate semantics are unchanged (AMENDMENTS A+B of the accepted Spec).
+- No assignee, identity, activation-kind, WorkEligibility, or retry semantics
+  change. Deployment of the narrowed feed and of the new field follows the
+  accepted Spec; production apply remains separately gated.
+
 ## 1.6.0 — 2026-09-06
 
 Accepted SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1 adds bounded typed 422

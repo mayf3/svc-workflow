@@ -114,6 +114,7 @@ pub(crate) async fn list_due_dispatch_intents(
          WHERE a.activation_kind = 'DISPATCH_INTENT'
            AND c.activation_id IS NULL
            AND wi.cancelled = FALSE
+           AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
@@ -160,6 +161,7 @@ pub(crate) async fn list_due_dispatch_intents(
          WHERE a.activation_kind = 'DISPATCH_INTENT'
            AND c.activation_id IS NULL
            AND wi.cancelled = FALSE
+           AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
