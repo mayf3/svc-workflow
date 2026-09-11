@@ -14,6 +14,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::domain::definition::digest;
+use crate::domain::enums::WorkflowExecutionClass;
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CreateWorkflowInstanceError;
 use crate::domain::workflow_instance::events::{
@@ -249,6 +250,28 @@ pub(crate) async fn create_workflow_instance_atomically(
     ) {
         deterministic_failure!(err);
     }
+    // Work execution class marking (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1,
+    // CTR-WEC-002): NON_BUSINESS_TEST is a governance decision reserved to
+    // the enabled DOMAIN_OWNER of the target domain — the exact in-tx
+    // predicate family as cancel/archive. An ordinary member must not be
+    // able to suppress work (assigned to any principal) from the automated
+    // business dispatcher.
+    if cmd.execution_class == WorkflowExecutionClass::NonBusinessTest {
+        let is_owner: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+               SELECT 1 FROM domain_role_bindings
+               WHERE domain_id = $1 AND principal_id = $2
+                 AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)",
+        )
+        .bind(domain_uuid)
+        .bind(principal_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        if !is_owner {
+            deterministic_failure!(CreateWorkflowInstanceError::NotDomainOwner);
+        }
+    }
     // Semantic model dispatch: entry node comes from the definition's
     // semantic model, never guessed from node shape.
     let entry_node = match version_info.semantic_model_version {
@@ -375,8 +398,8 @@ pub(crate) async fn create_workflow_instance_atomically(
              created_by_principal_id, workflow_state_version,
              current_context_revision_id, current_node_visit_id,
              external_reference, external_url, metadata,
-             semantic_model_version)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             semantic_model_version, execution_class)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::workflow_execution_class)
         "#,
     )
     .bind(workflow_instance_id)
@@ -390,6 +413,7 @@ pub(crate) async fn create_workflow_instance_atomically(
     .bind(&cmd.external_url)
     .bind(&cmd.metadata)
     .bind(version_info.semantic_model_version)
+    .bind(cmd.execution_class.as_str())
     .execute(&mut *tx)
     .await
     .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;

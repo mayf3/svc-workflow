@@ -170,6 +170,7 @@ async fn explicit_v2_creation_runs_minimal_runtime() {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: Uuid::new_v4().to_string(),
             command_schema_version: "v1".to_string(),
+        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(ver_id),
             external_reference: None,

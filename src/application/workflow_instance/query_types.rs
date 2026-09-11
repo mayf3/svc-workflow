@@ -366,6 +366,11 @@ pub struct DomainInstanceSummary {
     /// repair lineage line (migration 0025). Read-projection enrichment
     /// ONLY; see `NodeVisitItem::assignee_canonical_agent_id`.
     pub current_assignee_canonical_agent_id: Option<String>,
+    /// Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1):
+    /// BUSINESS, or NON_BUSINESS_TEST for explicitly marked test/canary
+    /// work (excluded from the business due feed by CTR-WEC-003).
+    /// Class-only positive visibility; no private detail (CTR-WEC-004).
+    pub execution_class: String,
     pub current_node: PublicNodeSummary,
     pub is_terminal: bool,
     pub title: Option<String>,

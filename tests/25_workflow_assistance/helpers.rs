@@ -186,6 +186,7 @@ pub(crate) async fn setup(pool: &PgPool) -> Fixture {
             principal_id: PrincipalId::from_uuid(agent),
             idempotency_key: Uuid::new_v4().to_string(),
             command_schema_version: "v1".to_string(),
+        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain),
             definition_version_id: DefinitionVersionId::from_uuid(definition_version),
             external_reference: None,

@@ -64,6 +64,7 @@ struct DomainInstanceRow {
     created_by_principal_id: Uuid,
     current_assignee_principal_id: Option<Uuid>,
     current_assignee_canonical_agent_id: Option<String>,
+    execution_class: String,
     node_id: Uuid,
     node_key: String,
     node_display_name: String,
@@ -100,6 +101,7 @@ impl From<DomainInstanceRow> for DomainInstanceSummary {
             created_by_principal_id: row.created_by_principal_id,
             current_assignee_principal_id: row.current_assignee_principal_id,
             current_assignee_canonical_agent_id: row.current_assignee_canonical_agent_id,
+            execution_class: row.execution_class,
             current_node: PublicNodeSummary {
                 node_id: row.node_id,
                 node_key: row.node_key,
@@ -150,13 +152,14 @@ pub(crate) async fn list_domain_instances(
                 wi.created_by_principal_id,
                 v.assignee_principal_id AS current_assignee_principal_id,
                 wisl.canonical_agent_id AS current_assignee_canonical_agent_id,
+                wi.execution_class::text AS execution_class,
                 nd.node_id, nd.node_key,
                 nd.display_name AS node_display_name,
                 nd.node_type::text,
                 (nd.node_type = 'TERMINAL') AS is_terminal,
                 cr.payload->>'title' AS title,
                 wi.created_at, wi.updated_at,
-                a_open.activation_kind AS activation_kind,
+                a_open.activation_kind::text AS activation_kind,
                 a_open.activation_id AS open_activation_id,
                 eff.effective_next_eligible_at AS effective_next_eligible_at
          FROM workflow_instances wi
