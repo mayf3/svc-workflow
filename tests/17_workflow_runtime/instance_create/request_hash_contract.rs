@@ -29,17 +29,18 @@ const FIXED_DEF_VERSION_ID: &str = "33333333-3333-3333-3333-333333333333";
 /// - command_schema_version is "v1"
 /// - idempotency_key is excluded from the hash
 /// - JCS sorts all object keys alphabetically
-const EXPECTED_CANONICAL_JSON: &str = r#"{"command_schema_version":"v1","command_type":"CREATE_WORKFLOW_INSTANCE","request_body":{"context_payload":{"hello":"world"},"definition_version_id":"33333333-3333-3333-3333-333333333333","domain_id":"22222222-2222-2222-2222-222222222222","external_reference":null,"external_url":null,"metadata":{"source":"test"},"principal_id":"11111111-1111-1111-1111-111111111111"},"route_parameters":{}}"#;
+const EXPECTED_CANONICAL_JSON: &str = r#"{"command_schema_version":"v1","command_type":"CREATE_WORKFLOW_INSTANCE","request_body":{"context_payload":{"hello":"world"},"definition_version_id":"33333333-3333-3333-3333-333333333333","domain_id":"22222222-2222-2222-2222-222222222222","execution_class":"BUSINESS","external_reference":null,"external_url":null,"metadata":{"source":"test"},"principal_id":"11111111-1111-1111-1111-111111111111"},"route_parameters":{}}"#;
 
 /// Expected SHA-256 hex digest of the canonical JSON above.
 const EXPECTED_SHA256_HEX: &str =
-    "ba40a90a5227ae7608f36e0bc2f0ca21092e1a3e56d5380f93655693b55a0d97";
+    "b13434995d65c1e455fea142f85267339cfeb1738a9fbe9fb3d8da0f982e7c6c";
 
 fn make_fixed_command() -> CreateWorkflowInstanceCommand {
     CreateWorkflowInstanceCommand {
         principal_id: PrincipalId::from_uuid(uuid::Uuid::parse_str(FIXED_PRINCIPAL_ID).unwrap()),
         idempotency_key: "test-idem-key-not-in-hash".to_string(),
         command_schema_version: "v1".to_string(),
+        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
         domain_id: DomainId::from_uuid(uuid::Uuid::parse_str(FIXED_DOMAIN_ID).unwrap()),
         definition_version_id: DefinitionVersionId::from_uuid(
             uuid::Uuid::parse_str(FIXED_DEF_VERSION_ID).unwrap(),
@@ -69,6 +70,7 @@ fn compute_canonical_json(cmd: &CreateWorkflowInstanceCommand) -> String {
     struct RequestBody {
         principal_id: String,
         domain_id: String,
+        execution_class: String,
         definition_version_id: String,
         context_payload: serde_json::Value,
         metadata: serde_json::Value,
@@ -83,6 +85,7 @@ fn compute_canonical_json(cmd: &CreateWorkflowInstanceCommand) -> String {
         request_body: RequestBody {
             principal_id: cmd.principal_id.to_string(),
             domain_id: cmd.domain_id.to_string(),
+            execution_class: cmd.execution_class.as_str().to_string(),
             definition_version_id: cmd.definition_version_id.to_string(),
             context_payload: cmd.context_payload.clone(),
             metadata: cmd.metadata.clone(),
@@ -118,6 +121,7 @@ fn test_request_hash_golden_sha256() {
         &cmd.idempotency_key,
         &cmd.principal_id,
         &cmd.domain_id,
+        &cmd.execution_class,
         &cmd.definition_version_id,
         &cmd.context_payload,
         &cmd.metadata,

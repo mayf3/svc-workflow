@@ -59,6 +59,7 @@ pub async fn create_workflow_instance(
         &command.idempotency_key,
         &command.principal_id,
         &command.domain_id,
+        &command.execution_class,
         &command.definition_version_id,
         &command.context_payload,
         &command.metadata,
@@ -106,6 +107,7 @@ pub(crate) fn replayed_failure_error(
         (403, "domain_membership_required") => {
             CreateWorkflowInstanceError::DomainMembershipRequired
         }
+        (403, "not_domain_owner") => CreateWorkflowInstanceError::NotDomainOwner,
         (403, "cross_domain_violation") => CreateWorkflowInstanceError::CrossDomainViolation,
         (404, "definition_version_not_found") => {
             CreateWorkflowInstanceError::DefinitionVersionNotFound

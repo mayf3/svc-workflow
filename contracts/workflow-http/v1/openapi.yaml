@@ -1179,6 +1179,16 @@ components:
         definitionVersionId:
           type: string
           format: uuid
+        executionClass:
+          type: string
+          enum: [BUSINESS, NON_BUSINESS_TEST]
+          description: >-
+            Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1).
+            Optional; absent defaults to BUSINESS. NON_BUSINESS_TEST marks
+            explicit test/canary work and is excluded from the normal
+            BUSINESS automated dispatch due feed; marking it requires an
+            enabled DOMAIN_OWNER binding on the target domain (403
+            not_domain_owner otherwise).
         externalReference:
           type: string
           maxLength: 512
@@ -1418,6 +1428,16 @@ components:
           nullable: true
         current_node:
           $ref: "#/components/schemas/NodeSummary"
+        execution_class:
+          type: string
+          enum: [BUSINESS, NON_BUSINESS_TEST]
+          description: >-
+            Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1):
+            BUSINESS, or NON_BUSINESS_TEST for explicitly marked
+            test/canary work, which the normal BUSINESS dispatch due feed
+            never returns. Class-only positive visibility; no private
+            detail. Required on every post-deploy summary; pre-deploy
+            binaries omit the field (deployment transition window).
         is_terminal:
           type: boolean
         title:
@@ -1436,6 +1456,7 @@ components:
         - definition_key
         - created_by_principal_id
         - current_assignee_principal_id
+        - execution_class
         - current_node
         - is_terminal
         - title

@@ -14,6 +14,7 @@ use crate::application::workflow_instance::query_types::{
 pub struct CreateWorkflowInstanceRequest {
     pub domain_id: Uuid,
     pub definition_version_id: Uuid,
+    pub execution_class: Option<String>,
     pub external_reference: Option<String>,
     pub external_url: Option<String>,
     pub metadata: serde_json::Value,
