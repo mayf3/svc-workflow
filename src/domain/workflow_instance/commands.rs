@@ -24,6 +24,10 @@ pub struct CreateWorkflowInstanceCommand {
     /// Published definition version to instantiate.
     pub definition_version_id: DefinitionVersionId,
 
+    /// Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1):
+    /// BUSINESS by default; NON_BUSINESS_TEST requires in-tx DOMAIN_OWNER.
+    pub execution_class: crate::domain::enums::WorkflowExecutionClass,
+
     /// Optional caller-supplied external reference identifier.
     pub external_reference: Option<String>,
 

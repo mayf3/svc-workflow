@@ -175,6 +175,7 @@ fn create_command(caller: Uuid, fixture: &StopNewFixture, key: &str) -> CreateWo
         principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(caller),
         idempotency_key: key.to_string(),
         command_schema_version: "v1".to_string(),
+        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
         domain_id: DomainId::from_uuid(fixture.domain_id),
         definition_version_id: DefinitionVersionId::from_uuid(fixture.version_id),
         external_reference: None,

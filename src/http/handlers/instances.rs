@@ -12,6 +12,7 @@ use crate::application::workflow_instance::query_types::{
     TimeUuidCursor,
 };
 use crate::auth::AuthenticatedPrincipal;
+use crate::domain::enums::WorkflowExecutionClass;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::http::dto::{
@@ -43,12 +44,26 @@ pub(crate) async fn create(
             "externalReference must not exceed 512 characters",
         ));
     }
+    // Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1). The
+    // closed-enum check is handler-side on purpose: serde-level enum typing
+    // would surface 400, but the frozen contract is 422 invalid_input.
+    let execution_class = match payload.execution_class.as_deref() {
+        None | Some("BUSINESS") => WorkflowExecutionClass::Business,
+        Some("NON_BUSINESS_TEST") => WorkflowExecutionClass::NonBusinessTest,
+        Some(_) => {
+            return Err(ApiError::unprocessable(
+                "invalid_input",
+                "executionClass must be BUSINESS or NON_BUSINESS_TEST",
+            ));
+        }
+    };
     let command = CreateWorkflowInstanceCommand {
         principal_id: principal.principal_id,
         idempotency_key: key,
         command_schema_version: "v1".to_string(),
         domain_id: DomainId::from_uuid(payload.domain_id),
         definition_version_id: DefinitionVersionId::from_uuid(payload.definition_version_id),
+        execution_class,
         external_reference: payload.external_reference,
         external_url: payload.external_url,
         metadata: payload.metadata,

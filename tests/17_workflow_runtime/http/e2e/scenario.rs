@@ -170,6 +170,7 @@ async fn run_scenario(scenario: Scenario) {
         &create_key,
         &PrincipalId::from_uuid(principal_id),
         &DomainId::from_uuid(domain_id),
+        &svc_workflow::domain::enums::WorkflowExecutionClass::Business,
         &DefinitionVersionId::from_uuid(version_id),
         &context,
         &metadata,

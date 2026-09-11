@@ -57,6 +57,7 @@ struct RequestEnvelope {
 struct RequestBody {
     principal_id: String,
     domain_id: String,
+    execution_class: String,
     definition_version_id: String,
     context_payload: serde_json::Value,
     metadata: serde_json::Value,
@@ -72,6 +73,7 @@ pub fn compute_request_hash(
     _idempotency_key: &str,
     principal_id: &PrincipalId,
     domain_id: &DomainId,
+    execution_class: &crate::domain::enums::WorkflowExecutionClass,
     definition_version_id: &DefinitionVersionId,
     context_payload: &serde_json::Value,
     metadata: &serde_json::Value,
@@ -85,6 +87,7 @@ pub fn compute_request_hash(
         request_body: RequestBody {
             principal_id: principal_id.to_string(),
             domain_id: domain_id.to_string(),
+            execution_class: execution_class.as_str().to_string(),
             definition_version_id: definition_version_id.to_string(),
             context_payload: context_payload.clone(),
             metadata: metadata.clone(),

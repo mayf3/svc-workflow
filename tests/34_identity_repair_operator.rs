@@ -265,6 +265,7 @@ async fn seed_instance_on_source(pool: &PgPool) -> Fixture {
             principal_id: PrincipalId::from_uuid(caller),
             idempotency_key: format!("identity-repair-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
+        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(version_id),
             external_reference: None,
