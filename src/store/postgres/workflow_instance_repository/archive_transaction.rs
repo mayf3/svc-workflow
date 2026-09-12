@@ -256,12 +256,20 @@ pub(crate) async fn archive_workflow_instance_atomically(
         });
     }
 
-    // Step 5: Check domain owner
+    // Step 5: Check governance write role — DOMAIN_OWNER of the instance's
+    // domain OR enabled GLOBAL_WORKFLOW_COORDINATOR
+    // (SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 CTR-CP-001 W-widening).
+    // Lifecycle legality below is UNCHANGED: coordinator authority never
+    // bypasses it.
     let is_owner: bool = sqlx::query_scalar(
         "SELECT EXISTS(
            SELECT 1 FROM domain_role_bindings
            WHERE domain_id = $1 AND principal_id = $2
-             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)",
+             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)
+         OR EXISTS(
+           SELECT 1 FROM global_role_bindings
+           WHERE principal_id = $2
+             AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND enabled = TRUE)",
     )
     .bind(domain_id)
     .bind(principal_uuid)
