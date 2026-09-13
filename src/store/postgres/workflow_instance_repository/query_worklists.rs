@@ -58,6 +58,10 @@ pub async fn list_assigned_to_me(
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
          WHERE v.assignee_principal_id = $1 AND n.node_type <> 'TERMINAL'
            AND wi.cancelled = FALSE
+           AND NOT EXISTS (
+             SELECT 1 FROM workflow_instance_successor_cutovers c
+             WHERE c.source_instance_id = wi.workflow_instance_id
+           )
            AND (
              EXISTS (
                SELECT 1 FROM domain_role_bindings drb
@@ -159,6 +163,10 @@ pub async fn list_creator_owned_drafts(
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
          WHERE wi.created_by_principal_id = $1 AND n.node_type = 'DRAFT'
+           AND NOT EXISTS (
+             SELECT 1 FROM workflow_instance_successor_cutovers c
+             WHERE c.source_instance_id = wi.workflow_instance_id
+           )
            AND EXISTS (
              SELECT 1 FROM domain_role_bindings drb
              WHERE drb.domain_id = wi.domain_id
