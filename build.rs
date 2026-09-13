@@ -28,6 +28,15 @@ fn build_timestamp() -> String {
 }
 
 fn main() {
+
+// Re-run when the git provenance inputs change (T75): without these, an
+// empty commit or branch switch advances HEAD/tree-state without re-running
+// this script, leaving stale GIT_SHA/GIT_TREE_STATE/BUILD_TIMESTAMP embedded
+// in the binary's /version surface.
+println!("cargo:rerun-if-changed=build.rs");
+println!("cargo:rerun-if-changed=.git/HEAD");
+println!("cargo:rerun-if-changed=.git/index");
+println!("cargo:rerun-if-changed=.git/refs");
     // Cargo sets PROFILE for build scripts: "debug" or "release".
     let is_release = env::var("PROFILE").as_deref() == Ok("release");
 
