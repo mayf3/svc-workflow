@@ -1,22 +1,469 @@
 ---
-authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V7
-status: superseded
+authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
 production_apply_authority: none
 supersedes:
-  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
-superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V7
+superseded_by: null
 owners:
   - mayf3
 accepted_by: mayf3
-accepted_date: 2026-09-06
-accepted_reviewed_spec_commit: 0a85e909572d92dfe90c5a925f817ee2182336f4
+accepted_date: 2026-09-14
+accepted_reviewed_spec_commit: e19550055fd693e62209474dfbc787f2221ad95b
 acceptance_review_verdict: PASS
-acceptance_record: docs/reports/WORKFLOW_CANONICAL_IDENTITY_AUTHORITY_ACCEPTANCE_V1.md
-owner_acceptance_attachment_sha256: 0899cec0aa54725fedc3f130a686fb6331728ac0f8bb09d3bfce5b8139cd822b
+acceptance_record: docs/reports/WORKFLOW_ACTIVE_AGENT_LIST_AUTHORITY_V0_ACCEPTANCE.md
+date: 2026-09-13
+revision: r1
+change_name: WORKFLOW_ACTIVE_AGENT_LIST_AUTHORITY_V0
+candidate_base: eb7d484bdb62abdaa90f73843f0dfb78551dc550
+external_authorities:
+  - repository: mayf3/dsh-agent-core
+    authority_id: AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V2
+    revision: 4c514bb0c8d3df8668f3058387676d97b17d45c2
+    relation: requires_later_local_successor_for_broker_passthrough
 ---
+
+# SVC_WORKFLOW_PRODUCT_BOUNDARY_V8 — Workflow Active Agent List V0
+
+This is a proposed whole-authority successor to accepted
+`SVC_WORKFLOW_PRODUCT_BOUNDARY_V7`. It contains V7's complete authority body
+below and changes exactly one product choice: HR V0 may use the existing global
+read surface to discover current Agent work using the mechanical predicate
+`ACTIVE + current executor type AGENT`. V7 remains the current authority until
+this exact candidate is independently reviewed, explicitly accepted by the
+Owner, and merged through an atomic lifecycle transaction with the reciprocal
+V7 backlink. This candidate grants no implementation or production authority.
+
+Predecessor source: `SVC_WORKFLOW_PRODUCT_BOUNDARY_V7` at
+`eb7d484bdb62abdaa90f73843f0dfb78551dc550`; predecessor blob SHA-256 is
+`00831d9e55e872dc7743606b293f51f8256340496ea74b670e5e1b044b0994dd`.
+All V7 semantics remain unchanged except the exact clauses explicitly replaced
+in this section.
+
+## V8 selected exception — WORKFLOW_ACTIVE_AGENT_LIST_AUTHORITY_V0
+
+### 1. New evidence and reopened decision
+
+This candidate does not revive PR #19's rejected dispatchability classifier.
+The newly accepted evidence and Owner product ruling are narrower:
+
+```text
+EXISTING_EXECUTOR_FIELD_REUSED = YES
+CURRENT_EXECUTOR_SEMANTICS =
+  current Visit.assignee_principal_id
+  -> principals.principal_type
+  -> HUMAN | AGENT
+NEW_DATABASE_FIELD_REQUIRED = NO
+
+PRODUCTION_FRESH_READ_2026_09_13 =
+  ACTIVE_NONTERMINAL = 52
+  CURRENT_EXECUTOR_TYPE_AGENT = 52
+  CURRENT_EXECUTOR_TYPE_HUMAN = 0
+  REAL_HUMAN_WORK_SHELLS = 20
+  INVALID_CURRENT_OWNER_WORKFLOWS = 9
+```
+
+V7 rejected a global-list scan as a normal dispatch source because it competed
+with canonical activation and invited a synthetic readiness classifier. The
+new evidence shows that no synthetic classifier is necessary: executor type is
+already a canonical two-value Principal fact attached to the exact current
+Visit. The Owner now explicitly selects this bounded V0 exception. No inference
+from title, description, metadata, node key, activation presence, Dispatch
+Intent presence, identity health, Domain state, test state, quarantine state or
+future graph shape is authorized.
+
+#### OBS-V8-001 — Current source model
+
+- Subject/coordinate: `mayf3/svc-workflow` `github/main` at
+  `eb7d484bdb62abdaa90f73843f0dfb78551dc550`, observed 2026-09-13.
+- Method/provenance: source read of `migrations/0001_identity_domain.sql`,
+  `migrations/0023_visit_activation_v1.sql`, current-Visit query joins, and
+  create/transition activation writers.
+- Result: `principals.principal_type` already has `HUMAN | AGENT | SERVICE`;
+  TASK ownership admits only HUMAN/AGENT; current execution ownership is the
+  exact current Visit's snapshotted `assignee_principal_id`; model-3 activation
+  kind is derived HUMAN -> HUMAN_WORK_ITEM and AGENT -> DISPATCH_INTENT.
+
+#### OBS-V8-002 — Deployed schema and current data
+
+- Subject/environment: local production `com.svc-workflow`, PID 44934,
+  `127.0.0.1:8989`, database `svc_workflow_dogfood_clean`, observed
+  2026-09-13 Asia/Shanghai.
+- Method/provenance: PostgreSQL `SELECT` only with server session
+  `default_transaction_read_only=on`; no HTTP or database mutation.
+- Result: migration 26 is current; 52 active non-terminal current Visits all
+  join to enabled local AGENT principals; zero join to HUMAN. Of 21 active
+  `personal_quick_item_v1` rows, 20 are Owner-confirmed real human-work shells
+  and one is a test canary; all 21 are Legacy model 1, current owner
+  `agt_efficiency-agent`, and have no activation. Nine of the 52 current Agent
+  owners fail fresh Auth/Agent-Definition canonical-runtime validation.
+
+#### OBS-V8-003 — Current svc global-list contract
+
+- Subject/coordinate: same svc main as OBS-V8-001.
+- Method/provenance: `GlobalInstanceQuery`, `ListGlobalInstances`,
+  `DomainInstanceSummary`, and `query_global_instances.rs` source read.
+- Result: the global list already joins the exact current Visit and Principal-
+  adjacent facts but exposes neither `currentExecutorType` input nor
+  `current_executor_type` output. Its existing product-active spelling requires
+  both `lifecycle=active` and `status=active`.
+
+#### OBS-V8-004 — Current authority conflict
+
+- Subject/coordinate: accepted Product Boundary V7 and Architecture v0.4.1 at
+  svc main `eb7d484...`.
+- Method/provenance: direct authority read, including V7 CTR-V6-010/053/054/057
+  and Architecture CTR-ARCH-025/032 plus their rejected alternatives.
+- Result: current authority explicitly forbids normal global-list discovery and
+  reserves scans for recovery. Therefore this Goal is `SUPERSEDE`, not REUSE or
+  additive AMEND.
+
+#### OBS-V8-005 — External Broker contract
+
+- Subject/coordinate: `mayf3/dsh-agent-core` `github/main` at
+  `4c514bb0c8d3df8668f3058387676d97b17d45c2`.
+- Method/provenance: accepted
+  `AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V2` and current Broker
+  manifest source read.
+- Result: its exact query allowlist and documented passthrough response omit the
+  two executor-type additions; svc authority cannot change that external
+  contract.
+
+#### CLM-V8-001 — Existing type is the sufficient executor primitive
+
+- Support: SUPPORTED.
+- Claim: joining the exact current Visit assignee to the existing Principal type
+  yields the requested two-value executor semantic without a new persisted fact
+  or content inference.
+- Basis: OBS-V8-001 and OBS-V8-003.
+
+#### CLM-V8-002 — The predicate is sufficient only after separate data gates
+
+- Support: SUPPORTED.
+- Claim: `ACTIVE + current executor AGENT` is the complete HR discovery
+  predicate, while current production is not activation-ready because 20 human
+  shells are misrepresented and nine Agent owners violate the canonical-owner
+  invariant. Correcting those facts outside the query is sufficient; adding an
+  HR classifier is neither necessary nor authorized.
+- Basis: OBS-V8-002 and the Owner ruling recorded in this candidate.
+
+#### EVD-V8-001
+
+OBS-V8-001 and OBS-V8-003 SUPPORT CLM-V8-001 at svc main `eb7d484...`:
+the relationship and missing wire projection are direct source facts. This
+evidence does not prove any implementation exists.
+
+#### EVD-V8-002
+
+OBS-V8-002 SUPPORTS CLM-V8-002 for the stated deployed process/database/time
+tuple. Counts may drift after this observation; the semantic failure classes and
+separate-lane boundary are the reusable result.
+
+#### EVD-V8-003
+
+OBS-V8-004 SUPPORTS `PREFLIGHT_MODE=SUPERSEDE`; OBS-V8-005 SUPPORTS the
+cross-repository authority separation. Neither Observation authorizes code.
+
+#### STATE-V8-001 — Candidate state
+
+At the candidate base, V7 and Architecture v0.4.1 remain accepted current
+authority; the requested global-list use conflicts with them; no executor-type
+wire projection/filter exists; deployed data fails the intended activation
+preconditions; and this V8 file is proposed only. Basis: EVD-V8-001..003.
+
+#### DEC-V8-001 — Select exact current-executor discovery
+
+- Decision owner: `mayf3` by the 2026-09-13 Lane G ruling.
+- Selected: HR V0 global discovery by exactly `ACTIVE + current Visit assignee
+  principal_type = AGENT`, followed by exact-current-owner resolution and the
+  existing verified V0 send path.
+- Rejected: PR #19/classifier revival; activation/intent prerequisite; identity,
+  Domain, test, quarantine, future-chain, title/content or readiness filtering;
+  fallback owner; new executor storage; global-reader permission expansion.
+- Reason: the existing Principal type is canonical and sufficient, while bad
+  workflow/identity data must be repaired at its owning source.
+- Remaining Owner input: NONE within this Product Direction candidate.
+
+### 2. Selected V0 product semantic
+
+The current Visit is the sole current-execution coordinate. Its snapshotted
+`assignee_principal_id` identifies the current owner. The executor semantic is
+the existing `principals.principal_type` of that exact Principal and has exactly
+two executable values:
+
+```text
+HUMAN
+AGENT
+```
+
+`SERVICE` is not an executor value and remains forbidden as a TASK owner. A
+Terminal node has no current executor; wire absence/null for a Terminal summary
+is not a third executor value.
+
+For HR V0, `ACTIVE` means the existing mechanical conjunction:
+
+```sql
+wi.cancelled = FALSE
+AND wi.archived_at IS NULL
+AND current_node.node_type <> 'TERMINAL'
+```
+
+The only authorized work-discovery predicate is:
+
+```text
+lifecycle = ACTIVE
+AND current_executor_type = AGENT
+```
+
+Under the existing split global-list query vocabulary, the exact HTTP query is:
+
+```text
+lifecycle=active
+&status=active
+&currentExecutorType=AGENT
+```
+
+`status=active` is only the existing wire spelling needed to realize the
+product-level `lifecycle = ACTIVE` conjunction; it is not a readiness or
+business classifier.
+
+### 3. Bounded read projection and filter
+
+A later accepted implementation authority may make exactly these additive
+changes to `GET /internal/v1/workflow-instances/global`:
+
+1. accept optional query parameter `currentExecutorType`, whose only legal
+   values are `HUMAN | AGENT`;
+2. project `current_executor_type` on summary items from the exact current
+   Visit assignee's existing `principals.principal_type`;
+3. when the parameter is present, apply exact equality to that joined current
+   Principal type;
+4. preserve the existing authorization, pagination, ordering, lifecycle,
+   status, error-envelope and all other response semantics.
+
+The projection is derived in the same read snapshot as the current Visit. It is
+not stored, cached, guessed or renamed from activation kind. It adds no database
+column, enum, migration, role, grant, endpoint, write operation or permission.
+The existing global Reader/Coordinator gate remains byte-for-byte authoritative;
+this exception does not broaden who may call the route.
+
+The dsh-agent-core Broker companion, under its own separately accepted local
+authority, may only pass `currentExecutorType` through and document/assert the
+new `current_executor_type` summary field. It may not filter, reshape, resolve,
+cache or classify results locally.
+
+### 4. HR V0 boundary
+
+For every returned item, HR uses `current_assignee_principal_id` as the exact
+owner resolution input and dispatches only to the canonical Agent obtained by
+the already-governed exact-owner resolution and already-verified V0 send path.
+Owner resolution is downstream of discovery and MUST NOT become a list filter.
+A missing, disabled, stale, ambiguous or non-runtime current owner is
+`WORKFLOW_DATA_OR_DEFINITION_BUG`; it remains visible in the `ACTIVE + AGENT`
+result and is repaired outside Lane G. Failed exact resolution never authorizes
+a fallback owner or a send.
+
+For this V0 discovery path:
+
+```text
+ACTIVATION_REQUIRED_FOR_V0_DISCOVERY = NO
+DISPATCH_INTENT_REQUIRED_FOR_V0_DISCOVERY = NO
+```
+
+This exception removes V7's exclusivity only for the exact HR V0 predicate and
+current-owner send handoff above. It does not delete, rewrite, reinterpret or
+repair existing activation/Dispatch Intent facts and does not authorize a
+second delivery attempt, duplicate send, retry engine or replacement dispatcher
+framework. Any coexistence/deduplication obligation with already deployed
+activation-driven execution must be resolved explicitly by the later
+Architecture and implementation authorities before production activation; this
+candidate itself authorizes no runtime.
+
+### 5. Explicit non-goals and lane boundaries
+
+The V0 list MUST NOT add or consume:
+
+```text
+dispatchable classifier
+identity-health filter
+Domain-enabled filter
+test/canary filter
+quarantine filter
+future-chain validation
+owner-required disposition
+visibility-safety inference
+lease, tombstone or consumptionKey
+activation requirement
+Dispatch Intent requirement
+title, description, metadata or node-key inference
+```
+
+G2 `HUMAN_WORKFLOW_NORMALIZATION_V0` is a separate later authority and is not
+authored or implemented here. The 20 confirmed human-work shells remain
+untouched by this candidate. The one test canary is cleanup-lane scope. The nine
+invalid current Agent owners remain Lane D/Lane F/other repair-lane scope. This
+candidate performs no Definition, Visit, Principal, instance or production
+mutation.
+
+### 6. Invariant and activation gate
+
+The product invariant is:
+
+```text
+IF lifecycle = ACTIVE AND current_executor_type = AGENT
+THEN current owner exists AND is a valid canonical Agent
+```
+
+A violation is `DATA_OR_DEFINITION_BUG`, never an HR filter condition. V0 checks
+only the current Visit; future nodes are out of scope. Production activation of
+the HR V0 discovery path requires separate evidence that:
+
+- the 20 confirmed human-work shells are mechanically `ACTIVE + HUMAN` under G2;
+- the nine currently invalid current Agent owners have been repaired by their
+  owning lanes;
+- the independent cleanup lane has removed/terminalized test residue through
+  existing authority rather than adding a test filter; and
+- the later implementation's current-step invariant test passes.
+
+These are activation preconditions, not extra list predicates.
+
+### 7. Authority sequence and acceptance
+
+Acceptance of V8 selects only the product direction. Before code:
+
+1. an Architecture successor must reconcile V7/v0.4.1's activation-exclusive
+   normal-discovery clauses with this exact HR V0 exception, without reopening
+   any broader scan or readiness design;
+2. a separately reviewed svc-workflow implementation Spec must freeze the exact
+   query/summary contract and tests;
+3. dsh-agent-core must accept its own minimal Broker companion authority;
+4. only then may implementation branches be created.
+
+Candidate acceptance requires an independent exact-head semantic review proving:
+
+- the delta is exactly `ACTIVE + current executor AGENT`;
+- `principals.principal_type` is reused and no database field is added;
+- activation and Dispatch Intent are not prerequisites for V0 discovery;
+- global-reader permissions are unchanged;
+- no forbidden classifier/filter/framework appears;
+- G2, invalid-owner repair and cleanup remain separate; and
+- the predecessor is preserved in full except the explicitly replaced clauses.
+
+The acceptance transaction must set this candidate to `accepted`, add exact
+review/Owner evidence, and atomically change V7 to `superseded` with a reciprocal
+`superseded_by` backlink. Until then:
+
+```text
+G1_AUTHORITY_CANDIDATE_ONLY = YES
+IMPLEMENTATION_AUTHORITY = NONE
+PRODUCTION_APPLY_AUTHORITY = NONE
+```
+
+### 8. V8 normative contracts
+
+#### CTR-V8-001 — Exact current-executor derivation
+
+`current_executor_type` MUST be derived only from the exact current Visit's
+`assignee_principal_id -> principals.principal_type` relation in the list read
+snapshot. Its executable value set is exactly `HUMAN | AGENT`. It MUST NOT be a
+new stored field or be inferred from any workflow content, activation or
+delivery fact.
+
+#### CTR-V8-002 — Exact HR V0 discovery exception
+
+HR V0 MAY use the existing global list for normal work discovery only with the
+product predicate `lifecycle = ACTIVE AND current_executor_type = AGENT`, whose
+existing wire spelling is `lifecycle=active&status=active&currentExecutorType=AGENT`.
+The exact current Visit owner is the dispatch target. Activation and Dispatch
+Intent are not prerequisites for this discovery read.
+
+#### CTR-V8-003 — Additive bounded global-list contract
+
+The later implementation MAY add only optional `currentExecutorType=HUMAN|AGENT`
+and summary `current_executor_type`; it MUST preserve existing authorization,
+ordering, pagination, lifecycle/status, errors and all other fields. The Broker
+MAY only pass through the request and response additions under its own authority.
+No role, grant, write surface or other global-reader permission changes.
+
+#### CTR-V8-004 — No hidden classifier
+
+The list predicate MUST NOT include identity health, Agent Definition presence,
+Domain enabled state, test/canary state, quarantine, business content, owner
+decision, visibility inference, future nodes, activation, Dispatch Intent,
+readiness, lease or retry state. Invalid current Agent ownership is
+`WORKFLOW_DATA_OR_DEFINITION_BUG`, remains visible, and never selects a fallback.
+
+#### CTR-V8-005 — Lane and activation separation
+
+G2 human normalization, invalid-owner repair and test cleanup remain separately
+authorized work. V8 acceptance changes no Definition, Visit, Principal, Instance,
+activation or production data. Production activation of the HR V0 path MUST wait
+for the current-step invariant and the separately owned data gates in §6.
+
+#### CTR-V8-006 — Exact inherited-clause replacement
+
+V8 is a whole-authority successor: it replaces V7 in full when accepted and
+merged; `PARTIAL_SUPERSESSION = NONE`. Within the complete carried baseline,
+the old `CTR-V6-010`, `CTR-V6-053`, `CTR-V6-054`, `CTR-V6-057`, their
+corresponding acceptance criteria, and matching rejected-alternative prose are
+retained only as historical predecessor text and are replaced by
+CTR-V8-001..005 to the following exact semantic extent:
+
+```text
+HR V0 global-list discovery using CTR-V8-002 is permitted normal discovery.
+```
+
+Activation remains canonical Workflow execution state; existing activation
+facts and automated delivery semantics remain unchanged. Every other Instance,
+global-list, scan, Scheduler/Dispatcher, Reconciler, recovery and interoperability
+use retains the inherited prohibition. The remaining V7 Decisions and Contracts
+are carried forward with identical meaning and stable IDs; no accepted ID is
+assigned new meaning.
+
+#### ACC-V8-001 — Semantic-delta audit
+
+Contracts: `CTR-V8-001..006`.
+
+An exact-head semantic diff MUST prove that the candidate introduces only the
+CTR-V8-001..006 exception, carries the V7 baseline completely, records the new
+evidence that reopens the rejected list-discovery choice, and leaves every other
+V7 decision unchanged.
+
+#### ACC-V8-002 — Forbidden-marker audit
+
+Contracts: `CTR-V8-001..006`.
+
+The candidate and later contracts MUST be checked for any new readiness enum,
+stored executor field, extra filter, role/grant expansion, G2 implementation,
+repair implementation, test cleanup, lease/retry/intent framework or production
+mutation. Any occurrence as positive behavior fails review; negative-boundary and
+historical-baseline occurrences are permitted.
+
+### 9. Authoring handoff
+
+```text
+SPEC_GOVERNANCE_MODE = AUTHOR
+SPEC_ID = SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+SPEC_KIND = product_direction
+STATUS = proposed
+AUTHORITY_LEVEL = top_level_product_direction
+IMPLEMENTATION_AUTHORITY = none
+PRIMARY_PARENT_AUTHORITY = NONE
+EXTERNAL_AUTHORITIES =
+  mayf3/dsh-agent-core AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V2
+  @ 4c514bb0c8d3df8668f3058387676d97b17d45c2
+OPEN_OWNER_DECISIONS = NONE
+NORMATIVE_TBD = NONE
+PARTIAL_SUPERSESSION = NONE
+CONTRACT_COUNT = 6
+CONTRACTS_WITH_ACCEPTANCE = 6
+AUTHORING_READY_FOR_REVIEW = YES
+```
+
+## Complete V7 baseline carried forward
 
 # SVC_WORKFLOW_PRODUCT_BOUNDARY_V7 — proposed identity-only bounded successor
 
