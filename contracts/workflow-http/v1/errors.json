@@ -7,7 +7,8 @@
       "invalid_json": "request body is not valid for this endpoint",
       "missing_idempotency_key": "Idempotency-Key header is required",
       "invalid_idempotency_key": "Idempotency-Key must be 1-128 visible ASCII characters",
-      "invalid_path_parameter": "workflowInstanceId must be a UUID"
+      "invalid_path_parameter": "workflowInstanceId must be a UUID",
+      "invalid_input": "request input is invalid for this endpoint (e.g. unknown membership role)"
     },
     "401": {
       "unauthenticated": "Bearer token is missing, malformed, or invalid in test_hs256 mode",
@@ -36,7 +37,8 @@
       "global_coordinator_required": "caller must hold the GLOBAL_WORKFLOW_COORDINATOR role",
       "restricted_history_not_visible": "restricted workflow history is not visible",
       "direct_token_required": "only direct access tokens may perform this operation",
-      "not_domain_owner": "caller is not a domain owner"
+      "not_domain_owner": "caller is not a domain owner",
+      "domain_owner_delegation_forbidden": "a domain owner cannot grant DOMAIN_OWNER; owner replacement is reserved to the GLOBAL_WORKFLOW_COORDINATOR contract"
     },
     "404": {
       "definition_not_found": "workflow definition not found",
@@ -60,6 +62,7 @@
       "transition_not_applicable": "transition is not applicable",
       "principal_projection_conflict": "principal exists with a different type",
       "principal_is_owner": "principal is a domain owner and cannot be a member",
+      "already_member": "principal already holds an enabled DOMAIN_MEMBER binding for this domain",
       "definition_key_conflict": "definition key already exists in this domain",
       "definition_version_immutable": "definition version is not in DRAFT status",
       "definition_not_editable": "workflow definition is not editable",

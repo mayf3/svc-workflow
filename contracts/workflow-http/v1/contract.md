@@ -105,7 +105,7 @@ The request body is empty — the identity comes exclusively from the verified J
 | Method | Path                                                          | Scope               | Auth | Description                                      |
 |--------|---------------------------------------------------------------|---------------------|------|--------------------------------------------------|
 | GET    | `/internal/v1/domains/{domainId}/members`                     | `workflow.read`     | yes  | List DOMAIN_MEMBER bindings for a domain          |
-| PUT    | `/internal/v1/domains/{domainId}/members/{principalId}`       | `workflow.execute`  | yes  | Add a principal as DOMAIN_MEMBER (must be self-projected first) |
+| PUT    | `/internal/v1/domains/{domainId}/members/{principalId}`       | `workflow.execute`  | yes  | Add a principal with an explicit role grammar (must be self-projected first) |
 | DELETE | `/internal/v1/domains/{domainId}/members/{principalId}`       | `workflow.execute`  | yes  | Remove a DOMAIN_MEMBER binding                    |
 
 All endpoints require a Direct Machine Token (`token_use=access`). The caller must be `DOMAIN_OWNER` of the target domain.
@@ -114,7 +114,11 @@ The target principal must have completed self-projection (`PUT /internal/v1/prin
 
 **GET Members** uses cursor pagination with `beforeCreatedAt` (RFC 3339) and `beforeId` (UUID) query parameters, same convention as section 2.4.
 
-**PUT Add Member** is idempotent. Re-adding an existing member returns success. Adding a `DOMAIN_OWNER` as a member returns `principal_is_owner`.
+**PUT Add Member** is idempotent (same `Idempotency-Key` replays the stored outcome). The request accepts an OPTIONAL body `{"role": "DOMAIN_MEMBER" | "DOMAIN_OWNER"}`; an absent body or absent `role` defaults to `DOMAIN_MEMBER` (backward compatible). A malformed body (unknown role string, unknown field) returns `invalid_input` (400).
+
+Logical duplicates are explicit: adding a principal that already holds an enabled `DOMAIN_MEMBER` binding **with a new idempotency key** returns `already_member` (409) — no second mutation, no duplicate binding, no role change. Reusing an idempotency key with a different request (including a different `role`) returns `idempotency_conflict` (409). Adding a `DOMAIN_OWNER` as a member returns `principal_is_owner`.
+
+`role=DOMAIN_OWNER` is accepted by the grammar but returns `domain_owner_delegation_forbidden` (403): under the frozen single-owner invariant a `DOMAIN_OWNER` cannot grant `DOMAIN_OWNER`; owner replacement stays on the `GLOBAL_WORKFLOW_COORDINATOR` contract (`PUT /internal/v1/domains/{domainId}/owner`).
 
 **DELETE Remove Member** only affects `DOMAIN_MEMBER` bindings. `DOMAIN_OWNER` bindings cannot be modified. Returns `member_not_found` if no active binding exists.
 
@@ -125,6 +129,9 @@ The target principal must have completed self-projection (`PUT /internal/v1/prin
 - `principal_disabled` (403) — principal is disabled
 - `not_domain_owner` (403) — caller is not a domain owner
 - `principal_is_owner` (409) — target is a DOMAIN_OWNER, cannot be a member
+- `already_member` (409) — target already holds an enabled DOMAIN_MEMBER binding (new logical command)
+- `domain_owner_delegation_forbidden` (403) — role=DOMAIN_OWNER requested; owner grant is reserved to the GLOBAL_WORKFLOW_COORDINATOR contract
+- `invalid_input` (400) — malformed request body (unknown role string or unknown field)
 - `member_not_found` (404) — no active DOMAIN_MEMBER binding to remove
 
 ### 2.7 Domain Definition Management

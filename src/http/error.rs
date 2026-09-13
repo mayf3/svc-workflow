@@ -349,6 +349,14 @@ impl ApiError {
                 "principal_is_owner",
                 "principal is a domain owner and cannot be a member",
             ),
+            E::AlreadyMember => (
+                "already_member",
+                "principal already holds an enabled DOMAIN_MEMBER binding for this domain",
+            ),
+            E::OwnerDelegationForbidden => (
+                "domain_owner_delegation_forbidden",
+                "a domain owner cannot grant DOMAIN_OWNER; owner replacement is reserved to the GLOBAL_WORKFLOW_COORDINATOR contract",
+            ),
             E::MemberNotFound => ("member_not_found", "member binding not found"),
             E::DirectTokenRequired => (
                 "direct_token_required",
