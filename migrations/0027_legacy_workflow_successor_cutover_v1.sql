@@ -8,13 +8,25 @@ CREATE TABLE workflow_instance_successor_cutovers (
     source_definition_version_id UUID NOT NULL REFERENCES workflow_definition_versions(definition_version_id),
     successor_definition_version_id UUID NOT NULL REFERENCES workflow_definition_versions(definition_version_id),
     source_current_visit_id UUID NOT NULL REFERENCES workflow_node_visits(node_visit_id),
+    source_context_revision_id UUID NOT NULL REFERENCES workflow_context_revisions(context_revision_id),
     successor_initial_visit_id UUID NOT NULL REFERENCES workflow_node_visits(node_visit_id),
     successor_context_revision_id UUID NOT NULL REFERENCES workflow_context_revisions(context_revision_id),
+    source_node_id UUID NOT NULL REFERENCES workflow_node_definitions(node_id),
+    successor_node_id UUID NOT NULL REFERENCES workflow_node_definitions(node_id),
     source_expected_state_version INTEGER NOT NULL CHECK (source_expected_state_version >= 1),
     model SMALLINT NOT NULL CHECK (model = 1),
     closure_reason TEXT NOT NULL CHECK (closure_reason = 'CIR_CANONICAL_SUCCESSOR'),
     plan_sha256 TEXT NOT NULL CHECK (plan_sha256 ~ '^[0-9a-f]{64}$'),
+    group_identity_digest TEXT NOT NULL CHECK (group_identity_digest ~ '^[0-9a-f]{64}$'),
+    request_hash TEXT NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+    command_id UUID NOT NULL UNIQUE REFERENCES workflow_command_receipts(command_id),
     operator_principal_id UUID NOT NULL REFERENCES principals(principal_id),
+    original_creator_principal_id UUID NOT NULL REFERENCES principals(principal_id),
+    successor_creator_principal_id UUID NOT NULL REFERENCES principals(principal_id),
+    approved_identity_changes JSONB NOT NULL,
+    database_identity JSONB NOT NULL,
+    authority_refs JSONB NOT NULL,
+    operator_code_coordinate TEXT NOT NULL,
     receipt JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (source_instance_id <> successor_instance_id)
@@ -44,6 +56,9 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'workflow instance % is superseded by CIR successor', OLD.workflow_instance_id
             USING ERRCODE = '55000';
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
     END IF;
     RETURN NEW;
 END;
