@@ -267,9 +267,11 @@ pub(crate) async fn archive_workflow_instance_atomically(
            WHERE domain_id = $1 AND principal_id = $2
              AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)
          OR EXISTS(
-           SELECT 1 FROM global_role_bindings
-           WHERE principal_id = $2
-             AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND enabled = TRUE)",
+           SELECT 1 FROM global_role_bindings g
+           JOIN principals p ON p.principal_id = g.principal_id
+           WHERE g.principal_id = $2
+             AND g.role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND g.enabled = TRUE
+             AND p.enabled = TRUE)",
     )
     .bind(domain_id)
     .bind(principal_uuid)

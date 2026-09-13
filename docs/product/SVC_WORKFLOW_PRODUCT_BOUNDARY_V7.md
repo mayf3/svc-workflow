@@ -519,6 +519,9 @@ There are exactly two independent Product Direction permissions. The same design
 
 Neither permission grants workflow content, Transition, reassignment, cancel/archive, Definition management, membership management, Assistance body, credentials, or audit-content access.
 
+> **PARTIAL SUPERSESSION — SERVER ROLE `GLOBAL_WORKFLOW_COORDINATOR` (2026-09-13, recorded not newly decided).**
+> The `UI_LABEL_ONLY` / "no new binding" / "grants no cancel/archive" rules above govern the *Product Direction* permission model. The server-side role of the same name was subsequently given bounded governance write authority by the separately accepted `SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1` (PR #35, accepted 2026-09-09; CTR-CP-001 W-widening of cancel/archive + the narrow coordinator N-surface), whose acceptance explicitly reversed the pre-acceptance boundary assertion. Production grants under that spec are Owner-directed (dedicated admins only; HR control plane 2026-09-13). This note records that adjudication for precedence purposes; every other rule in this section (Domain isolation, split permission model, no composite capability) is unchanged.
+
 ## 8. Canonical Dispatch Intent and `nextEligibleAt`
 
 `GLOBAL_SCHEDULER_READ` remains the Product Direction capability for bounded cross-Domain Scheduler visibility, but its canonical new-model subject is `DISPATCH_INTENT`, not `Page<DomainInstanceSummary>` and not a computed `dispatchable` flag.

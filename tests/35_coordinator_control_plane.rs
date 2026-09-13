@@ -203,6 +203,179 @@ async fn member_audit_count(pool: &PgPool, domain_id: Uuid, target: Uuid, action
 }
 
 // ============================================================================
+// PR #42 union-repair semantics (review findings)
+// ============================================================================
+
+#[tokio::test]
+async fn acc_cp_010_reconcile_repair_semantics() {
+    let pool = common::create_pool().await;
+    let coordinator = seed_agent(&pool).await;
+    grant_coordinator(&pool, coordinator).await;
+    let domain_id = seed_domain(&pool).await;
+    let mock = MockJwksServer::start().await;
+    let app = build_app(pool.clone(), &mock.url);
+    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let apply_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/apply");
+    let update_path = format!("/internal/v1/domains/{domain_id}");
+    let reconcile_body = |from: Uuid, to: Uuid| {
+        json!({
+            "role": "DOMAIN_MEMBER",
+            "fromPrincipalId": from.to_string(),
+            "toPrincipalId": to.to_string(),
+            "reason": "canonical migration"
+        })
+    };
+
+    // --- (1) apply re-enables a DISABLED historical target binding
+    // (upsert) instead of dying on the migration-0001 unique index.
+    let stale_source = seed_disabled_agent(&pool).await;
+    seed_binding(&pool, domain_id, stale_source, "DOMAIN_MEMBER").await;
+    let target = seed_agent(&pool).await;
+    seed_binding(&pool, domain_id, target, "DOMAIN_MEMBER").await;
+    sqlx::query(
+        "UPDATE domain_role_bindings SET enabled = FALSE, disabled_at = now() \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER'",
+    )
+    .bind(domain_id)
+    .bind(target)
+    .execute(&pool)
+    .await
+    .expect("disable historical target binding");
+
+    let key = format!("rec-{}", Uuid::new_v4());
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&key),
+    )
+    .await;
+    assert_eq!(status, 200, "apply over disabled historical row: {body}");
+    assert_eq!(body["outcome"], json!("applied"));
+    let target_enabled: (bool,) = sqlx::query_as(
+        "SELECT enabled FROM domain_role_bindings \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER'",
+    )
+    .bind(domain_id)
+    .bind(target)
+    .fetch_one(&pool)
+    .await
+    .expect("target binding");
+    assert!(target_enabled.0, "historical row re-enabled in place");
+
+    // Same-key replay → original response + durable replay attempt audit.
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&key),
+    )
+    .await;
+    assert_eq!(status, 200, "replay: {body}");
+    assert_eq!(body["outcome"], json!("applied"));
+    let (replay_audits,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_command_attempt_audits \
+         WHERE idempotency_key = $1 AND attempt_type = 'replay'",
+    )
+    .bind(&key)
+    .fetch_one(&pool)
+    .await
+    .expect("attempt audit count");
+    assert!(replay_audits >= 1, "replay recorded in attempt trail");
+
+    // --- (2) completed migration repeated under a NEW key → 200
+    // already_applied (disabled source + enabled target post-image).
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&format!("rec-{}", Uuid::new_v4())),
+    )
+    .await;
+    assert_eq!(status, 200, "already-applied recognition: {body}");
+    assert_eq!(body["outcome"], json!("already_applied"));
+
+    // --- (3) missing SOURCE principal → 404 identity_not_found (not 409),
+    // taking priority over the missing-binding preimage classification.
+    let ghost = Uuid::new_v4();
+    let bystander = seed_agent(&pool).await;
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(ghost, bystander),
+        Some(&format!("rec-{}", Uuid::new_v4())),
+    )
+    .await;
+    assert_eq!(status, 404, "missing source principal: {body}");
+    assert_eq!(body["error"]["code"], json!("identity_not_found"));
+
+    // --- (4) domain.update on a missing domain: same-key replay returns
+    // the stable 404 (receipt completed, no fresh attempt minted).
+    let missing = seed_domain(&pool).await; // exists; then renamed 404 path uses a ghost id
+    let ghost_domain = Uuid::new_v4();
+    let upd = json!({ "displayName": "renamed" });
+    let key404 = format!("upd-{}", Uuid::new_v4());
+    let (status, body) = do_method(
+        &app,
+        "PATCH",
+        &format!("/internal/v1/domains/{ghost_domain}"),
+        &token,
+        upd.clone(),
+        Some(&key404),
+    )
+    .await;
+    assert_eq!(status, 404, "update missing domain: {body}");
+    assert_eq!(body["error"]["code"], json!("domain_not_found"));
+    let (status, body) = do_method(
+        &app,
+        "PATCH",
+        &format!("/internal/v1/domains/{ghost_domain}"),
+        &token,
+        upd,
+        Some(&key404),
+    )
+    .await;
+    assert_eq!(status, 404, "same-key replay of 404: {body}");
+    assert_eq!(body["error"]["code"], json!("domain_not_found"));
+    let _ = missing;
+
+    // --- (5) a locally DISABLED coordinator principal fails closed even
+    // with an enabled binding, and reads leave a durable audit row.
+    let rogue = seed_agent(&pool).await;
+    grant_coordinator(&pool, rogue).await;
+    let rogue_token = direct_token(rogue, "workflow.execute workflow.read", &mock.key_pair);
+    sqlx::query("UPDATE principals SET enabled = FALSE WHERE principal_id = $1")
+        .bind(rogue)
+        .execute(&pool)
+        .await
+        .expect("disable rogue coordinator");
+    let (status, body) = do_get(&app, "/internal/v1/domains?limit=5", &rogue_token).await;
+    assert_eq!(status, 403, "disabled coordinator: {body}");
+    assert_eq!(body["error"]["code"], json!("global_coordinator_required"));
+
+    // A successful coordinator list leaves a durable read audit.
+    let (status, body) = do_get(&app, "/internal/v1/domains?limit=5", &token).await;
+    assert_eq!(status, 200, "coordinator list: {body}");
+    let (read_audits,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_security_audits \
+         WHERE action = 'coordinator_domain_list' AND principal_id = $1",
+    )
+    .bind(coordinator)
+    .fetch_one(&pool)
+    .await
+    .expect("read audit count");
+    assert!(read_audits >= 1, "coordinator reads are audited");
+}
+
+// ============================================================================
 // Domain admin surfaces (ACC-CP-001)
 // ============================================================================
 
