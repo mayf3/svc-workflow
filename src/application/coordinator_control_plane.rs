@@ -27,6 +27,73 @@ const COMMAND_TYPE_BINDING_RECONCILE: &str = "domain.binding_reconcile";
 pub(crate) const RECONCILE_ROLES: [&str; 2] = ["DOMAIN_OWNER", "DOMAIN_MEMBER"];
 
 // ---------------------------------------------------------------------------
+// Attempt / read audit helpers
+// ---------------------------------------------------------------------------
+
+/// Write a durable attempt-audit row (`workflow_command_attempt_audits`) for
+/// a non-owned receipt outcome — CTR-CP-004 requires the attempt trail to
+/// cover replays and conflicts, not only first attempts (PR #42 review P1).
+async fn write_attempt_audit(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    command_id: Uuid,
+    actor: Uuid,
+    idempotency_key: &str,
+    attempt_type: &str,
+    request_hash: &str,
+) -> Result<(), CoordinatorControlPlaneError> {
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_command_attempt_audits
+            (audit_id, command_id, principal_id, idempotency_key, attempt_type,
+             failure_reason, request_hash, details)
+        VALUES ($1, $2, $3, $4, $5, NULL, $6, NULL)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(command_id)
+    .bind(actor)
+    .bind(idempotency_key)
+    .bind(attempt_type)
+    .bind(request_hash)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?;
+    Ok(())
+}
+
+/// Durable audit-before-return for the coordinator read surfaces
+/// (PR #42 review P1: protected directory reads must commit an audit row
+/// before publication and fail closed on audit-store failure).
+async fn audit_read(
+    pool: &PgPool,
+    actor: Uuid,
+    action: &str,
+    domain_id: Option<Uuid>,
+) -> Result<(), CoordinatorControlPlaneError> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+    domain_role_repository::write_domain_audit(
+        &mut tx,
+        actor,
+        action,
+        domain_id.unwrap_or(Uuid::nil()),
+        &serde_json::json!({
+            "operation": action,
+            "actorPrincipalId": actor,
+            "authorityBasis": "GLOBAL_WORKFLOW_COORDINATOR",
+            "read": true,
+        }),
+    )
+    .await
+    .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+    tx.commit()
+        .await
+        .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
 
@@ -212,13 +279,18 @@ pub async fn list_domains(
         .map(|r| serde_json::to_value(entry_json(r)).expect("serializable entry"))
         .collect();
     let mut body = serde_json::json!({ "items": items });
-    if has_more {
-        if let Some(last) = rows.last() {
+    if has_more && limit > 0 {
+        // Cursor is built from the last INCLUDED item, not rows.last():
+        // rows holds limit+1 records and the extra record is never exposed,
+        // so keying the cursor on it would skip that domain permanently
+        // under the strict `<` keyset comparison (PR #42 review P2).
+        if let Some(last) = rows.get(limit as usize - 1) {
             body["nextBeforeCreatedAt"] =
                 serde_json::Value::String(last.created_at.to_rfc3339());
             body["nextBeforeId"] = serde_json::Value::String(last.domain_id.to_string());
         }
     }
+    audit_read(pool, actor, "coordinator_domain_list", None).await?;
     Ok(body)
 }
 
@@ -233,6 +305,7 @@ pub async fn get_domain(
         .await
         .map_err(CoordinatorControlPlaneError::from_provisioning)?
         .ok_or(CoordinatorControlPlaneError::DomainNotFound)?;
+    audit_read(pool, actor, "coordinator_domain_get", Some(domain_id)).await?;
     Ok(serde_json::to_value(entry_json(&row)).expect("serializable entry"))
 }
 
@@ -268,6 +341,7 @@ pub async fn get_domain_owner(
         .map_err(CoordinatorControlPlaneError::from_provisioning)?
         .ok_or(CoordinatorControlPlaneError::DomainOwnerMissing)?;
 
+    audit_read(pool, actor, "coordinator_domain_owner_get", Some(domain_id)).await?;
     Ok(serde_json::json!({
         "domainId": domain_id,
         "ownerPrincipalId": owner.principal_id,
@@ -315,19 +389,75 @@ pub async fn update_domain(
     .map_err(CoordinatorControlPlaneError::from_provisioning)?;
 
     if !receipt.is_owned() {
+        // CTR-CP-004: the attempt trail covers replays too — record the
+        // attempt before returning the durable outcome (PR #42 review P1).
+        // The preimage transaction is committed FIRST: acquire_receipt holds
+        // a lock on the receipt row, and the attempt-audit insert takes an
+        // FK key-share on that same row, so writing it on a second
+        // connection before committing would self-deadlock.
         tx.commit()
             .await
             .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+        if let AcquireReceipt::Replay { .. } = receipt {
+            let mut audit_tx = pool
+                .begin()
+                .await
+                .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+            write_attempt_audit(
+                &mut audit_tx,
+                receipt.command_id(),
+                actor,
+                idempotency_key,
+                "replay",
+                &request_hash,
+            )
+            .await?;
+            audit_tx
+                .commit()
+                .await
+                .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+        }
         return handle_receipt_result(receipt);
     }
 
-    let row = domain_role_repository::update_domain_display_name(
+    // Revocation barrier (PR #42 review P1): re-lock the actor's principal
+    // and coordinator binding rows inside the write transaction; an
+    // authority revoked after the pool-level gate must not carry the write.
+    let still_coordinator = domain_role_repository::lock_and_check_coordinator(&mut tx, actor)
+        .await
+        .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+    if !still_coordinator {
+        return fail_receipt(
+            tx,
+            receipt,
+            CoordinatorControlPlaneError::NotDomainOwner,
+        )
+        .await;
+    }
+
+    let row = match domain_role_repository::update_domain_display_name(
         &mut tx,
         domain_id,
         display_name,
     )
     .await
-    .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+    {
+        Ok(row) => row,
+        // Expected business failure: complete + commit the receipt so the
+        // same key replays the stable 404 instead of minting a fresh attempt
+        // (CTR-CP-004; PR #42 review P2).
+        Err(ProvisioningError::DomainNotFound) => {
+            return fail_receipt(
+                tx,
+                receipt,
+                CoordinatorControlPlaneError::DomainNotFound,
+            )
+            .await
+        }
+        // Infrastructure failure: roll the transaction (and the receipt
+        // acquisition) back.
+        Err(e) => return Err(CoordinatorControlPlaneError::from_provisioning(e)),
+    };
 
     domain_role_repository::write_domain_audit(
         &mut tx,
@@ -473,6 +603,7 @@ pub async fn reconcile_plan(
         "no-op — blockers present".to_string()
     };
 
+    audit_read(pool, actor, "coordinator_reconcile_plan", Some(domain_id)).await?;
     Ok(serde_json::json!({
         "domainId": domain_id,
         "role": role,
@@ -535,10 +666,49 @@ pub async fn reconcile_apply(
     .map_err(CoordinatorControlPlaneError::from_provisioning)?;
 
     if !receipt.is_owned() {
+        // CTR-CP-004: the attempt trail covers replays too — record the
+        // attempt before returning the durable outcome (PR #42 review P1).
+        // The preimage transaction is committed FIRST: acquire_receipt holds
+        // a lock on the receipt row, and the attempt-audit insert takes an
+        // FK key-share on that same row, so writing it on a second
+        // connection before committing would self-deadlock.
         tx.commit()
             .await
             .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+        if let AcquireReceipt::Replay { .. } = receipt {
+            let mut audit_tx = pool
+                .begin()
+                .await
+                .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+            write_attempt_audit(
+                &mut audit_tx,
+                receipt.command_id(),
+                actor,
+                idempotency_key,
+                "replay",
+                &request_hash,
+            )
+            .await?;
+            audit_tx
+                .commit()
+                .await
+                .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+        }
         return handle_receipt_result(receipt);
+    }
+
+    // Revocation barrier (PR #42 review P1): same in-tx revalidation as
+    // domain.update — revoked authority must not commit.
+    let still_coordinator = domain_role_repository::lock_and_check_coordinator(&mut tx, actor)
+        .await
+        .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+    if !still_coordinator {
+        return fail_receipt(
+            tx,
+            receipt,
+            CoordinatorControlPlaneError::NotDomainOwner,
+        )
+        .await;
     }
 
     // Domain enabled gate (mirrors member management's step 1b).
@@ -562,15 +732,77 @@ pub async fn reconcile_apply(
     let (source_binding_id, source_enabled) = match source_binding {
         Some(pair) => pair,
         None => {
+            // A missing binding with a missing source principal is an
+            // identity miss (404), not a preimage conflict (PR #42 review
+            // P2: DEC-CP-007 / CTR-CP-003 — an absent exact UUID on either
+            // side returns identity_not_found).
+            let source_exists = domain_role_repository::check_principal_enabled_tx(
+                &mut tx,
+                from_principal_id,
+            )
+            .await
+            .map_err(CoordinatorControlPlaneError::from_provisioning)?
+            .is_some();
             return fail_receipt(
                 tx,
                 receipt,
-                CoordinatorControlPlaneError::BindingConflict,
+                if source_exists {
+                    CoordinatorControlPlaneError::BindingConflict
+                } else {
+                    CoordinatorControlPlaneError::IdentityNotFound
+                },
             )
-            .await
+            .await;
         }
     };
     if !source_enabled {
+        // Completed-migration recognition (CTR-CP-002 `already_applied`;
+        // PR #42 review P2): a NEW key repeating an already-applied
+        // reconciliation sees a disabled source binding, but the target now
+        // holds the enabled binding — return the stable business outcome
+        // instead of a 409.
+        if from_principal_id != to_principal_id {
+            let target_has_enabled =
+                domain_role_repository::check_has_role(&mut tx, domain_id, to_principal_id, role)
+                    .await
+                    .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+            if target_has_enabled {
+                domain_role_repository::write_binding_audit(
+                    &mut tx,
+                    actor,
+                    "binding_reconciled",
+                    domain_id,
+                    &serde_json::json!({
+                        "operation": "binding_reconciled",
+                        "actorPrincipalId": actor,
+                        "domainId": domain_id,
+                        "role": role,
+                        "fromPrincipalId": from_principal_id,
+                        "toPrincipalId": to_principal_id,
+                        "requestId": request_id,
+                        "reason": reason,
+                        "authorityBasis": "GLOBAL_WORKFLOW_COORDINATOR",
+                        "result": "already_applied",
+                    }),
+                )
+                .await
+                .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+                let response = serde_json::json!({
+                    "domainId": domain_id,
+                    "role": role,
+                    "fromPrincipalId": from_principal_id,
+                    "toPrincipalId": to_principal_id,
+                    "outcome": "already_applied",
+                });
+                complete_receipt(&mut tx, receipt.command_id(), 200, &response)
+                    .await
+                    .map_err(CoordinatorControlPlaneError::from_provisioning)?;
+                tx.commit()
+                    .await
+                    .map_err(|e| CoordinatorControlPlaneError::StorageError(e.to_string()))?;
+                return Ok(response);
+            }
+        }
         return fail_receipt(
             tx,
             receipt,

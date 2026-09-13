@@ -192,9 +192,11 @@ pub(crate) async fn check_domain_write_role(
            WHERE domain_id = $1 AND principal_id = $2
              AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)
          OR EXISTS(
-           SELECT 1 FROM global_role_bindings
-           WHERE principal_id = $2
-             AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND enabled = TRUE)",
+           SELECT 1 FROM global_role_bindings g
+           JOIN principals p ON p.principal_id = g.principal_id
+           WHERE g.principal_id = $2
+             AND g.role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND g.enabled = TRUE
+             AND p.enabled = TRUE)",
     )
     .bind(domain_id)
     .bind(actor)
@@ -613,8 +615,14 @@ pub(crate) async fn disable_role_binding_by_id(
     Ok(affected)
 }
 
-/// Establish an enabled role binding (plain INSERT — callers must have
-/// already ruled out an enabled duplicate or the UNIQUE index will fire).
+/// Establish an enabled role binding.
+///
+/// Upsert (PR #42 review P1): a disabled historical row for the same
+/// `(domain_id, principal_id, role_key)` — unique index from migration 0001 —
+/// is re-enabled in place instead of triggering a plain-INSERT unique
+/// violation. Enabled duplicates cannot be reached here: callers must have
+/// already ruled them out (and the DOMAIN_OWNER partial single-owner index
+/// backstops that invariant).
 pub(crate) async fn insert_role_binding(
     tx: &mut Transaction<'_, Postgres>,
     domain_id: Uuid,
@@ -624,7 +632,9 @@ pub(crate) async fn insert_role_binding(
     let binding_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
-         VALUES ($1, $2, $3, $4, TRUE)",
+         VALUES ($1, $2, $3, $4, TRUE)
+         ON CONFLICT (domain_id, principal_id, role_key) DO UPDATE
+         SET enabled = TRUE, disabled_at = NULL",
     )
     .bind(binding_id)
     .bind(domain_id)
@@ -634,6 +644,39 @@ pub(crate) async fn insert_role_binding(
     .await
     .map_err(storage)?;
     Ok(())
+}
+
+/// Revocation barrier (PR #42 review P1): lock the actor's principal row and
+/// coordinator binding rows FOR UPDATE and re-validate both inside the write
+/// transaction, so an authority revoked between the pool-level gate and the
+/// commit barrier cannot carry the write.
+///
+/// Returns `Err(PrincipalDisabled)` when the principal is missing or
+/// disabled, `Err(NotDomainOwner-equivalent)` shape via `Ok(false)` when no
+/// enabled coordinator binding remains.
+pub(crate) async fn lock_and_check_coordinator(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+) -> Result<bool, ProvisioningError> {
+    let principal_enabled: Option<bool> =
+        sqlx::query_scalar("SELECT enabled FROM principals WHERE principal_id = $1 FOR UPDATE")
+            .bind(actor)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(storage)?;
+    if principal_enabled != Some(true) {
+        return Err(ProvisioningError::PrincipalDisabled);
+    }
+    let binding_rows: Vec<bool> = sqlx::query_scalar(
+        "SELECT enabled FROM global_role_bindings
+         WHERE principal_id = $1 AND role_key = 'GLOBAL_WORKFLOW_COORDINATOR'
+         FOR UPDATE",
+    )
+    .bind(actor)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(storage)?;
+    Ok(binding_rows.contains(&true))
 }
 
 /// Write a binding-reconciliation audit row (`resource_type =

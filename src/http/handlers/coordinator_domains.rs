@@ -169,10 +169,19 @@ impl From<CoordinatorControlPlaneError> for ApiError {
             .status_code()
             .try_into()
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        match error.detail() {
-            Some(detail) => ApiError::new(status, error.label(), detail.to_string().leak()),
-            None => ApiError::new(status, error.label(), "coordinator control-plane error"),
+        // CTR-CP-003: never publish dynamic storage/SQL detail on the wire;
+        // the static label + fixed message go out, dynamic detail only to
+        // logs (also removes the unbounded String::leak retention that let
+        // authenticated callers grow process memory via repeated failures —
+        // PR #42 review P2).
+        if let Some(detail) = error.detail() {
+            tracing::error!(
+                code = error.label(),
+                detail = %detail,
+                "coordinator control-plane error (detail redacted from response)"
+            );
         }
+        ApiError::new(status, error.label(), "coordinator control-plane error")
     }
 }
 
@@ -301,13 +310,17 @@ pub(crate) async fn get_domain_owner(
 
 /// POST /internal/v1/domains/{domainId}/binding-reconcile/plan — read-only
 /// reconciliation judgment (coordinator-only).
+///
+/// Scope is `workflow.execute` per DEC-CP-009 (N5): the plan enumerates
+/// cross-domain principal existence/enabled/binding state, so it is NOT
+/// part of the `workflow.read` read surface (PR #42 review P1).
 pub(crate) async fn binding_reconcile_plan(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
     Path(domain_id): Path<Uuid>,
     payload: Result<Json<BindingReconcileRequest>, JsonRejection>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    require_scope(&principal, "workflow.read")?;
+    require_scope(&principal, "workflow.execute")?;
     require_direct_token(&principal)?;
     require_global_coordinator(&state, &principal).await?;
 
