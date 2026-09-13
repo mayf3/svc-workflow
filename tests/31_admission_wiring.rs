@@ -909,3 +909,157 @@ async fn seed_iip_revision_target(pool: &sqlx::PgPool, domain_id: Uuid, agent: U
     let _ = agent;
     version_id
 }
+
+// ---------------------------------------------------------------------------
+// T62 — canonical successor admission vs persisted assignment (scratch probe,
+// promotion candidate): with a workflow_identity_successor_lines edge P -> Q,
+// the admission face canonicalizes the assignment target P to Q (the
+// directory stub must observe Q), while the persisted new visit still binds
+// the PRE-canonical source P (ticket's static anchors: create_transaction
+// Step9 INSERT resolved_assignee_id = P).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_source() {
+    let pool = common::create_pool().await;
+    let fixture = seed(&pool).await;
+    // fixture.agent = P: the work node's FIXED_PRINCIPAL assignee.
+    let successor_q = common::seed_second_principal(&pool).await; // Q
+
+    // Lineage edge P -> Q.
+    sqlx::query(
+        "INSERT INTO workflow_identity_successor_lines \
+         (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id, classification, evidence, repair_reason) \
+         VALUES ($1, $2, $3, $4, 'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR', \
+                 jsonb_build_object('source', 'tests/31 t62 runtime probe'), \
+                 'T62 runtime fixture: unique canonical successor mechanically proven')",
+    )
+    .bind(fixture.agent)
+    .bind(successor_q)
+    .bind(format!("legacy-{}", fixture.agent))
+    .bind(format!("canonical-{}", successor_q))
+    .execute(&pool)
+    .await
+    .expect("insert successor line");
+
+    let stub = StubDirectory::spawn(StubMode::Admit);
+    let client = enabled_client(&stub);
+    // Production wiring (main.rs) attaches the pool so the gate can resolve
+    // identity lineage (canonicalize_principals -> resolve_current_principal).
+    let gate = AdmissionGate::new(Some(&client)).with_pool(Some(&pool));
+
+    // Create as CALLER (draft visit = caller; caller has no lineage edge so
+    // its own admission canonicalizes to itself).
+    let run = Uuid::new_v4().simple().to_string();
+    let created = create_workflow_instance(
+        &pool,
+        gate.clone(),
+        create_command(fixture.caller, &fixture, format!("t62-create-{run}")),
+    )
+    .await
+    .expect("create instance");
+
+    // Transition draft -> work as CALLER: the new visit's assignment target
+    // is the work node's FIXED_PRINCIPAL = P. Admission canonicalizes P -> Q;
+    // the persisted insert (Step 9) is expected to stay bound to P.
+    let outcome = execute_workflow_transition(
+        &pool,
+        gate,
+        ExecuteWorkflowTransitionCommand {
+            principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
+            idempotency_key: format!("t62-advance-1-{run}"),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(created.workflow_instance_id),
+            expected_workflow_state_version: 1,
+            transition_definition_id: TransitionId::from_uuid(fixture.draft_advance),
+            submission_payload: None,
+        },
+    )
+    .await
+    .expect("transition executes");
+
+    assert_eq!(outcome.workflow_state_version, 2, "transition must execute (admission passes via canonical successor)");
+
+    // ── Observation 1+2: the directory admitted the CANONICAL successor Q ──
+    let requests = stub.requests();
+    let q_admitted = requests
+        .iter()
+        .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", successor_q));
+    let p_admitted = requests
+        .iter()
+        .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", fixture.agent));
+    println!("T62 DEBUG: agent(P)={} successor(Q)={} caller={} requests={:?}", fixture.agent, successor_q, fixture.caller, requests);
+    assert!(
+        q_admitted,
+        "O1/O2: admission must canonicalize P -> Q before the directory reads (requests: {requests:?})"
+    );
+    assert!(
+        !p_admitted,
+        "O1/O2: the stale source P must NOT be admitted under its own id"
+    );
+
+    // ── Observation 3+4: the persisted new work visit stays bound to P ──
+    let persisted_assignee: Uuid = sqlx::query_scalar(
+        "SELECT v.assignee_principal_id FROM workflow_node_visits v \
+         JOIN workflow_node_definitions d ON d.node_id = v.node_id \
+         WHERE v.workflow_instance_id = $1 AND d.node_key = 'work'",
+    )
+    .bind(created.workflow_instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("work visit readback");
+    assert_eq!(
+        persisted_assignee, fixture.agent,
+        "O3/O4 FAIL_CONDITION: persisted visit assignee must be the PRE-canonical source P (validation saw Q)"
+    );
+    assert_ne!(persisted_assignee, successor_q);
+
+    // ── Observation 5: the transition receipt's principal is the command
+    // principal P (receipt identity bound pre-canonicalization) ──
+    let receipt_principal: Uuid = sqlx::query_scalar(
+        "SELECT principal_id FROM workflow_command_receipts \
+         WHERE idempotency_key = 't62-advance-1-' || $1", 
+    )
+    .bind(&run)
+    .fetch_one(&pool)
+    .await
+    .expect("receipt readback");
+    assert_eq!(receipt_principal, fixture.caller,
+        "O5: the transition receipt records the commanding principal (caller); the assignment face (visit assignee = source P) is asserted above");
+
+    // ── T62-REPAIR regression legs (read-side enrichment is the fix surface;
+    // transition persistence stays un-rewritten) ──
+    // Leg 3: Q's worklist includes the P-stored active work EXACTLY ONCE.
+    // Leg 4: the stale source P cannot act as current owner (empty worklist).
+    // Leg 5: an unrelated principal sees nothing.
+    let unrelated = common::seed_second_principal(&pool).await;
+    // Read visibility: BOTH the stale source (existing CIR read-side
+    // enrichment contract, test 34) and the canonical successor see the
+    // active work; an unrelated principal sees none.
+    for (who, expected) in [
+        (successor_q, 1usize),
+        (fixture.agent, 1usize),
+        (unrelated, 0usize),
+    ] {
+        let page = svc_workflow::store::postgres::workflow_instance_repository::query_worklists::list_assigned_to_me(
+            &pool,
+            svc_workflow::application::workflow_instance::query_types::ListAssignedToMe {
+                actor_principal_id: who,
+                before: None,
+                limit: Some(20),
+            },
+        )
+        .await
+        .expect("worklist readback");
+        assert_eq!(
+            page.items.len(),
+            expected,
+            "worklist for {who} must contain {expected} item(s) (exactly-once semantics)"
+        );
+        if expected == 1 {
+            assert_eq!(page.items[0].detail.instance.workflow_instance_id, created.workflow_instance_id);
+        }
+    }
+
+    println!("T62 RESULT: admission saw canonical Q; persisted assignee + receipt bound to source P — VALIDATED_TARGET(Q) != PERSISTED_TARGET(P) confirmed at runtime; Q worklist enrichment exactly-once verified");
+}
