@@ -310,6 +310,34 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     // WORKFLOW_DATA_HYGIENE_V1 M1B: the 4 test fixtures are exactly this shape
     // (census 2026-09-10); widening cancel here reuses the existing endpoint,
     // authority and receipt machinery instead of a new disposition surface.
+    //
+    // FAIL-CLOSED runtime-fact invariant (M1B r2, Owner ruling): a dangling
+    // instance may only be cancelled while it has NO open runtime fact — no
+    // open visit activation, no open dispatch intent, no open human work
+    // item (all three are rows in workflow_activations closed via
+    // workflow_activation_closures; a work item IS a workflow activation per
+    // Product Boundary V7). If any open runtime fact exists, the instance is
+    // not dangling-but-dead — it is live without a current visit — and cancel
+    // must refuse without touching the instance or its runtime facts.
+    if current_node_visit_id.is_none() {
+        let open_runtime_fact: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+               SELECT 1 FROM workflow_activations a
+               LEFT JOIN workflow_activation_closures c
+                 ON c.activation_id = a.activation_id
+               WHERE a.workflow_instance_id = $1
+                 AND c.activation_id IS NULL)",
+        )
+        .bind(instance_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(storage)?;
+        if open_runtime_fact {
+            return Err(CancelWorkflowInstanceError::InternalConsistency(
+                "dangling instance has an open runtime fact (activation/dispatch intent/work item) — fail-closed, cancel refused".to_string(),
+            ));
+        }
+    }
     let source_visit_id: Option<Uuid> = current_node_visit_id;
 
     let node_key = current_node_key.unwrap_or_default();

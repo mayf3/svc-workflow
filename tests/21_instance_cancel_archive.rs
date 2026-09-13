@@ -1214,3 +1214,221 @@ async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
         "archived_at must be written exactly once"
     );
 }
+
+// ============================================================================
+// M1B r2: dangling-instance cancel (current_node_visit_id IS NULL) with the
+// fail-closed runtime-fact invariant — discriminating tests A/B/C
+// ============================================================================
+
+/// Fixture: shape an instance into the dangling form. Test-only direct SQL —
+/// production has no dangling producer by design (M1B census: legacy import).
+/// workflow_node_visits is append-only (immutable trigger), so the historical
+/// visit rows stay; the dangling判定 itself keys on
+/// workflow_instances.current_node_visit_id IS NULL, exactly like production.
+async fn make_dangling(pool: &PgPool, instance_id: Uuid) -> Uuid {
+    let (visit_id,): (Uuid,) = sqlx::query_as(
+        "SELECT current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(pool)
+    .await
+    .expect("read current visit before dangling");
+    sqlx::query("UPDATE workflow_instances SET current_node_visit_id = NULL WHERE workflow_instance_id = $1")
+        .bind(instance_id)
+        .execute(pool)
+        .await
+        .expect("null current visit");
+    sqlx::query("DELETE FROM workflow_activations WHERE workflow_instance_id = $1")
+        .bind(instance_id)
+        .execute(pool)
+        .await
+        .expect("drop activations");
+    visit_id
+}
+
+#[sqlx::test]
+async fn m1b_a_dangling_cancel_succeeds_exactly_once(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+
+    let result = cancel_workflow_instance(
+        &pool,
+        CancelWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "m1b-a-cancel".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: state_ver,
+            reason: "duplicate_instance".to_string(),
+        },
+        &req_hash("m1b-a-cancel"),
+    )
+    .await
+    .expect("dangling cancel without open runtime facts should succeed");
+
+    assert!(!result.replayed);
+
+    // same-IK replay → exactly-once (replayed=true, no second event)
+    let replay = cancel_workflow_instance(
+        &pool,
+        CancelWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "m1b-a-cancel".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: 0,
+            reason: "duplicate_instance".to_string(),
+        },
+        &req_hash("m1b-a-cancel"),
+    )
+    .await
+    .expect("same-IK replay should replay the receipt");
+    assert!(replay.replayed, "replay must be flagged");
+
+    let (cancelled,): (bool,) = sqlx::query_as(
+        "SELECT cancelled FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("instance readback");
+    assert!(cancelled);
+
+    let (event_count, null_source_count): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*), COUNT(*) FILTER (WHERE source_node_visit_id IS NULL) \
+         FROM workflow_events \
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("event readback");
+    assert_eq!(event_count, 1, "exactly one CANCELLED event");
+    assert_eq!(null_source_count, 1, "event source_node_visit_id must be NULL");
+}
+
+#[sqlx::test]
+async fn m1b_b_dangling_with_open_runtime_fact_refused(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    let visit_id = make_dangling(&pool, instance_id).await;
+
+    // open runtime fact: an unclosed DISPATCH_INTENT activation (node_visit_id
+    // NOT NULL — the activation references the historical visit row)
+    sqlx::query(
+        "INSERT INTO workflow_activations \
+         (activation_id, workflow_instance_id, node_visit_id, activation_kind, owner_principal_id, activation_at, initial_next_eligible_at, command_id) \
+         VALUES ($1, $2, $4, 'DISPATCH_INTENT', $3, now(), now(), $5)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(instance_id)
+    .bind(owner_id)
+    .bind(visit_id)
+    .bind(Uuid::new_v4())
+    .bind(Uuid::new_v4())
+    .bind(instance_id)
+    .bind(owner_id)
+    .execute(&pool)
+    .await
+    .expect("seed open activation");
+
+    let err = cancel_workflow_instance(
+        &pool,
+        CancelWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "m1b-b-cancel".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: state_ver,
+            reason: "duplicate_instance".to_string(),
+        },
+        &req_hash("m1b-b-cancel"),
+    )
+    .await
+    .expect_err("dangling cancel with open runtime fact must fail closed");
+
+    assert!(
+        matches!(err, CancelWorkflowInstanceError::InternalConsistency(_)),
+        "fail-closed error expected, got: {err:?}"
+    );
+
+    // instance unchanged
+    let (cancelled,): (bool,) = sqlx::query_as(
+        "SELECT cancelled FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("instance readback");
+    assert!(!cancelled, "instance must be unchanged");
+
+    // runtime fact unchanged (still open)
+    let (open_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_activations a \
+         LEFT JOIN workflow_activation_closures c ON c.activation_id = a.activation_id \
+         WHERE a.workflow_instance_id = $1 AND c.activation_id IS NULL",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("activation readback");
+    assert_eq!(open_count, 1, "open runtime fact must be unchanged");
+
+    // no cancel event
+    let (event_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_events \
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("event readback");
+    assert_eq!(event_count, 0, "no CANCELLED event on fail-closed refusal");
+}
+
+#[sqlx::test]
+async fn m1b_c_normal_cancel_unregressed(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+
+    // current visit present (normal shape) — original cancel behavior intact
+    let (visit_present,): (bool,) = sqlx::query_as(
+        "SELECT current_node_visit_id IS NOT NULL FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("instance readback");
+    assert!(visit_present, "fixture must be the normal (non-dangling) shape");
+
+    let result = cancel_workflow_instance(
+        &pool,
+        CancelWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: "m1b-c-cancel".to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: state_ver,
+            reason: "duplicate_instance".to_string(),
+        },
+        &req_hash("m1b-c-cancel"),
+    )
+    .await
+    .expect("normal cancel must keep working (no regression)");
+
+    assert!(!result.replayed);
+
+    let (event_source,): (Option<Uuid>,) = sqlx::query_as(
+        "SELECT source_node_visit_id FROM workflow_events \
+         WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .expect("event readback");
+    assert!(event_source.is_some(), "normal cancel event binds the source visit");
+}
