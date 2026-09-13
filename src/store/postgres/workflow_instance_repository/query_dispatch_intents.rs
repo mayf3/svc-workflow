@@ -116,6 +116,7 @@ pub(crate) async fn list_due_dispatch_intents(
            AND wi.cancelled = FALSE
            AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM workflow_instance_successor_cutovers sc WHERE sc.source_instance_id = wi.workflow_instance_id)
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
                       FROM workflow_dispatch_eligibility_events e
@@ -163,6 +164,7 @@ pub(crate) async fn list_due_dispatch_intents(
            AND wi.cancelled = FALSE
            AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM workflow_instance_successor_cutovers sc WHERE sc.source_instance_id = wi.workflow_instance_id)
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
                       FROM workflow_dispatch_eligibility_events e

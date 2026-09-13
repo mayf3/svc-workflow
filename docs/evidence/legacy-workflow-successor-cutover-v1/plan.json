@@ -1,0 +1,54 @@
+{
+  "schema": "legacy_workflow_successor_cutover_plan_v1",
+  "commandFamily": "LEGACY_WORKFLOW_SUCCESSOR_CUTOVER_V1",
+  "databaseName": "svc_workflow_dogfood_clean",
+  "sourceDefinitionVersionId": "3b4f4187-f20c-44ab-b2ef-d293d3e317ab",
+  "successorDefinitionVersionId": "6d5c3752-3031-48fe-b953-843ca22b477f",
+  "successorVersionNumber": 5,
+  "successorDefinitionDigest": "22079916eb3856726ecc16b70e4151374cb10e66709e894df4bbb6e90b230ff5",
+  "successorModel": 1,
+  "targetNodeIds": {
+    "dispatch": "fc1d36c1-e807-41b3-83b9-3adc8886cfe3",
+    "publishing": "ca7670f5-a2d0-4037-ae5a-96b5ff5faa4b",
+    "verify": "338d3dd7-8f92-4b4c-a0b5-9669b998dc5a",
+    "done": "b145e194-7ffd-428f-9f7e-df0b0eaad9df"
+  },
+  "targetTransitionIds": {
+    "advanceToPublishing": "b6e9a5bd-d38b-4be5-86b7-fadc929fdb63",
+    "advanceToVerify": "21d23e3d-0238-4a71-8d5d-1b035943e64f",
+    "verified": "a809a637-97a5-4261-a0e0-b1bae78a1209",
+    "verifyFailed": "1190c2eb-464a-42c2-bc7b-1c7624a75cbc"
+  },
+  "publisherPrincipal": "8b44befd-934e-48cd-afac-31ed981fb732",
+  "operatorPrincipal": "271876c1-5bc9-4902-855d-68bf5c99eccb",
+  "successorCreatorPrincipal": "d5b3aeb2-e754-49a9-9914-b963521c0985",
+  "rows": [
+    {
+      "sourceInstanceId": "92af02be-e727-46e8-8fab-bddb7a45b3da",
+      "sourceExpectedStateVersion": 7,
+      "sourceExpectedCurrentVisit": "4a0be150-8399-5201-8917-76aa351fb710",
+      "sourceExpectedContextRevision": "8f6c4b0c-2502-4a97-803d-b85c8496cd4a",
+      "sourceExpectedContext": {"title":"Agent 一直用我的身份干活，直到我花两天做了权限隔离","platform":"CSDN","sourceUrl":"https://github.com/mayf3/blog/blob/master/content/post/2026-08-15-agent-permission-isolation.md","parentInstanceId":"d78b0c5e-70bc-4cd1-8ddc-2977dbe99db8","sourceArtifactRef":"/Users/yanfenma/.openclaw/groups/workspace-oc_f2a6606689691fd7f0a7c7078a0bf2e9/daily-thoughts/raw/2026-08-10.md + 2026-08-11.md","operator_principal":"aed2c679-71c0-4e23-8d73-c448c5ea6dd2","publisher_principal":"d2bec623-56ba-46cb-a217-933cfe63a243"},
+      "sourceExpectedVisitCount": 7, "sourceExpectedEventCount": 7, "sourceExpectedContextCount": 1,
+      "successorInstanceId": "c6fd87e3-119f-40ac-a5e6-ef78c358707a", "successorInitialVisitId": "3c44abe4-324f-4780-b9d6-948b9fa85d28", "successorContextRevisionId": "b36d1df0-4961-45bd-a604-3f9d4d44408b", "successorEventId": "944cf6fa-09bb-4690-bf86-476b82674097", "commandId": "4a6455d0-5727-4861-849d-d70e4a7a0772", "sourceClosureFact": "CIR_CANONICAL_SUCCESSOR"
+    },
+    {
+      "sourceInstanceId": "6ca15ad1-3e1d-4773-88a7-206b8c6602e9", "sourceExpectedStateVersion": 3, "sourceExpectedCurrentVisit": "a99be782-e6b6-5e97-8fcc-da95e503a8e1", "sourceExpectedContextRevision": "45cde356-cb8e-4ec6-843e-a1a144773a8a",
+      "sourceExpectedContext": {"title":"快调通 Agent 内核时，DeepSeek 把我的轮子开源了","platform":"知乎","sourceUrl":"https://github.com/mayf3/blog/blob/master/content/post/2026-08-15-deepseek-harness-collision.md","parentInstanceId":"0a3e1f54-01e6-4af4-a3fc-ca3e32117159","sourceArtifactRef":"/Users/yanfenma/.openclaw/groups/workspace-oc_f2a6606689691fd7f0a7c7078a0bf2e9/daily-thoughts/raw/2026-08-14.md","operator_principal":"aed2c679-71c0-4e23-8d73-c448c5ea6dd2","publisher_principal":"d2bec623-56ba-46cb-a217-933cfe63a243"},
+      "sourceExpectedVisitCount": 3, "sourceExpectedEventCount": 3, "sourceExpectedContextCount": 1,
+      "successorInstanceId": "8990469e-e1f8-406c-951d-c6abe614766c", "successorInitialVisitId": "e6c13b0f-a6d7-446f-a15b-3a52622a2df0", "successorContextRevisionId": "fd37dd36-b04b-4a9a-93d9-0c41b4747786", "successorEventId": "37a7bbf6-887a-4ea4-a985-db1adc1d9e65", "commandId": "7136b675-7d79-4a0a-bb21-77e107268b68", "sourceClosureFact": "CIR_CANONICAL_SUCCESSOR"
+    },
+    {
+      "sourceInstanceId": "9bac385a-fed2-42be-ac58-50cff7b42c4a", "sourceExpectedStateVersion": 3, "sourceExpectedCurrentVisit": "cdbebad9-e48c-51b0-939a-4d3a5ab56eec", "sourceExpectedContextRevision": "2e37845e-91b5-4725-8f15-d997a8c37466",
+      "sourceExpectedContext": {"title":"快调通 Agent 内核时，DeepSeek 把我的轮子开源了","platform":"掘金","sourceUrl":"https://github.com/mayf3/blog/blob/master/content/post/2026-08-15-deepseek-harness-collision.md","parentInstanceId":"0a3e1f54-01e6-4af4-a3fc-ca3e32117159","sourceArtifactRef":"/Users/yanfenma/.openclaw/groups/workspace-oc_f2a6606689691fd7f0a7c7078a0bf2e9/daily-thoughts/raw/2026-08-14.md","operator_principal":"aed2c679-71c0-4e23-8d73-c448c5ea6dd2","publisher_principal":"d2bec623-56ba-46cb-a217-933cfe63a243"},
+      "sourceExpectedVisitCount": 3, "sourceExpectedEventCount": 3, "sourceExpectedContextCount": 1,
+      "successorInstanceId": "e27da786-c516-403b-8d28-5c89671f0d45", "successorInitialVisitId": "e41aadfc-1f06-4376-bd45-7a1e166768a3", "successorContextRevisionId": "4b8e73cb-b359-4fb4-9132-6930f9bd2046", "successorEventId": "bf39f117-9024-4d99-ae8f-cbb0fb906d3f", "commandId": "a0fdcc59-e152-4c73-b197-6be78aea6cdd", "sourceClosureFact": "CIR_CANONICAL_SUCCESSOR"
+    },
+    {
+      "sourceInstanceId": "ff244e92-e2cd-4da8-a51e-1aa87e52dafd", "sourceExpectedStateVersion": 3, "sourceExpectedCurrentVisit": "50ebe8c5-28e6-5092-9e3f-c7c56c63e24e", "sourceExpectedContextRevision": "feeded40-e5e8-4e47-a9c5-d3af77cde02f",
+      "sourceExpectedContext": {"title":"快调通 Agent 内核时，DeepSeek 把我的轮子开源了","platform":"CSDN","sourceUrl":"https://github.com/mayf3/blog/blob/master/content/post/2026-08-15-deepseek-harness-collision.md","parentInstanceId":"0a3e1f54-01e6-4af4-a3fc-ca3e32117159","sourceArtifactRef":"/Users/yanfenma/.openclaw/groups/workspace-oc_f2a6606689691fd7f0a7c7078a0bf2e9/daily-thoughts/raw/2026-08-14.md","operator_principal":"aed2c679-71c0-4e23-8d73-c448c5ea6dd2","publisher_principal":"d2bec623-56ba-46cb-a217-933cfe63a243"},
+      "sourceExpectedVisitCount": 3, "sourceExpectedEventCount": 3, "sourceExpectedContextCount": 1,
+      "successorInstanceId": "3cb2689b-ef32-44ed-a4f0-827de8a08203", "successorInitialVisitId": "c1215f11-5a39-48c5-8843-f52a204e9bab", "successorContextRevisionId": "4b1282be-86f4-4c19-ac4b-ad2835f682f6", "successorEventId": "48ddff1c-7c58-4302-9b9e-badcb273541f", "commandId": "ecc2e22f-df45-49ae-a641-e1687dfc6118", "sourceClosureFact": "CIR_CANONICAL_SUCCESSOR"
+    }
+  ]
+}
