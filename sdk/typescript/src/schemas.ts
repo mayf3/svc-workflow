@@ -284,6 +284,18 @@ export const worklistQuerySchema = z
     'beforeCreatedAt and beforeId must be provided together',
   );
 
+// Work eligibility classification (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1,
+// adjacently tagged): dispatchable now, or waiting with the effective instant.
+export const workEligibilitySchema = z.discriminatedUnion('classification', [
+  z.object({ classification: z.literal('ACTIONABLE_NOW') }).strict(),
+  z
+    .object({
+      classification: z.literal('WAITING_FOR_TIME'),
+      nextEligibleAt: dateTimeSchema,
+    })
+    .strict(),
+]);
+
 export const domainInstanceSummarySchema = z
   .object({
     workflow_instance_id: uuidSchema,
@@ -292,7 +304,10 @@ export const domainInstanceSummarySchema = z
     definition_key: z.string(),
     created_by_principal_id: uuidSchema,
     current_assignee_principal_id: uuidSchema.nullable(),
+    current_assignee_canonical_agent_id: z.string().nullable(),
+    execution_class: z.enum(['BUSINESS', 'NON_BUSINESS_TEST']),
     current_node: publicNodeSummarySchema,
+    eligibility: workEligibilitySchema,
     is_terminal: z.boolean(),
     title: z.string().nullable(),
     created_at: dateTimeSchema,
