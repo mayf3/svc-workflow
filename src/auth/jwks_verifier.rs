@@ -70,6 +70,11 @@ pub struct JwksVerifier {
     cache_ttl: Duration,
     max_stale: Duration,
     refresh_lock: Arc<Mutex<()>>,
+    /// Negative-result memory (T70): kid -> instant the refresh confirmed the
+    /// kid absent. Prevents concurrent unknown-kid storms from re-fetching.
+    kid_misses: Arc<Mutex<std::collections::HashMap<String, std::time::Instant>>>,
+    /// How long a "kid still absent" negative result is trusted.
+    kid_miss_ttl: Duration,
     issuer: String,
     audience: String,
     clock_skew_seconds: u64,
@@ -96,6 +101,8 @@ impl JwksVerifier {
             cache_ttl: Duration::from_secs(config.cache_ttl_secs),
             max_stale: Duration::from_secs(config.max_stale_secs),
             refresh_lock: Arc::new(Mutex::new(())),
+            kid_misses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            kid_miss_ttl: Duration::from_secs(30),
             issuer: config.issuer.clone(),
             audience: config.audience.clone(),
             clock_skew_seconds: config.clock_skew_seconds,
@@ -486,6 +493,18 @@ impl JwksVerifier {
     async fn refresh_and_find(&self, kid: &str) -> Result<DecodingKey, ()> {
         let _lock = self.refresh_lock.lock().await;
 
+        // T70 negative-result memory: if a recent refresh confirmed this kid
+        // absent, do not re-fetch — the concurrent unknown-kid storm shares
+        // the one negative result until the memory expires.
+        {
+            let mut misses = self.kid_misses.lock().await;
+            if let Some(when) = misses.get(kid) {
+                if when.elapsed() <= self.kid_miss_ttl {
+                    return Err(());
+                }
+            }
+        }
+
         // Double-check after acquiring lock — only a fresh cache may short
         // circuit. A stale cache must pass through fetch_jwks so fetched_at
         // advances and readiness (is_ready) can recover.
@@ -505,8 +524,19 @@ impl JwksVerifier {
         let guard = self.cache.read().await;
         match guard.as_ref() {
             Some(state) => match find_key(&state.keys, kid) {
-                Some(key) => Ok(key),
-                None => Err(()),
+                Some(key) => {
+                    self.kid_misses.lock().await.remove(kid);
+                    Ok(key)
+                }
+                None => {
+                    // Refresh confirmed the kid still absent — record the
+                    // negative result so waiters share it (T70).
+                    self.kid_misses
+                        .lock()
+                        .await
+                        .insert(kid.to_string(), std::time::Instant::now());
+                    Err(())
+                }
             },
             None => Err(()),
         }
@@ -606,6 +636,8 @@ impl Clone for JwksVerifier {
             cache_ttl: self.cache_ttl,
             max_stale: self.max_stale,
             refresh_lock: self.refresh_lock.clone(),
+            kid_misses: self.kid_misses.clone(),
+            kid_miss_ttl: self.kid_miss_ttl,
             issuer: self.issuer.clone(),
             audience: self.audience.clone(),
             clock_skew_seconds: self.clock_skew_seconds,
