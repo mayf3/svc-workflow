@@ -16,7 +16,7 @@
 //! owner swap.
 
 use axum::extract::rejection::JsonRejection;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use uuid::Uuid;
@@ -153,3 +153,221 @@ pub(crate) async fn set_domain_owner(
         Err(e) => Err(ApiError::from_provisioning(e)),
     }
 }
+
+// ---------------------------------------------------------------------------
+// SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 — control-plane surfaces
+// ---------------------------------------------------------------------------
+
+use crate::application::coordinator_control_plane::{
+    self, CoordinatorControlPlaneError,
+};
+use crate::http::dto::{BindingReconcileRequest, UpdateDomainRequest};
+
+impl From<CoordinatorControlPlaneError> for ApiError {
+    fn from(error: CoordinatorControlPlaneError) -> Self {
+        let status = error
+            .status_code()
+            .try_into()
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        // CTR-CP-003: never publish dynamic storage/SQL detail on the wire;
+        // the static label + fixed message go out, dynamic detail only to
+        // logs (also removes the unbounded String::leak retention that let
+        // authenticated callers grow process memory via repeated failures —
+        // PR #42 review P2).
+        if let Some(detail) = error.detail() {
+            tracing::error!(
+                code = error.label(),
+                detail = %detail,
+                "coordinator control-plane error (detail redacted from response)"
+            );
+        }
+        ApiError::new(status, error.label(), "coordinator control-plane error")
+    }
+}
+
+fn request_id_of(headers: &axum::http::HeaderMap) -> &str {
+    headers.get("x-request-id").and_then(|v| v.to_str().ok()).unwrap_or("-")
+}
+
+/// GET /internal/v1/domains — keyset-paged governance metadata list.
+pub(crate) async fn list_domains(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Query(query): Query<DomainListQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    require_direct_token(&principal)?;
+    require_global_coordinator(&state, &principal).await?;
+
+    let limit = query.limit.unwrap_or(20).min(100);
+    let before_created_at: Option<chrono::DateTime<chrono::Utc>> = query
+        .before_created_at
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map_err(|_| {
+                    ApiError::unprocessable(
+                        "invalid_cursor",
+                        "beforeCreatedAt must be an RFC 3339 timestamp",
+                    )
+                })
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .transpose()?;
+    if before_created_at.is_some() != query.before_id.is_some() {
+        return Err(ApiError::unprocessable(
+            "invalid_cursor",
+            "beforeCreatedAt and beforeId must be provided together",
+        ));
+    }
+
+    let body = coordinator_control_plane::list_domains(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        before_created_at,
+        query.before_id,
+        limit,
+    )
+    .await?;
+    Ok(Json(body))
+}
+
+/// Query DTO for the domain list (keyset cursor).
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DomainListQuery {
+    pub before_created_at: Option<String>,
+    pub before_id: Option<Uuid>,
+    pub limit: Option<u32>,
+}
+
+/// GET /internal/v1/domains/{domainId} — one domain's governance metadata.
+pub(crate) async fn get_domain(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(domain_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    require_direct_token(&principal)?;
+    require_global_coordinator(&state, &principal).await?;
+
+    let body = coordinator_control_plane::get_domain(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        domain_id,
+    )
+    .await?;
+    Ok(Json(body))
+}
+
+/// PATCH /internal/v1/domains/{domainId} — displayName-only governance
+/// update (receipt command type `domain.update`).
+pub(crate) async fn update_domain(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    headers: axum::http::HeaderMap,
+    Path(domain_id): Path<Uuid>,
+    payload: Result<Json<UpdateDomainRequest>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.execute")?;
+    require_direct_token(&principal)?;
+    require_global_coordinator(&state, &principal).await?;
+
+    let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
+    let key = idempotency_key(&headers)?;
+    let request_id = request_id_of(&headers).to_string();
+
+    let body = coordinator_control_plane::update_domain(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        domain_id,
+        &req.display_name,
+        &key,
+        &request_id,
+    )
+    .await?;
+    Ok(Json(body))
+}
+
+/// GET /internal/v1/domains/{domainId}/owner — coordinator OR the domain's
+/// own enabled owner; 404 `domain_owner_missing` when absent.
+pub(crate) async fn get_domain_owner(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(domain_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    require_direct_token(&principal)?;
+
+    let body = coordinator_control_plane::get_domain_owner(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        domain_id,
+    )
+    .await?;
+    Ok(Json(body))
+}
+
+/// POST /internal/v1/domains/{domainId}/binding-reconcile/plan — read-only
+/// reconciliation judgment (coordinator-only).
+///
+/// Scope is `workflow.execute` per DEC-CP-009 (N5): the plan enumerates
+/// cross-domain principal existence/enabled/binding state, so it is NOT
+/// part of the `workflow.read` read surface (PR #42 review P1).
+pub(crate) async fn binding_reconcile_plan(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(domain_id): Path<Uuid>,
+    payload: Result<Json<BindingReconcileRequest>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.execute")?;
+    require_direct_token(&principal)?;
+    require_global_coordinator(&state, &principal).await?;
+
+    let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
+    let body = coordinator_control_plane::reconcile_plan(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        domain_id,
+        &req.role,
+        req.from_principal_id,
+        req.to_principal_id,
+        &req.reason,
+    )
+    .await?;
+    Ok(Json(body))
+}
+
+/// POST /internal/v1/domains/{domainId}/binding-reconcile/apply — atomic
+/// binding migration behind exact-preimage re-assertion (receipt command
+/// type `domain.binding_reconcile`).
+pub(crate) async fn binding_reconcile_apply(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    headers: axum::http::HeaderMap,
+    Path(domain_id): Path<Uuid>,
+    payload: Result<Json<BindingReconcileRequest>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.execute")?;
+    require_direct_token(&principal)?;
+    require_global_coordinator(&state, &principal).await?;
+
+    let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
+    let key = idempotency_key(&headers)?;
+    let request_id = request_id_of(&headers).to_string();
+
+    let body = coordinator_control_plane::reconcile_apply(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        domain_id,
+        &req.role,
+        req.from_principal_id,
+        req.to_principal_id,
+        &req.reason,
+        &key,
+        &request_id,
+    )
+    .await?;
+    Ok(Json(body))
+}
+

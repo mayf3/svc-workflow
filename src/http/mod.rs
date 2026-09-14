@@ -15,6 +15,7 @@ use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, StatusCode};
 use axum::middleware;
+use axum::handler::Handler;
 use axum::routing::{delete, get, post, put};
 use axum::{BoxError, Router};
 use tower::ServiceBuilder;
@@ -161,17 +162,55 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         // GLOBAL_WORKFLOW_COORDINATOR domain management (agent-facing,
         // non-admin): create domain / set domain owner. Scope
         // `workflow.execute` + server-side role verification.
+        // SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 adds the control-plane
+        // surfaces: list/get (read), PATCH displayName, GET owner, and
+        // binding-reconcile plan/apply. Read methods are NOT layered under
+        // the write guard; writes are (same gate as create/set-owner).
         .route(
             "/internal/v1/domains",
-            post(handlers::coordinator_domains::create_domain).layer(
-                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            get(handlers::coordinator_domains::list_domains).post(
+                handlers::coordinator_domains::create_domain.layer(
+                    middleware::from_fn_with_state(
+                        state.clone(),
+                        canary_guard::canary_write_guard,
+                    ),
+                ),
+            ),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}",
+            get(handlers::coordinator_domains::get_domain).patch(
+                handlers::coordinator_domains::update_domain.layer(
+                    middleware::from_fn_with_state(
+                        state.clone(),
+                        canary_guard::canary_write_guard,
+                    ),
+                ),
             ),
         )
         .route(
             "/internal/v1/domains/{domainId}/owner",
-            put(handlers::coordinator_domains::set_domain_owner).layer(
-                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            get(handlers::coordinator_domains::get_domain_owner).put(
+                handlers::coordinator_domains::set_domain_owner.layer(
+                    middleware::from_fn_with_state(
+                        state.clone(),
+                        canary_guard::canary_write_guard,
+                    ),
+                ),
             ),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/binding-reconcile/plan",
+            post(handlers::coordinator_domains::binding_reconcile_plan),
+        )
+        .route(
+            "/internal/v1/domains/{domainId}/binding-reconcile/apply",
+            post(handlers::coordinator_domains::binding_reconcile_apply.layer(
+                middleware::from_fn_with_state(
+                    state.clone(),
+                    canary_guard::canary_write_guard,
+                ),
+            )),
         )
         // Domain Owner Definition management
         .route(
