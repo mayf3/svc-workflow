@@ -56,7 +56,20 @@ pub async fn list_assigned_to_me(
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
-         WHERE v.assignee_principal_id = $1 AND n.node_type <> 'TERMINAL'
+         -- Identity repair lineage (migration 0025): read-side enrichment
+         -- ONLY (T62). Active work whose stored assignee resolves through the
+         -- lineage edge to the requesting canonical principal is surfaced on
+         -- their worklist exactly once; the stored assignee UUID is never
+         -- rewritten and no historical fact is touched.
+         WHERE (v.assignee_principal_id = $1
+                OR v.assignee_principal_id IN (
+                  SELECT wisl.source_principal_id
+                  FROM workflow_identity_successor_lines wisl
+                  WHERE wisl.successor_principal_id = $1))
+           -- Stale lineage sources keep read visibility on their own
+           -- worklist (existing CIR read-side enrichment contract, test 34);
+           -- the canonical successor additionally sees the same active work.
+           AND n.node_type <> 'TERMINAL'
            AND wi.cancelled = FALSE
            AND (
              EXISTS (
@@ -66,6 +79,10 @@ pub async fn list_assigned_to_me(
                  AND drb.enabled = TRUE
              )
              OR v.assignee_principal_id = $1
+             OR v.assignee_principal_id IN (
+                  SELECT wisl.source_principal_id
+                  FROM workflow_identity_successor_lines wisl
+                  WHERE wisl.successor_principal_id = $1)
            )
            AND ($2::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($2, $3))
          ORDER BY wi.created_at DESC, wi.workflow_instance_id DESC LIMIT $4",
@@ -90,7 +107,23 @@ pub async fn list_assigned_to_me(
             })?;
         validate_base(&base)?;
         validate_all_facts(&mut tx, &base).await?;
-        if base.current_assignee_principal_id != Some(query.actor_principal_id)
+        // T62 read-side enrichment: the stored assignee may be a lineage
+        // source whose canonical successor is the actor (never rewritten).
+        let assignee_matches_actor = base.current_assignee_principal_id
+            == Some(query.actor_principal_id)
+            || match base.current_assignee_principal_id {
+                Some(stored) => {
+                    crate::store::postgres::identity_successor::resolve_current_principal(
+                        &mut *tx,
+                        stored,
+                    )
+                    .await
+                    .map_err(map_storage)?
+                    == Some(query.actor_principal_id)
+                }
+                None => false,
+            };
+        if !assignee_matches_actor
             || base.current_node_type.as_deref() == Some("TERMINAL")
         {
             return Err(WorkflowQueryError::InternalConsistency(
