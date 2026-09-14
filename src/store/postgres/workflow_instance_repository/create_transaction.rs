@@ -571,9 +571,43 @@ pub(crate) async fn create_workflow_instance_atomically(
     admission
         .check_commit_budget()
         .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
-    tx.commit()
+
+    // T69 (WF-GS-02, owner-frozen semantics): the remaining absolute budget
+    // governs COMMIT itself. statement_timeout does not cover the COMMIT
+    // phase — arm a client-side commit deadline; on exceed, the outcome is
+    // UNCERTAIN -> fail closed as outcome-unknown (no success claim, no
+    // blind retry).
+    let commit_deadline_ms = if admission.is_enabled() {
+        admission.remaining_budget_ms()
+    } else {
+        0 // dormant: no commit-phase deadline
+    };
+    let commit_started = std::time::Instant::now();
+    if commit_deadline_ms > 0 {
+        match tokio::time::timeout(
+            std::time::Duration::from_millis(commit_deadline_ms),
+            tx.commit(),
+        )
         .await
-        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                return Err(CreateWorkflowInstanceError::StorageError(
+                    e.to_string(),
+                ));
+            }
+            Err(_) => {
+                return Err(CreateWorkflowInstanceError::CommitOutcomeUnknown {
+                    budget_ms: commit_deadline_ms,
+                });
+            }
+        }
+    } else {
+        tx.commit()
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+    }
+    let _ = commit_started;
 
     Ok(CreateOutcome::Created(CreateResult {
         workflow_instance_id,

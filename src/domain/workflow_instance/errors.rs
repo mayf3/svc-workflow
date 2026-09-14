@@ -37,6 +37,13 @@ pub enum CreateWorkflowInstanceError {
     /// admission window was exhausted, or a directory read failed. The whole
     /// transaction rolls back — zero business delta.
     AdmissionFailed(AdmissionError),
+    /// T69 (WF-GS-02, owner-frozen semantics): COMMIT exceeded the remaining
+    /// admission-through-commit budget — the server-side outcome is
+    /// UNCERTAIN. Fails closed as outcome-unknown; never claimed as success,
+    /// never blindly retried.
+    CommitOutcomeUnknown {
+        budget_ms: u64,
+    },
     /// Idempotency key conflict: same key, different request hash.
     IdempotencyConflict {
         original_command_id: uuid::Uuid,
@@ -63,6 +70,10 @@ impl fmt::Display for CreateWorkflowInstanceError {
             Self::NotDomainOwner => {
                 write!(f, "marking NON_BUSINESS_TEST requires an enabled domain owner")
             }
+            Self::CommitOutcomeUnknown { budget_ms } => write!(
+                f,
+                "commit exceeded the remaining admission-through-commit budget ({budget_ms} ms); server-side outcome uncertain"
+            ),
             Self::DefinitionVersionNotFound => write!(f, "definition version not found"),
             Self::VersionNotPublished => write!(f, "definition version is not PUBLISHED"),
             Self::CrossDomainViolation => {

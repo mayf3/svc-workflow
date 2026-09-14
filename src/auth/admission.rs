@@ -141,6 +141,11 @@ pub enum AdmissionError {
     /// The 5-second admission window was exhausted (including a start that
     /// was already past the deadline — no network is attempted).
     Timeout,
+    /// T69 (WF-GS-02, owner-frozen semantics): COMMIT exceeded the remaining
+    /// admission-through-commit budget. The server-side outcome is UNCERTAIN
+    /// (it may or may not have completed) — fail closed, never claim success,
+    /// never blindly retry.
+    CommitOutcomeUnknown { budget_ms: u64 },
     /// A directory endpoint could not be reached.
     Unavailable,
     /// A directory endpoint answered with a non-200 status.
@@ -165,6 +170,9 @@ impl fmt::Display for AdmissionError {
                 write!(f, "admission configuration error: {detail}")
             }
             AdmissionError::Timeout => write!(f, "admission deadline exceeded"),
+            AdmissionError::CommitOutcomeUnknown { budget_ms } => {
+                write!(f, "commit exceeded the remaining admission-through-commit budget ({budget_ms} ms); server-side outcome uncertain")
+            }
             AdmissionError::Unavailable => write!(f, "admission directory endpoint unavailable"),
             AdmissionError::Denied {
                 endpoint,
@@ -193,6 +201,7 @@ impl AdmissionError {
         match self {
             Self::Config(_) => "admission_configuration",
             Self::Timeout => "admission_timeout",
+            Self::CommitOutcomeUnknown { .. } => "admission_commit_outcome_unknown",
             Self::Unavailable => "admission_unavailable",
             Self::Denied { .. } => "admission_denied",
             Self::Rejected { .. } => "admission_rejected",
@@ -207,6 +216,9 @@ impl AdmissionError {
     pub fn sanitized_status(&self) -> i32 {
         match self {
             Self::Config(_) | Self::Unavailable | Self::MalformedResponse { .. } => 503,
+            // Commit-phase budget violation: outcome uncertain server-side —
+            // surfaced as 503-class (fails closed, never blindly retried).
+            Self::CommitOutcomeUnknown { .. } => 503,
             Self::Timeout | Self::Denied { .. } | Self::Rejected { .. } => 422,
         }
     }
