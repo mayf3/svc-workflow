@@ -236,12 +236,15 @@ pub async fn list_members(
     before_id: Option<Uuid>,
     limit: u32,
 ) -> Result<MemberListPage, DomainMembershipError> {
-    // Verify caller is a domain owner inside a read transaction.
+    // Verify caller holds a governance read/write role for the domain
+    // (DOMAIN_OWNER OR GLOBAL_WORKFLOW_COORDINATOR) inside a read
+    // transaction — SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 W-widening.
     let mut tx = pool
         .begin()
         .await
         .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
-    let is_owner = domain_role_repository::check_domain_owner(&mut tx, actor_id, domain_id).await?;
+    let is_owner =
+        domain_role_repository::check_domain_write_role(&mut tx, actor_id, domain_id).await?;
     if !is_owner {
         return Err(DomainMembershipError::NotDomainOwner);
     }
@@ -298,8 +301,9 @@ pub async fn add_member(
         .await
         .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
 
-    // 1. Verify caller is still DOMAIN_OWNER
-    let is_owner = domain_role_repository::check_domain_owner(&mut tx, actor_id, domain_id).await?;
+    // 1. Verify caller holds a governance write role (DOMAIN_OWNER OR
+    // GLOBAL_WORKFLOW_COORDINATOR) — W-widening, CTR-CP-001.
+    let is_owner = domain_role_repository::check_domain_write_role(&mut tx, actor_id, domain_id).await?;
     if !is_owner {
         return Err(DomainMembershipError::NotDomainOwner);
     }
@@ -364,22 +368,60 @@ pub async fn add_member(
         return Err(err);
     }
 
-    // 5. Upsert DOMAIN_MEMBER binding
-    domain_role_repository::insert_member_binding(&mut tx, domain_id, target_principal_id).await?;
+    // 5. CTR-CP-006 three-state outcome: a NEW Idempotency-Key hitting an
+    // already-enabled DOMAIN_MEMBER is a logical duplicate, NOT a first
+    // add — zero binding mutation, zero second `member_added` audit.
+    // (Same-key transport replay never reaches here: the receipt machinery
+    // returned the original completed response above.)
+    let already_member = domain_role_repository::check_has_role(
+        &mut tx,
+        domain_id,
+        target_principal_id,
+        "DOMAIN_MEMBER",
+    )
+    .await?;
 
-    // 6. Write security audit
+    let (response, audit_action, audit_result) = if already_member {
+        (
+            serde_json::json!({
+                "domainId": domain_id,
+                "principalId": target_principal_id,
+                "role": "DOMAIN_MEMBER",
+                "outcome": "already_member",
+            }),
+            "member_add_noop",
+            "already_member",
+        )
+    } else {
+        domain_role_repository::insert_member_binding(&mut tx, domain_id, target_principal_id)
+            .await?;
+        (
+            serde_json::json!({
+                "domainId": domain_id,
+                "principalId": target_principal_id,
+                "role": "DOMAIN_MEMBER",
+                "outcome": "added",
+            }),
+            "member_added",
+            "success",
+        )
+    };
+
+    // 6. Write security audit — exactly one member_added business audit on
+    // the real mutation; the no-op path is recorded with an explicit
+    // already_member marker (never a second member_added/result=success).
     let details = serde_json::json!({
         "operation": "member_added",
         "actorPrincipalId": actor_id,
         "targetPrincipalId": target_principal_id,
         "domainId": domain_id,
         "requestId": request_id,
-        "result": "success",
+        "result": audit_result,
     });
     domain_role_repository::write_security_audit(
         &mut tx,
         actor_id,
-        "member_added",
+        audit_action,
         target_principal_id,
         domain_id,
         &details,
@@ -387,11 +429,6 @@ pub async fn add_member(
     .await?;
 
     // 7. Complete receipt
-    let response = serde_json::json!({
-        "domainId": domain_id,
-        "principalId": target_principal_id,
-        "role": "DOMAIN_MEMBER",
-    });
     complete_receipt(&mut tx, receipt.command_id(), 200, &response).await?;
 
     tx.commit()
@@ -405,8 +442,8 @@ pub async fn add_member(
         operation = "member_added",
         target = %target_principal_id,
         domain = %domain_id,
-        result = "success",
-        "domain member added"
+        result = audit_result,
+        "domain member add completed"
     );
 
     Ok(response)
@@ -432,8 +469,9 @@ pub async fn remove_member(
         .await
         .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
 
-    // 1. Verify caller is still DOMAIN_OWNER
-    let is_owner = domain_role_repository::check_domain_owner(&mut tx, actor_id, domain_id).await?;
+    // 1. Verify caller holds a governance write role (DOMAIN_OWNER OR
+    // GLOBAL_WORKFLOW_COORDINATOR) — W-widening, CTR-CP-001.
+    let is_owner = domain_role_repository::check_domain_write_role(&mut tx, actor_id, domain_id).await?;
     if !is_owner {
         return Err(DomainMembershipError::NotDomainOwner);
     }

@@ -533,7 +533,7 @@ async fn normal_agent_and_domain_owner_without_coordinator_denied() {
 }
 
 #[tokio::test]
-async fn domain_owner_boundary_unchanged_and_coordinator_gets_no_domain_powers() {
+async fn domain_owner_visibility_boundary_unchanged_and_coordinator_governance_cancel_archive() {
     let pool = common::create_pool().await;
     let mock = common::MockJwksServer::start().await;
 
@@ -593,7 +593,12 @@ async fn domain_owner_boundary_unchanged_and_coordinator_gets_no_domain_powers()
         "cross-domain domain list must stay denied: {body}"
     );
 
-    // Coordinator cannot cancel an instance it does not own (no DOMAIN_OWNER).
+    // SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 (accepted 2026-09-09,
+    // CTR-CP-001 W-widening) REVERSED the old "coordinator gets no write
+    // powers" boundary: the coordinator now cancels cross-domain in its
+    // own identity (authorization = DOMAIN_OWNER OR GLOBAL_WORKFLOW_
+    // COORDINATOR, server-side). Transition/assignee authorization is
+    // unchanged (asserted below).
     let exec_token = direct_token(
         coordinator,
         "workflow.execute workflow.read",
@@ -603,24 +608,26 @@ async fn domain_owner_boundary_unchanged_and_coordinator_gets_no_domain_powers()
         app.clone(),
         &format!("/internal/v1/workflow-instances/{inst_a}/cancel"),
         &exec_token,
-        json!({"reason": "coordinator test"}),
-        "cancel-coord-1",
+        json!({"reason": "coordinator governance cancel"}),
+        &format!("cancel-coord-{}", Uuid::new_v4()),
     )
     .await;
-    assert_eq!(status, 403, "coordinator cancel must be denied: {body}");
-    assert_eq!(body["error"]["code"], "not_domain_owner");
+    assert_eq!(
+        status, 200,
+        "coordinator cross-domain cancel must succeed: {body}"
+    );
 
-    // Coordinator cannot archive either.
+    // A second cancel hits the byte-preserved lifecycle code.
     let (status, body) = do_post(
         app.clone(),
-        &format!("/internal/v1/workflow-instances/{inst_a}/archive"),
+        &format!("/internal/v1/workflow-instances/{inst_a}/cancel"),
         &exec_token,
-        json!({"reason": "coordinator test"}),
-        "archive-coord-1",
+        json!({"reason": "coordinator governance cancel"}),
+        &format!("cancel-coord-{}", Uuid::new_v4()),
     )
     .await;
-    assert_eq!(status, 403, "coordinator archive must be denied: {body}");
-    assert_eq!(body["error"]["code"], "not_domain_owner");
+    assert_eq!(status, 409, "second cancel: {body}");
+    assert_eq!(body["error"]["code"], "already_cancelled");
 
     // Coordinator cannot transition a non-assigned instance.
     let trans_id: Uuid = sqlx::query_scalar(
