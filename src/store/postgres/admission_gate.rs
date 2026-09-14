@@ -164,6 +164,21 @@ impl<'a> AdmissionGate<'a> {
         client.admit(self.start, &distinct).await.map(|_| ())
     }
 
+    /// T72: admission that resolves lineage through the COMMITTING
+    /// transaction (no second pool borrow — safe for max_connections=1).
+    pub async fn admit_on_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        principals: impl IntoIterator<Item = Uuid>,
+    ) -> Result<(), AdmissionError> {
+        let Some(client) = self.client else {
+            return Ok(());
+        };
+        let distinct: BTreeSet<Uuid> = principals.into_iter().collect();
+        let distinct = self.canonicalize_principals_on_tx(tx, distinct).await?;
+        client.admit(self.start, &distinct).await.map(|_| ())
+    }
+
     /// Map the command's principals through the immutable identity-successor
     /// lineage so admission evaluates the CANONICAL identity (CTR-CIR-003 as
     /// read through CTR-CIR-001/004).
@@ -183,16 +198,42 @@ impl<'a> AdmissionGate<'a> {
         &self,
         principals: impl IntoIterator<Item = Uuid>,
     ) -> Result<BTreeSet<Uuid>, AdmissionError> {
-        let Some(pool) = self.pool else {
-            return Ok(principals.into_iter().collect());
-        };
+        match self.pool {
+            Some(pool) => {
+                let mut mapped = BTreeSet::new();
+                for principal in principals {
+                    mapped.insert(
+                        match resolve_current_principal(pool, principal).await {
+                            Ok(Some(resolved)) => resolved,
+                            Ok(None) => principal,
+                            Err(_) => return Err(AdmissionError::Unavailable),
+                        },
+                    );
+                }
+                Ok(mapped)
+            }
+            None => Ok(principals.into_iter().collect()),
+        }
+    }
+
+    /// T72 (WF-GS-07): transaction-scoped variant — resolves lineage through
+    /// the ALREADY-HELD transaction connection instead of borrowing a second
+    /// pool connection, which self-starves a max_connections=1 deployment
+    /// until acquire timeout.
+    pub async fn canonicalize_principals_on_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        principals: impl IntoIterator<Item = Uuid>,
+    ) -> Result<BTreeSet<Uuid>, AdmissionError> {
         let mut mapped = BTreeSet::new();
         for principal in principals {
-            mapped.insert(match resolve_current_principal(pool, principal).await {
-                Ok(Some(resolved)) => resolved,
-                Ok(None) => principal,
-                Err(_) => return Err(AdmissionError::Unavailable),
-            });
+            mapped.insert(
+                match resolve_current_principal(&mut **tx, principal).await {
+                    Ok(Some(resolved)) => resolved,
+                    Ok(None) => principal,
+                    Err(_) => return Err(AdmissionError::Unavailable),
+                },
+            );
         }
         Ok(mapped)
     }
