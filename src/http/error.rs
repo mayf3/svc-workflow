@@ -132,6 +132,12 @@ impl ApiError {
                 "active domain membership is required",
             ),
             E::NotDomainOwner => forbidden("not_domain_owner", "caller is not a domain owner"),
+            E::CommitOutcomeUnknown { budget_ms: _ } => Self::service_unavailable(
+                "commit_outcome_unknown",
+                // Static phrasing (T45 leak lesson): no dynamic allocation in
+                // the error path; the specific budget lives in /version.
+                "commit exceeded the remaining admission-through-commit budget; server-side outcome is uncertain — do not blindly retry",
+            ),
             E::DefinitionVersionNotFound => not_found(
                 "definition_version_not_found",
                 "definition version not found",
