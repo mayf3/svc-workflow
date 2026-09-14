@@ -381,8 +381,11 @@ pub(crate) async fn create_workflow_instance_atomically(
     .map_err(CreateWorkflowInstanceError::AssigneeResolutionFailed)?;
     let mut admission_principals = BTreeSet::from([resolved_assignee_id]);
     admission_principals.extend(input_principal_ids);
+    // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
+    // never borrow a second pool connection while this transaction holds one
+    // (self-starves a max_connections=1 deployment until acquire timeout).
     admission
-        .admit(admission_principals)
+        .admit_on_tx(&mut tx, admission_principals)
         .await
         .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
 

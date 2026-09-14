@@ -508,8 +508,11 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // transaction back (zero business delta — no deterministic failure
     // receipt, which would be a forbidden cached cross-command result).
     // ---------------------------------------------------------------
+    // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
+    // never borrow a second pool connection while this transaction holds one
+    // (self-starves a max_connections=1 deployment until acquire timeout).
     admission
-        .admit(target_assignee_id)
+        .admit_on_tx(&mut tx, target_assignee_id)
         .await
         .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
 
