@@ -1,4 +1,4 @@
-//! Exact-18 HUMAN executor normalization V1 conformance against disposable PostgreSQL.
+//! Exact-17 HUMAN executor normalization V2 conformance against disposable PostgreSQL.
 
 #![allow(unused_imports)]
 
@@ -13,13 +13,14 @@ use uuid::Uuid;
 
 const HUMAN: &str = "8902db0d-429a-4e37-985c-f8b92d4b78fb";
 const ACTOR: &str = "bc970ced-710f-4479-9ff0-e295a1c59424";
-const EXCLUDED_TERMINAL_WORKFLOWS: [&str; 2] = [
+const EXCLUDED_TERMINAL_WORKFLOWS: [&str; 3] = [
     "2edf5b53-1dd9-4c93-b356-4029d3fe1adb",
     "f0ebdef1-8cab-4b97-82ac-af92b8ed3e12",
+    "0dbf2597-c6f5-4446-aef6-4a5232bc8a1e",
 ];
 const PLAN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/docs/evidence/human-executor-normalization-v1/exact-18-plan.tsv"
+    "/docs/evidence/human-executor-normalization-v2/exact-17-plan.tsv"
 ));
 
 #[derive(Clone)]
@@ -222,14 +223,14 @@ async fn artifact_counts(pool: &PgPool) -> (i64, i64, i64, i64) {
             .fetch_one(pool)
             .await
             .unwrap();
-    let receipts = sqlx::query_scalar("SELECT count(*) FROM workflow_command_receipts WHERE command_type='HUMAN_EXECUTOR_NORMALIZATION_V1'").fetch_one(pool).await.unwrap();
+    let receipts = sqlx::query_scalar("SELECT count(*) FROM workflow_command_receipts WHERE command_type='HUMAN_EXECUTOR_NORMALIZATION_V2'").fetch_one(pool).await.unwrap();
     let events = sqlx::query_scalar(
         "SELECT count(*) FROM workflow_events WHERE event_type='HUMAN_EXECUTOR_NORMALIZED'",
     )
     .fetch_one(pool)
     .await
     .unwrap();
-    let audits = sqlx::query_scalar("SELECT count(*) FROM workflow_security_audits WHERE action='HUMAN_EXECUTOR_NORMALIZATION_V1_COMMITTED'").fetch_one(pool).await.unwrap();
+    let audits = sqlx::query_scalar("SELECT count(*) FROM workflow_security_audits WHERE action='HUMAN_EXECUTOR_NORMALIZATION_V2_COMMITTED'").fetch_one(pool).await.unwrap();
     (visits, receipts, events, audits)
 }
 
@@ -258,7 +259,7 @@ fn cli_is_closed_to_exact_embedded_plan() {
 async fn exact_group_is_atomic_append_only_and_replay_safe() {
     let (name, url, pool) = disposable().await;
     let plan = rows();
-    assert_eq!(plan.len(), 18);
+    assert_eq!(plan.len(), 17);
     let excluded_before = excluded_terminal_snapshot(&pool).await;
     let human: Uuid = HUMAN.parse().unwrap();
     sqlx::query("UPDATE principals SET enabled=FALSE WHERE principal_id=$1")
@@ -332,11 +333,11 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
         String::from_utf8_lossy(&applied.stdout)
     );
     assert_eq!(last_json(&applied)["outcome"], "APPLIED");
-    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
+    assert_eq!(artifact_counts(&pool).await, (17, 17, 17, 1));
     let ids: Vec<Uuid> = plan.iter().map(|row| row.workflow).collect();
     let active_human: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_instances wi JOIN workflow_node_visits v ON v.node_visit_id=wi.current_node_visit_id JOIN principals p ON p.principal_id=v.assignee_principal_id WHERE wi.workflow_instance_id=ANY($1) AND NOT wi.cancelled AND wi.archived_at IS NULL AND p.principal_type='HUMAN'").bind(&ids).fetch_one(&pool).await.unwrap();
     let active_agent: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_instances wi JOIN workflow_node_visits v ON v.node_visit_id=wi.current_node_visit_id JOIN principals p ON p.principal_id=v.assignee_principal_id WHERE wi.workflow_instance_id=ANY($1) AND NOT wi.cancelled AND wi.archived_at IS NULL AND p.principal_type='AGENT'").bind(&ids).fetch_one(&pool).await.unwrap();
-    assert_eq!((active_human, active_agent), (18, 0));
+    assert_eq!((active_human, active_agent), (17, 0));
     let source_after: Value =
         sqlx::query("SELECT to_jsonb(v) AS row FROM workflow_node_visits v WHERE node_visit_id=$1")
             .bind(plan[0].source)
@@ -375,14 +376,14 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
     let replay = run(&url, &name, &["--apply"]);
     assert!(replay.status.success());
     assert_eq!(last_json(&replay)["outcome"], "NOOP");
-    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
+    assert_eq!(artifact_counts(&pool).await, (17, 17, 17, 1));
     assert_eq!(
         last_json(&run(&url, &name, &["--verify"]))["outcome"],
         "VERIFIED"
     );
     sqlx::query("UPDATE workflow_instances SET current_node_visit_id=$1,workflow_state_version=$2 WHERE workflow_instance_id=$3").bind(plan[0].source).bind(plan[0].version).bind(plan[0].workflow).execute(&pool).await.unwrap();
     assert!(!run(&url, &name, &["--apply"]).status.success());
-    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
+    assert_eq!(artifact_counts(&pool).await, (17, 17, 17, 1));
     drop_db(&name, pool).await;
 }
 
@@ -402,7 +403,7 @@ async fn committed_but_acknowledgement_lost_is_reconciled_without_retry() {
     );
     assert_eq!(last_json(&applied)["outcome"], "APPLIED");
     assert_eq!(last_json(&applied)["writes"], 0);
-    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
+    assert_eq!(artifact_counts(&pool).await, (17, 17, 17, 1));
     assert_eq!(
         last_json(&run(&url, &name, &["--verify"]))["outcome"],
         "VERIFIED"
@@ -422,12 +423,12 @@ async fn collision_and_open_assistance_abort_before_operator_writes() {
 
     let (name, url, pool) = disposable().await;
     let group = format!(
-        "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1:bba710b9790fed4c0136b9a0f33186f87f11be9e5da3f76e08784bfbce8dd871:{}:{name}:{}:{HUMAN}",
+        "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V2:57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5:{}:{name}:{}:{HUMAN}",
         env!("GIT_SHA"),
         ACTOR
     );
     let key = format!(
-        "human-normalization-v1:{}:{}",
+        "human-normalization-v2:{}:{}",
         &hex::encode(sha2::Sha256::digest(group.as_bytes()))[..24],
         plan[2].workflow
     );
