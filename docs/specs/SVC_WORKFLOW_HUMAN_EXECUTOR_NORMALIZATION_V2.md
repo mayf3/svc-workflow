@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V2
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -10,13 +10,13 @@ related_authorities: [SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1, IDENTITY_PRO
 supersedes: [SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1]
 superseded_by: null
 owners: [mayf3]
-accepted_by: null
-accepted_date: null
-accepted_reviewed_spec_commit: null
-accepted_reviewed_spec_sha256: null
-accepted_plan_sha256: null
-acceptance_review_verdict: null
-acceptance_record: null
+accepted_by: mayf3
+accepted_date: 2026-09-15
+accepted_reviewed_spec_commit: e6e0af5cbadfe46dbf9b18d16ba12819a0d26880
+accepted_reviewed_spec_sha256: 7f1e6178841c4eb2d6e9895abe25752b0367d479971f46b0bc498420a7d2f61b
+accepted_plan_sha256: 57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/HUMAN_EXECUTOR_NORMALIZATION_V2_ACCEPTANCE.md
 title: Human Executor Normalization V2 exact-17 successor
 repo: mayf3/svc-workflow
 base_head: 7c3beec0ee058aa896b86e58443c502a48d23d11
@@ -353,7 +353,7 @@ two earlier exclusions.
 ## 13. Open questions and author output
 
 ```text
-OPEN_OWNER_DECISIONS = EXACT_REVIEWED_V2_ACCEPTANCE
+OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
 UNRESOLVED_AUTHORITY_CONFLICT = NONE AFTER WHOLE SUPERSESSION
 PARTIAL_SUPERSESSION = NONE
@@ -363,13 +363,13 @@ PARTIAL_SUPERSESSION = NONE
 SPEC_GOVERNANCE_MODE = AUTHOR
 SPEC_ID = SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V2
 SPEC_KIND = implementation
-STATUS = proposed
+STATUS = accepted
 AUTHORITY_LEVEL = governing_spec
 IMPLEMENTATION_AUTHORITY = contracts AFTER ACCEPTANCE AND MERGE
 PRODUCTION_APPLY_AUTHORITY = none
 PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
 EXTERNAL_AUTHORITIES = NONE
-OPEN_OWNER_DECISIONS = EXACT_REVIEWED_V2_ACCEPTANCE
+OPEN_OWNER_DECISIONS = NONE
 NORMATIVE_TBD = NONE
 PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 8
