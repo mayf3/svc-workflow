@@ -149,7 +149,8 @@ advisory observation records; no command validates against them as
 concurrency predicates and no projection consumes them as state. If the
 Instance structurally has no current Visit at append time (not
 reachable through any current create path), the append fails closed
-with a deterministic 409 rather than writing a null snapshot.
+with 404 `current_visit_not_found` rather than writing a null
+snapshot.
 
 ### CTR-5 — Write authorization (PD-2/PD-3/PD-4)
 Append is permitted iff the authenticated Principal is enabled and holds
@@ -214,7 +215,8 @@ Fact-item mapping is strictly row-per-row: event-derived facts
 row with `created_at` = that row's timestamp and `item_id` = its
 `event_id`; `ASSISTANCE_LIFECYCLE` covers exactly the
 `ASSISTANCE_REQUESTED` / `ASSISTANCE_ESCALATED_TO_HUMAN` /
-`ASSISTANCE_RESOLVED` / assistance-void event rows;
+`ASSISTANCE_RESOLVED` event rows (case voiding writes no event row and
+remains visible through the cancel/archive facts that cause it);
 `SUBMISSION_COMMITTED` emits one item per canonical Submission row with
 `created_at` = the submission's timestamp and `item_id` = its
 `submission_id`, excluding Submissions already surfaced as `RETURN`
@@ -241,8 +243,8 @@ Referencing a fact never grants its payload
 ### CTR-9 — Pagination and ordering
 Total order: `(created_at, source_rank, item_id)` ascending, where
 `source_rank(WORKFLOW_FACT) = 0 < source_rank(COLLABORATION_ENTRY) = 1`
-and `item_id` is the fact's `event_id` / entry's
-`collaboration_entry_id`. Keyset continuation: paired query parameters
+and `item_id` is the fact's `event_id` or `submission_id` per the
+CTR-7 mapping, or the entry's `collaboration_entry_id`. Keyset continuation: paired query parameters
 `afterCreatedAt` (RFC 3339) + `afterItemType` + `afterId`, all present
 or all absent; half-present or malformed → 422 `invalid_cursor`.
 `limit` default 50, maximum 100 (larger or non-positive → 422
