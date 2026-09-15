@@ -327,19 +327,36 @@ where
         .iter()
         .map(|row| deterministic(group, &format!("command:{}", row.workflow_id)))
         .collect();
+    let events: Vec<Uuid> = rows
+        .iter()
+        .map(|row| deterministic(group, &format!("event:{}", row.workflow_id)))
+        .collect();
+    let keys: Vec<String> = rows.iter().map(|row| idempotency_key(group, row)).collect();
+    let workflows: Vec<Uuid> = rows.iter().map(|row| row.workflow_id).collect();
+    let sequences: Vec<i32> = rows
+        .iter()
+        .map(|row| row.expected_state_version + 1)
+        .collect();
     let visits: Vec<Uuid> = rows.iter().map(|row| row.target_visit_id).collect();
     let audit = deterministic(group, "group-audit");
     let count: i64 = sqlx::query_scalar(
         "SELECT
           (SELECT count(*) FROM workflow_node_visits WHERE node_visit_id=ANY($1)) +
-          (SELECT count(*) FROM workflow_command_receipts WHERE command_id=ANY($2)) +
-          (SELECT count(*) FROM workflow_events WHERE command_id=ANY($2)) +
-          (SELECT count(*) FROM workflow_security_audits WHERE audit_id=$3 AND principal_id=$4)",
+          (SELECT count(*) FROM workflow_command_receipts
+             WHERE command_id=ANY($2) OR (principal_id=$3 AND idempotency_key=ANY($4))) +
+          (SELECT count(*) FROM workflow_events
+             WHERE event_id=ANY($5) OR command_id=ANY($2)
+                OR (workflow_instance_id,event_sequence) IN (SELECT * FROM unnest($6::uuid[],$7::integer[]))) +
+          (SELECT count(*) FROM workflow_security_audits WHERE audit_id=$8)",
     )
     .bind(&visits)
     .bind(&commands)
-    .bind(audit)
     .bind(actor)
+    .bind(&keys)
+    .bind(&events)
+    .bind(&workflows)
+    .bind(&sequences)
+    .bind(audit)
     .fetch_one(executor)
     .await?;
     Ok(count)
@@ -350,7 +367,7 @@ async fn prevalidate(tx: &mut Transaction<'_, Postgres>, rows: &[PlanRow]) -> Re
         let state = sqlx::query(
             "SELECT wi.definition_version_id,wi.current_context_revision_id,wi.current_node_visit_id,
                     wi.workflow_state_version,wi.cancelled,wi.archived_at,wi.semantic_model_version,
-                    v.node_id,v.visit_number,v.assignee_principal_id,v.entered_by_transition_id,
+                    v.node_id,v.visit_number,v.assignee_principal_id,
                     c.payload_digest,d.definition_key,n.node_key,n.node_type::text AS node_type
              FROM workflow_instances wi
              JOIN workflow_node_visits v ON v.node_visit_id=wi.current_node_visit_id
@@ -376,11 +393,6 @@ async fn prevalidate(tx: &mut Transaction<'_, Postgres>, rows: &[PlanRow]) -> Re
             || state.get::<Uuid, _>("node_id") != row.node_id
             || state.get::<i32, _>("visit_number") != row.visit_number
             || state.get::<Uuid, _>("assignee_principal_id") != row.expected_current_assignee
-            || state
-                .try_get::<Option<Uuid>, _>("entered_by_transition_id")
-                .ok()
-                .flatten()
-                .is_some()
             || state.get::<String, _>("payload_digest") != row.context_payload_digest
             || state.get::<String, _>("definition_key") != row.definition_key
             || state.get::<String, _>("node_key") != row.node_key
@@ -447,7 +459,15 @@ async fn apply(pool: &PgPool, rows: &[PlanRow], actor: Uuid, database_name: &str
         .bind(audit_id).bind(actor).bind(AUDIT_ACTION).bind(PLAN_SHA).bind(details)
         .execute(&mut *tx).await?;
 
-    if let Err(error) = tx.commit().await {
+    let mut commit_error = tx.commit().await.err().map(|error| error.to_string());
+    #[cfg(debug_assertions)]
+    if commit_error.is_none()
+        && database_name.starts_with("human_normalization_")
+        && env::var("NORMALIZATION_TEST_SIMULATE_COMMIT_ACK_LOSS").as_deref() == Ok("1")
+    {
+        commit_error = Some("simulated commit acknowledgement loss".to_string());
+    }
+    if let Some(error) = commit_error {
         return match verify_terminal(pool, rows, actor, database_name).await {
             Ok(()) => {
                 print_outcome("APPLIED", 0);
