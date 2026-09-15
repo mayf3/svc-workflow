@@ -131,14 +131,25 @@ routeParameters: {workflowInstanceId}, requestBody}` with SHA-256
 receipts for stable replay. `UNIQUE (command_id)` makes one command at
 most one Entry. The transaction takes no expected-version input, does
 not lock the Instance row in the state-command serialization position,
-and writes no row in `workflow_instances` or `workflow_events`.
+and writes no row in `workflow_instances` or `workflow_events`. The
+append MUST fail closed against a concurrently committed archive (a
+non-serialization re-check such as a shared lock or an insert-time
+trigger recheck is permitted and required for this; it does not occupy
+the state-command serialization position). Audit coverage follows the
+carried architecture CTR-ARCH-039 discipline: the append is a protected
+write whose receipt and attempt audits commit atomically with it, and
+unauthorized feed reads take the existing unauthorized-read audit path
+used by instance reads.
 
 ### CTR-4 — Server-authored snapshot
 Within the append transaction the server reads the Instance's current
 `current_node_visit_id` and `workflow_state_version` and stores them as
 `observed_node_visit_id` / `observed_workflow_state_version`. These are
 advisory observation records; no command validates against them as
-concurrency predicates and no projection consumes them as state.
+concurrency predicates and no projection consumes them as state. If the
+Instance structurally has no current Visit at append time (not
+reachable through any current create path), the append fails closed
+with a deterministic 409 rather than writing a null snapshot.
 
 ### CTR-5 — Write authorization (PD-2/PD-3/PD-4)
 Append is permitted iff the authenticated Principal is enabled and holds
@@ -151,7 +162,10 @@ Instances that are not archived remain writable. Violations:
 not-visible → 404 `workflow_instance_not_found_or_not_visible`;
 visible but no write relation → 403
 `collaboration_write_forbidden`; archived → 409 `instance_archived`;
-disabled principal → 403 `principal_disabled`.
+disabled principal → 403 `principal_disabled`. Evaluation precedence
+after DTO validation and the receipt gate: 404 visibility, then 403
+`principal_disabled`, then 409 `instance_archived`, then 403
+`collaboration_write_forbidden`, then 422 reference validation.
 
 ### CTR-6 — Reference validation (HTTP layer)
 `replyToEntryId`, `relatedEventId`, `relatedSubmissionId`,
@@ -181,7 +195,7 @@ itemType = COLLABORATION_ENTRY | WORKFLOW_FACT
 projected directly from canonical rows — never a copy:
 
 ```text
-factKind ∈
+factType ∈
   SUBMISSION_COMMITTED     (submission_id, source_visit, author,
                             payload per CTR-8 visibility)
   RETURN                   (event_sequence, root_cause_visit,
@@ -190,17 +204,28 @@ factKind ∈
                             payload of the RETURN transition)
   TRANSITION_TERMINAL      (TERMINAL-entry transition facts)
   INSTANCE_CANCELLED       (canonical cancel metadata)
-  INSTANCE_ARCHIVED        (canonical archive metadata)
-  ASSISTANCE_LIFECYCLE     (case id, status changes, timestamps; no
+  ASSISTANCE_LIFECYCLE     (case id, status change, timestamp; no
                             assistance payload bodies)
 ```
+
+Fact-item mapping is strictly row-per-row: event-derived facts
+(`RETURN`, `TRANSITION_TERMINAL`, `INSTANCE_CANCELLED`,
+`ASSISTANCE_LIFECYCLE`) emit one item per canonical `workflow_events`
+row with `created_at` = that row's timestamp and `item_id` = its
+`event_id`; `ASSISTANCE_LIFECYCLE` covers exactly the
+`ASSISTANCE_REQUESTED` / `ASSISTANCE_ESCALATED_TO_HUMAN` /
+`ASSISTANCE_RESOLVED` / assistance-void event rows;
+`SUBMISSION_COMMITTED` emits one item per canonical Submission row with
+`created_at` = the submission's timestamp and `item_id` = its
+`submission_id`, excluding Submissions already surfaced as `RETURN`
+facts (one commit never yields two items).
 
 Every fact item's payload visibility follows that fact's own read
 authority (existing timeline/submission/assistance row rules). Entries
 are visible to every Principal holding instance visibility. Failed or
 rolled-back commands never appear. `INSTANCE_CREATED`, `WAKE_*`,
-`CONTEXT_REVISED`, and administrative events are excluded (minimal-subset
-rule).
+`CONTEXT_REVISED`, archive events, and administrative events are
+excluded (minimal-subset rule).
 
 ### CTR-8 — Feed read authorization (PD-1/PD-5)
 Feed access requires legal instance visibility under the existing
@@ -220,7 +245,9 @@ and `item_id` is the fact's `event_id` / entry's
 `collaboration_entry_id`. Keyset continuation: paired query parameters
 `afterCreatedAt` (RFC 3339) + `afterItemType` + `afterId`, all present
 or all absent; half-present or malformed → 422 `invalid_cursor`.
-`limit` default 50, maximum 100 (larger → 422 `invalid_input`).
+`limit` default 50, maximum 100 (larger or non-positive → 422
+`invalid_pagination`, matching the accepted keyset-continuation
+precedent).
 Response envelope: `{visibility, latestWorkflowStateVersion, items,
 nextCursor}` with `nextCursor = {createdAt, itemType, id} | null`.
 
@@ -287,7 +314,8 @@ this Spec; it creates no scheduler obligation in svc-workflow.
 | 403 | `collaboration_write_forbidden` | visible, no write relation |
 | 409 | `instance_archived` | append on archived instance |
 | 409 | `idempotency_conflict` | same key, different request |
-| 422 | `invalid_input` | body bounds, bad UUIDs, unknown fields, limit/cursor misuse |
+| 422 | `invalid_input` | body bounds, bad UUIDs, unknown fields |
+| 422 | `invalid_pagination` | limit misuse on the feed |
 | 422 | `invalid_collaboration_references` | same-Instance reference violations, aggregated `details.detail` |
 | 422 | `invalid_cursor` | half-present/malformed cursor triple |
 | 425 | `command_still_processing` | receipt PROCESSING |
