@@ -35,6 +35,7 @@ them.
 PLAN_PATH = docs/evidence/human-executor-normalization-v1/exact-18-plan.tsv
 PLAN_SHA256 = bba710b9790fed4c0136b9a0f33186f87f11be9e5da3f76e08784bfbce8dd871
 TARGET_COUNT = 18
+TARGET_AUTH_USER_ID = 8902db0d-429a-4e37-985c-f8b92d4b78fb
 TARGET_WORKFLOW_PRINCIPAL_ID = 8902db0d-429a-4e37-985c-f8b92d4b78fb
 TARGET_PRINCIPAL_TYPE = HUMAN
 EXCLUDED_WORKFLOW_COUNT = 2
@@ -90,6 +91,8 @@ enabled exact Workflow Principal observed below.
 - Result: the operator returned `CONFLICT` with `writes=0`; 18 rows retain the
   exact V0 preimage, zero V0 normalization artifacts exist, and two rows no
   longer match.
+- Provenance:
+  `docs/evidence/human-executor-normalization-v1/production-preflight-20260915.md`.
 
 ### OBS-HEN1-002 — Two post-snapshot transitions
 
@@ -102,6 +105,8 @@ enabled exact Workflow Principal observed below.
   type `TERMINAL` with no current assignee.
 - Limitation: persisted completion does not prove the real-world action was
   performed.
+- Provenance:
+  `docs/evidence/human-executor-normalization-v1/production-preflight-20260915.md`.
 
 ### OBS-HEN1-003 — Owner business correction
 
@@ -111,6 +116,9 @@ enabled exact Workflow Principal observed below.
   exclude both rows and continue Human normalization only for the other 18.
 - Limitation: repair/reopening of the two terminal Workflows requires a
   separate authority and is not part of V1.
+- Provenance: Owner decision in the Lane G thread; the resulting bounded
+  exclusion and machine preimage are persisted in the V1 plan and preflight
+  record.
 
 ### OBS-HEN1-004 — Human projection and remaining preimage
 
@@ -119,6 +127,8 @@ enabled exact Workflow Principal observed below.
   `HUMAN`; each row in the V1 plan still matches its exact current Visit,
   version, Agent assignee, DefinitionVersion, node, Context digest, and unused
   target Visit UUID.
+- Provenance:
+  `docs/evidence/human-executor-normalization-v1/production-preflight-20260915.md`.
 
 ## 6. Claims and assumptions
 
@@ -130,20 +140,46 @@ enabled exact Workflow Principal observed below.
   excluding the two transitioned rows and freezing the remaining 18 is the
   smallest correction that preserves current business history.
 
+### CLM-HEN1-002 — The exact Human and remaining preimages are ready
+
+- Support state: SUPPORTED.
+- Basis: OBS-HEN1-004 and EVD-HEN1-002.
+- Claim: the already projected same-UUID Auth User/Workflow Human and the exact
+  18 mechanical preimages satisfy the identity and target prerequisites for a
+  later apply-time revalidation; they do not themselves authorize writes.
+
 No normative open assumption remains.
 
 ## 7. Evidence relations
 
 ### EVD-HEN1-001
 
-OBS-HEN1-001 and OBS-HEN1-002 SUPPORT CLM-HEN1-001 and the exact exclusion at
-the stated production/time coordinates. They do not authorize writes.
+- Source observations: OBS-HEN1-001, OBS-HEN1-002.
+- Target type and IDs: Claim CLM-HEN1-001; State STATE-HEN1-001.
+- Relation: SUPPORTS.
+- Bound coordinates: production `svc_workflow_dogfood_clean`, observed
+  2026-09-15; source main `b1c9a02fbffc7386d428863d0a91bcea98499f64`;
+  V0 and V1 plan hashes stated in section 1.
+- Strength/sufficiency: strong for exact stale rows, persisted transitions,
+  zero normalization artifacts, and required whole-scope replacement.
+- Limitations: read-only observation proves neither implementation conformance
+  nor future apply-time state and grants no writes.
+- Provenance:
+  `docs/evidence/human-executor-normalization-v1/production-preflight-20260915.md`.
 
 ### EVD-HEN1-002
 
-OBS-HEN1-003 SUPPORTS the selected scope decision. OBS-HEN1-004 SUPPORTS the
-current exact-18 preimage and Human gate; apply-time revalidation remains
-mandatory.
+- Source observations: OBS-HEN1-003, OBS-HEN1-004.
+- Target type and IDs: Claim CLM-HEN1-002; State STATE-HEN1-001.
+- Relation: SUPPORTS.
+- Bound coordinates: exact V1 plan SHA, target Human UUID, production database,
+  and 2026-09-15 observation recorded above.
+- Strength/sufficiency: strong for the selected exact exclusion, same-UUID
+  enabled Workflow Human, 18/18 preimage match, and zero target collisions.
+- Limitations: Owner statement establishes business intent but not repository
+  acceptance; all facts remain subject to apply-time revalidation.
+- Provenance: V1 exact plan, the production preflight record, and the Owner
+  decision recorded in this execution thread.
 
 ## 8. Decisions
 
@@ -184,10 +220,13 @@ The two excluded Workflow IDs MUST be absent from its plan and writes.
 ### CTR-HEN1-002 — Canonical Human and operator gates
 
 Before any Workflow write, the target MUST be exact Principal
-`8902db0d-429a-4e37-985c-f8b92d4b78fb`, enabled and type `HUMAN`; the supplied
-operator actor MUST exist, be enabled, and type `AGENT`; and the actual database
-name MUST equal the separately supplied execution coordinate. Any mismatch
-causes zero writes.
+`8902db0d-429a-4e37-985c-f8b92d4b78fb`, mechanically bound to the exact active
+Auth User of the same UUID and projected as an enabled Workflow `HUMAN`
+Principal. The supplied operator actor MUST exist, be enabled, and type
+`AGENT`; every target Instance MUST retain Legacy `semantic_model_version=1`;
+and the actual database name MUST equal the separately supplied execution
+coordinate. Missing, disabled, conflicting, differently bound, or mismatched
+state causes zero writes.
 
 ### CTR-HEN1-003 — Append-only executor correction
 
@@ -198,10 +237,11 @@ Never update or delete a source Visit.
 
 ### CTR-HEN1-004 — No fabricated business action
 
-Preserve Instance identity, DefinitionVersion, node, Context, creator, metadata,
-lifecycle, cancellation/archive state, and business payload. Create no
-Submission, transition/effect, completion, activation, Dispatch Intent, or
-human evidence. Modify no historical row and no excluded Workflow.
+Preserve Instance identity, DefinitionVersion, node, Context, creator, external
+reference, metadata, artifact references, lifecycle, cancellation/archive
+state, semantic model, and business payload. Create no Submission,
+transition/effect, completion, activation, Dispatch Intent, or human evidence.
+Modify no historical row and no excluded Workflow.
 
 ### CTR-HEN1-005 — Atomic fail-closed group
 
@@ -216,9 +256,10 @@ aborts with zero operator writes.
 
 Each row MUST use deterministic command, Event, and idempotency identities that
 bind Spec, plan, implementation SHA, database, actor, Human, and row
-coordinates. Exact rerun MUST verify all 18 pairs, one audit, and full poststate
-before zero-write `NOOP`. Partial/asymmetric/corrupt state conflicts. Commit
-outcome uncertainty MUST reconcile by fresh readback and MUST NOT blindly retry.
+coordinates. Exactly one Event MUST link to each completed Receipt. Exact rerun
+MUST verify all 18 linked pairs, one audit, and full poststate before zero-write
+`NOOP`. Partial/asymmetric/corrupt state conflicts. Commit outcome uncertainty
+MUST reconcile by fresh readback and MUST NOT blindly retry.
 
 ### CTR-HEN1-007 — Mechanical HR consequence
 
