@@ -131,6 +131,16 @@ impl<'a> AdmissionGate<'a> {
     /// Fail-closed pre-commit budget check: admission-through-commit must fit
     /// inside the 5-second window, so a command with no remaining budget must
     /// not commit. Dormant mode always passes.
+    /// T69 (WF-GS-02): remaining admission-through-COMMIT budget in ms.
+    /// Owner-frozen semantics: the remaining absolute budget governs COMMIT
+    /// itself, not just the statements preceding it.
+    pub fn remaining_budget_ms(&self) -> u64 {
+        match self.client {
+            Some(client) => client.remaining_budget_ms(self.start),
+            None => 0,
+        }
+    }
+
     pub fn check_commit_budget(&self) -> Result<(), AdmissionError> {
         match self.client {
             None => Ok(()),
