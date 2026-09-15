@@ -6,6 +6,7 @@
 mod common;
 
 use serde_json::Value;
+use sha2::Digest;
 use sqlx::{Connection, Executor, PgConnection, PgPool, Row};
 use std::process::{Command, Output};
 use uuid::Uuid;
@@ -65,13 +66,25 @@ fn binary() -> &'static str {
 }
 
 fn run(url: &str, database: &str, args: &[&str]) -> Output {
-    Command::new(binary())
+    run_with_env(url, database, args, None)
+}
+
+fn run_with_env(
+    url: &str,
+    database: &str,
+    args: &[&str],
+    extra_env: Option<(&str, &str)>,
+) -> Output {
+    let mut command = Command::new(binary());
+    command
         .args(args)
         .env("DATABASE_URL", url)
         .env("NORMALIZATION_DATABASE_NAME", database)
-        .env("NORMALIZATION_ACTOR_PRINCIPAL_ID", ACTOR)
-        .output()
-        .expect("run operator")
+        .env("NORMALIZATION_ACTOR_PRINCIPAL_ID", ACTOR);
+    if let Some((key, value)) = extra_env {
+        command.env(key, value);
+    }
+    command.output().expect("run operator")
 }
 
 fn last_json(output: &Output) -> Value {
@@ -134,7 +147,7 @@ async fn seed(pool: &PgPool) {
         .bind(version).bind(definition).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO workflow_node_definitions(node_id,definition_version_id,node_key,display_name,order_index,node_type,assignee_ref_type,fixed_principal_id) VALUES($1,$2,$3,'Open',0,$4::node_type,'FIXED_PRINCIPAL',$5)")
         .bind(node).bind(version).bind(&plan[0].node_key).bind(&plan[0].node_type).bind(old).execute(pool).await.unwrap();
-    for row in &plan {
+    for (index, row) in plan.iter().enumerate() {
         assert_eq!(
             (row.definition_version, row.node, row.human),
             (version, node, human)
@@ -143,8 +156,9 @@ async fn seed(pool: &PgPool) {
             .bind(row.workflow).bind(domain).bind(version).bind(actor).bind(row.version).execute(pool).await.unwrap();
         sqlx::query("INSERT INTO workflow_context_revisions(context_revision_id,workflow_instance_id,revision_number,payload,payload_digest,created_by_principal_id) VALUES($1,$2,1,jsonb_build_object('stillPending',true),$3,$4)")
             .bind(row.context).bind(row.workflow).bind(&row.context_digest).bind(actor).execute(pool).await.unwrap();
-        sqlx::query("INSERT INTO workflow_node_visits(node_visit_id,workflow_instance_id,node_id,visit_number,assignee_principal_id,entered_by_transition_id) VALUES($1,$2,$3,$4,$5,NULL)")
-            .bind(row.source).bind(row.workflow).bind(node).bind(row.visit_number).bind(old).execute(pool).await.unwrap();
+        let source_transition = (index == 0).then(Uuid::new_v4);
+        sqlx::query("INSERT INTO workflow_node_visits(node_visit_id,workflow_instance_id,node_id,visit_number,assignee_principal_id,entered_by_transition_id) VALUES($1,$2,$3,$4,$5,$6)")
+            .bind(row.source).bind(row.workflow).bind(node).bind(row.visit_number).bind(old).bind(source_transition).execute(pool).await.unwrap();
         sqlx::query("UPDATE workflow_instances SET current_context_revision_id=$1,current_node_visit_id=$2 WHERE workflow_instance_id=$3")
             .bind(row.context).bind(row.source).bind(row.workflow).execute(pool).await.unwrap();
     }
@@ -261,6 +275,7 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
             .await
             .unwrap()
             .get("row");
+    assert!(!source_before["entered_by_transition_id"].is_null());
     let business_sql = "SELECT jsonb_build_object('domain',domain_id,'definition',definition_version_id,'creator',created_by_principal_id,'context',current_context_revision_id,'metadata',metadata,'cancelled',cancelled,'archived',archived_at,'semantic',semantic_model_version,'executionClass',execution_class) AS row FROM workflow_instances WHERE workflow_instance_id=$1";
     let business_before: Value = sqlx::query(business_sql)
         .bind(plan[0].workflow)
@@ -331,6 +346,30 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
 }
 
 #[tokio::test]
+async fn committed_but_acknowledgement_lost_is_reconciled_without_retry() {
+    let (name, url, pool) = disposable().await;
+    let applied = run_with_env(
+        &url,
+        &name,
+        &["--apply"],
+        Some(("NORMALIZATION_TEST_SIMULATE_COMMIT_ACK_LOSS", "1")),
+    );
+    assert!(
+        applied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&applied.stdout)
+    );
+    assert_eq!(last_json(&applied)["outcome"], "APPLIED");
+    assert_eq!(last_json(&applied)["writes"], 0);
+    assert_eq!(artifact_counts(&pool).await, (20, 20, 20, 1));
+    assert_eq!(
+        last_json(&run(&url, &name, &["--verify"]))["outcome"],
+        "VERIFIED"
+    );
+    drop_db(&name, pool).await;
+}
+
+#[tokio::test]
 async fn collision_and_open_assistance_abort_before_operator_writes() {
     let plan = rows();
     let (name, url, pool) = disposable().await;
@@ -338,6 +377,30 @@ async fn collision_and_open_assistance_abort_before_operator_writes() {
         .bind(plan[3].target).bind(plan[3].workflow).bind(plan[3].node).bind(plan[3].visit_number+1).bind(plan[3].old_owner).execute(&pool).await.unwrap();
     assert!(!run(&url, &name, &["--apply"]).status.success());
     assert_eq!(artifact_counts(&pool).await, (1, 0, 0, 0));
+    drop_db(&name, pool).await;
+
+    let (name, url, pool) = disposable().await;
+    let group = format!(
+        "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V0:b349e203c00ac82e286666a89dbedd6a17f77e0221090a1a9f2db51d8a253199:{}:{name}:{}:{HUMAN}",
+        env!("GIT_SHA"),
+        ACTOR
+    );
+    let key = format!(
+        "human-normalization-v0:{}:{}",
+        &hex::encode(sha2::Sha256::digest(group.as_bytes()))[..24],
+        plan[2].workflow
+    );
+    sqlx::query("INSERT INTO workflow_command_receipts(command_id,principal_id,idempotency_key,command_type,request_hash,receipt_status) VALUES($1,$2,$3,'CONFLICTING_COMMAND',$4,'PROCESSING')")
+        .bind(Uuid::new_v4()).bind(ACTOR.parse::<Uuid>().unwrap()).bind(key).bind("0".repeat(64)).execute(&pool).await.unwrap();
+    assert!(!run(&url, &name, &["--apply"]).status.success());
+    assert_eq!(artifact_counts(&pool).await, (0, 0, 0, 0));
+    let conflicting_receipts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM workflow_command_receipts WHERE command_type='CONFLICTING_COMMAND'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(conflicting_receipts, 1);
     drop_db(&name, pool).await;
 
     let (name, url, pool) = disposable().await;
