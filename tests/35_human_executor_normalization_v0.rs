@@ -1,4 +1,4 @@
-//! Exact-20 HUMAN executor normalization V0 conformance against disposable PostgreSQL.
+//! Exact-18 HUMAN executor normalization V1 conformance against disposable PostgreSQL.
 
 #![allow(unused_imports)]
 
@@ -13,9 +13,13 @@ use uuid::Uuid;
 
 const HUMAN: &str = "8902db0d-429a-4e37-985c-f8b92d4b78fb";
 const ACTOR: &str = "bc970ced-710f-4479-9ff0-e295a1c59424";
+const EXCLUDED_TERMINAL_WORKFLOWS: [&str; 2] = [
+    "2edf5b53-1dd9-4c93-b356-4029d3fe1adb",
+    "f0ebdef1-8cab-4b97-82ac-af92b8ed3e12",
+];
 const PLAN: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/docs/evidence/human-executor-normalization-v0/exact-20-plan.tsv"
+    "/docs/evidence/human-executor-normalization-v1/exact-18-plan.tsv"
 ));
 
 #[derive(Clone)]
@@ -131,6 +135,7 @@ async fn seed(pool: &PgPool) {
     let definition = Uuid::new_v4();
     let version = plan[0].definition_version;
     let node = plan[0].node;
+    let terminal_node = Uuid::new_v4();
     for (id, kind, name) in [
         (actor, "AGENT", "Administrative Actor"),
         (human, "HUMAN", "Owner Human"),
@@ -147,6 +152,8 @@ async fn seed(pool: &PgPool) {
         .bind(version).bind(definition).execute(pool).await.unwrap();
     sqlx::query("INSERT INTO workflow_node_definitions(node_id,definition_version_id,node_key,display_name,order_index,node_type,assignee_ref_type,fixed_principal_id) VALUES($1,$2,$3,'Open',0,$4::node_type,'FIXED_PRINCIPAL',$5)")
         .bind(node).bind(version).bind(&plan[0].node_key).bind(&plan[0].node_type).bind(old).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO workflow_node_definitions(node_id,definition_version_id,node_key,display_name,order_index,node_type,assignee_ref_type) VALUES($1,$2,'completed','Completed',1,'TERMINAL',NULL)")
+        .bind(terminal_node).bind(version).execute(pool).await.unwrap();
     for (index, row) in plan.iter().enumerate() {
         assert_eq!(
             (row.definition_version, row.node, row.human),
@@ -173,6 +180,38 @@ async fn seed(pool: &PgPool) {
         .bind(unrelated_visit).bind(unrelated).bind(node).bind(old).execute(pool).await.unwrap();
     sqlx::query("UPDATE workflow_instances SET current_context_revision_id=$1,current_node_visit_id=$2 WHERE workflow_instance_id=$3")
         .bind(unrelated_context).bind(unrelated_visit).bind(unrelated).execute(pool).await.unwrap();
+
+    for workflow in EXCLUDED_TERMINAL_WORKFLOWS {
+        let workflow: Uuid = workflow.parse().unwrap();
+        let context = Uuid::new_v4();
+        let visit = Uuid::new_v4();
+        sqlx::query("INSERT INTO workflow_instances(workflow_instance_id,domain_id,definition_version_id,created_by_principal_id,current_context_revision_id,current_node_visit_id,workflow_state_version,semantic_model_version,metadata) VALUES($1,$2,$3,$4,NULL,NULL,2,1,jsonb_build_object('excludedTerminal',true))")
+            .bind(workflow).bind(domain).bind(version).bind(actor).execute(pool).await.unwrap();
+        sqlx::query("INSERT INTO workflow_context_revisions(context_revision_id,workflow_instance_id,revision_number,payload,payload_digest,created_by_principal_id) VALUES($1,$2,1,jsonb_build_object('completed',true),$3,$4)")
+            .bind(context).bind(workflow).bind("e".repeat(64)).bind(actor).execute(pool).await.unwrap();
+        sqlx::query("INSERT INTO workflow_node_visits(node_visit_id,workflow_instance_id,node_id,visit_number,assignee_principal_id,entered_by_transition_id) VALUES($1,$2,$3,2,NULL,$4)")
+            .bind(visit).bind(workflow).bind(terminal_node).bind(Uuid::new_v4()).execute(pool).await.unwrap();
+        sqlx::query("UPDATE workflow_instances SET current_context_revision_id=$1,current_node_visit_id=$2 WHERE workflow_instance_id=$3")
+            .bind(context).bind(visit).bind(workflow).execute(pool).await.unwrap();
+    }
+}
+
+async fn excluded_terminal_snapshot(pool: &PgPool) -> Value {
+    let ids: Vec<Uuid> = EXCLUDED_TERMINAL_WORKFLOWS
+        .iter()
+        .map(|id| id.parse().unwrap())
+        .collect();
+    sqlx::query_scalar(
+        "SELECT jsonb_build_object(
+            'instances', (SELECT jsonb_agg(to_jsonb(wi) ORDER BY workflow_instance_id) FROM workflow_instances wi WHERE workflow_instance_id=ANY($1)),
+            'visits', (SELECT jsonb_agg(to_jsonb(v) ORDER BY node_visit_id) FROM workflow_node_visits v WHERE workflow_instance_id=ANY($1)),
+            'contexts', (SELECT jsonb_agg(to_jsonb(c) ORDER BY context_revision_id) FROM workflow_context_revisions c WHERE workflow_instance_id=ANY($1)),
+            'events', (SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY event_id),'[]'::jsonb) FROM workflow_events e WHERE workflow_instance_id=ANY($1)))",
+    )
+    .bind(ids)
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }
 
 async fn artifact_counts(pool: &PgPool) -> (i64, i64, i64, i64) {
@@ -183,14 +222,14 @@ async fn artifact_counts(pool: &PgPool) -> (i64, i64, i64, i64) {
             .fetch_one(pool)
             .await
             .unwrap();
-    let receipts = sqlx::query_scalar("SELECT count(*) FROM workflow_command_receipts WHERE command_type='HUMAN_EXECUTOR_NORMALIZATION_V0'").fetch_one(pool).await.unwrap();
+    let receipts = sqlx::query_scalar("SELECT count(*) FROM workflow_command_receipts WHERE command_type='HUMAN_EXECUTOR_NORMALIZATION_V1'").fetch_one(pool).await.unwrap();
     let events = sqlx::query_scalar(
         "SELECT count(*) FROM workflow_events WHERE event_type='HUMAN_EXECUTOR_NORMALIZED'",
     )
     .fetch_one(pool)
     .await
     .unwrap();
-    let audits = sqlx::query_scalar("SELECT count(*) FROM workflow_security_audits WHERE action='HUMAN_EXECUTOR_NORMALIZATION_V0_COMMITTED'").fetch_one(pool).await.unwrap();
+    let audits = sqlx::query_scalar("SELECT count(*) FROM workflow_security_audits WHERE action='HUMAN_EXECUTOR_NORMALIZATION_V1_COMMITTED'").fetch_one(pool).await.unwrap();
     (visits, receipts, events, audits)
 }
 
@@ -219,7 +258,8 @@ fn cli_is_closed_to_exact_embedded_plan() {
 async fn exact_group_is_atomic_append_only_and_replay_safe() {
     let (name, url, pool) = disposable().await;
     let plan = rows();
-    assert_eq!(plan.len(), 20);
+    assert_eq!(plan.len(), 18);
+    let excluded_before = excluded_terminal_snapshot(&pool).await;
     let human: Uuid = HUMAN.parse().unwrap();
     sqlx::query("UPDATE principals SET enabled=FALSE WHERE principal_id=$1")
         .bind(human)
@@ -292,11 +332,11 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
         String::from_utf8_lossy(&applied.stdout)
     );
     assert_eq!(last_json(&applied)["outcome"], "APPLIED");
-    assert_eq!(artifact_counts(&pool).await, (20, 20, 20, 1));
+    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
     let ids: Vec<Uuid> = plan.iter().map(|row| row.workflow).collect();
     let active_human: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_instances wi JOIN workflow_node_visits v ON v.node_visit_id=wi.current_node_visit_id JOIN principals p ON p.principal_id=v.assignee_principal_id WHERE wi.workflow_instance_id=ANY($1) AND NOT wi.cancelled AND wi.archived_at IS NULL AND p.principal_type='HUMAN'").bind(&ids).fetch_one(&pool).await.unwrap();
     let active_agent: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_instances wi JOIN workflow_node_visits v ON v.node_visit_id=wi.current_node_visit_id JOIN principals p ON p.principal_id=v.assignee_principal_id WHERE wi.workflow_instance_id=ANY($1) AND NOT wi.cancelled AND wi.archived_at IS NULL AND p.principal_type='AGENT'").bind(&ids).fetch_one(&pool).await.unwrap();
-    assert_eq!((active_human, active_agent), (20, 0));
+    assert_eq!((active_human, active_agent), (18, 0));
     let source_after: Value =
         sqlx::query("SELECT to_jsonb(v) AS row FROM workflow_node_visits v WHERE node_visit_id=$1")
             .bind(plan[0].source)
@@ -315,6 +355,7 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
     assert_eq!(source_before, source_after);
     assert_eq!(business_before, business_after);
     assert_eq!(unrelated_before, unrelated_after);
+    assert_eq!(excluded_before, excluded_terminal_snapshot(&pool).await);
     let submissions: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM workflow_submissions WHERE workflow_instance_id=ANY($1)",
     )
@@ -334,14 +375,14 @@ async fn exact_group_is_atomic_append_only_and_replay_safe() {
     let replay = run(&url, &name, &["--apply"]);
     assert!(replay.status.success());
     assert_eq!(last_json(&replay)["outcome"], "NOOP");
-    assert_eq!(artifact_counts(&pool).await, (20, 20, 20, 1));
+    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
     assert_eq!(
         last_json(&run(&url, &name, &["--verify"]))["outcome"],
         "VERIFIED"
     );
     sqlx::query("UPDATE workflow_instances SET current_node_visit_id=$1,workflow_state_version=$2 WHERE workflow_instance_id=$3").bind(plan[0].source).bind(plan[0].version).bind(plan[0].workflow).execute(&pool).await.unwrap();
     assert!(!run(&url, &name, &["--apply"]).status.success());
-    assert_eq!(artifact_counts(&pool).await, (20, 20, 20, 1));
+    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
     drop_db(&name, pool).await;
 }
 
@@ -361,7 +402,7 @@ async fn committed_but_acknowledgement_lost_is_reconciled_without_retry() {
     );
     assert_eq!(last_json(&applied)["outcome"], "APPLIED");
     assert_eq!(last_json(&applied)["writes"], 0);
-    assert_eq!(artifact_counts(&pool).await, (20, 20, 20, 1));
+    assert_eq!(artifact_counts(&pool).await, (18, 18, 18, 1));
     assert_eq!(
         last_json(&run(&url, &name, &["--verify"]))["outcome"],
         "VERIFIED"
@@ -381,12 +422,12 @@ async fn collision_and_open_assistance_abort_before_operator_writes() {
 
     let (name, url, pool) = disposable().await;
     let group = format!(
-        "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V0:b349e203c00ac82e286666a89dbedd6a17f77e0221090a1a9f2db51d8a253199:{}:{name}:{}:{HUMAN}",
+        "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1:bba710b9790fed4c0136b9a0f33186f87f11be9e5da3f76e08784bfbce8dd871:{}:{name}:{}:{HUMAN}",
         env!("GIT_SHA"),
         ACTOR
     );
     let key = format!(
-        "human-normalization-v0:{}:{}",
+        "human-normalization-v1:{}:{}",
         &hex::encode(sha2::Sha256::digest(group.as_bytes()))[..24],
         plan[2].workflow
     );
