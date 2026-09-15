@@ -1,7 +1,7 @@
-//! Exact-plan-bound HUMAN executor normalization V1.
+//! Exact-plan-bound HUMAN executor normalization V2.
 //!
 //! This offline operator is deliberately closed: it embeds one accepted
-//! 18-row plan and has no row, owner, workflow, or plan-path inputs.
+//! 17-row plan and has no row, owner, workflow, or plan-path inputs.
 
 use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
@@ -11,16 +11,16 @@ use sqlx::{postgres::PgPoolOptions, PgPool, Postgres, Row, Transaction};
 use std::{env, process};
 use uuid::Uuid;
 
-const SPEC_ID: &str = "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1";
-const PLAN_SHA: &str = "bba710b9790fed4c0136b9a0f33186f87f11be9e5da3f76e08784bfbce8dd871";
+const SPEC_ID: &str = "SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V2";
+const PLAN_SHA: &str = "57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5";
 const TARGET_HUMAN: &str = "8902db0d-429a-4e37-985c-f8b92d4b78fb";
-const TARGET_COUNT: usize = 18;
-const COMMAND_TYPE: &str = "HUMAN_EXECUTOR_NORMALIZATION_V1";
+const TARGET_COUNT: usize = 17;
+const COMMAND_TYPE: &str = "HUMAN_EXECUTOR_NORMALIZATION_V2";
 const EVENT_TYPE: &str = "HUMAN_EXECUTOR_NORMALIZED";
-const AUDIT_ACTION: &str = "HUMAN_EXECUTOR_NORMALIZATION_V1_COMMITTED";
+const AUDIT_ACTION: &str = "HUMAN_EXECUTOR_NORMALIZATION_V2_COMMITTED";
 const PLAN_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/docs/evidence/human-executor-normalization-v1/exact-18-plan.tsv"
+    "/docs/evidence/human-executor-normalization-v2/exact-17-plan.tsv"
 ));
 
 #[derive(Debug)]
@@ -187,7 +187,7 @@ fn parse_plan() -> Result<Vec<PlanRow>> {
         || targets.len() != TARGET_COUNT
     {
         return Err(conflict(
-            "plan is not exactly 18 unique workflow/source/target rows",
+            "plan is not exactly 17 unique workflow/source/target rows",
         ));
     }
     if rows.iter().any(|row| {
@@ -240,7 +240,7 @@ fn digest(value: &Value) -> Result<String> {
 
 fn idempotency_key(group: &str, row: &PlanRow) -> String {
     format!(
-        "human-normalization-v1:{}:{}",
+        "human-normalization-v2:{}:{}",
         &hex::encode(Sha256::digest(group.as_bytes()))[..24],
         row.workflow_id
     )
