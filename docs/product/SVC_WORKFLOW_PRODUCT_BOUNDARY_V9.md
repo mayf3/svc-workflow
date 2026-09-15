@@ -32,11 +32,13 @@ Predecessor source: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8 at ed99fa06a3067fe1d230699e
 At fresh remote `github/main` `ed99fa06a3067fe1d230699e9fed2b19542ab190`
 (2026-09-15), the accepted authorities are
 `SVC_WORKFLOW_PRODUCT_BOUNDARY_V8` (product) and
-`SVC_WORKFLOW_ARCHITECTURE_V0_4_1` (architecture). A case-insensitive
-search of `docs/product/`, `docs/architecture/`, `docs/contracts/`,
-`contracts/`, `docs/specs/`, `migrations/`, and `src/` finds no
-collaboration, comment, discussion, or instance-scoped message concept.
-The only instance-scoped asynchronous exchange surfaces are RETURN
+`SVC_WORKFLOW_ARCHITECTURE_V0_4_1` (architecture). No owned or accepted
+collaboration, comment, discussion, or instance-scoped message concept
+exists: a case-insensitive search of `docs/product/`,
+`docs/architecture/`, `docs/contracts/`, `contracts/`, `docs/specs/`,
+`migrations/`, and `src/` returns only exclusions in superseded
+documents and provenance URLs, never an owned concept. The only
+instance-scoped asynchronous exchange surfaces are RETURN
 feedback (Submission payload plus Workflow Events) and Assistance V1
 (`workflow_assistance_cases`).
 
