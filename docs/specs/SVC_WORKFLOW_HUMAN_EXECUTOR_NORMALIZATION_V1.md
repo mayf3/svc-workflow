@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -10,10 +10,13 @@ related_authorities: [SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V0, IDENTITY_PRO
 supersedes: [SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V0]
 superseded_by: null
 owners: [mayf3]
-accepted_by: null
-accepted_date: null
-accepted_reviewed_spec_commit: null
-acceptance_review_verdict: null
+accepted_by: mayf3
+accepted_date: 2026-09-15
+accepted_reviewed_spec_commit: 201a6c57207e85b6847b3f377a488876f56cb65f
+accepted_reviewed_spec_sha256: e45b5914ada707ceaeea723df7ba5f2b67ff80e3622913bfa7ad60b7fa740de2
+accepted_plan_sha256: bba710b9790fed4c0136b9a0f33186f87f11be9e5da3f76e08784bfbce8dd871
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/HUMAN_EXECUTOR_NORMALIZATION_V1_ACCEPTANCE.md
 title: Human Executor Normalization V1 exact-18 successor
 repo: mayf3/svc-workflow
 base_head: b1c9a02fbffc7386d428863d0a91bcea98499f64
@@ -43,7 +46,8 @@ EXCLUDED_WORKFLOW_COUNT = 2
 
 V0 remains active until an independently reviewed, Owner-accepted lifecycle
 transaction merges V1 as `accepted` and marks V0 `superseded` with the
-reciprocal backlink. This proposed candidate grants no implementation or
+reciprocal backlink. This accepted successor activates implementation authority
+only after this atomic lifecycle transaction is merged to `main`; it grants no
 production apply authority.
 
 ## 2. Scope and non-goals
@@ -357,7 +361,7 @@ PARTIAL_SUPERSESSION = NONE
 SPEC_GOVERNANCE_MODE = AUTHOR
 SPEC_ID = SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1
 SPEC_KIND = implementation
-STATUS = proposed
+STATUS = accepted
 AUTHORITY_LEVEL = governing_spec
 IMPLEMENTATION_AUTHORITY = contracts AFTER ACCEPTANCE AND MERGE
 PRODUCTION_APPLY_AUTHORITY = none
