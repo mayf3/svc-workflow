@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V0
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -8,7 +8,7 @@ scope: [mayf3/svc-workflow, exact-20-human-executor-normalization]
 governed_by: [SVC_WORKFLOW_PRODUCT_BOUNDARY_V8, SVC_WORKFLOW_ARCHITECTURE_V0_4_1]
 related_authorities: [SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1, IDENTITY_PROVISIONING_API_V0]
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_HUMAN_EXECUTOR_NORMALIZATION_V1
 owners: [mayf3]
 accepted_by: mayf3
 accepted_date: 2026-09-14
