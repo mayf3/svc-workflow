@@ -43,5 +43,6 @@ Adoption is forward-only and does not bulk-migrate legacy documents.
 |---|---|---|---|---|---|
 | `SVC_WORKFLOW_DEVELOPMENT_GOVERNANCE_ADOPTION_V1` | accepted | invariant | none | repository development process | none |
 | `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | implementation | contracts | one-time Principal successor migration | none |
+| `SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1` | accepted | implementation | contracts | canonical current-executor projection and global-list filter | none |
 
 Update this index when a governing Spec is accepted or superseded. The table is a discovery aid; each Spec's exact frontmatter and revision remain authoritative.

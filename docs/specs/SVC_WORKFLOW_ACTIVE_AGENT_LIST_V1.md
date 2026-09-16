@@ -1,9 +1,9 @@
 ---
 spec_id: SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
-implementation_authority: none
+implementation_authority: contracts
 production_apply_authority: none
 title: Canonical Active Agent global-list projection and filter V1
 repo: mayf3/svc-workflow
@@ -24,6 +24,11 @@ supersedes: []
 superseded_by: null
 owners:
   - mayf3
+accepted_by: mayf3
+accepted_date: 2026-09-16
+accepted_reviewed_head: 34b2c6e90d5a7f02a6690b189f97cb901a47dd43
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_ACTIVE_AGENT_LIST_AUTHORITY_ACCEPTANCE_V1.md
 ---
 
 # SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1
