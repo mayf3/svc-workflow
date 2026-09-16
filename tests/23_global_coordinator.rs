@@ -284,9 +284,321 @@ async fn seed_agent(pool: &PgPool) -> Uuid {
     id
 }
 
+async fn grant_domain_membership(pool: &PgPool, domain_id: Uuid, principal_id: Uuid) {
+    sqlx::query(
+        "INSERT INTO domain_role_bindings
+           (binding_id, domain_id, principal_id, role_key, enabled)
+         VALUES ($1, $2, $3, 'DOMAIN_MEMBER', TRUE)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(domain_id)
+    .bind(principal_id)
+    .execute(pool)
+    .await
+    .expect("grant domain membership");
+}
+
+async fn move_to_terminal(pool: &PgPool, instance_id: Uuid, definition_version_id: Uuid) {
+    let terminal_node_id: Uuid = sqlx::query_scalar(
+        "SELECT node_id
+         FROM workflow_node_definitions
+         WHERE definition_version_id = $1 AND node_type = 'TERMINAL'",
+    )
+    .bind(definition_version_id)
+    .fetch_one(pool)
+    .await
+    .expect("find terminal node");
+    let terminal_visit_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_node_visits
+           (node_visit_id, workflow_instance_id, node_id, visit_number,
+            assignee_principal_id, entered_by_transition_id)
+         VALUES ($1, $2, $3, 2, NULL, NULL)",
+    )
+    .bind(terminal_visit_id)
+    .bind(instance_id)
+    .bind(terminal_node_id)
+    .execute(pool)
+    .await
+    .expect("insert terminal visit");
+    sqlx::query(
+        "UPDATE workflow_instances
+         SET current_node_visit_id = $2, updated_at = NOW()
+         WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .bind(terminal_visit_id)
+    .execute(pool)
+    .await
+    .expect("make terminal visit current");
+}
+
+async fn get_all_global_items(
+    app: axum::Router,
+    token: &str,
+    base_query: &str,
+) -> Vec<Value> {
+    let mut items = Vec::new();
+    let mut cursor: Option<(String, String)> = None;
+    loop {
+        let separator = if base_query.contains('?') { '&' } else { '?' };
+        let path = match &cursor {
+            Some((created_at, id)) => format!(
+                "{base_query}{separator}limit=2&beforeCreatedAt={created_at}&beforeId={id}"
+            ),
+            None => format!("{base_query}{separator}limit=2"),
+        };
+        let (status, body) = do_get(app.clone(), &path, token).await;
+        assert_eq!(status, 200, "global page must succeed: {body}");
+        items.extend(body["items"].as_array().expect("items array").iter().cloned());
+        let next = &body["next_cursor"];
+        if next.is_null() {
+            return items;
+        }
+        cursor = Some((
+            next["created_at"].as_str().expect("cursor created_at").to_string(),
+            next["id"].as_str().expect("cursor id").to_string(),
+        ));
+    }
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[tokio::test]
+async fn canonical_current_executor_projection_filter_and_active_agent_set() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let (owner_a, domain_a) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_a, key_a) = seed_published_definition(&pool, domain_a).await;
+    let (_owner_b, domain_b) = common::seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_b, _) = seed_published_definition(&pool, domain_b).await;
+    let agent = seed_agent(&pool).await;
+    grant_domain_membership(&pool, domain_a, agent).await;
+    grant_domain_membership(&pool, domain_b, agent).await;
+    let reader = seed_agent(&pool).await;
+    grant_global_reader(&pool, reader).await;
+
+    let (active_agent_a, _) = create_instance(&pool, agent, domain_a, ver_a, "active-agent-a").await;
+    let (active_agent_b, _) = create_instance(&pool, agent, domain_b, ver_b, "active-agent-b").await;
+    let (active_human, _) = create_instance(&pool, owner_a, domain_a, ver_a, "active-human").await;
+
+    let (cancelled_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "cancelled-agent").await;
+    sqlx::query("UPDATE workflow_instances SET cancelled = TRUE WHERE workflow_instance_id = $1")
+        .bind(cancelled_agent)
+        .execute(&pool)
+        .await
+        .expect("cancel fixture");
+
+    let (archived_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "archived-agent").await;
+    sqlx::query("UPDATE workflow_instances SET archived_at = NOW() WHERE workflow_instance_id = $1")
+        .bind(archived_agent)
+        .execute(&pool)
+        .await
+        .expect("archive fixture");
+
+    let (terminal_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "terminal-agent").await;
+    move_to_terminal(&pool, terminal_agent, ver_a).await;
+
+    let app = build_app(pool.clone(), &mock.url, vec![]);
+    let token = direct_token(reader, "workflow.read", &mock.key_pair);
+
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/workflow-instances/global?currentExecutorType=agent",
+        &token,
+    )
+    .await;
+    assert_eq!(status, 422, "executor enum is exact and case-sensitive: {body}");
+    assert_eq!(body["error"]["code"], "invalid_current_executor_type");
+
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/workflow-instances/global?currentExecutorType=",
+        &token,
+    )
+    .await;
+    assert_eq!(status, 422, "empty executor enum must be rejected: {body}");
+    assert_eq!(body["error"]["code"], "invalid_current_executor_type");
+
+    let agent_items = get_all_global_items(
+        app.clone(),
+        &token,
+        "/internal/v1/workflow-instances/global?lifecycle=all&status=all&currentExecutorType=AGENT",
+    )
+    .await;
+    assert!(agent_items.iter().all(|item| item["current_executor_type"] == "AGENT"));
+    let agent_ids: std::collections::HashSet<Uuid> = agent_items
+        .iter()
+        .map(|item| Uuid::parse_str(item["workflow_instance_id"].as_str().unwrap()).unwrap())
+        .collect();
+    assert_eq!(agent_items.len(), agent_ids.len(), "pagination must not duplicate items");
+    for expected in [active_agent_a, active_agent_b, cancelled_agent, archived_agent] {
+        assert!(agent_ids.contains(&expected), "AGENT filter missed {expected}");
+    }
+    assert!(!agent_ids.contains(&active_human));
+    assert!(!agent_ids.contains(&terminal_agent));
+
+    let human_items = get_all_global_items(
+        app.clone(),
+        &token,
+        "/internal/v1/workflow-instances/global?lifecycle=all&status=all&currentExecutorType=HUMAN",
+    )
+    .await;
+    assert!(human_items.iter().all(|item| item["current_executor_type"] == "HUMAN"));
+    assert!(human_items.iter().any(|item| item["workflow_instance_id"] == active_human.to_string()));
+
+    let omitted_items = get_all_global_items(
+        app.clone(),
+        &token,
+        &format!(
+            "/internal/v1/workflow-instances/global?definitionKey={key_a}&lifecycle=all&status=all"
+        ),
+    )
+    .await;
+    let omitted_by_id: std::collections::HashMap<Uuid, &Value> = omitted_items
+        .iter()
+        .map(|item| {
+            (
+                Uuid::parse_str(item["workflow_instance_id"].as_str().unwrap()).unwrap(),
+                item,
+            )
+        })
+        .collect();
+    assert_eq!(omitted_items.len(), omitted_by_id.len());
+    assert_eq!(omitted_by_id[&active_agent_a]["current_executor_type"], "AGENT");
+    assert_eq!(omitted_by_id[&active_human]["current_executor_type"], "HUMAN");
+    assert_eq!(omitted_by_id[&cancelled_agent]["current_executor_type"], "AGENT");
+    assert_eq!(omitted_by_id[&archived_agent]["current_executor_type"], "AGENT");
+    assert!(omitted_by_id[&terminal_agent]["current_executor_type"].is_null());
+
+    let owner_token = direct_token(owner_a, "workflow.read", &mock.key_pair);
+    let (domain_status, domain_body) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/workflow-instances/domain?domainId={domain_a}&definitionKey={key_a}&lifecycle=all&status=all"
+        ),
+        &owner_token,
+    )
+    .await;
+    assert_eq!(domain_status, 200, "domain list must remain compatible: {domain_body}");
+    let domain_item = domain_body["items"]
+        .as_array()
+        .and_then(|items| items.first())
+        .expect("domain item");
+    let domain_keys: std::collections::BTreeSet<_> = domain_item
+        .as_object()
+        .expect("domain item object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let expected_domain_keys: std::collections::BTreeSet<_> = [
+        "workflow_instance_id",
+        "domain_id",
+        "definition_version_id",
+        "definition_key",
+        "created_by_principal_id",
+        "current_assignee_principal_id",
+        "current_assignee_canonical_agent_id",
+        "execution_class",
+        "current_node",
+        "is_terminal",
+        "title",
+        "created_at",
+        "updated_at",
+        "eligibility",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(domain_keys, expected_domain_keys);
+    assert!(!domain_item.as_object().unwrap().contains_key("current_executor_type"));
+
+    let terminal_items = get_all_global_items(
+        app.clone(),
+        &token,
+        &format!(
+            "/internal/v1/workflow-instances/global?definitionKey={key_a}&lifecycle=terminal&status=all"
+        ),
+    )
+    .await;
+    let terminal = terminal_items
+        .iter()
+        .find(|item| item["workflow_instance_id"] == terminal_agent.to_string())
+        .expect("terminal fixture visible");
+    assert!(terminal["current_executor_type"].is_null());
+
+    let active_agent_items = get_all_global_items(
+        app.clone(),
+        &token,
+        "/internal/v1/workflow-instances/global?lifecycle=active&status=active&currentExecutorType=AGENT",
+    )
+    .await;
+    let api_ids: std::collections::HashSet<Uuid> = active_agent_items
+        .iter()
+        .map(|item| Uuid::parse_str(item["workflow_instance_id"].as_str().unwrap()).unwrap())
+        .collect();
+    let canonical_ids: std::collections::HashSet<Uuid> = sqlx::query_scalar(
+        "SELECT wi.workflow_instance_id
+         FROM workflow_instances wi
+         JOIN workflow_node_visits v
+           ON v.node_visit_id = wi.current_node_visit_id
+          AND v.workflow_instance_id = wi.workflow_instance_id
+         JOIN workflow_node_definitions nd
+           ON nd.node_id = v.node_id
+          AND nd.definition_version_id = wi.definition_version_id
+         JOIN principals p ON p.principal_id = v.assignee_principal_id
+         WHERE wi.cancelled = FALSE
+           AND wi.archived_at IS NULL
+           AND nd.node_type <> 'TERMINAL'
+           AND p.principal_type = 'AGENT'",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("canonical Agent relation")
+    .into_iter()
+    .collect();
+    assert_eq!(api_ids, canonical_ids, "API set must equal the canonical DB relation");
+    for expected in [active_agent_a, active_agent_b] {
+        assert!(api_ids.contains(&expected), "active Agent fixture missing: {expected}");
+    }
+    for excluded in [active_human, cancelled_agent, archived_agent, terminal_agent] {
+        assert!(!api_ids.contains(&excluded), "excluded fixture leaked: {excluded}");
+    }
+
+    let service_principal = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO principals (principal_id, principal_type, display_name, email, enabled)
+         VALUES ($1, 'HUMAN', 'Invalid Service Owner', NULL, TRUE)",
+    )
+    .bind(service_principal)
+    .execute(&pool)
+    .await
+    .expect("insert owner fixture");
+    grant_domain_membership(&pool, domain_a, service_principal).await;
+    let (_service_instance, _) =
+        create_instance(&pool, service_principal, domain_a, ver_a, "service-owner").await;
+    sqlx::query("UPDATE principals SET principal_type = 'SERVICE' WHERE principal_id = $1")
+        .bind(service_principal)
+        .execute(&pool)
+        .await
+        .expect("corrupt current owner to SERVICE");
+    let (service_status, service_body) = do_get(
+        app,
+        &format!(
+            "/internal/v1/workflow-instances/global?definitionKey={key_a}&lifecycle=active&status=active"
+        ),
+        &token,
+    )
+    .await;
+    sqlx::query("UPDATE principals SET principal_type = 'HUMAN' WHERE principal_id = $1")
+        .bind(service_principal)
+        .execute(&pool)
+        .await
+        .expect("restore SERVICE fixture so other tests remain isolated");
+    assert_eq!(service_status, 500, "SERVICE ownership must fail closed: {service_body}");
+    assert_eq!(service_body["error"]["code"], "internal_consistency_error");
+}
 
 #[tokio::test]
 async fn coordinator_sees_multi_domain_and_other_assignee_instances() {

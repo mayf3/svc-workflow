@@ -54,6 +54,7 @@ struct GlobalInstanceRow {
     definition_key: String,
     created_by_principal_id: Uuid,
     current_assignee_principal_id: Option<Uuid>,
+    current_executor_type: Option<String>,
     current_assignee_canonical_agent_id: Option<String>,
     execution_class: String,
     node_id: Uuid,
@@ -81,10 +82,30 @@ impl GlobalInstanceRow {
     }
 }
 
-impl From<GlobalInstanceRow> for DomainInstanceSummary {
-    fn from(row: GlobalInstanceRow) -> Self {
+impl TryFrom<GlobalInstanceRow> for GlobalInstanceSummary {
+    type Error = WorkflowQueryError;
+
+    fn try_from(row: GlobalInstanceRow) -> Result<Self, Self::Error> {
+        let current_executor_type = if row.is_terminal {
+            None
+        } else {
+            match row.current_executor_type.as_deref() {
+                Some("HUMAN") => Some(CurrentExecutorType::Human),
+                Some("AGENT") => Some(CurrentExecutorType::Agent),
+                Some(other) => {
+                    return Err(WorkflowQueryError::InternalConsistency(format!(
+                        "non-terminal current executor type is {other}"
+                    )))
+                }
+                None => {
+                    return Err(WorkflowQueryError::InternalConsistency(
+                        "non-terminal current executor is missing".to_string(),
+                    ))
+                }
+            }
+        };
         let eligibility = row.eligibility();
-        Self {
+        let instance = DomainInstanceSummary {
             workflow_instance_id: row.workflow_instance_id,
             domain_id: row.domain_id,
             definition_version_id: row.definition_version_id,
@@ -104,14 +125,18 @@ impl From<GlobalInstanceRow> for DomainInstanceSummary {
             created_at: row.created_at,
             updated_at: row.updated_at,
             eligibility,
-        }
+        };
+        Ok(Self {
+            instance,
+            current_executor_type,
+        })
     }
 }
 
 pub(crate) async fn list_global_instances(
     pool: &sqlx::PgPool,
     query: ListGlobalInstances,
-) -> Result<Page<DomainInstanceSummary>, WorkflowQueryError> {
+) -> Result<Page<GlobalInstanceSummary>, WorkflowQueryError> {
     let limit = parse_limit(query.limit)?;
 
     // Use a REPEATABLE READ snapshot for consistency — same isolation
@@ -126,8 +151,9 @@ pub(crate) async fn list_global_instances(
     //   $1  definition_key (or NULL to skip)
     //   $2  current_node_key (or NULL to skip)
     //   $3  assignee_principal_id (or NULL to skip)
-    //   $4  cursor.created_at (or NULL)
-    //   $5  cursor.id (or NULL)
+    //   $4  current executor Principal type (or NULL to skip)
+    //   $5  cursor.created_at (or NULL)
+    //   $6  cursor.id (or NULL)
     let lifecycle_clause = lifecycle_where(query.lifecycle);
     let status_clause = status_where(query.status);
 
@@ -136,6 +162,7 @@ pub(crate) async fn list_global_instances(
                 wi.definition_version_id, wd.definition_key,
                 wi.created_by_principal_id,
                 v.assignee_principal_id AS current_assignee_principal_id,
+                p.principal_type::text AS current_executor_type,
                 wisl.canonical_agent_id AS current_assignee_canonical_agent_id,
                 wi.execution_class::text AS execution_class,
                 nd.node_id, nd.node_key,
@@ -158,6 +185,8 @@ pub(crate) async fn list_global_instances(
          JOIN workflow_node_definitions nd
            ON nd.node_id = v.node_id
           AND nd.definition_version_id = wi.definition_version_id
+         LEFT JOIN principals p
+           ON p.principal_id = v.assignee_principal_id
          -- Identity repair lineage (migration 0025): read-projection
          -- enrichment ONLY; the assignee UUID is never rewritten.
          LEFT JOIN workflow_identity_successor_lines wisl
@@ -181,7 +210,11 @@ pub(crate) async fn list_global_instances(
            {status_clause}
            AND ($2::text IS NULL OR nd.node_key = $2)
            AND ($3::uuid IS NULL OR v.assignee_principal_id = $3)
-           AND ($4::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($4, $5))
+           AND ($4::text IS NULL OR (
+             nd.node_type <> 'TERMINAL'
+             AND p.principal_type::text = $4
+           ))
+           AND ($5::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($5, $6))
          ORDER BY wi.created_at DESC, wi.workflow_instance_id DESC
          LIMIT {}",
         (limit + 1) as i64
@@ -191,6 +224,7 @@ pub(crate) async fn list_global_instances(
         .bind(&query.definition_key)
         .bind(&query.current_node_key)
         .bind(query.assignee_principal_id)
+        .bind(query.current_executor_type.map(CurrentExecutorType::as_str))
         .bind(query.before.map(|c| c.created_at))
         .bind(query.before.map(|c| c.id))
         .fetch_all(&mut *tx)
@@ -199,18 +233,18 @@ pub(crate) async fn list_global_instances(
 
     let has_more = rows.len() > limit;
     let selected: Vec<_> = rows.into_iter().take(limit).collect();
-    let items: Vec<DomainInstanceSummary> = selected
+    let items: Vec<GlobalInstanceSummary> = selected
         .into_iter()
-        .map(DomainInstanceSummary::from)
-        .collect();
+        .map(GlobalInstanceSummary::try_from)
+        .collect::<Result<_, _>>()?;
 
     let next_cursor = has_more.then(|| {
         // SAFETY: selected is non-empty when has_more is true because the
         // API guarantees limit >= 1.
         let last = items.last().expect("non-empty page");
         TimeUuidCursor {
-            created_at: last.created_at,
-            id: last.workflow_instance_id,
+            created_at: last.instance.created_at,
+            id: last.instance.workflow_instance_id,
         }
     });
 

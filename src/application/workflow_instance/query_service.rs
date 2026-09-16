@@ -136,7 +136,7 @@ impl WorkflowQueryService {
     pub async fn list_global_instances(
         &self,
         query: ListGlobalInstances,
-    ) -> Result<Page<DomainInstanceSummary>, WorkflowQueryError> {
+    ) -> Result<Page<GlobalInstanceSummary>, WorkflowQueryError> {
         use crate::store::postgres::workflow_instance_repository::query_visibility;
 
         let mut tx = query_visibility::begin_snapshot(&self.pool).await?;

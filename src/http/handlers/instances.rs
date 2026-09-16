@@ -16,8 +16,9 @@ use crate::domain::enums::WorkflowExecutionClass;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::http::dto::{
-    detail_response, parse_lifecycle_param, parse_status_param, CreateWorkflowInstanceRequest,
-    CreateWorkflowInstanceResponse, DomainInstanceQuery, GlobalInstanceQuery,
+    detail_response, parse_current_executor_type_param, parse_lifecycle_param, parse_status_param,
+    CreateWorkflowInstanceRequest, CreateWorkflowInstanceResponse, DomainInstanceQuery,
+    GlobalInstanceQuery,
 };
 use crate::http::error::ApiError;
 use crate::http::AppState;
@@ -180,7 +181,7 @@ pub(crate) async fn domain_list(
 /// Returns a paginated, filtered list of instance summaries across ALL
 /// domains. Only callable by principals holding the formal
 /// `GLOBAL_WORKFLOW_COORDINATOR` role (enforced server-side by the query
-/// service). The projection is `DomainInstanceSummary` — instance detail
+/// service). The projection is `GlobalInstanceSummary` — instance detail
 /// and submission payloads are never returned.
 pub(crate) async fn global_list(
     State(state): State<AppState>,
@@ -189,7 +190,7 @@ pub(crate) async fn global_list(
 ) -> Result<
     Json<
         crate::application::workflow_instance::query_types::Page<
-            crate::application::workflow_instance::query_types::DomainInstanceSummary,
+            crate::application::workflow_instance::query_types::GlobalInstanceSummary,
         >,
     >,
     ApiError,
@@ -214,6 +215,9 @@ pub(crate) async fn global_list(
         None => StatusFilter::Active,
     });
 
+    let current_executor_type = parse_current_executor_type_param(&query.current_executor_type)
+        .map_err(|(code, msg)| ApiError::unprocessable(code, msg))?;
+
     // Parse cursor
     let before = parse_domain_cursor(query.before_created_at, query.before_id)?;
 
@@ -228,6 +232,7 @@ pub(crate) async fn global_list(
             current_node_key: query.current_node_key,
             assignee_principal_id: query.assignee_principal_id,
             status,
+            current_executor_type,
         })
         .await
         .map_err(ApiError::from_query)?;
