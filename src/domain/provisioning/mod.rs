@@ -17,6 +17,12 @@ use crate::domain::ids::{DomainId, PrincipalId};
 pub const COMMAND_TYPE_PROVISION_PRINCIPAL: &str = "PROVISION_PRINCIPAL";
 /// Command type for upserting a domain.
 pub const COMMAND_TYPE_PROVISION_DOMAIN: &str = "PROVISION_DOMAIN";
+/// Command type for the canonical agent-facing domain create
+/// (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1: server-generated
+/// domainId, creator becomes owner). Distinct from the admin provisioning
+/// `PROVISION_DOMAIN` so the two contract regimes stay separable in
+/// receipts and audits.
+pub const COMMAND_TYPE_CREATE_DOMAIN: &str = "domain.create";
 /// Command type for upserting a role binding.
 pub const COMMAND_TYPE_PROVISION_ROLE_BINDING: &str = "PROVISION_ROLE_BINDING";
 /// Command type for revoking a role binding.
@@ -71,6 +77,16 @@ pub struct ProvisionPrincipalCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvisionDomainCommand {
     pub domain_id: DomainId,
+    pub domain_key: String,
+    pub display_name: Option<String>,
+    pub enabled: bool,
+}
+
+/// Canonical agent-facing domain create (business inputs only; the
+/// domainId is generated server-side and the owner is the authenticated
+/// actor — never carried in the command).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDomainCommand {
     pub domain_key: String,
     pub display_name: Option<String>,
     pub enabled: bool,

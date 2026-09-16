@@ -1126,22 +1126,25 @@ async fn reader_gains_no_write_or_assistance_powers() {
     // still deny — READER is not a write role of any kind.
     let exec_token = direct_token(reader, "workflow.execute workflow.read", &mock.key_pair);
 
-    // Domain create → coordinator-only.
+    // Domain create is the canonical owner-create surface
+    // (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1): no role gate — the
+    // reader can mint its OWN domain and becomes its owner. This grants no
+    // power over any existing resource; every other write below stays denied.
+    let reader_domain_key = format!("reader-canonical-create-{}", Uuid::new_v4());
     let (status, body) = do_post(
         app.clone(),
         "/internal/v1/domains",
         &exec_token,
         json!({
-            "domainId": Uuid::new_v4(),
-            "domainKey": "reader-denied-create-1",
-            "displayName": "Denied",
+            "domainKey": reader_domain_key,
+            "displayName": "Reader Owned Domain",
             "enabled": true
         }),
-        "reader-denied-create-1",
+        "reader-canonical-create-1",
     )
     .await;
-    assert_eq!(status, 403, "reader domain create must be denied: {body}");
-    assert_eq!(body["error"]["code"], "global_coordinator_required");
+    assert_eq!(status, 200, "reader self-domain create must succeed: {body}");
+    assert_eq!(body["ownerPrincipalId"], reader.to_string());
 
     // Domain owner replacement → coordinator-only.
     let (status, body) = do_put(

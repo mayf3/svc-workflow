@@ -1,14 +1,19 @@
 //! GLOBAL_WORKFLOW_COORDINATOR domain management handlers (agent-facing).
 //!
-//! Non-admin endpoints that let a verified `GLOBAL_WORKFLOW_COORDINATOR`
-//! create domains and set domain owners through the regular Broker path.
+//! Non-admin endpoints for domain governance through the regular Broker
+//! path. Domain create is the canonical owner-create surface
+//! (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1): any enabled AGENT
+//! principal with a direct token may create a domain and becomes its
+//! DOMAIN_OWNER in the same transaction. All other control-plane
+//! operations (set owner, list, get, update, binding reconcile) stay
+//! `GLOBAL_WORKFLOW_COORDINATOR`-gated.
 //!
 //! Authorization model (frozen):
 //!   - Auth layer keeps coarse scopes only: `workflow.execute`.
 //!   - The business role (`GLOBAL_WORKFLOW_COORDINATOR`) is verified
 //!     server-side from `global_role_bindings` — never carried in the JWT.
 //!   - The existing `workflow.admin` provisioning endpoints are unchanged;
-//!     these endpoints are strictly narrower (create domain / set owner only).
+//!     these endpoints are strictly narrower.
 //!
 //! Both handlers reuse the same idempotent receipt machinery as the admin
 //! provisioning endpoints (`workflow_command_receipts`, Idempotency-Key),
@@ -23,11 +28,12 @@ use uuid::Uuid;
 
 use super::definitions::require_direct_token;
 use super::{idempotency_key, require_scope};
-use crate::application::provisioning::{provision_domain, replace_owner};
+use crate::application::provisioning::replace_owner;
+use crate::application::provisioning::create_domain as canonical_create_domain;
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{DomainId, PrincipalId};
-use crate::domain::provisioning::{ProvisionDomainCommand, ReplaceOwnerCommand};
-use crate::http::dto::{ProvisionDomainRequest, ReplaceOwnerRequest};
+use crate::domain::provisioning::{CreateDomainCommand, ReplaceOwnerCommand};
+use crate::http::dto::{CreateDomainRequest, ReplaceOwnerRequest};
 use crate::http::error::ApiError;
 use crate::http::AppState;
 use crate::store::postgres::provisioning_repository;
@@ -53,19 +59,22 @@ async fn require_global_coordinator(
 
 /// POST /internal/v1/domains
 ///
-/// Create a domain. Same contract as the admin provisioning endpoint
-/// (`POST /internal/v1/admin/domains`) but gated by
-/// `workflow.execute` scope + `GLOBAL_WORKFLOW_COORDINATOR` instead of
-/// `workflow.admin` + allow-list.
+/// Canonical agent-facing domain create
+/// (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1): business inputs
+/// only — the `domainId` is generated server-side and the authenticated
+/// caller becomes the domain's single enabled DOMAIN_OWNER in the same
+/// transaction (creator-becomes-owner). Gated by `workflow.execute` scope
+/// + direct token + enabled-AGENT actor; GLOBAL_WORKFLOW_COORDINATOR is
+/// no longer a create prerequisite (the blast radius is the caller's own
+/// new domain; owner reassignment stays coordinator-only below).
 pub(crate) async fn create_domain(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
     headers: axum::http::HeaderMap,
-    payload: Result<Json<ProvisionDomainRequest>, JsonRejection>,
+    payload: Result<Json<CreateDomainRequest>, JsonRejection>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_scope(&principal, "workflow.execute")?;
     require_direct_token(&principal)?;
-    require_global_coordinator(&state, &principal).await?;
 
     let Json(req) = payload.map_err(ApiError::from_json_rejection)?;
     let key = idempotency_key(&headers)?;
@@ -91,14 +100,13 @@ pub(crate) async fn create_domain(
         ));
     }
 
-    let cmd = ProvisionDomainCommand {
-        domain_id: DomainId::from_uuid(req.domain_id),
+    let cmd = CreateDomainCommand {
         domain_key: req.domain_key,
         display_name: req.display_name,
         enabled: req.enabled,
     };
 
-    match provision_domain(
+    match canonical_create_domain(
         &state.pool,
         &cmd,
         &key,

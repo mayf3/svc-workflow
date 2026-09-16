@@ -229,6 +229,115 @@ pub async fn provision_domain(
     result.map(|_| response)
 }
 
+/// Canonical agent-facing domain create
+/// (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1).
+///
+/// Business inputs only: the `domainId` is generated server-side inside
+/// the receipt-owned branch (`DomainId::new()`, the project's canonical
+/// ID mechanism) and the authenticated actor becomes the domain's single
+/// enabled DOMAIN_OWNER in the same transaction. The request hash covers
+/// business inputs exclusively, so a same-key replay returns the original
+/// stored response — the original server-generated `domainId` stays
+/// stable across replays.
+pub async fn create_domain(
+    pool: &PgPool,
+    cmd: &CreateDomainCommand,
+    idempotency_key: &str,
+    request_id: &str,
+    actor_principal_id: &PrincipalId,
+) -> Result<serde_json::Value, ProvisioningError> {
+    let actor_uuid = actor_principal_id.into_uuid();
+    let request_hash = compute_hash(&serde_json::json!({
+        "commandType": COMMAND_TYPE_CREATE_DOMAIN,
+        "domainKey": cmd.domain_key,
+        "displayName": cmd.display_name,
+        "enabled": cmd.enabled,
+    }));
+
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| ProvisioningError::StorageError(e.to_string()))?;
+    provisioning_repository::validate_provisioning_actor(&mut tx, actor_uuid).await?;
+    let receipt = provisioning_repository::acquire_receipt(
+        &mut tx,
+        actor_uuid,
+        idempotency_key,
+        COMMAND_TYPE_CREATE_DOMAIN,
+        &request_hash,
+    )
+    .await?;
+
+    if !receipt.is_owned() {
+        tx.commit()
+            .await
+            .map_err(|e| ProvisioningError::StorageError(e.to_string()))?;
+        return handle_receipt_result(receipt);
+    }
+
+    // A fresh PK means the ON CONFLICT (domain_id) arm of the upsert can
+    // never fire; what remains of `upsert_domain` for this path is the
+    // domain_key collision guard, which fails closed with
+    // 409 domain_identity_conflict before any row is written.
+    let domain_id = DomainId::new();
+    let domain_uuid = domain_id.into_uuid();
+    let inserted =
+        provisioning_repository::upsert_domain(
+            &mut tx,
+            domain_uuid,
+            &cmd.domain_key,
+            cmd.display_name.as_deref(),
+            cmd.enabled,
+        )
+        .await;
+    let result = match inserted {
+        Ok(id) => provisioning_repository::establish_domain_owner(&mut tx, id, actor_uuid)
+            .await
+            .map(|_| {
+                serde_json::json!({
+                    "domainId": id,
+                    "domainKey": cmd.domain_key,
+                    "displayName": cmd.display_name.as_deref().unwrap_or(&cmd.domain_key),
+                    "enabled": cmd.enabled,
+                    "ownerPrincipalId": actor_uuid,
+                })
+            }),
+        Err(e) => Err(e),
+    };
+
+    let response = match &result {
+        Ok(body) => body.clone(),
+        Err(e) => serde_json::json!({"error": e.label()}),
+    };
+    let status = provisioning_status(&result);
+
+    if !should_complete_receipt(&result) {
+        log_provisioning(
+            request_id,
+            actor_principal_id,
+            "create_domain",
+            &domain_uuid.to_string(),
+            "failure",
+        );
+        return result.map(|_| response);
+    }
+    provisioning_repository::complete_receipt(&mut tx, receipt.command_id(), status, &response)
+        .await?;
+
+    tx.commit()
+        .await
+        .map_err(|e| ProvisioningError::StorageError(e.to_string()))?;
+
+    log_provisioning(
+        request_id,
+        actor_principal_id,
+        "create_domain",
+        &domain_uuid.to_string(),
+        if result.is_ok() { "success" } else { "failure" },
+    );
+    result.map(|_| response)
+}
+
 /// Get a domain by ID.
 pub async fn get_domain(
     pool: &PgPool,

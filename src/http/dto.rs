@@ -325,6 +325,20 @@ pub struct ProvisionDomainRequest {
     pub enabled: bool,
 }
 
+/// Agent-facing canonical domain create
+/// (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1): business inputs
+/// only. `domainId` is deliberately absent — the server generates it and
+/// `deny_unknown_fields` turns any caller-supplied `domainId` into a
+/// 400 `unknown_field`, so the legacy caller-supplied path exits without
+/// a compatibility track.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateDomainRequest {
+    pub domain_key: String,
+    pub display_name: Option<String>,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvisionDomainResponse {
