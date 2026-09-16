@@ -277,6 +277,37 @@ pub(crate) async fn upsert_domain(
     Ok(domain_id)
 }
 
+/// Establish the caller as the single enabled DOMAIN_OWNER of a freshly
+/// created domain (SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1).
+///
+/// Must run in the same transaction that inserted the domain row. The
+/// principal is already validated (exists + enabled + AGENT) by
+/// `validate_provisioning_actor`, so — unlike `replace_domain_owner` —
+/// this re-checks neither the principal nor the domain `enabled` flag
+/// (a domain created with `enabled=false` still records its owner).
+pub(crate) async fn establish_domain_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    domain_id: Uuid,
+    owner_principal_id: Uuid,
+) -> Result<(), ProvisioningError> {
+    let binding_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+        VALUES ($1, $2, $3, 'DOMAIN_OWNER', TRUE)
+        ON CONFLICT (domain_id, principal_id, role_key) DO UPDATE
+        SET enabled = TRUE, disabled_at = NULL
+        "#,
+    )
+    .bind(binding_id)
+    .bind(domain_id)
+    .bind(owner_principal_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?;
+    Ok(())
+}
+
 /// Get a domain by ID.
 pub(crate) async fn get_domain(
     pool: &PgPool,
