@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -21,7 +21,7 @@ related_authorities:
   - SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
   - SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2
 owners:
   - mayf3
 accepted_by: mayf3
