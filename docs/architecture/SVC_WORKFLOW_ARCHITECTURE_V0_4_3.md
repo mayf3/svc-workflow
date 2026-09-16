@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -12,6 +12,11 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+accepted_by: mayf3
+accepted_date: 2026-09-16
+accepted_reviewed_spec_commit: 34b2c6e90d5a7f02a6690b189f97cb901a47dd43
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_ACTIVE_AGENT_LIST_AUTHORITY_ACCEPTANCE_V1.md
 date: 2026-09-16
 revision: r1
 change_name: WORKFLOW_ACTIVE_AGENT_DISCOVERY_ARCHITECTURE_V0
