@@ -79,7 +79,7 @@ POST /internal/v1/domains
 Authorization: workflow.execute scope + direct token（OBO 拒绝，与现况一致）
                + caller 是 principals 表中 enabled 且 type=AGENT 的 principal
                （validate_provisioning_actor，与全部 provisioning 写面一致）
-               GLOBAL_WORKFLOW_COORDINATOR 不再是 create 前置（见 DEC-DCC-002）
+               GLOBAL_WORKFLOW_COORDINATOR 不再是 create 前置（见 CTR-DCC-004）
 
 Request body（serde camelCase + deny_unknown_fields）：
   domainKey    string   required（1-128，无空白/控制字符；unique）
@@ -126,15 +126,19 @@ Idempotency-Key：required（trusted seam，与现况一致），receipt 机制�
 - 受信 fleet 前提下接受「任意 enabled agent 可创建 domain」为产品方向
   （Owner directive §二/§三：家庭管家 canonical Principal 须能经正常
   Broker create 成为自己的 Domain owner——其不应也不需要持有 GWC）。
-- 风险对冲（既有机制，无新增）：receipt+attempt audit 全量记账、
-  domainKey unique、direct-token 强制、AGENT-only actor 校验
-  （HUMAN principal 拒绝，`principal_type_not_allowed`）。
+- 风险对冲（既有机制，无新增）：`workflow_command_receipts` 全量记账
+  （actor、idempotency key、command type、request hash、response——
+  canonical domain create 的唯一持久记账载体）+ tracing 记账
+  （`log_provisioning`）；canonical domain create **不写**
+  `workflow_command_attempt_audits`（该表属 coordinator control-plane/
+  member/wake 面）。另有 domainKey unique、direct-token 强制、
+  AGENT-only actor 校验（HUMAN principal 拒绝，`principal_type_not_allowed`）。
 
 ### CTR-DCC-005 — receipt / audit
 
 - 新 command_type：`domain.create`（`workflow_command_receipts.command_type`
   为自由 TEXT，零 migration——S10 既有事实）。admin 面继续用
-  `PROVISION_DOMAIN`，两命令类型在 receipts/audit 中可区分。
+  `PROVISION_DOMAIN`，两命令类型在 receipts（`command_type` 列）中可区分。
 - application 层新增 `create_domain`（不改动 `provision_domain`——admin
   面 upsert 语义原样保留）。
 
@@ -181,9 +185,10 @@ src/http/dto.rs                                  + CreateDomainRequest（deny_un
 src/domain/provisioning/mod.rs                   + COMMAND_TYPE_CREATE_DOMAIN、CreateDomainCommand
 src/application/provisioning/mod.rs              + create_domain（server-generated id + in-tx owner）
 src/store/postgres/provisioning_repository/      + establish_domain_owner（单 tx INSERT..ON CONFLICT enable）
-src/http/handlers/coordinator_domains.rs         create_domain 换新 DTO/新 app fn；门替换（DEC-DCC-002/004）
+src/http/handlers/coordinator_domains.rs         create_domain 换新 DTO/新 app fn（CTR-DCC-001/002）；门替换（CTR-DCC-004）
 tests/24_coordinator_domain_management.rs        create 测试族重写 + 新 negative/正面（ACC-DCC-001..006）
-tests/（新文件）                                  ACC-DCC-007 canonical principal 链路证明
+                                                 + env-gated canonical_principal_create_chain（ACC-DCC-007，
+                                                 经 CANONICAL_CREATE_TEST_PRINCIPAL_ID 注入，无独立新文件）
 docs/specs/SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1.md（本文件）
 
 IDENTITY_PROVISIONING_API_V0 admin 面：零改动。
