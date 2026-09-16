@@ -323,6 +323,22 @@ pub enum StatusFilter {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CurrentExecutorType {
+    Human,
+    Agent,
+}
+
+impl CurrentExecutorType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "HUMAN",
+            Self::Agent => "AGENT",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ListDomainInstances {
     pub actor_principal_id: Uuid,
@@ -351,6 +367,7 @@ pub struct ListGlobalInstances {
     pub current_node_key: Option<String>,
     pub assignee_principal_id: Option<Uuid>,
     pub status: StatusFilter,
+    pub current_executor_type: Option<CurrentExecutorType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -381,4 +398,11 @@ pub struct DomainInstanceSummary {
     /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1). Legacy work without
     /// an activation record is classified ACTIONABLE_NOW, never hidden.
     pub eligibility: crate::application::workflow_instance::eligibility::WorkEligibility,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GlobalInstanceSummary {
+    #[serde(flatten)]
+    pub instance: DomainInstanceSummary,
+    pub current_executor_type: Option<CurrentExecutorType>,
 }

@@ -136,6 +136,28 @@ pub struct GlobalInstanceQuery {
     /// One of `active`, `cancelled`, `archived`, `all`. Invalid values
     /// produce a 422 at the handler layer.
     pub status: Option<String>,
+    /// Canonical current Visit assignee Principal type. Only exact
+    /// `HUMAN` and `AGENT` values are accepted.
+    pub current_executor_type: Option<String>,
+}
+
+pub(crate) fn parse_current_executor_type_param(
+    current_executor_type: &Option<String>,
+) -> Result<
+    Option<crate::application::workflow_instance::query_types::CurrentExecutorType>,
+    (&'static str, &'static str),
+> {
+    use crate::application::workflow_instance::query_types::CurrentExecutorType;
+
+    match current_executor_type.as_deref() {
+        None => Ok(None),
+        Some("HUMAN") => Ok(Some(CurrentExecutorType::Human)),
+        Some("AGENT") => Ok(Some(CurrentExecutorType::Agent)),
+        Some(_) => Err((
+            "invalid_current_executor_type",
+            "currentExecutorType must be 'HUMAN' or 'AGENT'",
+        )),
+    }
 }
 
 /// Validate and convert a lifecycle string to the strong type.
