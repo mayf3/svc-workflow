@@ -767,6 +767,37 @@ pub async fn reconcile_apply(
                     .await
                     .map_err(CoordinatorControlPlaneError::from_provisioning)?;
             if target_has_enabled {
+                // T81 (WF-GS-09): this recognition branch runs for a NEW
+                // idempotency key (the original key replayed an immutable
+                // receipt at acquire_receipt above). The CURRENT target
+                // enabled state must therefore be validated before the
+                // already_applied success: a disabled target principal is
+                // rejected exactly like the normal path.
+                match domain_role_repository::check_principal_enabled_tx(
+                    &mut tx,
+                    to_principal_id,
+                )
+                .await
+                .map_err(CoordinatorControlPlaneError::from_provisioning)?
+                {
+                    None => {
+                        return fail_receipt(
+                            tx,
+                            receipt,
+                            CoordinatorControlPlaneError::IdentityNotFound,
+                        )
+                        .await
+                    }
+                    Some(false) => {
+                        return fail_receipt(
+                            tx,
+                            receipt,
+                            CoordinatorControlPlaneError::PrincipalDisabled,
+                        )
+                        .await
+                    }
+                    Some(true) => {}
+                }
                 domain_role_repository::write_binding_audit(
                     &mut tx,
                     actor,
