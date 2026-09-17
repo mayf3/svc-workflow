@@ -61,6 +61,12 @@ async fn write_attempt_audit(
     Ok(())
 }
 
+/// T82: audit `authorityBasis` values. The recorded basis must always name
+/// the predicate that actually allowed the request.
+pub(crate) const AUTHORITY_BASIS_GLOBAL_WORKFLOW_COORDINATOR: &str =
+    "GLOBAL_WORKFLOW_COORDINATOR";
+pub(crate) const AUTHORITY_BASIS_DOMAIN_OWNER: &str = "DOMAIN_OWNER";
+
 /// Durable audit-before-return for the coordinator read surfaces
 /// (PR #42 review P1: protected directory reads must commit an audit row
 /// before publication and fail closed on audit-store failure).
@@ -69,6 +75,11 @@ async fn audit_read(
     actor: Uuid,
     action: &str,
     domain_id: Option<Uuid>,
+    // T82 (WF-GS-10): the audit row must record the predicate that ACTUALLY
+    // authorized the request — a domain-scoped Domain Owner read must not be
+    // mislabelled as GLOBAL_WORKFLOW_COORDINATOR. Never widen authority to
+    // make a label true; widen the label's truth instead.
+    authority_basis: &str,
 ) -> Result<(), CoordinatorControlPlaneError> {
     let mut tx = pool
         .begin()
@@ -82,7 +93,7 @@ async fn audit_read(
         &serde_json::json!({
             "operation": action,
             "actorPrincipalId": actor,
-            "authorityBasis": "GLOBAL_WORKFLOW_COORDINATOR",
+            "authorityBasis": authority_basis,
             "read": true,
         }),
     )
@@ -290,7 +301,14 @@ pub async fn list_domains(
             body["nextBeforeId"] = serde_json::Value::String(last.domain_id.to_string());
         }
     }
-    audit_read(pool, actor, "coordinator_domain_list", None).await?;
+    audit_read(
+        pool,
+        actor,
+        "coordinator_domain_list",
+        None,
+        AUTHORITY_BASIS_GLOBAL_WORKFLOW_COORDINATOR,
+    )
+    .await?;
     Ok(body)
 }
 
@@ -305,7 +323,14 @@ pub async fn get_domain(
         .await
         .map_err(CoordinatorControlPlaneError::from_provisioning)?
         .ok_or(CoordinatorControlPlaneError::DomainNotFound)?;
-    audit_read(pool, actor, "coordinator_domain_get", Some(domain_id)).await?;
+    audit_read(
+        pool,
+        actor,
+        "coordinator_domain_get",
+        Some(domain_id),
+        AUTHORITY_BASIS_GLOBAL_WORKFLOW_COORDINATOR,
+    )
+    .await?;
     Ok(serde_json::to_value(entry_json(&row)).expect("serializable entry"))
 }
 
@@ -317,17 +342,22 @@ pub async fn get_domain_owner(
     actor: Uuid,
     domain_id: Uuid,
 ) -> Result<serde_json::Value, CoordinatorControlPlaneError> {
+    // T82: capture the predicate that actually authorizes this read so the
+    // audit row records the truth (Domain Owner is domain-scoped authority).
     let is_coordinator = check_global_coordinator(pool, actor)
         .await
         .map_err(CoordinatorControlPlaneError::from_provisioning)?;
-    if !is_coordinator {
+    let authority_basis = if is_coordinator {
+        AUTHORITY_BASIS_GLOBAL_WORKFLOW_COORDINATOR
+    } else {
         let is_owner = domain_role_repository::pool_check_domain_owner(pool, actor, domain_id)
             .await
             .map_err(CoordinatorControlPlaneError::from_provisioning)?;
         if !is_owner {
             return Err(CoordinatorControlPlaneError::NotDomainOwner);
         }
-    }
+        AUTHORITY_BASIS_DOMAIN_OWNER
+    };
 
     // Domain existence gate (a disabled domain is still discoverable for
     // owner lookup by its coordinator; a missing one is not).
@@ -341,7 +371,14 @@ pub async fn get_domain_owner(
         .map_err(CoordinatorControlPlaneError::from_provisioning)?
         .ok_or(CoordinatorControlPlaneError::DomainOwnerMissing)?;
 
-    audit_read(pool, actor, "coordinator_domain_owner_get", Some(domain_id)).await?;
+    audit_read(
+        pool,
+        actor,
+        "coordinator_domain_owner_get",
+        Some(domain_id),
+        authority_basis,
+    )
+    .await?;
     Ok(serde_json::json!({
         "domainId": domain_id,
         "ownerPrincipalId": owner.principal_id,
@@ -603,7 +640,14 @@ pub async fn reconcile_plan(
         "no-op — blockers present".to_string()
     };
 
-    audit_read(pool, actor, "coordinator_reconcile_plan", Some(domain_id)).await?;
+    audit_read(
+        pool,
+        actor,
+        "coordinator_reconcile_plan",
+        Some(domain_id),
+        AUTHORITY_BASIS_GLOBAL_WORKFLOW_COORDINATOR,
+    )
+    .await?;
     Ok(serde_json::json!({
         "domainId": domain_id,
         "role": role,
