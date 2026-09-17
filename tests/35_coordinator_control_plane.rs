@@ -1114,3 +1114,114 @@ async fn acc_cp_001_coordinator_cross_domain_cancel_archive_and_negatives() {
         .contains(&instance_id.to_string());
     assert!(!listed_again, "cancelled+archived instance must leave the active surface");
 }
+
+// ============================================================================
+// T81 (WF-GS-09) — new-key already_applied recognition validates the CURRENT
+// target enabled state; the original key's immutable receipt replay is
+// untouched. OWNER_DECISION_COMMIT (OWNER_GATE_MATERIALIZATION_AND_NIGHTLY_
+// RELEASE_20260916_V1, REPAIR_AUTHORIZED): same original key -> historical
+// immutable receipt replay; new key -> current target enabled state MUST be
+// validated; disabled target -> reject; never auto-enable, never rewrite
+// history.
+// Baseline RED (pre-fix): a NEW key repeating an already-applied
+// reconciliation returned 200 already_applied even though the TARGET
+// principal had been disabled after the original apply.
+// ============================================================================
+#[tokio::test]
+async fn t81_new_key_reconcile_validates_current_target_enabled() {
+    let pool = common::create_pool().await;
+    let coordinator = seed_agent(&pool).await;
+    grant_coordinator(&pool, coordinator).await;
+    let domain_id = seed_domain(&pool).await;
+    let mock = MockJwksServer::start().await;
+    let app = build_app(pool.clone(), &mock.url);
+    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let apply_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/apply");
+    let reconcile_body = |from: Uuid, to: Uuid| {
+        json!({
+            "role": "DOMAIN_MEMBER",
+            "fromPrincipalId": from.to_string(),
+            "toPrincipalId": to.to_string(),
+            "reason": "canonical migration"
+        })
+    };
+
+    // Historical migration shape: stale source binding + disabled historical
+    // target binding + ENABLED target principal.
+    let stale_source = seed_disabled_agent(&pool).await;
+    seed_binding(&pool, domain_id, stale_source, "DOMAIN_MEMBER").await;
+    let target = seed_agent(&pool).await;
+    seed_binding(&pool, domain_id, target, "DOMAIN_MEMBER").await;
+    sqlx::query(
+        "UPDATE domain_role_bindings SET enabled = FALSE, disabled_at = now() \
+         WHERE domain_id = $1 AND principal_id = $2 AND role_key = 'DOMAIN_MEMBER'",
+    )
+    .bind(domain_id)
+    .bind(target)
+    .execute(&pool)
+    .await
+    .expect("disable historical target binding");
+
+    // Original key: the apply succeeds and disables the source binding.
+    let original_key = format!("rec-t81-orig-{}", Uuid::new_v4());
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&original_key),
+    )
+    .await;
+    assert_eq!(status, 200, "original apply must succeed: {body}");
+    assert_eq!(body["outcome"], json!("applied"));
+
+    // The operator then disables the TARGET principal.
+    sqlx::query("UPDATE principals SET enabled = FALSE WHERE principal_id = $1")
+        .bind(target)
+        .execute(&pool)
+        .await
+        .expect("disable target principal");
+
+    // Original-key replay keeps the immutable historical receipt (no
+    // revalidation, no rewrite — CTR-CP-004 semantics preserved).
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&original_key),
+    )
+    .await;
+    assert_eq!(status, 200, "original-key replay stays immutable: {body}");
+    assert_eq!(body["outcome"], json!("applied"));
+
+    // NEW key over the same inputs must NOT be recognized as already_applied
+    // while the target principal is currently disabled.
+    let new_key = format!("rec-t81-new-{}", Uuid::new_v4());
+    let (status, body) = do_method(
+        &app,
+        "POST",
+        &apply_path,
+        &token,
+        reconcile_body(stale_source, target),
+        Some(&new_key),
+    )
+    .await;
+    assert_eq!(status, 403, "new key must validate current target state: {body}");
+    assert_eq!(body["error"]["code"], json!("principal_disabled"));
+
+    // And the rejected attempt must not write an already_applied audit row.
+    let already_applied_audits: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_security_audits \
+         WHERE action = 'binding_reconciled' AND resource_id = $1 \
+           AND (details->>'result') = 'already_applied'",
+    )
+    .bind(domain_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count");
+    assert_eq!(already_applied_audits.0, 0, "rejected new key must not audit already_applied");
+}
+
