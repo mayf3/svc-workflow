@@ -17,6 +17,7 @@ use crate::domain::definition::digest;
 use crate::domain::enums::NodeType;
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
+use crate::auth::admission::AdmissionError;
 use crate::store::postgres::admission_gate::AdmissionGate;
 
 use super::transition_helpers::{self};
@@ -696,9 +697,46 @@ pub(crate) async fn execute_workflow_transition_atomically(
     admission
         .check_commit_budget()
         .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
-    tx.commit()
+
+    // T69 (WF-GS-02, owner-frozen semantics): the remaining absolute budget
+    // governs COMMIT itself. statement_timeout does not cover the COMMIT
+    // phase, so arm a client-side commit deadline instead: if COMMIT exceeds
+    // the remaining budget the outcome is UNCERTAIN (the server may still
+    // complete it) — fail closed as outcome-unknown; never claim success
+    // after the deadline, never blindly retry.
+    let commit_deadline_ms = if admission.is_enabled() {
+        admission.remaining_budget_ms()
+    } else {
+        0
+    };
+    let commit_guard = (commit_deadline_ms > 0).then(|| commit_deadline_ms);
+    let commit_started = std::time::Instant::now();
+    match commit_guard {
+        Some(budget_ms) => match tokio::time::timeout(
+            std::time::Duration::from_millis(budget_ms),
+            tx.commit(),
+        )
         .await
-        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                return Err(ExecuteWorkflowTransitionError::StorageError(
+                    e.to_string(),
+                ));
+            }
+            Err(_) => {
+                return Err(ExecuteWorkflowTransitionError::AdmissionFailed(
+                    AdmissionError::CommitOutcomeUnknown { budget_ms },
+                ));
+            }
+        },
+        None => {
+            tx.commit()
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        }
+    }
+    let _ = commit_started;
 
     Ok(TransitionOutcome::Executed(TransitionResult {
         workflow_instance_id: instance_uuid,
