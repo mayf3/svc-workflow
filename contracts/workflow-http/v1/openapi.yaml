@@ -1464,7 +1464,24 @@ components:
           type: string
           format: date-time
 
-    # Global instance list (snake_case) — additive current_executor_type
+      required:
+        - workflow_instance_id
+        - domain_id
+        - definition_version_id
+        - definition_key
+        - created_by_principal_id
+        - current_assignee_principal_id
+        - execution_class
+        - current_node
+        - is_terminal
+        - title
+        - created_at
+        - updated_at
+
+    # Global instance list (snake_case) — DomainInstanceSummary contract
+    # fields plus the additive nullable current_executor_type
+    # (SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2); wire shape is the flattened
+    # domain summary plus the extra member.
     GlobalInstancePage:
       type: object
       additionalProperties: false
@@ -1479,9 +1496,49 @@ components:
 
     GlobalInstanceSummary:
       type: object
-      allOf:
-        - $ref: "#/components/schemas/DomainInstanceSummary"
+      additionalProperties: false
       properties:
+        workflow_instance_id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        definition_version_id:
+          type: string
+          format: uuid
+        definition_key:
+          type: string
+        created_by_principal_id:
+          type: string
+          format: uuid
+        current_assignee_principal_id:
+          type: string
+          format: uuid
+          nullable: true
+        current_node:
+          $ref: "#/components/schemas/NodeSummary"
+        execution_class:
+          type: string
+          enum: [BUSINESS, NON_BUSINESS_TEST]
+          description: >-
+            Work execution class (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1):
+            BUSINESS, or NON_BUSINESS_TEST for explicitly marked
+            test/canary work, which the normal BUSINESS dispatch due feed
+            never returns. Class-only positive visibility; no private
+            detail. Required on every post-deploy summary; pre-deploy
+            binaries omit the field (deployment transition window).
+        is_terminal:
+          type: boolean
+        title:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
         current_executor_type:
           type: string
           enum: [HUMAN, AGENT]
@@ -1492,12 +1549,13 @@ components:
             workflow_instances.current_node_visit_id ->
             workflow_node_visits.assignee_principal_id ->
             principals.principal_type in the same repeatable-read list
-            snapshot. The only non-null values are HUMAN and AGENT;
-            terminal summaries project null; a non-terminal current Visit
-            whose Principal is neither is an internal consistency error
-            and is never emitted as a third value. No title, metadata,
-            node-key, activation, eligibility, execution-class, display-
-            name, or successor-line inference participates.
+            snapshot. Always present on post-AAL binaries (null on
+            terminal summaries); the only non-null values are HUMAN and
+            AGENT, and a non-terminal current Visit whose Principal is
+            neither is an internal consistency error, never a third
+            value. No title, metadata, node-key, activation, eligibility,
+            execution-class, display-name, or successor-line inference
+            participates.
       required:
         - workflow_instance_id
         - domain_id
@@ -1511,6 +1569,7 @@ components:
         - title
         - created_at
         - updated_at
+        - current_executor_type
 
     # Worklist (snake_case)
     WorklistPage:

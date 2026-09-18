@@ -24,10 +24,15 @@ no new product semantics):
   AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V4, accepted): the Broker
   passes `currentExecutorType` through, preserves the downstream 422 code,
   and performs no local filtering/classification/owner resolution.
-- Deployment note: pre-AAL binaries silently ignore `currentExecutorType`
-  (unknown query parameter) and omit `current_executor_type`; post-AAL
-  binaries validate and emit. Deployment of the capability follows the
-  accepted Spec; production apply remains separately gated.
+- Deployment note: pre-AAL binaries reject `currentExecutorType` with 422
+  `invalid_pagination` (the query DTO uses `deny_unknown_fields`, so the
+  unknown parameter fails loudly — never silently broadened) and omit
+  `current_executor_type`; post-AAL binaries validate with the dedicated
+  `invalid_current_executor_type` code and always emit the field (null on
+  terminal). Pre-existing schema drift (the summary schemas predate the
+  canonical-agent/eligibility enrichment fields) is unchanged by 1.8.0 and
+  remains bundle debt. Deployment of the capability follows the accepted
+  Spec; production apply remains separately gated.
 
 ## 1.7.0 — 2026-09-11
 
