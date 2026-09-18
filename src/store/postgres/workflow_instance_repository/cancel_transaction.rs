@@ -315,11 +315,39 @@ pub(crate) async fn cancel_workflow_instance_atomically(
         return Err(CancelWorkflowInstanceError::InstanceArchived);
     }
 
-    let source_visit_id = current_node_visit_id.ok_or_else(|| {
-        CancelWorkflowInstanceError::InternalConsistency(
-            "instance has no current node visit".to_string(),
+    // SVC_WORKFLOW_DANGLING_INSTANCE_CANCEL_V1 (M1B closure): a dangling
+    // instance (current_node_visit_id IS NULL) may be cancelled only while it
+    // has NO open runtime fact — no open activation of any kind (dispatch
+    // intent, human work item, or any other row of workflow_activations
+    // without a closure). Such a row would mean the instance is live without
+    // a current visit: cancel refuses without touching the instance, its
+    // runtime facts, or the state version, and repairs belong to a separately
+    // accepted recovery path, never to this branch.
+    if current_node_visit_id.is_none() {
+        let open_runtime_fact: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+               SELECT 1 FROM workflow_activations a
+               LEFT JOIN workflow_activation_closures c
+                 ON c.activation_id = a.activation_id
+               WHERE a.workflow_instance_id = $1
+                 AND c.activation_id IS NULL)",
         )
-    })?;
+        .bind(instance_uuid)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(storage)?;
+        if open_runtime_fact {
+            return Err(CancelWorkflowInstanceError::InternalConsistency(
+                "dangling instance has an open runtime fact — fail-closed, cancel refused"
+                    .to_string(),
+            ));
+        }
+    }
+
+    // A dangling instance has no visit to bind and no activation to close;
+    // the CANCELLED event records source_node_visit_id = NULL ("never had a
+    // current visit"). No synthetic visit is created for FK satisfaction.
+    let source_visit_id: Option<Uuid> = current_node_visit_id;
 
     let node_key = current_node_key.unwrap_or_default();
 
@@ -347,22 +375,24 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     .fetch_one(&mut *tx)
     .await
     .map_err(storage)?;
-    if semantic_model_version == 3 {
-        let closed = super::activation_facts::close_activation_by_visit_required(
-            &mut tx,
-            instance_uuid,
-            source_visit_id,
-            super::activation_facts::CLOSURE_REASON_CANCELLED,
-            actual_command_id,
-            Some(event_id),
-        )
-        .await
-        .map_err(storage)?;
-        if !closed {
-            return Err(CancelWorkflowInstanceError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 current visit has no active activation to close"
-                    .to_string(),
-            ));
+    if let Some(visit_id) = source_visit_id {
+        if semantic_model_version == 3 {
+            let closed = super::activation_facts::close_activation_by_visit_required(
+                &mut tx,
+                instance_uuid,
+                visit_id,
+                super::activation_facts::CLOSURE_REASON_CANCELLED,
+                actual_command_id,
+                Some(event_id),
+            )
+            .await
+            .map_err(storage)?;
+            if !closed {
+                return Err(CancelWorkflowInstanceError::InternalConsistency(
+                    "VISIT_ACTIVATION_V1 current visit has no active activation to close"
+                        .to_string(),
+                ));
+            }
         }
     }
 

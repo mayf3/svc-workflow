@@ -126,7 +126,7 @@ async fn create_instance(
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(definition_version_id),
             external_reference: None,
@@ -1212,5 +1212,451 @@ async fn concurrent_archive_different_keys_exactly_one_succeeds(pool: PgPool) {
     assert_eq!(
         archived_at_count, 1,
         "archived_at must be written exactly once"
+    );
+}
+
+// ============================================================================
+// SVC_WORKFLOW_DANGLING_INSTANCE_CANCEL_V1 (M1B closure) — T1..T8
+// ============================================================================
+
+/// Force the dangling shape: `workflow_instances.current_node_visit_id IS NULL`.
+/// Historical visit rows stay (visits are append-only); the shape keys on the
+/// instance pointer exactly like the production F4 rows.
+async fn make_dangling(pool: &PgPool, instance_id: Uuid) {
+    sqlx::query("UPDATE workflow_instances SET current_node_visit_id = NULL WHERE workflow_instance_id = $1")
+        .bind(instance_id)
+        .execute(pool)
+        .await
+        .expect("detach current visit pointer");
+}
+
+/// Seed one OPEN runtime fact (workflow_activations row without closure) of
+/// the given canonical kind, bound to one of the instance's visit rows.
+async fn seed_open_activation(
+    pool: &PgPool,
+    instance_id: Uuid,
+    owner_id: Uuid,
+    kind: &str,
+) -> Uuid {
+    let visit_id: Uuid = sqlx::query_scalar(
+        "SELECT node_visit_id FROM workflow_node_visits WHERE workflow_instance_id = $1 ORDER BY created_at LIMIT 1",
+    )
+    .bind(instance_id)
+    .fetch_one(pool)
+    .await
+    .expect("instance has a historical visit row");
+
+    let activation_id = Uuid::new_v4();
+    let initial_next_eligible_at: Option<chrono::DateTime<chrono::Utc>> =
+        if kind == "DISPATCH_INTENT" {
+            Some(chrono::Utc::now())
+        } else {
+            None
+        };
+    sqlx::query(
+        "INSERT INTO workflow_activations
+           (activation_id, workflow_instance_id, node_visit_id, activation_kind,
+            owner_principal_id, activation_at, initial_next_eligible_at, command_id)
+         VALUES ($1, $2, $3, $4::activation_kind, $5, now(), $6, $7)",
+    )
+    .bind(activation_id)
+    .bind(instance_id)
+    .bind(visit_id)
+    .bind(kind)
+    .bind(owner_id)
+    .bind(initial_next_eligible_at)
+    .bind(Uuid::new_v4())
+    .execute(pool)
+    .await
+    .expect("seed open activation");
+    activation_id
+}
+
+async fn m1b_snapshot(pool: &PgPool, instance_id: Uuid) -> (bool, Option<Uuid>, i32, i64, i64) {
+    let row: (bool, Option<Uuid>, i32) = sqlx::query_as(
+        "SELECT cancelled, current_node_visit_id, workflow_state_version
+           FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(pool)
+    .await
+    .expect("instance row");
+    let cancel_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_events
+          WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(pool)
+    .await
+    .expect("cancel event count");
+    let open_facts: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_activations a
+          LEFT JOIN workflow_activation_closures c ON c.activation_id = a.activation_id
+          WHERE a.workflow_instance_id = $1 AND c.activation_id IS NULL",
+    )
+    .bind(instance_id)
+    .fetch_one(pool)
+    .await
+    .expect("open runtime fact count");
+    (row.0, row.1, row.2, cancel_events, open_facts)
+}
+
+async fn m1b_cancel(
+    pool: &PgPool,
+    owner_id: Uuid,
+    instance_id: Uuid,
+    state_ver: i32,
+    key: &str,
+    hash: &str,
+    reason: &str,
+) -> Result<(), CancelWorkflowInstanceError> {
+    cancel_workflow_instance(
+        pool,
+        CancelWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner_id),
+            idempotency_key: key.to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(instance_id),
+            expected_workflow_state_version: state_ver,
+            reason: reason.to_string(),
+        },
+        &req_hash(hash),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// T1 — dangling + no open runtime fact: cancel succeeds; event
+/// source_node_visit_id NULL; exactly one CANCELLED event; version +1; no
+/// synthetic visit.
+#[sqlx::test]
+async fn m1b_t1_dangling_without_runtime_fact_cancels(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+
+    let visits_before: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_node_visits WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t1",
+        "m1b-t1",
+        "m1b dangling cleanup",
+    )
+    .await
+    .expect("dangling cancel without runtime facts must succeed");
+
+    let (cancelled, current_visit, version, cancel_events, open_facts) =
+        m1b_snapshot(&pool, instance_id).await;
+    assert!(cancelled, "instance must be cancelled");
+    assert!(
+        current_visit.is_none(),
+        "pointer must stay NULL (never had a current visit)"
+    );
+    assert_eq!(version, state_ver + 1, "exactly one version increment");
+    assert_eq!(cancel_events, 1, "exactly one CANCELLED event");
+    assert_eq!(open_facts, 0, "no runtime facts created");
+    let source_visit: Option<Uuid> = sqlx::query_scalar(
+        "SELECT source_node_visit_id FROM workflow_events
+          WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(source_visit.is_none(), "event source visit must be NULL");
+    let visits_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_node_visits WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        visits_before, visits_after,
+        "no synthetic visit may be created"
+    );
+}
+
+/// T2/T3/T4 — dangling + ANY open runtime fact (the canonical model's
+/// complete activation-kind set) -> fail closed with zero mutation.
+#[sqlx::test]
+async fn m1b_t2_t3_t4_dangling_open_runtime_fact_fail_closed(pool: PgPool) {
+    for kind in ["DISPATCH_INTENT", "HUMAN_WORK_ITEM"] {
+        let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+        let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+        let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+        make_dangling(&pool, instance_id).await;
+        seed_open_activation(&pool, instance_id, owner_id, kind).await;
+
+        let before = m1b_snapshot(&pool, instance_id).await;
+        let err = m1b_cancel(
+            &pool,
+            owner_id,
+            instance_id,
+            state_ver,
+            "m1b-refuse",
+            "m1b-refuse",
+            "m1b refused",
+        )
+        .await
+        .expect_err("open runtime fact must fail closed");
+        assert!(
+            matches!(err, CancelWorkflowInstanceError::InternalConsistency(_)),
+            "{kind}: expected InternalConsistency, got {err:?}"
+        );
+
+        let after = m1b_snapshot(&pool, instance_id).await;
+        assert_eq!(
+            before, after,
+            "{kind}: instance/runtime facts/version/events must be unchanged"
+        );
+        assert!(!after.0, "{kind}: instance must stay uncancelled");
+        assert_eq!(after.3, 0, "{kind}: zero CANCELLED events");
+        assert_eq!(
+            after.4, 1,
+            "{kind}: the open runtime fact must stay open (never auto-closed)"
+        );
+    }
+}
+
+/// T4b — a dangling instance whose only runtime fact is CLOSED is again
+/// eligible (the invariant is about open facts, not their existence).
+#[sqlx::test]
+async fn m1b_t4b_dangling_closed_runtime_fact_is_eligible(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+    let activation_id = seed_open_activation(&pool, instance_id, owner_id, "DISPATCH_INTENT").await;
+    sqlx::query(
+        "INSERT INTO workflow_activation_closures
+           (activation_id, closure_reason, closed_at, command_id)
+         VALUES ($1, 'CANCELLED', now(), $2)",
+    )
+    .bind(activation_id)
+    .bind(Uuid::new_v4())
+    .execute(&pool)
+    .await
+    .expect("close the seeded activation");
+
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t4b",
+        "m1b-t4b",
+        "closed fact eligible",
+    )
+    .await
+    .expect("dangling instance with only closed runtime facts must be cancellable");
+    let (cancelled, _, _, cancel_events, open_facts) = m1b_snapshot(&pool, instance_id).await;
+    assert!(cancelled);
+    assert_eq!(cancel_events, 1);
+    assert_eq!(open_facts, 0);
+}
+
+/// T5 — normal current-visit cancel is unregressed: event binds the source
+/// visit, version +1, exactly one event.
+#[sqlx::test]
+async fn m1b_t5_normal_cancel_unregressed(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    let current_visit: Uuid = sqlx::query_scalar(
+        "SELECT current_node_visit_id FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t5",
+        "m1b-t5",
+        "normal cleanup",
+    )
+    .await
+    .expect("normal cancel must still succeed");
+
+    let (cancelled, _, version, cancel_events, _) = m1b_snapshot(&pool, instance_id).await;
+    assert!(cancelled);
+    assert_eq!(version, state_ver + 1);
+    assert_eq!(cancel_events, 1);
+    let bound_visit: Option<Uuid> = sqlx::query_scalar(
+        "SELECT source_node_visit_id FROM workflow_events
+          WHERE workflow_instance_id = $1 AND event_type = 'WORKFLOW_INSTANCE_CANCELLED'",
+    )
+    .bind(instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        bound_visit,
+        Some(current_visit),
+        "non-dangling event must bind the current visit"
+    );
+}
+
+/// T6 — dangling cancel: same key + same request replays; the operation is
+/// applied exactly once.
+#[sqlx::test]
+async fn m1b_t6_dangling_cancel_replay_exactly_once(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t6",
+        "m1b-t6",
+        "replay cleanup",
+    )
+    .await
+    .expect("first cancel succeeds");
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t6",
+        "m1b-t6",
+        "replay cleanup",
+    )
+    .await
+    .expect("same-key same-request replay must succeed");
+
+    let (_, _, version, cancel_events, _) = m1b_snapshot(&pool, instance_id).await;
+    assert_eq!(
+        cancel_events, 1,
+        "exactly one CANCELLED event across replay"
+    );
+    assert_eq!(version, state_ver + 1, "version incremented exactly once");
+}
+
+/// T7 — dangling cancel: same key + different request conflicts without
+/// mutation.
+#[sqlx::test]
+async fn m1b_t7_dangling_cancel_same_key_different_request_conflicts(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+
+    m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t7",
+        "m1b-t7-a",
+        "first reason",
+    )
+    .await
+    .expect("first cancel succeeds");
+
+    let before = m1b_snapshot(&pool, instance_id).await;
+    let err = m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t7",
+        "m1b-t7-b",
+        "different reason",
+    )
+    .await
+    .expect_err("same key with different request must conflict");
+    assert!(
+        matches!(err, CancelWorkflowInstanceError::IdempotencyConflict { .. }),
+        "expected IdempotencyConflict, got {err:?}"
+    );
+    let after = m1b_snapshot(&pool, instance_id).await;
+    assert_eq!(before, after, "conflict must not mutate anything");
+}
+
+/// T8 — fault inside the transaction rolls back completely: no partial
+/// cancelled flag, no orphan CANCELLED event, no version change, runtime
+/// facts untouched.
+#[sqlx::test]
+async fn m1b_t8_fault_rolls_back_completely(pool: PgPool) {
+    let (owner_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
+    let (_, ver_id) = seed_published_definition(&pool, domain_id).await;
+    let (instance_id, state_ver) = create_instance(&pool, owner_id, domain_id, ver_id).await;
+    make_dangling(&pool, instance_id).await;
+
+    // Pre-occupy the next event sequence slot so the Step 9 event insert
+    // fails with a UNIQUE violation AFTER the guarded instance update.
+    sqlx::query(
+        "INSERT INTO workflow_events
+           (event_id, workflow_instance_id, event_sequence, event_schema_version,
+            event_type, actor_principal_id,
+            old_workflow_state_version, new_workflow_state_version)
+         VALUES ($1, $2, $3, 'v1', 'WORKFLOW_INSTANCE_CANCELLED', $4, $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(instance_id)
+    .bind(state_ver + 1)
+    .bind(owner_id)
+    .bind(state_ver)
+    .bind(state_ver + 1)
+    .execute(&pool)
+    .await
+    .expect("occupy the next event sequence slot");
+
+    let before = m1b_snapshot(&pool, instance_id).await;
+    let events_before: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1")
+            .bind(instance_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let result = m1b_cancel(
+        &pool,
+        owner_id,
+        instance_id,
+        state_ver,
+        "m1b-t8",
+        "m1b-t8",
+        "fault injection",
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "event insert conflict must fail the cancel"
+    );
+
+    let (cancelled, current_visit, version, _, _) = m1b_snapshot(&pool, instance_id).await;
+    assert!(!cancelled, "cancelled flag must roll back");
+    assert!(current_visit.is_none(), "dangling shape unchanged");
+    assert_eq!(version, state_ver, "state version must roll back");
+    let total_events: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1")
+            .bind(instance_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        total_events, events_before,
+        "event set unchanged: no CANCELLED event persisted beyond the pre-seeded rows"
     );
 }
