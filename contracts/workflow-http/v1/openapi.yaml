@@ -489,10 +489,12 @@ paths:
       description: >-
         Cross-domain read-only view for the formal GLOBAL_WORKFLOW_COORDINATOR
         role. Server-side authorization: callers without the role receive 403
-        global_coordinator_required. Returns the same summary projection as the
-        domain list (DomainInstanceSummary) — never instance detail or
-        submission payload. No domainId parameter; filters mirror the domain
-        list minus domainId.
+        global_coordinator_required. Returns the global summary projection
+        (GlobalInstanceSummary: the domain summary fields plus the additive
+        nullable current_executor_type) — never instance detail or submission
+        payload. No domainId parameter; filters mirror the domain list minus
+        domainId. Supports the canonical Active Agent discovery filter
+        currentExecutorType (SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2).
       tags: [global-list]
       parameters:
         - name: beforeCreatedAt
@@ -533,13 +535,25 @@ paths:
           schema:
             type: string
             enum: [active, cancelled, archived, all]
+        - name: currentExecutorType
+          in: query
+          schema:
+            type: string
+            enum: [HUMAN, AGENT]
+          description: >-
+            Canonical current executor filter
+            (SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2). Exact case-sensitive
+            HUMAN or AGENT, derived server-side from the current Visit
+            assignee Principal type inside the list snapshot; SERVICE is
+            not an executable value. Any other value returns 422
+            invalid_current_executor_type and never broadens the filter.
       responses:
         "200":
           description: Paginated global instance list
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DomainInstancePage"
+                $ref: "#/components/schemas/GlobalInstancePage"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1449,6 +1463,41 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    # Global instance list (snake_case) — additive current_executor_type
+    GlobalInstancePage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalInstanceSummary"
+        next_cursor:
+          $ref: "#/components/schemas/Cursor"
+      required: [items, next_cursor]
+
+    GlobalInstanceSummary:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/DomainInstanceSummary"
+      properties:
+        current_executor_type:
+          type: string
+          enum: [HUMAN, AGENT]
+          nullable: true
+          description: >-
+            Canonical current executor type
+            (SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2), derived server-side from
+            workflow_instances.current_node_visit_id ->
+            workflow_node_visits.assignee_principal_id ->
+            principals.principal_type in the same repeatable-read list
+            snapshot. The only non-null values are HUMAN and AGENT;
+            terminal summaries project null; a non-terminal current Visit
+            whose Principal is neither is an internal consistency error
+            and is never emitted as a third value. No title, metadata,
+            node-key, activation, eligibility, execution-class, display-
+            name, or successor-line inference participates.
       required:
         - workflow_instance_id
         - domain_id

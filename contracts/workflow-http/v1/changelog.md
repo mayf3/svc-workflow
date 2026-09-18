@@ -1,3 +1,34 @@
+## 1.8.0 — 2026-09-18
+
+Contract documentation closure for accepted SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2
+wire behavior (implementation already on main at 8c78c8e; documentation-only,
+no new product semantics):
+
+- `GET /internal/v1/workflow-instances/global` accepts an OPTIONAL camelCase
+  query parameter `currentExecutorType` with exact case-sensitive values
+  `HUMAN | AGENT`. Any other value (including lowercase or empty) returns 422
+  `invalid_current_executor_type` and never broadens the filter. SERVICE is
+  not an executable value.
+- The global list response summary gains an additive nullable snake_case field
+  `current_executor_type` (`HUMAN | AGENT | null`), derived server-side from
+  `workflow_instances.current_node_visit_id -> workflow_node_visits.assignee_
+  principal_id -> principals.principal_type` in the same repeatable-read list
+  snapshot. Terminal summaries project null; no third executable value exists.
+  The canonical HR discovery expression is
+  `lifecycle=active&status=active&currentExecutorType=AGENT`
+  (the split lifecycle/status vocabulary is unchanged — DEC-AAL-002).
+- The global response is documented as `GlobalInstanceSummary`
+  (domain summary fields plus the additive nullable field); the Domain list
+  response and `DomainInstanceSummary` remain unchanged.
+- Broker companion (dsh-agent-core
+  AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V4, accepted): the Broker
+  passes `currentExecutorType` through, preserves the downstream 422 code,
+  and performs no local filtering/classification/owner resolution.
+- Deployment note: pre-AAL binaries silently ignore `currentExecutorType`
+  (unknown query parameter) and omit `current_executor_type`; post-AAL
+  binaries validate and emit. Deployment of the capability follows the
+  accepted Spec; production apply remains separately gated.
+
 ## 1.7.0 — 2026-09-11
 
 Accepted SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1 adds an explicit machine-readable

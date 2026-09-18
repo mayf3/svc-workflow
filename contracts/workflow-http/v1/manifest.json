@@ -1,13 +1,13 @@
 {
-  "serial": "V1-2026-09-06",
+  "serial": "V1-2026-09-18",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.7.0",
+  "contract_version": "1.8.0",
   "contract_scope": "runtime",
-  "title": "Workflow Runtime HTTP Contract V1 (Current-State Re-freeze)",
+  "title": "Workflow Runtime HTTP Contract V1 (Active Agent list documentation closure)",
   "owner_repository": "svc-workflow",
-  "owner_head_sha": "39279e34ff3124f8ca6f4269f9dab737a28aed75",
-  "owner_tree_sha": "846e324afad220605a5612641364d28bda1e880d",
-  "owner_semantics": "Owner head and tree pin the accepted diagnostic authority implementation base. The implementation delivery commit is recorded separately in the implementation conformance report.",
+  "owner_head_sha": "1e5a6057d000a115637dad3f0324a4f534dd2417",
+  "owner_tree_sha": "ed24da30a726c96cfb3aa0cf8c9576bb00eeed4e",
+  "owner_semantics": "Owner head and tree pin the accepted AAL-V2 + M1B implementation base the documented wire behavior belongs to. The implementation delivery commits are recorded separately in the implementation history and review records.",
   "digest_algorithm": "SHA-256",
   "digest_spec_version": "1.0.0",
   "bundle_file_set": [
@@ -23,10 +23,10 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "83b0693eb602620baf718b0bf2a3082bdec6342b8bc029b885ebd5a3d9d880c7",
-  "bundle_digest": "a2b41862e9e78ed0ddb5da0763fbe9268de1b3f990cbd233007eda500534f081",
+  "schema_digest": "100481423ffd4ac805c467cdb359b9739875a0949e685f8814f3acda9b794dad",
+  "bundle_digest": "03654a550108787d18ca804cb4cb6b541c4abb22dc8f752326a79a709242abae",
   "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics",
-  "created_at": "2026-09-06T11:00:00Z",
+  "created_at": "2026-09-18T00:00:00Z",
   "author": "IMPLEMENTATION_AGENT",
-  "description": "Adds accepted bounded Definition graph diagnostics and safe receipt replay; other HTTP behavior remains unchanged."
+  "description": "Documents the accepted SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2 wire behavior on the global instance list: optional currentExecutorType query filter (HUMAN|AGENT, 422 invalid_current_executor_type otherwise) and the additive nullable current_executor_type summary member (GlobalInstanceSummary). Documentation-only; no new product semantics."
 }

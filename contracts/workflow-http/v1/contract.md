@@ -37,6 +37,21 @@ Domain Owners receive the full Case detail.
 
 ---
 
+## Active Agent Discovery (AAL-V2)
+
+`GET /internal/v1/workflow-instances/global` accepts an optional camelCase
+query parameter `currentExecutorType` with exact case-sensitive values
+`HUMAN | AGENT`; any other value returns 422 `invalid_current_executor_type`.
+Each item in the response adds an additive nullable snake_case field
+`current_executor_type` (`HUMAN | AGENT | null`), derived server-side from
+the exact current Visit assignee Principal type in the list snapshot;
+terminal summaries project null. The canonical discovery expression is
+`lifecycle=active&status=active&currentExecutorType=AGENT` (split
+lifecycle/status vocabulary unchanged). The dsh Broker companion passes the
+parameter and field through and performs no local classification
+(AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V4). Authority:
+SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2 (accepted).
+
 ## 1. Base URLs
 
 All endpoints are served from a single service with no path prefix:
