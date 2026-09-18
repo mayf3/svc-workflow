@@ -57,8 +57,8 @@ instance row has `current_node_visit_id IS NULL`:
 1. FAIL-CLOSED: if any open runtime fact exists — any row of
    `workflow_activations` without a matching `workflow_activation_closures`
    row (the canonical model merges dispatch intents and human work items
-   into this one activation family, Product Boundary V7 §5.3 work-item
-   identity) — cancel refuses with `InternalConsistency` before any
+   into this one activation family, Product Boundary V7 §5.4 canonical-activation
+   enumeration) — cancel refuses with `InternalConsistency` before any
    mutation. The instance row, its runtime facts, and the state version stay
    unchanged; zero CANCELLED events are written. Such rows are data
    inconsistencies requiring separately accepted recovery; this branch never
@@ -69,7 +69,9 @@ instance row has `current_node_visit_id IS NULL`:
    (guarded update), exactly one `WORKFLOW_INSTANCE_CANCELLED` event whose
    `source_node_visit_id` is NULL — meaning "this instance never had a
    current visit". No synthetic visit is created; the frozen EFAP visit
-   immutability discipline is untouched.
+   immutability discipline is untouched. The event payload field
+   `cancelled_from_node_key` is the empty string for a dangling cancel
+   (there is no current node key).
 3. No activation closure step runs for a dangling instance (there is no
    current visit to close). For non-dangling instances nothing changes:
    same authorization (enabled DOMAIN_OWNER of the instance's Domain or
@@ -107,8 +109,11 @@ conflict behavior.
 ### CTR-M1B-004 — Idempotency unchanged
 Dangling cancels use the existing receipt machinery: same key + same request
 replays the original outcome exactly once; same key + different request
-conflicts with zero mutation; deterministic failures complete their receipts
-for stable replay.
+conflicts with zero mutation. Deterministic cancel failures return without
+persisting failure receipts (house cancel behavior shared by
+NotDomainOwner/AlreadyCancelled/SourceNodeTerminal/InstanceArchived);
+retrying while the refusing condition holds reproduces the same outcome
+deterministically.
 
 ### CTR-M1B-005 — Atomicity
 Every path (success, fail-closed refusal, infrastructure fault) commits all
