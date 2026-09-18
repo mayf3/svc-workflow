@@ -1640,9 +1640,10 @@ async fn m1b_t8_fault_rolls_back_completely(pool: PgPool) {
         "fault injection",
     )
     .await;
+    let err = result.expect_err("event insert conflict must fail the cancel");
     assert!(
-        result.is_err(),
-        "event insert conflict must fail the cancel"
+        matches!(err, CancelWorkflowInstanceError::StorageError(_)),
+        "expected StorageError from the event insert UNIQUE violation, got {err:?}"
     );
 
     let (cancelled, current_visit, version, _, _) = m1b_snapshot(&pool, instance_id).await;
