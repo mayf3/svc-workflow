@@ -23,8 +23,8 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "384dd0d55ca2ed3a97f8da15217dab9037186edf7ccff7fbbb8fc70677ba2024",
-  "bundle_digest": "0a1ef3acf60ea96d11e9db3d449df1e8cf9ddbbc8019bb43f59f8174883d5351",
+  "schema_digest": "ea2b3e1ca940feabbe3e0bb9bc0b765e5d3971002094f6fca98d6996a558223d",
+  "bundle_digest": "778edee5b7bb794221838146d365a79c3b792eb2ebdd01aed9be0acc8ad49ed5",
   "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics",
   "created_at": "2026-09-18T00:00:00Z",
   "author": "IMPLEMENTATION_AGENT",
