@@ -70,10 +70,19 @@ pub struct JwksVerifier {
     cache_ttl: Duration,
     max_stale: Duration,
     refresh_lock: Arc<Mutex<()>>,
-    /// Negative-result memory (T70): kid -> instant the refresh confirmed the
-    /// kid absent. Prevents concurrent unknown-kid storms from re-fetching.
-    kid_misses: Arc<Mutex<std::collections::HashMap<String, std::time::Instant>>>,
-    /// How long a "kid still absent" negative result is trusted.
+    /// Negative-result memory (T70, r2 per DAY_OWNER_REPAIR_RECONCILIATION_
+    /// AND_MERGE_20260918_V1 §4): kid -> (instant the refresh confirmed the
+    /// kid absent, JWKS generation that confirmed it). Prevents concurrent
+    /// unknown-kid storms from re-fetching. Entries are GENERATION-BOUND: a
+    /// successful fetch advances the generation, which invalidates every
+    /// earlier negative entry, so the next legitimate refresh generation
+    /// always allows a previously-absent kid to be retried (Owner-frozen
+    /// semantics); the TTL remains only an upper bound.
+    kid_misses: Arc<Mutex<std::collections::HashMap<String, (std::time::Instant, u64)>>>,
+    /// Monotonic JWKS generation: bumped on every successful fetch_jwks.
+    jwks_generation: Arc<std::sync::atomic::AtomicU64>,
+    /// How long a "kid still absent" negative result is trusted (upper bound;
+    /// generation advance is the primary invalidation).
     kid_miss_ttl: Duration,
     issuer: String,
     audience: String,
@@ -102,6 +111,7 @@ impl JwksVerifier {
             max_stale: Duration::from_secs(config.max_stale_secs),
             refresh_lock: Arc::new(Mutex::new(())),
             kid_misses: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            jwks_generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             kid_miss_ttl: Duration::from_secs(30),
             issuer: config.issuer.clone(),
             audience: config.audience.clone(),
@@ -497,10 +507,21 @@ impl JwksVerifier {
         // absent, do not re-fetch — the concurrent unknown-kid storm shares
         // the one negative result until the memory expires.
         {
+            let current_generation = self
+                .jwks_generation
+                .load(std::sync::atomic::Ordering::SeqCst);
             let mut misses = self.kid_misses.lock().await;
-            if let Some(when) = misses.get(kid) {
-                if when.elapsed() <= self.kid_miss_ttl {
+            if let Some((when, recorded_generation)) = misses.get(kid) {
+                // Honor the negative result only while the JWKS generation
+                // that confirmed the miss is still current. A newer refresh
+                // generation (new keys published) invalidates it — retry.
+                if when.elapsed() <= self.kid_miss_ttl
+                    && *recorded_generation == current_generation
+                {
                     return Err(());
+                }
+                if *recorded_generation != current_generation {
+                    misses.remove(kid);
                 }
             }
         }
@@ -530,11 +551,16 @@ impl JwksVerifier {
                 }
                 None => {
                     // Refresh confirmed the kid still absent — record the
-                    // negative result so waiters share it (T70).
+                    // negative result BOUND TO THIS JWKS GENERATION so
+                    // waiters share it (T70) until a newer generation
+                    // publishes different keys (r2).
+                    let generation = self
+                        .jwks_generation
+                        .load(std::sync::atomic::Ordering::SeqCst);
                     self.kid_misses
                         .lock()
                         .await
-                        .insert(kid.to_string(), std::time::Instant::now());
+                        .insert(kid.to_string(), (std::time::Instant::now(), generation));
                     Err(())
                 }
             },
@@ -622,6 +648,11 @@ impl JwksVerifier {
             keys,
             fetched_at: Instant::now(),
         });
+        // r2: this successful fetch IS a new JWKS generation — advance the
+        // counter so every earlier negative kid entry is invalidated and
+        // previously-absent kids are retried against the new keys.
+        self.jwks_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         tracing::info!(url = %self.jwks_url, "JWKS cache updated successfully");
         Ok(())
     }
@@ -637,6 +668,7 @@ impl Clone for JwksVerifier {
             max_stale: self.max_stale,
             refresh_lock: self.refresh_lock.clone(),
             kid_misses: self.kid_misses.clone(),
+            jwks_generation: self.jwks_generation.clone(),
             kid_miss_ttl: self.kid_miss_ttl,
             issuer: self.issuer.clone(),
             audience: self.audience.clone(),
