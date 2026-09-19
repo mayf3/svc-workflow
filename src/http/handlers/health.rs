@@ -6,7 +6,7 @@ use axum::Json;
 use crate::http::dto::{HealthResponse, VersionResponse};
 use crate::http::error::ApiError;
 use crate::http::{
-    AppState, API_CONTRACT_VERSION, EXPECTED_MIGRATION_VERSION, SCHEMA_VERSION, SERVICE_VERSION,
+    AppState, API_CONTRACT_VERSION, EXPECTED_MIGRATION_VERSION, SERVICE_VERSION, schema_version,
 };
 
 pub(crate) async fn healthz() -> Json<HealthResponse> {
@@ -80,7 +80,7 @@ pub(crate) async fn version() -> Json<VersionResponse> {
         git_sha: option_env!("GIT_SHA").unwrap_or("unknown"),
         git_tree_state: option_env!("GIT_TREE_STATE").unwrap_or("unknown"),
         build_timestamp: option_env!("BUILD_TIMESTAMP").unwrap_or("unknown"),
-        schema_version: SCHEMA_VERSION,
+        schema_version: schema_version(),
         api_contract_version: API_CONTRACT_VERSION,
     })
 }
