@@ -106,3 +106,53 @@ async fn unknown_kid_negative_result_is_shared_not_repeated() {
     assert_eq!(unknown, N, "every caller must get the unknown_kid answer");
     assert!(n <= 1, "negative result must be shared: one refresh, not {n} fetches");
 }
+
+/// r2 (DAY_OWNER_REPAIR_RECONCILIATION_AND_MERGE_20260918_V1 §4): negative
+/// entries must be JWKS-GENERATION-bound. After a kid is confirmed absent
+/// (generation N), a NEW refresh generation (any successful fetch — here a
+/// second distinct unknown kid triggering one) invalidates the entry, and
+/// the SAME kid is retried against the fresh keys. The pre-r2 fixed-TTL
+/// memory kept blocking the kid for the full 30s regardless of refreshes.
+#[tokio::test]
+async fn negative_entries_are_generation_bound_next_refresh_allows_retry() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let fetches = Arc::new(AtomicU64::new(0));
+    spawn_counting_server(listener, fetches.clone());
+    let verifier = verifier_for(&format!("http://127.0.0.1:{port}/jwks"));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert!(verifier.is_ready().await);
+    fetches.store(0, Ordering::SeqCst);
+
+    // Generation N: kid A confirmed absent -> negative entry recorded.
+    let token_a = jwt_with_kid("rotating-kid-a");
+    let err = verifier.verify(&token_a).await.err().expect("unknown kid a");
+    assert_eq!(err.code(), "unknown_kid");
+    let after_a = fetches.load(Ordering::SeqCst);
+    assert!(after_a >= 1, "first unknown-kid check must fetch");
+
+    // Share check: an immediate repeat of A is served from the negative
+    // memory of the SAME generation (no new fetch).
+    let err = verifier.verify(&token_a).await.err().expect("unknown kid a 2");
+    assert_eq!(err.code(), "unknown_kid");
+    assert_eq!(fetches.load(Ordering::SeqCst), after_a, "same-generation repeat must not re-fetch");
+
+    // Trigger a NEW generation: kid B (unknown) causes one fresh fetch;
+    // the server publishes the same keys, but the generation advances.
+    let token_b = jwt_with_kid("trigger-kid-b");
+    let err = verifier.verify(&token_b).await.err().expect("unknown kid b");
+    assert_eq!(err.code(), "unknown_kid");
+    let after_b = fetches.load(Ordering::SeqCst);
+    assert_eq!(after_b, after_a + 1, "kid B miss must trigger exactly one new fetch (new generation)");
+
+    // Owner-frozen semantics: the next legitimate refresh generation allows
+    // the previously-absent kid A to be RETRIED — the stale negative entry
+    // must not block it (pre-r2 it stayed blocked for the full 30s TTL).
+    let err = verifier.verify(&token_a).await.err().expect("unknown kid a 3");
+    assert_eq!(err.code(), "unknown_kid");
+    assert!(
+        fetches.load(Ordering::SeqCst) >= after_b + 1,
+        "generation advance must invalidate the negative entry and re-fetch for kid A"
+    );
+}
