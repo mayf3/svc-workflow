@@ -1,7 +1,7 @@
 # Governing Spec Format V0
 
 ```text
-FORMAT_VERSION = 0.1.0-draft.1
+FORMAT_VERSION = 1.0.0
 STATUS = accepted
 ```
 
@@ -19,12 +19,22 @@ docs/specs/<SPEC_ID>.md
 
 Do not move Specs among `proposed/`, `accepted/`, `rejected/`, or `implemented/` directories. Lifecycle is metadata; implementation and conformance are separate records.
 
-`SPEC_ID` is stable, uppercase, and versioned, for example:
+`SPEC_ID` is stable, uppercase, and versioned. Every new proposed or accepted governing Spec MUST match:
+
+```text
+^[A-Z][A-Z0-9_]*_V[0-9]+$
+```
+
+Examples:
 
 ```text
 AGENT_FORUM_CORE_INVARIANTS_V1
 AUTH_SERVICE_CREDENTIAL_ROTATION_V2
 ```
+
+The schema's legacy-ID allowance applies only to an already-existing historical authority in its atomically
+superseded state. It MUST NOT be used to create a proposed or accepted legacy identifier such as a new
+`*_AMENDMENT` Spec.
 
 A change to existing accepted normative meaning, or a new independent normative
 meaning, uses a new Spec ID.
@@ -123,6 +133,20 @@ Transition rules:
 - accepted replacement: `supersedes` names every fully replaced authority;
 - superseded Spec: `superseded_by` names the accepted replacement;
 - backlinks change atomically in the same docs-only change.
+
+For the narrow legacy identifier retirement rule defined in this section and enforced by `.agents/tools/validate_spec_transition.py`:
+
+- a new proposed or accepted `spec_id` remains strict `_V<number>` only;
+- an already-existing legacy `spec_id` in the narrow
+  `^[A-Z][A-Z0-9_]*_V[0-9]+_[A-Z][A-Z0-9_]*$` class, excluding IDs that also match the strict form, is
+  schema-valid only when `status: superseded`;
+- `supersedes` may carry the matching whole legacy ID as a retirement reference;
+- `superseded_by` remains null or a strict `_V<number>` successor;
+- `governed_by` and external authority IDs remain strict and cannot depend on legacy IDs;
+- existence in the transition base and atomic bidirectional closure are cross-record validator requirements, not
+  facts inferred from single-record schema validity.
+
+The legacy path cannot introduce partial supersession or increase the active legacy-authority set.
 
 ---
 
