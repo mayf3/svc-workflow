@@ -26,8 +26,24 @@ pub use state::{AppState, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0022";
 pub const EXPECTED_MIGRATION_VERSION: i64 = 26;
+
+/// T71 r2 (per DAY_OWNER_REPAIR_RECONCILIATION_AND_MERGE_20260918_V1 §4/§5):
+/// the public schema version is DERIVED from the shared migration authority
+/// (EXPECTED_MIGRATION_VERSION) — zero-padded to 4 digits — so no
+/// hand-written literal can drift from the migration ledger the health gate
+/// enforces. The former hand-maintained constant had silently lagged four
+/// migrations (0022 while the ledger was at 26), and the r1 fix replaced it
+/// with a new hand-written literal ("0026") that would drift again on the
+/// next migration.
+pub fn schema_version() -> String {
+    format!("{:04}", EXPECTED_MIGRATION_VERSION)
+}
+
+const _: () = assert!(
+    EXPECTED_MIGRATION_VERSION >= 0 && EXPECTED_MIGRATION_VERSION <= 9999,
+    "schema_version() derives a 4-digit zero-padded string; the authority must fit"
+);
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -335,3 +351,15 @@ async fn handle_service_error(error: BoxError) -> error::ApiError {
         )
     }
 }
+
+#[cfg(test)]
+mod schema_version_tests {
+    /// T71 r2 zero-model lockstep: the derived public schema version must
+    /// equal the zero-padded shared migration authority.
+    #[test]
+    fn schema_version_is_derived_from_the_migration_authority() {
+        assert_eq!(super::schema_version(), format!("{:04}", super::EXPECTED_MIGRATION_VERSION));
+        assert_eq!(super::schema_version().parse::<i64>().unwrap(), super::EXPECTED_MIGRATION_VERSION);
+    }
+}
+

@@ -274,7 +274,7 @@ pub struct VersionResponse {
     pub git_tree_state: &'static str,
     /// UTC ISO-8601 build timestamp.
     pub build_timestamp: &'static str,
-    pub schema_version: &'static str,
+    pub schema_version: String,
     pub api_contract_version: &'static str,
 }
 
