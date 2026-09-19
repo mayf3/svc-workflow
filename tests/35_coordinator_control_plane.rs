@@ -1126,6 +1126,8 @@ async fn acc_cp_001_coordinator_cross_domain_cancel_archive_and_negatives() {
 // Baseline RED (pre-fix): a NEW key repeating an already-applied
 // reconciliation returned 200 already_applied even though the TARGET
 // principal had been disabled after the original apply.
+// 
+
 // ============================================================================
 #[tokio::test]
 async fn t81_new_key_reconcile_validates_current_target_enabled() {
@@ -1223,5 +1225,74 @@ async fn t81_new_key_reconcile_validates_current_target_enabled() {
     .await
     .expect("audit count");
     assert_eq!(already_applied_audits.0, 0, "rejected new key must not audit already_applied");
+}
+
+// T82 (WF-GS-10) — the domain owner read records the basis that ACTUALLY
+// authorized it. OWNER_DECISION_COMMIT (OWNER_GATE_MATERIALIZATION_AND_
+// NIGHTLY_RELEASE_20260916_V1, BOUNDED_FIX_AUTHORIZED): a domain-scoped
+// Domain Owner read must not be audited as GLOBAL_WORKFLOW_COORDINATOR;
+// authority must never be widened to make a label true.
+// Baseline RED (pre-fix): audit_read hard-coded GLOBAL_WORKFLOW_COORDINATOR
+// for every read, including the Domain-Owner-authorized owner lookup.
+// ============================================================================
+#[tokio::test]
+async fn t82_domain_owner_read_records_real_basis() {
+    let pool = common::create_pool().await;
+    let owner = seed_agent(&pool).await;
+    let coordinator = seed_agent(&pool).await;
+    grant_coordinator(&pool, coordinator).await;
+    let domain_id = seed_domain(&pool).await;
+    seed_binding(&pool, domain_id, owner, "DOMAIN_OWNER").await;
+    let mock = MockJwksServer::start().await;
+    let app = build_app(pool.clone(), &mock.url);
+    let owner_path = format!("/internal/v1/domains/{domain_id}/owner");
+
+    // Domain Owner (no global role) reads the owner data via domain-scoped
+    // authority — the audit must name DOMAIN_OWNER.
+    let owner_token = direct_token(owner, "workflow.read", &mock.key_pair);
+    let (status, body) = do_get(&app, &owner_path, &owner_token).await;
+    assert_eq!(status, 200, "domain owner read must succeed: {body}");
+    let basis: (String,) = sqlx::query_as(
+        "SELECT details->>'authorityBasis' FROM workflow_security_audits \
+         WHERE action = 'coordinator_domain_owner_get' AND resource_id = $1 \
+           AND principal_id = $2",
+    )
+    .bind(domain_id.to_string())
+    .bind(owner)
+    .fetch_one(&pool)
+    .await
+    .expect("owner read audit row");
+    assert_eq!(basis.0, "DOMAIN_OWNER", "audit must record the real domain-scoped basis");
+
+    // Global coordinator reading the same surface keeps the coordinator basis.
+    let coordinator_token = direct_token(coordinator, "workflow.read", &mock.key_pair);
+    let (status, body) = do_get(&app, &owner_path, &coordinator_token).await;
+    assert_eq!(status, 200, "coordinator read must succeed: {body}");
+    let basis: (String,) = sqlx::query_as(
+        "SELECT details->>'authorityBasis' FROM workflow_security_audits \
+         WHERE action = 'coordinator_domain_owner_get' AND resource_id = $1 \
+           AND principal_id = $2",
+    )
+    .bind(domain_id.to_string())
+    .bind(coordinator)
+    .fetch_one(&pool)
+    .await
+    .expect("coordinator read audit row");
+    assert_eq!(basis.0, "GLOBAL_WORKFLOW_COORDINATOR");
+
+    // Denied caller: neither predicate passes — no audit row is written.
+    let outsider = seed_agent(&pool).await;
+    let outsider_token = direct_token(outsider, "workflow.read", &mock.key_pair);
+    let (status, _) = do_get(&app, &owner_path, &outsider_token).await;
+    assert_eq!(status, 403);
+    let rows: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM workflow_security_audits \
+         WHERE action = 'coordinator_domain_owner_get' AND principal_id = $1",
+    )
+    .bind(outsider)
+    .fetch_one(&pool)
+    .await
+    .expect("outsider audit count");
+    assert_eq!(rows.0, 0, "denied caller must not produce a read audit row");
 }
 
