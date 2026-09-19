@@ -1,64 +1,57 @@
 # Conformance Record
 
-## Evaluation coordinates
+## Bound tuple
 
 ```text
-REPOSITORY = owner/repository
-PRIMARY_GOVERNING_SPEC = EXAMPLE_BEHAVIOR_V1
-GOVERNING_SPEC_REVISION = <commit/blob>
-IMPLEMENTATION_BASE_COMMIT = <sha>
-IMPLEMENTATION_COMMIT = <sha>
-ENVIRONMENT = test | staging | production | <qualified environment>
-EVALUATED_AT = <timestamp>
-EVALUATOR_ID = <identity>
-SPEC_PRESENT_IN_BASE = YES | NO
-SPEC_STATUS_IN_BASE = accepted | proposed | superseded
+REPOSITORY =
+PRIMARY_AUTHORITY =
+AUTHORITY_REVISION =
+IMPLEMENTATION_BASE_COMMIT =
+IMPLEMENTATION_COMMIT =
+ENVIRONMENT =
+EVALUATED_AT =
+EVALUATOR_ID =
+ASSURANCE_LEVEL = ROUTINE | DURABLE | CONTROLLED
+REVIEW_SCOPE = AFFECTED | FULL
+EXECUTION_MANDATE = <reference | NOT_APPLICABLE>
+RECEIPT = <reference | NOT_APPLICABLE>
 ```
+
+## Affected-surface justification
+
+- affected Contracts:
+- directly dependent accepted invariants:
+- omitted Contracts and why unaffected:
+- reason full matrix is or is not required:
 
 ## Contract matrix
 
-| Contract | Implementation | Verification mechanism | Observation IDs | Evidence IDs | Result |
+| Contract | Implementation / operation | Mechanism | Observation IDs | Evidence IDs | Result |
 |---|---|---|---|---|---|
-| `CTR-EXAMPLE-001` | `path:symbol` | test/probe/query/manual | `OBS-...` | `EVD-...` | VERIFIED / DRIFTED / UNKNOWN / NOT_APPLICABLE |
+| `CTR-EXAMPLE-001` | `path:symbol` or operation | test/probe/query/manual | `OBS-...` | `EVD-...` | VERIFIED / DRIFTED / UNKNOWN / NOT_APPLICABLE |
 
-## Aggregate result
+Every `NOT_APPLICABLE` result requires a Contract-derived reason.
+
+## Aggregate
 
 ```text
 IMPLEMENTATION_STATE = NOT_STARTED | IN_PROGRESS | COMPLETE
 VERIFICATION_STATE = NOT_RUN | PARTIAL | SUFFICIENT
-CONFORMANCE = UNKNOWN | VERIFIED | DRIFTED
-CONTRACTS_TOTAL = <n>
-CONTRACTS_VERIFIED = <n>
-CONTRACTS_DRIFTED = <n>
-CONTRACTS_UNKNOWN = <n>
-CONTRACTS_NOT_APPLICABLE = <n>
+CONFORMANCE_RESULT = UNKNOWN | VERIFIED | DRIFTED
+CONTRACTS_TOTAL =
+CONTRACTS_VERIFIED =
+CONTRACTS_DRIFTED =
+CONTRACTS_UNKNOWN =
+CONTRACTS_NOT_APPLICABLE =
+DONE_WHEN_MET = YES | NO
+EXPANSION_TRIGGERED = YES | NO
 IMPLEMENTATION_READY_TO_MERGE = YES | NO
+OPERATION_COMPLETE = YES | NO | NOT_APPLICABLE
+NEXT_ACTION = CONTINUE | STOP | RE_PREFLIGHT | OWNER_DECISION
 ```
 
-Aggregation:
+Any drift produces aggregate `DRIFTED`; all applicable Contracts verified with sufficient Evidence produces `VERIFIED`; otherwise `UNKNOWN`.
 
-- any active Contract drifted → `DRIFTED`;
-- all applicable active Contracts verified with sufficient evidence and every `NOT_APPLICABLE` result is Contract-justified → `VERIFIED`;
-- otherwise → `UNKNOWN`.
+`VERIFIED` applies only to the exact authority/implementation/environment/time tuple. A changed coordinate does not inherit it.
 
-## Evidence records
-
-Each load-bearing result identifies `EVD-*` relations with source `OBS-*`, target Contract at the recorded governing-Spec revision, relation (`SATISFIES`, `VIOLATES`, or `INCONCLUSIVE`), bound coordinates, sufficiency, limitations, and provenance.
-
-## Evidence qualifications and limits
-
-- Spec revision limit: ...
-- Implementation revision limit: ...
-- Environment/configuration limit: ...
-- Time/data limit: ...
-- Unverified paths: ...
-
-## Drift disposition
-
-When drift exists:
-
-- affected Contract IDs: ...
-- containment: ...
-- implementation repair: ...
-- authority change required: YES | NO
-- linked issue/PR/report: ...
+Each load-bearing result names `EVD-*` relations with source Observations, target Contract, relation, exact coordinates, sufficiency, limitations, and provenance.

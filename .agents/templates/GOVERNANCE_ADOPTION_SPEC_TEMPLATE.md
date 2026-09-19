@@ -267,6 +267,16 @@ and what would reopen the option.
 MIGRATION = forward-only
 HISTORICAL_REWRITE = none
 ROLLBACK = revert the complete adoption or update commit
+
+SUCCESSOR_PREPARATION =
+  current adoption remains accepted with superseded_by = null
+  proposed successor may declare supersedes = [current adoption]
+
+SUCCESSOR_ACCEPTANCE =
+  successor becomes accepted
+  predecessor becomes superseded
+  predecessor.superseded_by names successor
+  both lifecycle directions change atomically in the final accepted Head
 ```
 
 ## 13. Open questions
