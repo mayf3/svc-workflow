@@ -373,28 +373,19 @@ pub(super) fn validate_submission_schema(
 ///
 /// Extracted as a pure function so property-based tests can cover the
 /// contract without a database.
-pub(crate) fn collect_return_contract_errors(
-    payload: &serde_json::Value,
-) -> Vec<String> {
+pub(crate) fn collect_return_contract_errors(payload: &serde_json::Value) -> Vec<String> {
     let mut contract_errors: Vec<String> = Vec::new();
 
     // rootCauseNodeVisitId: required, must be a valid UUID
-    match payload
-        .get("rootCauseNodeVisitId")
-        .and_then(|v| v.as_str())
-    {
+    match payload.get("rootCauseNodeVisitId").and_then(|v| v.as_str()) {
         Some(s) => {
             if Uuid::parse_str(s).is_err() {
-                contract_errors.push(format!(
-                    "rootCauseNodeVisitId is not a valid UUID: '{}'",
-                    s
-                ));
+                contract_errors.push(format!("rootCauseNodeVisitId is not a valid UUID: '{}'", s));
             }
         }
         None => {
-            contract_errors.push(
-                "rootCauseNodeVisitId is required and must be a valid UUID".to_string(),
-            );
+            contract_errors
+                .push("rootCauseNodeVisitId is required and must be a valid UUID".to_string());
         }
     }
 
@@ -492,8 +483,8 @@ pub(super) async fn validate_return_references(
         .and_then(|v| v.as_array())
     {
         for entry in related {
-            let sub_id = Uuid::parse_str(entry.as_str().expect("validated above"))
-                .expect("validated above");
+            let sub_id =
+                Uuid::parse_str(entry.as_str().expect("validated above")).expect("validated above");
 
             let sub: Option<(Uuid,)> = sqlx::query_as(
                 "SELECT submission_id FROM workflow_submissions \
@@ -541,6 +532,12 @@ pub(crate) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde
                 "detail": detail,
             })
         }
+        ExecuteWorkflowTransitionError::ReturnPolicyExhausted { limit } => {
+            serde_json::json!({
+                "error": "return_policy_exhausted",
+                "limit": limit,
+            })
+        }
         ExecuteWorkflowTransitionError::SizeLimitExceeded(detail)
         | ExecuteWorkflowTransitionError::InvalidReturnReferences(detail)
         | ExecuteWorkflowTransitionError::AssigneeResolutionFailed(detail) => {
@@ -572,6 +569,7 @@ pub(super) fn is_deterministic_error(err: &ExecuteWorkflowTransitionError) -> bo
             | ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
             | ExecuteWorkflowTransitionError::SizeLimitExceeded(_)
             | ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
+            | ExecuteWorkflowTransitionError::ReturnPolicyExhausted { .. }
             | ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_)
     )
 }
@@ -615,11 +613,9 @@ mod tests {
         let payload = json!({ "summary": "no contract fields" });
         let errors = collect_return_contract_errors(&payload);
         assert_eq!(errors.len(), 3);
-        assert!(
-            errors
-                .iter()
-                .any(|e| e.contains("rootCauseNodeVisitId is required"))
-        );
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("rootCauseNodeVisitId is required")));
         assert!(errors.iter().any(|e| e.contains("reasonCode is required")));
         assert!(errors.iter().any(|e| e.contains("reason is required")));
     }
@@ -641,7 +637,10 @@ mod tests {
 
         // Remove rootCauseNodeVisitId
         let mut payload = base.clone();
-        payload.as_object_mut().unwrap().remove("rootCauseNodeVisitId");
+        payload
+            .as_object_mut()
+            .unwrap()
+            .remove("rootCauseNodeVisitId");
         let errors = collect_return_contract_errors(&payload);
         assert_eq!(errors.len(), 1);
         assert!(errors[0].contains("rootCauseNodeVisitId is required"));

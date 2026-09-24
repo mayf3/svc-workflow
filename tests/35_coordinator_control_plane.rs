@@ -58,6 +58,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(vec![]),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -109,9 +112,7 @@ async fn do_method(
     if let Some(key) = idem_key {
         builder = builder.header("idempotency-key", key);
     }
-    let req = builder
-        .body(Body::from(body.to_string()))
-        .unwrap();
+    let req = builder.body(Body::from(body.to_string())).unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     let status = resp.status().as_u16();
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
@@ -214,7 +215,11 @@ async fn acc_cp_010_reconcile_repair_semantics() {
     let domain_id = seed_domain(&pool).await;
     let mock = MockJwksServer::start().await;
     let app = build_app(pool.clone(), &mock.url);
-    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let token = direct_token(
+        coordinator,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
     let apply_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/apply");
     let update_path = format!("/internal/v1/domains/{domain_id}");
     let reconcile_body = |from: Uuid, to: Uuid| {
@@ -390,7 +395,11 @@ async fn acc_cp_001_domain_list_get_update_owner() {
 
     let mock = MockJwksServer::start().await;
     let app = build_app(pool.clone(), &mock.url);
-    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let token = direct_token(
+        coordinator,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
 
     // list contains the domain with the exact governance metadata shape.
     let (status, body) = do_get(&app, "/internal/v1/domains?limit=100", &token).await;
@@ -418,12 +427,7 @@ async fn acc_cp_001_domain_list_get_update_owner() {
     );
 
     // get.
-    let (status, body) = do_get(
-        &app,
-        &format!("/internal/v1/domains/{domain_id}"),
-        &token,
-    )
-    .await;
+    let (status, body) = do_get(&app, &format!("/internal/v1/domains/{domain_id}"), &token).await;
     assert_eq!(status, 200, "get: {body}");
     assert_eq!(body["displayName"], json!("CCP Test Domain"));
 
@@ -439,12 +443,7 @@ async fn acc_cp_001_domain_list_get_update_owner() {
     .await;
     assert_eq!(status, 200, "patch: {body}");
     assert_eq!(body["displayName"], json!("Renamed Domain"));
-    let (_, reread) = do_get(
-        &app,
-        &format!("/internal/v1/domains/{domain_id}"),
-        &token,
-    )
-    .await;
+    let (_, reread) = do_get(&app, &format!("/internal/v1/domains/{domain_id}"), &token).await;
     assert_eq!(reread["displayName"], json!("Renamed Domain"));
 
     // get_owner read-back.
@@ -537,17 +536,15 @@ async fn acc_cp_005_owner_and_member_fail_closed_on_admin_surface() {
             Some(&format!("neg-{}", Uuid::new_v4())),
         )
         .await;
-        assert_eq!(status, 403, "owner {method} {path} must fail closed: {body}");
+        assert_eq!(
+            status, 403,
+            "owner {method} {path} must fail closed: {body}"
+        );
         assert_eq!(body["error"]["code"], json!("global_coordinator_required"));
     }
 
     // DOMAIN_MEMBER: everything fail-closed.
-    let (status, body) = do_get(
-        &app,
-        "/internal/v1/domains?limit=10",
-        &member_token,
-    )
-    .await;
+    let (status, body) = do_get(&app, "/internal/v1/domains?limit=10", &member_token).await;
     assert_eq!(status, 403, "member domain list must fail closed");
     let (status, body) = do_get(
         &app,
@@ -579,15 +576,7 @@ async fn acc_cp_002_member_add_three_state_and_remove() {
 
     // First logical add → outcome=added + exactly one member_added audit.
     let key = format!("add-{}", Uuid::new_v4());
-    let (status, body) = do_method(
-        &app,
-        "PUT",
-        &add_path,
-        &token,
-        json!({}),
-        Some(&key),
-    )
-    .await;
+    let (status, body) = do_method(&app, "PUT", &add_path, &token, json!({}), Some(&key)).await;
     assert_eq!(status, 200, "first add: {body}");
     assert_eq!(body["outcome"], json!("added"));
     assert_eq!(body["role"], json!("DOMAIN_MEMBER"));
@@ -602,15 +591,7 @@ async fn acc_cp_002_member_add_three_state_and_remove() {
     );
 
     // Same Idempotency-Key replay → original response, zero second audit.
-    let (status, body) = do_method(
-        &app,
-        "PUT",
-        &add_path,
-        &token,
-        json!({}),
-        Some(&key),
-    )
-    .await;
+    let (status, body) = do_method(&app, "PUT", &add_path, &token, json!({}), Some(&key)).await;
     assert_eq!(status, 200, "replay: {body}");
     assert_eq!(body["outcome"], json!("added"));
     assert_eq!(
@@ -702,7 +683,11 @@ async fn acc_cp_003_reconcile_plan_apply_replay_conflict() {
 
     let mock = MockJwksServer::start().await;
     let app = build_app(pool.clone(), &mock.url);
-    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let token = direct_token(
+        coordinator,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
     let plan_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/plan");
     let apply_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/apply");
 
@@ -934,11 +919,7 @@ async fn acc_cp_003_reconcile_identity_and_target_semantics() {
 // ============================================================================
 
 /// Minimal published V1 definition + active instance (mirrors test 28).
-async fn seed_v1_definition(
-    pool: &PgPool,
-    domain_id: Uuid,
-    agent_id: Uuid,
-) -> (Uuid, Uuid) {
+async fn seed_v1_definition(pool: &PgPool, domain_id: Uuid, agent_id: Uuid) -> (Uuid, Uuid) {
     let def_id = Uuid::new_v4();
     let ver_id = Uuid::new_v4();
     let def_key = format!("ccp-{}", &Uuid::new_v4().to_string()[..8]);
@@ -1025,8 +1006,11 @@ async fn acc_cp_001_coordinator_cross_domain_cancel_archive_and_negatives() {
 
     let mock = MockJwksServer::start().await;
     let app = build_app(pool.clone(), &mock.url);
-    let coordinator_token =
-        direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let coordinator_token = direct_token(
+        coordinator,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
     let member_token = direct_token(plain_member, "workflow.execute", &mock.key_pair);
 
     // Lifecycle negative: archive on the ACTIVE instance must fail for the
@@ -1109,10 +1093,11 @@ async fn acc_cp_001_coordinator_cross_domain_cancel_archive_and_negatives() {
     )
     .await;
     assert_eq!(status, 200, "global active read: {body}");
-    let listed_again = body
-        .to_string()
-        .contains(&instance_id.to_string());
-    assert!(!listed_again, "cancelled+archived instance must leave the active surface");
+    let listed_again = body.to_string().contains(&instance_id.to_string());
+    assert!(
+        !listed_again,
+        "cancelled+archived instance must leave the active surface"
+    );
 }
 
 // ============================================================================
@@ -1135,7 +1120,11 @@ async fn t81_new_key_reconcile_validates_current_target_enabled() {
     let domain_id = seed_domain(&pool).await;
     let mock = MockJwksServer::start().await;
     let app = build_app(pool.clone(), &mock.url);
-    let token = direct_token(coordinator, "workflow.execute workflow.read", &mock.key_pair);
+    let token = direct_token(
+        coordinator,
+        "workflow.execute workflow.read",
+        &mock.key_pair,
+    );
     let apply_path = format!("/internal/v1/domains/{domain_id}/binding-reconcile/apply");
     let reconcile_body = |from: Uuid, to: Uuid| {
         json!({
@@ -1209,7 +1198,10 @@ async fn t81_new_key_reconcile_validates_current_target_enabled() {
         Some(&new_key),
     )
     .await;
-    assert_eq!(status, 403, "new key must validate current target state: {body}");
+    assert_eq!(
+        status, 403,
+        "new key must validate current target state: {body}"
+    );
     assert_eq!(body["error"]["code"], json!("principal_disabled"));
 
     // And the rejected attempt must not write an already_applied audit row.
@@ -1222,6 +1214,8 @@ async fn t81_new_key_reconcile_validates_current_target_enabled() {
     .fetch_one(&pool)
     .await
     .expect("audit count");
-    assert_eq!(already_applied_audits.0, 0, "rejected new key must not audit already_applied");
+    assert_eq!(
+        already_applied_audits.0, 0,
+        "rejected new key must not audit already_applied"
+    );
 }
-

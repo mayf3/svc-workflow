@@ -25,6 +25,9 @@ pub struct ExecuteWorkflowTransitionResult {
     pub current_node_visit_id: uuid::Uuid,
     pub submission_id: Option<uuid::Uuid>,
     pub event_sequence: i32,
+    /// WORKFLOW_EXECUTION_CONTROL_V1: set when the transition escalated its
+    /// target visit to HUMAN_REQUIRED (limit-reaching RETURN).
+    pub assistance_case_id: Option<uuid::Uuid>,
 }
 
 impl From<transition_transaction::TransitionResult> for ExecuteWorkflowTransitionResult {
@@ -37,6 +40,7 @@ impl From<transition_transaction::TransitionResult> for ExecuteWorkflowTransitio
             current_node_visit_id: r.current_node_visit_id,
             submission_id: r.submission_id,
             event_sequence: r.event_sequence,
+            assistance_case_id: r.assistance_case_id,
         }
     }
 }
@@ -52,10 +56,30 @@ impl From<transition_transaction::TransitionResult> for ExecuteWorkflowTransitio
 ///
 /// Returns `ExecuteWorkflowTransitionError` for all validation, authorization,
 /// version conflict, admission, and infrastructure failures.
+/// Compatibility entry: identical to `execute_workflow_transition_with_policy`
+/// with the policy read from the environment
+/// (WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE, default 3). Library callers should
+/// prefer the explicit `_with_policy` variant.
 pub async fn execute_workflow_transition(
     pool: &PgPool,
     admission: AdmissionGate<'_>,
     command: ExecuteWorkflowTransitionCommand,
+) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
+    let max_returns_per_edge = std::env::var("WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|v| *v >= 1)
+        .unwrap_or(3);
+    execute_workflow_transition_with_policy(pool, admission, command, max_returns_per_edge).await
+}
+
+/// WORKFLOW_EXECUTION_CONTROL_V1 entry with the explicit RETURN policy
+/// (CTR-SWEC-005); the HTTP adapter passes the startup configuration.
+pub async fn execute_workflow_transition_with_policy(
+    pool: &PgPool,
+    admission: AdmissionGate<'_>,
+    command: ExecuteWorkflowTransitionCommand,
+    max_returns_per_edge: u32,
 ) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
     // 1. Compute the identity-independent request hash before business validation.
     let request_hash = compute_transition_request_hash(
@@ -81,6 +105,7 @@ pub async fn execute_workflow_transition(
         admission,
         command,
         &request_hash,
+        max_returns_per_edge,
     )
     .await?;
 
@@ -100,6 +125,9 @@ pub(crate) fn replayed_failure_error(
 ) -> ExecuteWorkflowTransitionError {
     let error_code = body["error"].as_str().unwrap_or("unknown");
     match (status, error_code) {
+        (409, "return_policy_exhausted") => ExecuteWorkflowTransitionError::ReturnPolicyExhausted {
+            limit: body["limit"].as_i64().unwrap_or(0) as i32,
+        },
         (404, "principal_not_found") => ExecuteWorkflowTransitionError::PrincipalNotFound,
         (404, "instance_not_found") => ExecuteWorkflowTransitionError::InstanceNotFound,
         (403, "principal_disabled") => ExecuteWorkflowTransitionError::PrincipalDisabled,

@@ -58,6 +58,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::
                 .map(svc_workflow::domain::ids::PrincipalId::from_uuid)
                 .collect(),
         ),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -235,7 +238,7 @@ async fn create_v1_instance(
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(ver_id),
             external_reference: None,
@@ -297,7 +300,6 @@ async fn activation_state(pool: &PgPool, visit_id: Uuid) -> (Option<String>, Opt
     }
 }
 
-
 /// Seed an enabled domain-role binding for `principal_id` in `domain_id`
 /// (membership gate for the create path).
 async fn seed_domain_member(pool: &PgPool, domain_id: Uuid, principal_id: Uuid) {
@@ -351,22 +353,26 @@ async fn agent_owned_entry_creates_due_dispatch_intent() {
     seed_domain_member(&pool, domain_id, creator).await;
     let _ = owner;
     let (ver, ..) = seed_v1_definition(&pool, domain_id, creator).await;
-    let (instance_id, visit_id, version) =
-        create_v1_instance(&pool, creator, domain_id, ver).await;
+    let (instance_id, visit_id, version) = create_v1_instance(&pool, creator, domain_id, ver).await;
     assert_eq!(version, 1);
 
-    let row: (String, Option<chrono::DateTime<chrono::Utc>>, chrono::DateTime<chrono::Utc>) =
-        sqlx::query_as(
-            "SELECT activation_kind::text, initial_next_eligible_at, activation_at
+    let row: (
+        String,
+        Option<chrono::DateTime<chrono::Utc>>,
+        chrono::DateTime<chrono::Utc>,
+    ) = sqlx::query_as(
+        "SELECT activation_kind::text, initial_next_eligible_at, activation_at
                FROM workflow_activations WHERE node_visit_id = $1",
-        )
-        .bind(visit_id)
-        .fetch_one(&pool)
-        .await
-        .expect("activation row must exist");
+    )
+    .bind(visit_id)
+    .fetch_one(&pool)
+    .await
+    .expect("activation row must exist");
 
     assert_eq!(row.0, "DISPATCH_INTENT");
-    let initial = row.1.expect("DISPATCH_INTENT must carry initial nextEligibleAt");
+    let initial = row
+        .1
+        .expect("DISPATCH_INTENT must carry initial nextEligibleAt");
     // Same transaction timestamp: initial == activation_at.
     assert_eq!(initial, row.2);
 }
@@ -410,7 +416,10 @@ async fn human_owned_entry_creates_human_work_item() {
     .fetch_optional(&pool)
     .await
     .expect("eligibility query");
-    assert!(eligibility.is_none(), "HUMAN_WORK_ITEM must have no eligibility facts");
+    assert!(
+        eligibility.is_none(),
+        "HUMAN_WORK_ITEM must have no eligibility facts"
+    );
 }
 
 /// ACC-VAI-002/007: SERVICE principal can never own new-model work; create
@@ -477,7 +486,7 @@ async fn service_owner_fails_closed() {
             principal_id: PrincipalId::from_uuid(creator),
             idempotency_key: format!("create-svc-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(ver_id),
             external_reference: None,
@@ -488,10 +497,7 @@ async fn service_owner_fails_closed() {
     )
     .await;
 
-    assert!(
-        result.is_err(),
-        "SERVICE-owned entry must fail closed"
-    );
+    assert!(result.is_err(), "SERVICE-owned entry must fail closed");
     let (activations_after,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM workflow_activations")
         .fetch_one(&pool)
         .await
@@ -600,7 +606,10 @@ async fn cancel_closes_and_archive_fails_on_active_activation() {
         &format!("archive-{}", Uuid::new_v4()),
     )
     .await;
-    assert_eq!(status, 409, "archive with active activation must fail: {body}");
+    assert_eq!(
+        status, 409,
+        "archive with active activation must fail: {body}"
+    );
     assert_eq!(body["error"]["code"], json!("active_activation_exists"));
 }
 
@@ -622,13 +631,12 @@ async fn wake_applies_and_noops() {
 
     // Push the intent into the future with a directly-seeded eligibility
     // fact (fixture; SCHEDULER_DEFER is out of scope for phase 1).
-    let (activation_id,): (Uuid,) = sqlx::query_as(
-        "SELECT activation_id FROM workflow_activations WHERE node_visit_id = $1",
-    )
-    .bind(visit_id)
-    .fetch_one(&pool)
-    .await
-    .expect("activation id");
+    let (activation_id,): (Uuid,) =
+        sqlx::query_as("SELECT activation_id FROM workflow_activations WHERE node_visit_id = $1")
+            .bind(visit_id)
+            .fetch_one(&pool)
+            .await
+            .expect("activation id");
     let (initial,): (chrono::DateTime<chrono::Utc>,) = sqlx::query_as(
         "SELECT initial_next_eligible_at FROM workflow_activations WHERE activation_id = $1",
     )
@@ -656,9 +664,7 @@ async fn wake_applies_and_noops() {
     // Version mismatch -> durable no-op (200, wakeApplied=false).
     let (status, body) = do_post(
         app.clone(),
-        &format!(
-            "/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"
-        ),
+        &format!("/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"),
         &scheduler_token,
         json!({ "expectedWorkflowStateVersion": version + 100 }),
         &format!("wake-mismatch-{}", Uuid::new_v4()),
@@ -672,9 +678,7 @@ async fn wake_applies_and_noops() {
     let wake_key = format!("wake-apply-{}", Uuid::new_v4());
     let (status, body) = do_post(
         app.clone(),
-        &format!(
-            "/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"
-        ),
+        &format!("/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"),
         &scheduler_token,
         json!({ "expectedWorkflowStateVersion": version }),
         &wake_key,
@@ -710,9 +714,7 @@ async fn wake_applies_and_noops() {
     // event, no extra version).
     let (status2, body2) = do_post(
         app.clone(),
-        &format!(
-            "/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"
-        ),
+        &format!("/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"),
         &scheduler_token,
         json!({ "expectedWorkflowStateVersion": version }),
         &wake_key,
@@ -725,9 +727,7 @@ async fn wake_applies_and_noops() {
     // durable no-op ALREADY_DUE.
     let (status3, body3) = do_post(
         app.clone(),
-        &format!(
-            "/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"
-        ),
+        &format!("/internal/v1/workflow-instances/{instance_id}/node-visits/{visit_id}/wake"),
         &scheduler_token,
         json!({ "expectedWorkflowStateVersion": new_version }),
         &format!("wake-again-{}", Uuid::new_v4()),
@@ -804,7 +804,12 @@ async fn due_read_gate_and_projection() {
         .collect();
     assert_eq!(mine.len(), 1, "exactly one due intent for the instance");
     let record = mine[0];
-    let mut keys: Vec<&str> = record.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+    let mut keys: Vec<&str> = record
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
     keys.sort();
     assert_eq!(
         keys,
@@ -888,22 +893,29 @@ async fn activation_facts_are_immutable() {
     let (creator, domain_id) = common::seed_principal_domain_with_owner(&pool).await;
     let (ver, ..) = seed_v1_definition(&pool, domain_id, creator).await;
     let (_, visit_id, _) = create_v1_instance(&pool, creator, domain_id, ver).await;
-    let (activation_id,): (Uuid,) = sqlx::query_as(
-        "SELECT activation_id FROM workflow_activations WHERE node_visit_id = $1",
-    )
-    .bind(visit_id)
-    .fetch_one(&pool)
-    .await
-    .expect("activation");
+    let (activation_id,): (Uuid,) =
+        sqlx::query_as("SELECT activation_id FROM workflow_activations WHERE node_visit_id = $1")
+            .bind(visit_id)
+            .fetch_one(&pool)
+            .await
+            .expect("activation");
 
-    let update = sqlx::query("UPDATE workflow_activations SET activation_at = now() WHERE activation_id = $1")
-        .bind(activation_id)
-        .execute(&pool)
-        .await;
-    assert!(update.is_err(), "UPDATE on workflow_activations must be rejected");
+    let update = sqlx::query(
+        "UPDATE workflow_activations SET activation_at = now() WHERE activation_id = $1",
+    )
+    .bind(activation_id)
+    .execute(&pool)
+    .await;
+    assert!(
+        update.is_err(),
+        "UPDATE on workflow_activations must be rejected"
+    );
     let delete = sqlx::query("DELETE FROM workflow_activations WHERE activation_id = $1")
         .bind(activation_id)
         .execute(&pool)
         .await;
-    assert!(delete.is_err(), "DELETE on workflow_activations must be rejected");
+    assert!(
+        delete.is_err(),
+        "DELETE on workflow_activations must be rejected"
+    );
 }

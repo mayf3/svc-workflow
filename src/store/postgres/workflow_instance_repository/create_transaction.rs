@@ -23,10 +23,10 @@ use crate::domain::workflow_instance::events::{
 };
 use crate::store::postgres::admission_gate::{self as admission_gate_module, AdmissionGate};
 
+use super::activation_facts;
 use super::command_receipt::{
     self, complete_receipt, try_insert_receipt, write_attempt_audit, ReceiptReplayResult,
 };
-use super::activation_facts;
 use super::definition_lookup::{
     self, lock_and_validate_version, read_draft_node, read_minimal_entry_node,
     read_visit_activation_entry_node,
@@ -285,9 +285,7 @@ pub(crate) async fn create_workflow_instance_atomically(
             // assignment on the entry is rejected outright.
             let entry =
                 validation_result!(read_minimal_entry_node(&mut tx, definition_version_uuid).await);
-            if entry.assignee_ref_type
-                == crate::domain::enums::AssigneeRefType::DomainOwner
-            {
+            if entry.assignee_ref_type == crate::domain::enums::AssigneeRefType::DomainOwner {
                 deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(
                     "Minimal (V2) definition entry uses forbidden DOMAIN_OWNER assignee"
                         .to_string(),
@@ -299,8 +297,9 @@ pub(crate) async fn create_workflow_instance_atomically(
             // VISIT_ACTIVATION_V1: entry must be a TASK of the new model.
             // Owner references outside the closed set are rejected here as
             // well (the validator already rejects them at publish time).
-            let entry =
-                validation_result!(read_visit_activation_entry_node(&mut tx, definition_version_uuid).await);
+            let entry = validation_result!(
+                read_visit_activation_entry_node(&mut tx, definition_version_uuid).await
+            );
             if entry.assignee_ref_type
                 == crate::domain::enums::AssigneeRefType::InstanceInputPrincipal
             {
@@ -330,14 +329,14 @@ pub(crate) async fn create_workflow_instance_atomically(
     // VISIT_ACTIVATION_V1 owners must resolve to an enabled canonical HUMAN
     // or AGENT Principal; SERVICE can never own new-model work.
     if version_info.semantic_model_version == 3 {
-        let owner_type_check = activation_facts::validate_owner_is_human_or_agent(
-            &mut tx,
-            resolved_assignee_id,
-        )
-        .await
-        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        let owner_type_check =
+            activation_facts::validate_owner_is_human_or_agent(&mut tx, resolved_assignee_id)
+                .await
+                .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
         if let Err(reason) = owner_type_check {
-            deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(reason));
+            deterministic_failure!(CreateWorkflowInstanceError::AssigneeResolutionFailed(
+                reason
+            ));
         }
     }
     validation_result!(validation_helpers::validate_context_schema(
@@ -368,12 +367,10 @@ pub(crate) async fn create_workflow_instance_atomically(
     // any admission failure rolls the whole transaction back (zero business
     // delta — no partial write, no deterministic failure receipt, no retry).
     // ---------------------------------------------------------------
-    let input_keys = admission_gate_module::required_input_principal_keys(
-        &mut tx,
-        definition_version_uuid,
-    )
-    .await
-    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+    let input_keys =
+        admission_gate_module::required_input_principal_keys(&mut tx, definition_version_uuid)
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
     let input_principal_ids = admission_gate_module::extract_required_input_principal_ids(
         &input_keys,
         &cmd.context_payload,
@@ -475,13 +472,12 @@ pub(crate) async fn create_workflow_instance_atomically(
     if version_info.semantic_model_version == 3 {
         // Kind derives only from the resolved canonical Principal type,
         // never from a caller field or node name.
-        let owner_type: (String,) = sqlx::query_as(
-            "SELECT principal_type::text FROM principals WHERE principal_id = $1",
-        )
-        .bind(resolved_assignee_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        let owner_type: (String,) =
+            sqlx::query_as("SELECT principal_type::text FROM principals WHERE principal_id = $1")
+                .bind(resolved_assignee_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
         let activation_kind = if owner_type.0 == "AGENT" {
             crate::domain::enums::ActivationKind::DispatchIntent
         } else {
@@ -498,6 +494,19 @@ pub(crate) async fn create_workflow_instance_atomically(
         )
         .await
         .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        // CTR-SWEC-007: push-first kick for a first DISPATCH_INTENT.
+        if activation_kind == crate::domain::enums::ActivationKind::DispatchIntent
+            && cmd.execution_class != WorkflowExecutionClass::NonBusinessTest
+        {
+            super::super::outbox::queue_execution_kick(
+                &mut tx,
+                workflow_instance_id,
+                node_visit_id,
+                activation_id,
+            )
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        }
     }
 
     // ---------------------------------------------------------------
@@ -542,6 +551,31 @@ pub(crate) async fn create_workflow_instance_atomically(
     .execute(&mut *tx)
     .await
     .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    // ---------------------------------------------------------------
+    // Step 12b: WORKFLOW_EXECUTION_CONTROL_V1 outbox facts
+    // (CTR-SWEC-001/002). BUSINESS instances get the PENDING canonical
+    // forum binding + the workflow_created forum event. Non-BUSINESS
+    // (canary) instances get nothing — no forum surface for canaries.
+    // ---------------------------------------------------------------
+    if cmd.execution_class != WorkflowExecutionClass::NonBusinessTest {
+        super::super::outbox::queue_forum_binding(&mut tx, workflow_instance_id)
+            .await
+            .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+        super::super::outbox::queue_forum_event(
+            &mut tx,
+            workflow_instance_id,
+            &format!("wf_created:{workflow_instance_id}"),
+            serde_json::json!({
+                "eventType": "workflow_created",
+                "workflowInstanceId": workflow_instance_id,
+                "definitionVersionId": definition_version_uuid,
+                "initialNodeId": entry_node.node_id,
+            }),
+        )
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+    }
 
     // ---------------------------------------------------------------
     // Step 13: Complete the command receipt
@@ -595,9 +629,7 @@ pub(crate) async fn create_workflow_instance_atomically(
         {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
-                return Err(CreateWorkflowInstanceError::StorageError(
-                    e.to_string(),
-                ));
+                return Err(CreateWorkflowInstanceError::StorageError(e.to_string()));
             }
             Err(_) => {
                 return Err(CreateWorkflowInstanceError::CommitOutcomeUnknown {

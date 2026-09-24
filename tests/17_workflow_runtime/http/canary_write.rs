@@ -49,6 +49,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, canary: AuthV1CanaryConfig) -> 
     canary_config.jwks_url = jwks_url.to_string();
     let http_config = HttpConfig {
         admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,

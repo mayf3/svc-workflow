@@ -13,10 +13,11 @@ pub mod create;
 /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1).
 pub mod eligibility;
 pub mod execute_transition;
+pub mod execution_escalation;
 pub mod idempotency;
 pub mod import;
 pub mod query_service;
-pub mod wake;
 pub mod query_types;
 pub mod revise;
 pub mod revise_and_transition;
+pub mod wake;

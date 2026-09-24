@@ -39,6 +39,9 @@ fn build_config(pool: &sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 0,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             ..Default::default()

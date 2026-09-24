@@ -64,6 +64,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(vec![]),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -264,9 +267,7 @@ async fn due_instant() -> DateTime<Utc> {
 
 /// Full fixture: an enabled AGENT creator (domain member), a DOMAIN_OWNER
 /// principal, and a published model-3 definition with an AGENT-owned entry.
-async fn seed_fixture(
-    pool: &PgPool,
-) -> (Uuid, Uuid, Uuid, Uuid) {
+async fn seed_fixture(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
     // A domain with NO other owner: the creator AGENT holds BOTH the member
     // binding and the single DOMAIN_OWNER governance binding (the
     // idx_drb_single_owner invariant permits exactly one enabled owner).
@@ -324,12 +325,17 @@ async fn t5d_migration_default_is_business() {
     .execute(&pool)
     .await
     .expect("raw insert");
-    let class: String = sqlx::query_scalar("SELECT execution_class::text FROM workflow_instances WHERE workflow_instance_id = $1")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .expect("row exists");
-    assert_eq!(class, "BUSINESS", "column default IS the compatibility story");
+    let class: String = sqlx::query_scalar(
+        "SELECT execution_class::text FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .expect("row exists");
+    assert_eq!(
+        class, "BUSINESS",
+        "column default IS the compatibility story"
+    );
 }
 
 // ============================================================================
@@ -374,7 +380,8 @@ async fn t5g_owner_marking_persists_and_t5a_excluded_from_due_feed() {
     // T5a: force the marked intent due; it must NOT appear in the feed.
     // A BUSINESS control instance seeded in the same window MUST appear.
     let marked_at = due_instant().await;
-    let marked_activation = force_next_eligible_at(&pool, Uuid::parse_str(&marked_visit).unwrap(), marked_at).await;
+    let marked_activation =
+        force_next_eligible_at(&pool, Uuid::parse_str(&marked_visit).unwrap(), marked_at).await;
 
     let (cstatus, cbody) = do_post(
         app.clone(),
@@ -391,7 +398,8 @@ async fn t5g_owner_marking_persists_and_t5a_excluded_from_due_feed() {
     assert_eq!(cstatus, 201, "unmarked create is normal: {cbody}");
     let control_visit = cbody["currentNodeVisitId"].as_str().unwrap().to_string();
     let control_at = due_instant().await;
-    let control_activation = force_next_eligible_at(&pool, Uuid::parse_str(&control_visit).unwrap(), control_at).await;
+    let control_activation =
+        force_next_eligible_at(&pool, Uuid::parse_str(&control_visit).unwrap(), control_at).await;
 
     // Scheduler-role feed read.
     let scheduler = seed_agent(&pool).await;
@@ -481,7 +489,10 @@ async fn t5h_marked_instance_still_on_assignee_worklist() {
     assert_eq!(wstatus, 200, "{wbody}");
     let items = wbody["items"].as_array().cloned().unwrap_or_default();
     assert!(
-        items.iter().any(|i| i["detail"]["instance"]["workflow_instance_id"].as_str() == body["workflowInstanceId"].as_str()),
+        items
+            .iter()
+            .any(|i| i["detail"]["instance"]["workflow_instance_id"].as_str()
+                == body["workflowInstanceId"].as_str()),
         "T5h: marked instance must remain fully visible/executable via its assignee worklist"
     );
 }
@@ -561,7 +572,13 @@ async fn t5j_class_mixed_window_returns_only_business_in_order() {
         } else {
             direct_token(creator, "workflow.execute", &mock.key_pair)
         };
-        let (status, body) = do_post(app.clone(), "/internal/v1/workflow-instances", &token, body_builder).await;
+        let (status, body) = do_post(
+            app.clone(),
+            "/internal/v1/workflow-instances",
+            &token,
+            body_builder,
+        )
+        .await;
         assert_eq!(status, 201, "{body}");
         let at = due_instant().await;
         let activation = force_next_eligible_at(
@@ -594,7 +611,11 @@ async fn t5j_class_mixed_window_returns_only_business_in_order() {
     // Both BUSINESS rows present, in eligibility order, marked row absent.
     let pos: Vec<usize> = business_ids
         .iter()
-        .map(|id| ids.iter().position(|x| x == id).expect("business row in feed"))
+        .map(|id| {
+            ids.iter()
+                .position(|x| x == id)
+                .expect("business row in feed")
+        })
         .collect();
     assert!(
         pos.len() == 2 && pos[0] < pos[1],
@@ -665,7 +686,11 @@ async fn t5f_member_marking_denied_zero_facts_and_deterministic_replay() {
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     let resp2 = app.clone().oneshot(req2).await.unwrap();
-    assert_eq!(resp2.status().as_u16(), 403, "replayed deterministic failure");
+    assert_eq!(
+        resp2.status().as_u16(),
+        403,
+        "replayed deterministic failure"
+    );
     let bytes2 = to_bytes(resp2.into_body(), usize::MAX).await.unwrap();
     let replayed: Value = serde_json::from_slice(&bytes2).unwrap();
     assert_eq!(replayed["error"]["code"].as_str(), Some("not_domain_owner"));
@@ -736,7 +761,10 @@ async fn t5k_other_domain_owner_cannot_mark() {
         }),
     )
     .await;
-    assert_eq!(status, 403, "T5k: domain binding is the authority scope: {body}");
+    assert_eq!(
+        status, 403,
+        "T5k: domain binding is the authority scope: {body}"
+    );
     assert_eq!(body["error"]["code"].as_str(), Some("not_domain_owner"));
 }
 
@@ -817,5 +845,8 @@ async fn t5c_unmarked_business_default_unchanged() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(class, "BUSINESS", "T5c: absent class = BUSINESS, byte-identical legacy path");
+    assert_eq!(
+        class, "BUSINESS",
+        "T5c: absent class = BUSINESS, byte-identical legacy path"
+    );
 }

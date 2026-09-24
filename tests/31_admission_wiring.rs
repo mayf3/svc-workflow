@@ -33,15 +33,12 @@ use svc_workflow::application::workflow_instance::create::create_workflow_instan
 use svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition;
 use svc_workflow::application::workflow_instance::revise::revise_workflow_context;
 use svc_workflow::auth::admission::{AdmissionClient, AdmissionConfig};
+use svc_workflow::domain::ids::{DefinitionVersionId, DomainId, TransitionId, WorkflowInstanceId};
 use svc_workflow::domain::workflow_instance::commands::{
-    CreateWorkflowInstanceCommand, ExecuteWorkflowTransitionCommand,
-    ReviseWorkflowContextCommand,
+    CreateWorkflowInstanceCommand, ExecuteWorkflowTransitionCommand, ReviseWorkflowContextCommand,
 };
-use svc_workflow::domain::workflow_instance::errors::ReviseWorkflowContextError;
 use svc_workflow::domain::workflow_instance::errors::revise_error_label;
-use svc_workflow::domain::ids::{
-    DefinitionVersionId, DomainId, TransitionId, WorkflowInstanceId,
-};
+use svc_workflow::domain::workflow_instance::errors::ReviseWorkflowContextError;
 use svc_workflow::http::{self, AppState, HttpConfig};
 use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 
@@ -100,7 +97,10 @@ fn serve_connection(
     let Some((path, body)) = read_request(&mut stream) else {
         return;
     };
-    requests.lock().expect("stub requests lock").push(path.clone());
+    requests
+        .lock()
+        .expect("stub requests lock")
+        .push(path.clone());
 
     let principal_status = match mode {
         StubMode::Admit => "active",
@@ -150,9 +150,7 @@ fn reason(status: u16) -> &'static str {
 }
 
 fn token_body(scope: &str) -> String {
-    format!(
-        r#"{{"access_token":"tok","token_type":"Bearer","expires_in":3600,"scope":"{scope}"}}"#
-    )
+    format!(r#"{{"access_token":"tok","token_type":"Bearer","expires_in":3600,"scope":"{scope}"}}"#)
 }
 
 /// The stub keeps the most recent request body for the token endpoint.
@@ -184,12 +182,7 @@ fn read_request(stream: &mut std::net::TcpStream) -> Option<(String, String)> {
         }
     }
     let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
-    let path = head
-        .lines()
-        .next()?
-        .split_whitespace()
-        .nth(1)?
-        .to_string();
+    let path = head.lines().next()?.split_whitespace().nth(1)?.to_string();
     let content_length = head
         .lines()
         .find_map(|line| {
@@ -276,6 +269,9 @@ fn http_config(jwks_url: &str, admission: AdmissionConfig) -> HttpConfig {
             clock_skew_seconds: 60,
         },
         admission,
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
     }
 }
 
@@ -460,7 +456,11 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
     }
 }
 
-fn create_command(caller: Uuid, fixture: &Fixture, idempotency_key: String) -> CreateWorkflowInstanceCommand {
+fn create_command(
+    caller: Uuid,
+    fixture: &Fixture,
+    idempotency_key: String,
+) -> CreateWorkflowInstanceCommand {
     CreateWorkflowInstanceCommand {
         principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(caller),
         idempotency_key,
@@ -476,13 +476,12 @@ fn create_command(caller: Uuid, fixture: &Fixture, idempotency_key: String) -> C
 }
 
 async fn instance_count(pool: &sqlx::PgPool, domain_id: Uuid) -> i64 {
-    let (count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM workflow_instances WHERE domain_id = $1",
-    )
-    .bind(domain_id)
-    .fetch_one(pool)
-    .await
-    .expect("count instances");
+    let (count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM workflow_instances WHERE domain_id = $1")
+            .bind(domain_id)
+            .fetch_one(pool)
+            .await
+            .expect("count instances");
     count
 }
 
@@ -520,7 +519,11 @@ async fn admission_enabled_create_writes_and_admits_command_principals() {
     let fixture = seed(&pool).await;
     let stub = StubDirectory::spawn(StubMode::Admit);
     let mock = MockJwksServer::start().await;
-    let app = build_app(pool.clone(), &mock.url, admission_config_enabled(&stub.url()));
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        admission_config_enabled(&stub.url()),
+    );
 
     let bearer = token(fixture.caller, "workflow.execute", &mock.key_pair);
     let (status, body) = send(
@@ -547,15 +550,25 @@ async fn admission_enabled_create_writes_and_admits_command_principals() {
     // admitted at transition time — see the transition test below).
     let requests = stub.requests();
     assert!(
-        requests.iter().any(|p| p == &format!("/api/v1/directory/principals/{}/agent", fixture.caller)),
+        requests
+            .iter()
+            .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", fixture.caller)),
         "auth directory read for the resolved WORKFLOW_CREATOR assignee expected: {requests:?}"
     );
     assert!(
-        requests.iter().any(|p| p == &format!("/v1/directory/agents/agent-{}", fixture.caller)),
+        requests
+            .iter()
+            .any(|p| p == &format!("/v1/directory/agents/agent-{}", fixture.caller)),
         "agent-core directory read expected: {requests:?}"
     );
     // Fresh token per exact read audience per command.
-    assert_eq!(requests.iter().filter(|p| p.as_str() == "/oauth/token").count(), 2);
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|p| p.as_str() == "/oauth/token")
+            .count(),
+        2
+    );
 }
 
 /// (b) Directory rejects the assignment target (principalStatus != active):
@@ -595,7 +608,10 @@ async fn create_rejected_fails_closed_with_zero_writes() {
 
     // Zero business delta: no instance, no receipt, no context revision.
     assert_eq!(instance_count(&pool, fixture.domain_id).await, 0);
-    assert_eq!(receipt_count(&pool, fixture.caller, "adm-create-rejected").await, 0);
+    assert_eq!(
+        receipt_count(&pool, fixture.caller, "adm-create-rejected").await,
+        0
+    );
 
     // Retry with the SAME idempotency key against an admitting directory
     // succeeds — proving nothing was persisted by the rejected attempt.
@@ -639,7 +655,10 @@ async fn create_unavailable_fails_closed() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
     assert_eq!(body["error"]["code"], "admission_unavailable");
     assert_eq!(instance_count(&pool, fixture.domain_id).await, 0);
-    assert_eq!(receipt_count(&pool, fixture.caller, "adm-create-unavailable").await, 0);
+    assert_eq!(
+        receipt_count(&pool, fixture.caller, "adm-create-unavailable").await,
+        0
+    );
 }
 
 /// (d) Admission disabled (dormant deploy): behavior unchanged, no directory
@@ -703,7 +722,10 @@ async fn transition_rejected_fails_closed_then_same_key_retry_admits() {
     let (status, body) = send(
         app,
         "POST",
-        &format!("/internal/v1/workflow-instances/{}/transitions", created.workflow_instance_id),
+        &format!(
+            "/internal/v1/workflow-instances/{}/transitions",
+            created.workflow_instance_id
+        ),
         &bearer,
         Some("adm-trans-1"),
         Some(json!({
@@ -785,7 +807,7 @@ async fn revise_rejected_fails_closed_then_same_key_retry_admits() {
             principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
             idempotency_key: "adm-revise-base".to_string(),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(fixture.domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(fixture.version_id),
             external_reference: None,
@@ -797,15 +819,13 @@ async fn revise_rejected_fails_closed_then_same_key_retry_admits() {
     .await
     .expect("base create");
 
-    let revise_command = |key: &str| {
-        ReviseWorkflowContextCommand {
-            principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
-            idempotency_key: key.to_string(),
-            command_schema_version: "v1".to_string(),
-            workflow_instance_id: WorkflowInstanceId::from_uuid(created.workflow_instance_id),
-            expected_workflow_state_version: 1,
-            context_payload: json!({"assigneePrincipalId": fixture.agent.to_string()}),
-        }
+    let revise_command = |key: &str| ReviseWorkflowContextCommand {
+        principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
+        idempotency_key: key.to_string(),
+        command_schema_version: "v1".to_string(),
+        workflow_instance_id: WorkflowInstanceId::from_uuid(created.workflow_instance_id),
+        expected_workflow_state_version: 1,
+        context_payload: json!({"assigneePrincipalId": fixture.agent.to_string()}),
     };
 
     // Rejecting directory -> fail closed.
@@ -816,9 +836,15 @@ async fn revise_rejected_fails_closed_then_same_key_retry_admits() {
     )
     .await
     .expect_err("rejected revision must fail");
-    assert!(matches!(error, ReviseWorkflowContextError::AdmissionFailed(_)), "{error:?}");
+    assert!(
+        matches!(error, ReviseWorkflowContextError::AdmissionFailed(_)),
+        "{error:?}"
+    );
     assert_eq!(revise_error_label(&error), "admission_rejected");
-    assert_eq!(receipt_count(&pool, fixture.caller, "adm-revise-1").await, 0);
+    assert_eq!(
+        receipt_count(&pool, fixture.caller, "adm-revise-1").await,
+        0
+    );
     let (revisions,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM workflow_context_revisions WHERE workflow_instance_id = $1",
     )
@@ -978,7 +1004,10 @@ async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_so
     .await
     .expect("transition executes");
 
-    assert_eq!(outcome.workflow_state_version, 2, "transition must execute (admission passes via canonical successor)");
+    assert_eq!(
+        outcome.workflow_state_version, 2,
+        "transition must execute (admission passes via canonical successor)"
+    );
 
     // ── Observation 1+2: the directory admitted the CANONICAL successor Q ──
     let requests = stub.requests();
@@ -988,7 +1017,10 @@ async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_so
     let p_admitted = requests
         .iter()
         .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", fixture.agent));
-    println!("T62 DEBUG: agent(P)={} successor(Q)={} caller={} requests={:?}", fixture.agent, successor_q, fixture.caller, requests);
+    println!(
+        "T62 DEBUG: agent(P)={} successor(Q)={} caller={} requests={:?}",
+        fixture.agent, successor_q, fixture.caller, requests
+    );
     assert!(
         q_admitted,
         "O1/O2: admission must canonicalize P -> Q before the directory reads (requests: {requests:?})"
@@ -1018,7 +1050,7 @@ async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_so
     // principal P (receipt identity bound pre-canonicalization) ──
     let receipt_principal: Uuid = sqlx::query_scalar(
         "SELECT principal_id FROM workflow_command_receipts \
-         WHERE idempotency_key = 't62-advance-1-' || $1", 
+         WHERE idempotency_key = 't62-advance-1-' || $1",
     )
     .bind(&run)
     .fetch_one(&pool)
@@ -1057,7 +1089,10 @@ async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_so
             "worklist for {who} must contain {expected} item(s) (exactly-once semantics)"
         );
         if expected == 1 {
-            assert_eq!(page.items[0].detail.instance.workflow_instance_id, created.workflow_instance_id);
+            assert_eq!(
+                page.items[0].detail.instance.workflow_instance_id,
+                created.workflow_instance_id
+            );
         }
     }
 

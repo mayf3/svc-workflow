@@ -117,6 +117,21 @@ pub(crate) async fn request_assistance(
         &payload_digest,
     )
     .await?;
+    // CTR-SWEC-008: assistance lifecycle is projected to the canonical forum
+    // thread via the outbox.
+    super::super::super::outbox::queue_forum_event(
+        &mut tx,
+        instance_id,
+        &format!("assistance_requested:{case_id}"),
+        serde_json::json!({
+            "eventType": "assistance_requested",
+            "workflowInstanceId": instance_id,
+            "nodeVisitId": requested_visit,
+            "assistanceCaseId": case_id,
+        }),
+    )
+    .await
+    .map_err(storage)?;
     let result = AssistanceCommandResult {
         assistance_case_id: case_id,
         workflow_instance_id: instance_id,
@@ -315,6 +330,26 @@ async fn owner_action(
         &payload_digest,
     )
     .await?;
+    // CTR-SWEC-008: escalate/resolve projected to the canonical forum thread.
+    let lifecycle_event_type = match action {
+        OwnerAction::Escalate(_) => "assistance_escalated",
+        OwnerAction::Resolve(_) => "assistance_resolved",
+    };
+    super::super::super::outbox::queue_forum_event(
+        &mut tx,
+        case.workflow_instance_id,
+        &format!("{lifecycle_event_type}:{case_id}"),
+        serde_json::json!({
+            "eventType": lifecycle_event_type,
+            "workflowInstanceId": case.workflow_instance_id,
+            "nodeVisitId": case.node_visit_id,
+            "assistanceCaseId": case_id,
+            "previousStatus": previous_status,
+            "newStatus": target_status.as_str(),
+        }),
+    )
+    .await
+    .map_err(storage)?;
     let result = AssistanceCommandResult {
         assistance_case_id: case.assistance_case_id,
         workflow_instance_id: case.workflow_instance_id,
