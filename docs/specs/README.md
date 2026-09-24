@@ -45,5 +45,6 @@ Adoption is forward-only and does not bulk-migrate legacy documents.
 | `SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1` | accepted | implementation | contracts | one-time Principal successor migration | none |
 | `SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1` | superseded | implementation | contracts (historical; effective none) | canonical current-executor projection and global-list filter | none |
 | `SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2` | accepted | implementation | contracts | canonical current-executor projection and global-list filter with lawful exact closure | `SVC_WORKFLOW_ACTIVE_AGENT_LIST_V1` |
+| `SVC_WORKFLOW_EXECUTION_CONTROL_V1` | accepted in this candidate; effective after merge | implementation | contracts | canonical Forum binding, RETURN projection, execution escalation, push kick, HUMAN_REQUIRED narrowing | none |
 
 Update this index when a governing Spec is accepted or superseded. The table is a discovery aid; each Spec's exact frontmatter and revision remain authoritative.
