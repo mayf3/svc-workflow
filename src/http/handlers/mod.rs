@@ -1,10 +1,11 @@
 pub(crate) mod archive;
-pub(crate) mod dispatch_intents;
 pub(crate) mod assistance;
 pub(crate) mod cancel;
 pub(crate) mod coordinator_domains;
 pub(crate) mod definitions;
+pub(crate) mod dispatch_intents;
 pub(crate) mod domain_members;
+pub(crate) mod escalations;
 pub(crate) mod health;
 pub(crate) mod instances;
 pub(crate) mod provisioning;

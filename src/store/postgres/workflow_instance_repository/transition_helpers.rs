@@ -34,6 +34,10 @@ pub(crate) struct TransitionResult {
     pub current_node_visit_id: Uuid,
     pub submission_id: Option<Uuid>,
     pub event_sequence: i32,
+    /// WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-005): set when this
+    /// transition was the limit-reaching RETURN and escalated its target
+    /// visit to HUMAN_REQUIRED in the same transaction.
+    pub assistance_case_id: Option<Uuid>,
 }
 
 /// Parse the replayed response body into a TransitionResult.
@@ -72,6 +76,12 @@ fn parse_replayed_response(
         .as_str()
         .and_then(|s| Uuid::parse_str(s).ok());
 
+    // WORKFLOW_EXECUTION_CONTROL_V1: the limit-reaching RETURN replays its
+    // escalation reference from the receipt body (absent on pre-WEC receipts).
+    let assistance_case_id = body["returnPolicyEscalation"]["assistanceCaseId"]
+        .as_str()
+        .and_then(|s| Uuid::parse_str(s).ok());
+
     Ok(TransitionResult {
         workflow_instance_id: wf_id,
         workflow_state_version: state_ver,
@@ -80,6 +90,7 @@ fn parse_replayed_response(
         current_node_visit_id: tv_id,
         submission_id: sub_id,
         event_sequence: ev_seq,
+        assistance_case_id,
     })
 }
 

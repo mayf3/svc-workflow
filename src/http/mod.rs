@@ -13,21 +13,21 @@ use std::time::Duration;
 
 use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
+use axum::handler::Handler;
 use axum::http::{HeaderName, StatusCode};
 use axum::middleware;
-use axum::handler::Handler;
 use axum::routing::{delete, get, post, put};
 use axum::{BoxError, Router};
 use tower::ServiceBuilder;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
-pub use state::{AppState, HttpConfig};
+pub use state::{AppState, ExecutionControlConfig, HttpConfig};
 
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
-pub const SCHEMA_VERSION: &str = "0022";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 26;
+pub const SCHEMA_VERSION: &str = "0023";
+pub const EXPECTED_MIGRATION_VERSION: i64 = 27;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -125,6 +125,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             post(handlers::wake::wake),
         )
         .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/execution-escalations",
+            post(handlers::escalations::create),
+        )
+        .route(
             "/internal/v1/dispatch-intents",
             get(handlers::dispatch_intents::list_due),
         )
@@ -169,33 +173,26 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/domains",
             get(handlers::coordinator_domains::list_domains).post(
-                handlers::coordinator_domains::create_domain.layer(
-                    middleware::from_fn_with_state(
-                        state.clone(),
-                        canary_guard::canary_write_guard,
-                    ),
-                ),
+                handlers::coordinator_domains::create_domain.layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    canary_guard::canary_write_guard,
+                )),
             ),
         )
         .route(
             "/internal/v1/domains/{domainId}",
             get(handlers::coordinator_domains::get_domain).patch(
-                handlers::coordinator_domains::update_domain.layer(
-                    middleware::from_fn_with_state(
-                        state.clone(),
-                        canary_guard::canary_write_guard,
-                    ),
-                ),
+                handlers::coordinator_domains::update_domain.layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    canary_guard::canary_write_guard,
+                )),
             ),
         )
         .route(
             "/internal/v1/domains/{domainId}/owner",
             get(handlers::coordinator_domains::get_domain_owner).put(
                 handlers::coordinator_domains::set_domain_owner.layer(
-                    middleware::from_fn_with_state(
-                        state.clone(),
-                        canary_guard::canary_write_guard,
-                    ),
+                    middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
                 ),
             ),
         )
@@ -205,12 +202,11 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         )
         .route(
             "/internal/v1/domains/{domainId}/binding-reconcile/apply",
-            post(handlers::coordinator_domains::binding_reconcile_apply.layer(
-                middleware::from_fn_with_state(
-                    state.clone(),
-                    canary_guard::canary_write_guard,
+            post(
+                handlers::coordinator_domains::binding_reconcile_apply.layer(
+                    middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
                 ),
-            )),
+            ),
         )
         // Domain Owner Definition management
         .route(

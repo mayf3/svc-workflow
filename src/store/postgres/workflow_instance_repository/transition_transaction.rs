@@ -13,20 +13,20 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::auth::admission::AdmissionError;
 use crate::domain::definition::digest;
 use crate::domain::enums::NodeType;
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
 use crate::domain::workflow_instance::errors::ExecuteWorkflowTransitionError;
-use crate::auth::admission::AdmissionError;
 use crate::store::postgres::admission_gate::AdmissionGate;
 
+use super::activation_facts;
 use super::transition_helpers::{self};
 pub(crate) use super::transition_helpers::{TransitionOutcome, TransitionResult};
 use super::transition_receipt::{
     self, complete_transition_receipt, try_insert_transition_receipt,
     write_transition_attempt_audit, TransitionReplayResult,
 };
-use super::activation_facts;
 use super::transition_validation;
 use super::transition_validation::{
     lock_instance, read_current_visit, read_semantic_model_version, read_source_node,
@@ -44,6 +44,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     admission: AdmissionGate<'_>,
     cmd: ExecuteWorkflowTransitionCommand,
     request_hash: &str,
+    max_returns_per_edge: u32,
 ) -> Result<TransitionOutcome, ExecuteWorkflowTransitionError> {
     let mut tx = pool
         .begin()
@@ -384,6 +385,38 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // ---------------------------------------------------------------
+    // Step 11c: WORKFLOW_EXECUTION_CONTROL_V1 RETURN policy (CTR-SWEC-005).
+    // The count is computed from authoritative workflow_events under the
+    // instance lock — nothing agent-maintained, fully rebuildable. At the
+    // limit the RETURN is refused fail-closed (deterministic 409); the
+    // HUMAN_REQUIRED escalation happened when the limit-reaching RETURN
+    // committed (below, after the transition event).
+    // ---------------------------------------------------------------
+    let prior_return_count: i64 = if effect == "RETURN" {
+        let row: (i64,) = sqlx::query_as(
+            // TransitionCommittedEventData serializes snake_case (no camelCase
+            // rename on that struct) — match the canonical key.
+            "SELECT COUNT(*) FROM workflow_events
+              WHERE workflow_instance_id = $1
+                AND transition_effect = 'RETURN'
+                AND event_data->>'transition_definition_id' = $2",
+        )
+        .bind(instance_uuid)
+        .bind(transition.transition_id.to_string())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        row.0
+    } else {
+        0
+    };
+    if effect == "RETURN" && prior_return_count >= max_returns_per_edge as i64 {
+        deterministic_failure!(ExecuteWorkflowTransitionError::ReturnPolicyExhausted {
+            limit: max_returns_per_edge as i32,
+        });
+    }
+
+    // ---------------------------------------------------------------
     // Step 11b: VISIT_ACTIVATION_V1 fail-closed node-kind checks
     // ---------------------------------------------------------------
     if is_visit_activation {
@@ -485,12 +518,10 @@ pub(crate) async fn execute_workflow_transition_atomically(
     );
     if is_visit_activation {
         if let Some(owner_id) = target_assignee_id {
-            let owner_type_check = activation_facts::validate_owner_is_human_or_agent(
-                &mut tx,
-                owner_id,
-            )
-            .await
-            .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            let owner_type_check =
+                activation_facts::validate_owner_is_human_or_agent(&mut tx, owner_id)
+                    .await
+                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
             if let Err(reason) = owner_type_check {
                 deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
                     reason
@@ -552,8 +583,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
         if !closed {
             deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 source visit has no active activation to close"
-                    .to_string(),
+                "VISIT_ACTIVATION_V1 source visit has no active activation to close".to_string(),
             ));
         }
     }
@@ -588,13 +618,12 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // only from the resolved canonical Principal type.
     if is_visit_activation && target_assignee_id.is_some() {
         let owner_id = target_assignee_id.unwrap();
-        let owner_type: (String,) = sqlx::query_as(
-            "SELECT principal_type::text FROM principals WHERE principal_id = $1",
-        )
-        .bind(owner_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        let owner_type: (String,) =
+            sqlx::query_as("SELECT principal_type::text FROM principals WHERE principal_id = $1")
+                .bind(owner_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
         let activation_kind = if owner_type.0 == "AGENT" {
             crate::domain::enums::ActivationKind::DispatchIntent
         } else {
@@ -611,6 +640,18 @@ pub(crate) async fn execute_workflow_transition_atomically(
         )
         .await
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        // CTR-SWEC-007: push-first — a fresh DISPATCH_INTENT queues an
+        // execution kick; the due poll stays the correctness fallback.
+        if activation_kind == crate::domain::enums::ActivationKind::DispatchIntent {
+            super::super::outbox::queue_execution_kick(
+                &mut tx,
+                instance_uuid,
+                new_node_visit_id,
+                target_activation_id,
+            )
+            .await
+            .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        }
     }
 
     // ---------------------------------------------------------------
@@ -665,16 +706,122 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .await?;
 
     // ---------------------------------------------------------------
+    // Step 17b: WORKFLOW_EXECUTION_CONTROL_V1 outbox facts (CTR-SWEC-007/008).
+    // All rows are queued inside this committing transaction; delivery is the
+    // reconciler's concern and can never roll business back.
+    // ---------------------------------------------------------------
+    super::super::outbox::queue_forum_event(
+        &mut tx,
+        instance_uuid,
+        &format!("transition_committed:{event_id}"),
+        serde_json::json!({
+            "eventType": "transition_committed",
+            "workflowInstanceId": instance_uuid,
+            "effect": effect,
+            "transitionDefinitionId": transition.transition_id,
+            "transitionKey": transition.transition_key,
+            "sourceNodeId": source_node.node_id,
+            "targetNodeId": target_node.node_id,
+            "sourceNodeVisitId": instance.current_node_visit_id,
+            "targetNodeVisitId": new_node_visit_id,
+            "returnCountPerEdge": if effect == "RETURN" { Some(prior_return_count + 1) } else { None },
+        }),
+    )
+    .await
+    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+
+    if target_node.node_type_enum() == NodeType::TERMINAL {
+        super::super::outbox::queue_forum_event(
+            &mut tx,
+            instance_uuid,
+            &format!("workflow_completed:{instance_uuid}"),
+            serde_json::json!({
+                "eventType": "workflow_completed",
+                "workflowInstanceId": instance_uuid,
+                "finalNodeVisitId": new_node_visit_id,
+            }),
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    }
+
+    // CTR-SWEC-005: the limit-REACHING RETURN escalates its TARGET visit to
+    // HUMAN_REQUIRED in this same transaction (REQUIRE_HUMAN; nothing
+    // force-advances). Further RETURNs on the edge are refused fail-closed
+    // by Step 11c. The escalation bumps the version once more (v+2): the
+    // receipt reports the FINAL state version, keeping the invariant that
+    // every event_sequence equals its committed state version.
+    let policy_escalation = if effect == "RETURN"
+        && prior_return_count + 1 == max_returns_per_edge as i64
+    {
+        // workflow_events carries at most ONE event per command (0006) and the
+        // 0022 governance requires per-stage assistance receipts — the
+        // escalation helper mints its OWN compliant receipts inside this tx.
+        let escalation = crate::store::postgres::workflow_instance_repository::execution_escalation::escalate_visit_tx(
+            &mut tx,
+            instance_uuid,
+            new_node_visit_id,
+            principal_uuid,
+            _actual_command_id,
+            &format!(
+                "RETURN policy limit reached: transition {} recorded return {} of {} — a human must intervene",
+                transition.transition_key,
+                prior_return_count + 1,
+                max_returns_per_edge,
+            ),
+            serde_json::json!({
+                "source": "return_policy",
+                "reason": "RETURN_POLICY_EXHAUSTED",
+                "transitionDefinitionId": transition.transition_id,
+                "nodeVisitId": new_node_visit_id,
+            }),
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        super::super::outbox::queue_forum_event(
+            &mut tx,
+            instance_uuid,
+            &format!("return_policy_reached:{instance_uuid}:{}", transition.transition_id),
+            serde_json::json!({
+                "eventType": "return_policy_reached",
+                "workflowInstanceId": instance_uuid,
+                "nodeVisitId": new_node_visit_id,
+                "assistanceCaseId": escalation.assistance_case_id,
+                "transitionDefinitionId": transition.transition_id,
+                "reason": "RETURN_POLICY_EXHAUSTED",
+            }),
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+        Some(escalation)
+    } else {
+        None
+    };
+
+    let final_state_version = policy_escalation
+        .as_ref()
+        .map(|e| e.workflow_state_version)
+        .unwrap_or(new_state_version);
+    let final_event_sequence = policy_escalation
+        .as_ref()
+        .map(|e| e.event_sequence)
+        .unwrap_or(event_sequence);
+
+    // ---------------------------------------------------------------
     // Step 18: Complete the command receipt
     // ---------------------------------------------------------------
     let response_body = serde_json::json!({
         "workflowInstanceId": instance_uuid,
-        "workflowStateVersion": new_state_version,
+        "workflowStateVersion": final_state_version,
         "currentContextRevisionId": instance.current_context_revision_id,
         "sourceNodeVisitId": instance.current_node_visit_id,
         "currentNodeVisitId": new_node_visit_id,
         "submissionId": final_submission_id,
-        "eventSequence": event_sequence,
+        "eventSequence": final_event_sequence,
+        "returnPolicyEscalation": policy_escalation.as_ref().map(|e| serde_json::json!({
+            "assistanceCaseId": e.assistance_case_id,
+            "reason": "RETURN_POLICY_EXHAUSTED",
+        })),
     });
 
     let response_digest = digest::compute_json_digest(&response_body)
@@ -712,24 +859,21 @@ pub(crate) async fn execute_workflow_transition_atomically(
     let commit_guard = (commit_deadline_ms > 0).then(|| commit_deadline_ms);
     let commit_started = std::time::Instant::now();
     match commit_guard {
-        Some(budget_ms) => match tokio::time::timeout(
-            std::time::Duration::from_millis(budget_ms),
-            tx.commit(),
-        )
-        .await
-        {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                return Err(ExecuteWorkflowTransitionError::StorageError(
-                    e.to_string(),
-                ));
+        Some(budget_ms) => {
+            match tokio::time::timeout(std::time::Duration::from_millis(budget_ms), tx.commit())
+                .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    return Err(ExecuteWorkflowTransitionError::StorageError(e.to_string()));
+                }
+                Err(_) => {
+                    return Err(ExecuteWorkflowTransitionError::AdmissionFailed(
+                        AdmissionError::CommitOutcomeUnknown { budget_ms },
+                    ));
+                }
             }
-            Err(_) => {
-                return Err(ExecuteWorkflowTransitionError::AdmissionFailed(
-                    AdmissionError::CommitOutcomeUnknown { budget_ms },
-                ));
-            }
-        },
+        }
         None => {
             tx.commit()
                 .await
@@ -740,11 +884,12 @@ pub(crate) async fn execute_workflow_transition_atomically(
 
     Ok(TransitionOutcome::Executed(TransitionResult {
         workflow_instance_id: instance_uuid,
-        workflow_state_version: new_state_version,
+        workflow_state_version: final_state_version,
         current_context_revision_id: instance.current_context_revision_id,
         source_node_visit_id: instance.current_node_visit_id,
         current_node_visit_id: new_node_visit_id,
         submission_id: final_submission_id,
-        event_sequence,
+        event_sequence: final_event_sequence,
+        assistance_case_id: policy_escalation.as_ref().map(|e| e.assistance_case_id),
     }))
 }

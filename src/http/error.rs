@@ -15,8 +15,7 @@ use crate::domain::provisioning::ProvisioningError as PError;
 use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::errors::{
     ArchiveWorkflowInstanceError, CancelWorkflowInstanceError, CreateWorkflowInstanceError,
-    ExecuteWorkflowTransitionError,
-    WakeDispatchIntentError,
+    ExecuteWorkflowTransitionError, WakeDispatchIntentError,
 };
 
 #[derive(Debug)]
@@ -196,6 +195,14 @@ impl ApiError {
                 "assistance_open",
                 "current visit has an unresolved assistance case",
             ),
+            E::ReturnPolicyExhausted { limit } => ApiError {
+                status: StatusCode::CONFLICT,
+                code: "return_policy_exhausted",
+                message: format!(
+                    "RETURN policy limit reached ({limit} returns per edge); the loop escalates to a human",
+                ),
+                details: None,
+            },
             E::SourceNodeTerminal => {
                 conflict("source_node_terminal", "terminal nodes cannot transition")
             }
@@ -382,7 +389,8 @@ impl ApiError {
 
     pub fn from_definition_governance(error: DGError) -> Self {
         if let DGError::GraphValidationFailed(details) = &error {
-            let mut mapped = Self::unprocessable("graph_validation_failed", "graph validation failed");
+            let mut mapped =
+                Self::unprocessable("graph_validation_failed", "graph validation failed");
             mapped.message = details.message();
             return mapped.with_details(
                 serde_json::to_value(details).expect("static diagnostics serialize"),
@@ -393,7 +401,7 @@ impl ApiError {
             DGError::GraphValidationFailed(_) => unreachable!("handled above"),
             DGError::InvalidGraphDiagnosticReceipt => {
                 ("internal_consistency_error", "internal consistency error")
-            },
+            }
             DGError::NotDomainOwner => ("not_domain_owner", "caller is not a domain owner"),
             DGError::DomainDisabled => ("domain_disabled", "domain is disabled"),
             DGError::DefinitionNotFound => {
@@ -703,11 +711,10 @@ mod tests {
 
     #[test]
     fn invalid_return_references_exposes_detail() {
-        let error = ApiError::from_transition(
-            ExecuteWorkflowTransitionError::InvalidReturnReferences(
+        let error =
+            ApiError::from_transition(ExecuteWorkflowTransitionError::InvalidReturnReferences(
                 "rootCauseNodeVisitId is required and must be a valid UUID".to_string(),
-            ),
-        );
+            ));
         assert_eq!(error.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(error.code, "invalid_return_references");
         // Code stays stable (backward compatible); the detail that was

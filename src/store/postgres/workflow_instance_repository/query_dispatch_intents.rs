@@ -60,8 +60,7 @@ pub(crate) async fn list_due_dispatch_intents(
 ) -> Result<Vec<DueDispatchIntent>, WorkflowQueryError> {
     let mut tx = query_visibility::begin_snapshot(pool).await?;
 
-    let has_role =
-        query_visibility::check_global_scheduler_read(&mut tx, actor).await?;
+    let has_role = query_visibility::check_global_scheduler_read(&mut tx, actor).await?;
     if !has_role {
         tx.commit().await.map_err(storage)?;
         return Err(WorkflowQueryError::SchedulerReadRoleRequired);
@@ -116,6 +115,11 @@ pub(crate) async fn list_due_dispatch_intents(
            AND wi.cancelled = FALSE
            AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM workflow_assistance_cases ac
+                WHERE ac.node_visit_id = a.node_visit_id
+                  AND ac.status IN ('OWNER_PENDING','HUMAN_REQUIRED')
+           )
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
                       FROM workflow_dispatch_eligibility_events e
@@ -163,6 +167,11 @@ pub(crate) async fn list_due_dispatch_intents(
            AND wi.cancelled = FALSE
            AND wi.execution_class = 'BUSINESS'
            AND wi.archived_at IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM workflow_assistance_cases ac
+                WHERE ac.node_visit_id = a.node_visit_id
+                  AND ac.status IN ('OWNER_PENDING','HUMAN_REQUIRED')
+           )
            AND COALESCE(
                    (SELECT e.new_next_eligible_at
                       FROM workflow_dispatch_eligibility_events e
@@ -184,8 +193,7 @@ pub(crate) async fn list_due_dispatch_intents(
         let (after_ts, after_id) = cursor.expect("cursor presence checked");
         query = query.bind(after_ts).bind(after_id);
     }
-    let intents: Vec<DueDispatchIntent> =
-        query.fetch_all(&mut *tx).await.map_err(storage)?;
+    let intents: Vec<DueDispatchIntent> = query.fetch_all(&mut *tx).await.map_err(storage)?;
 
     tx.commit().await.map_err(storage)?;
     Ok(intents)
@@ -196,6 +204,8 @@ pub(crate) fn parse_due_limit(limit: Option<i64>) -> Result<i64, WorkflowQueryEr
     match limit {
         None => Ok(50),
         Some(v) if (1..=100).contains(&v) => Ok(v),
-        Some(_) => Err(WorkflowQueryError::InvalidPagination("limit must be 1-100".to_string())),
+        Some(_) => Err(WorkflowQueryError::InvalidPagination(
+            "limit must be 1-100".to_string(),
+        )),
     }
 }

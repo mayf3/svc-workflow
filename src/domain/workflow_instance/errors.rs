@@ -41,9 +41,7 @@ pub enum CreateWorkflowInstanceError {
     /// admission-through-commit budget — the server-side outcome is
     /// UNCERTAIN. Fails closed as outcome-unknown; never claimed as success,
     /// never blindly retried.
-    CommitOutcomeUnknown {
-        budget_ms: u64,
-    },
+    CommitOutcomeUnknown { budget_ms: u64 },
     /// Idempotency key conflict: same key, different request hash.
     IdempotencyConflict {
         original_command_id: uuid::Uuid,
@@ -333,7 +331,10 @@ impl std::fmt::Display for ArchiveWorkflowInstanceError {
             Self::InstanceNotTerminal => write!(f, "instance is not in a terminal state"),
             Self::AlreadyArchived => write!(f, "instance is already archived"),
             Self::ActiveActivationExists => {
-                write!(f, "instance has an active canonical activation and cannot be archived")
+                write!(
+                    f,
+                    "instance has an active canonical activation and cannot be archived"
+                )
             }
             Self::WorkflowStateVersionConflict { expected, actual } => {
                 write!(
@@ -423,6 +424,10 @@ pub enum ExecuteWorkflowTransitionError {
     SizeLimitExceeded(String),
     /// RETURN submission references are invalid (cross-instance or not found).
     InvalidReturnReferences(String),
+    /// WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-005): the RETURN edge has hit
+    /// the configured maxReturnsPerEdge. REQUIRE_HUMAN semantics: the loop is
+    /// blocked; the escalation case was created when the limit was reached.
+    ReturnPolicyExhausted { limit: i32 },
     /// Assignee could not be resolved for target node.
     AssigneeResolutionFailed(String),
     /// Canonical identity admission rejected the command (CTR-CIR-003).
@@ -450,6 +455,12 @@ impl fmt::Display for ExecuteWorkflowTransitionError {
             Self::CurrentVisitNotFound => write!(f, "current node visit not found"),
             Self::PrincipalNotAssignee => write!(f, "caller is not the current assignee"),
             Self::AssistanceOpen => write!(f, "current visit has an open assistance case"),
+            Self::ReturnPolicyExhausted { limit } => {
+                write!(
+                    f,
+                    "RETURN policy limit reached ({limit} returns per edge) — human required"
+                )
+            }
             Self::SourceNodeTerminal => write!(f, "cannot transition from a terminal node"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
@@ -520,6 +531,7 @@ pub fn transition_error_code(err: &ExecuteWorkflowTransitionError) -> i32 {
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(_) => 422,
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => 413,
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => 422,
+        ExecuteWorkflowTransitionError::ReturnPolicyExhausted { .. } => 409,
         ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => 422,
         ExecuteWorkflowTransitionError::AdmissionFailed(error) => error.sanitized_status(),
         ExecuteWorkflowTransitionError::InternalConsistency(_) => 500,
@@ -554,6 +566,7 @@ pub fn transition_error_label(err: &ExecuteWorkflowTransitionError) -> &'static 
         }
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => "size_limit_exceeded",
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_) => "invalid_return_references",
+        ExecuteWorkflowTransitionError::ReturnPolicyExhausted { .. } => "return_policy_exhausted",
         ExecuteWorkflowTransitionError::AssigneeResolutionFailed(_) => "assignee_resolution_failed",
         ExecuteWorkflowTransitionError::AdmissionFailed(error) => error.sanitized_code(),
         ExecuteWorkflowTransitionError::InternalConsistency(_) => "internal_consistency_error",
@@ -629,7 +642,10 @@ impl std::fmt::Display for WakeDispatchIntentError {
             Self::PrincipalDisabled => write!(f, "principal is disabled"),
             Self::InstanceNotFound => write!(f, "workflow instance not found"),
             Self::DispatchIntentNotFound => {
-                write!(f, "no DISPATCH_INTENT activation for the given instance and node visit")
+                write!(
+                    f,
+                    "no DISPATCH_INTENT activation for the given instance and node visit"
+                )
             }
             Self::SchedulerReadRoleRequired => {
                 write!(f, "caller must hold the GLOBAL_SCHEDULER_READ role")

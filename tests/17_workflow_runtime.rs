@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use svc_workflow::application::workflow_instance::create::create_workflow_instance;
 use svc_workflow::application::workflow_instance::create::CreateWorkflowInstanceResult;
-use svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition;
+use svc_workflow::application::workflow_instance::execute_transition::{execute_workflow_transition, execute_workflow_transition_with_policy};
 use svc_workflow::application::workflow_instance::revise::revise_workflow_context;
 use svc_workflow::application::workflow_instance::revise::ReviseWorkflowContextResult;
 use svc_workflow::application::workflow_instance::revise_and_transition::revise_context_and_transition;
