@@ -413,7 +413,7 @@ async fn ensure_thread(
                 Err(other) => Err(other.to_string()),
             }
         }
-        None => Ok(()), // no binding row (e.g. NON_BUSINESS_TEST instance)
+        None => Err("forum event has no binding row".to_string()),
     }
 }
 
