@@ -48,6 +48,9 @@ fn build_app(
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -278,10 +281,13 @@ async fn create_instance(
         metadata: serde_json::Value::Object(serde_json::Map::new()),
         context_payload: serde_json::Value::Object(serde_json::Map::new()),
     };
-    let result = create_workflow_instance(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command)
-        .await
-        .expect("create workflow instance via app service");
+    let result = create_workflow_instance(
+        pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        command,
+    )
+    .await
+    .expect("create workflow instance via app service");
     result.workflow_instance_id
 }
 
@@ -765,6 +771,9 @@ async fn obo_verifier_auth_context_correct() {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,

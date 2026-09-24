@@ -8,6 +8,7 @@ pub mod identity_successor;
 pub(crate) mod import_receipt_validation;
 pub mod legacy_import_repository;
 pub mod migrations;
+pub mod outbox;
 pub mod pool;
 pub mod provisioning_repository;
 pub mod repository_rows;

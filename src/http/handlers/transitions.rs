@@ -5,7 +5,7 @@ use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::Json;
 
-use crate::application::workflow_instance::execute_transition::execute_workflow_transition;
+use crate::application::workflow_instance::execute_transition::execute_workflow_transition_with_policy;
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{TransitionId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand;
@@ -31,7 +31,7 @@ pub(crate) async fn execute(
     // deployment enabled admission; dormant mode keeps existing behavior.
     let admission =
         AdmissionGate::new(state.admission_client.as_ref()).with_pool(Some(&state.pool));
-    let result = execute_workflow_transition(
+    let result = execute_workflow_transition_with_policy(
         &state.pool,
         admission,
         ExecuteWorkflowTransitionCommand {
@@ -43,6 +43,7 @@ pub(crate) async fn execute(
             transition_definition_id: TransitionId::from_uuid(payload.transition_definition_id),
             submission_payload: payload.submission_payload,
         },
+        state.execution_control.max_returns_per_edge,
     )
     .await
     .map_err(ApiError::from_transition)?;

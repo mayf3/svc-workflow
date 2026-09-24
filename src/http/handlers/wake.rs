@@ -11,8 +11,8 @@ use axum::Json;
 use uuid::Uuid;
 
 use crate::auth::AuthenticatedPrincipal;
-use crate::domain::workflow_instance::commands::WakeDispatchIntentCommand;
 use crate::domain::ids::{NodeVisitId, WorkflowInstanceId};
+use crate::domain::workflow_instance::commands::WakeDispatchIntentCommand;
 use crate::http::dto::{WakeDispatchIntentRequest, WakeDispatchIntentResponse};
 use crate::http::error::ApiError;
 use crate::http::handlers::{idempotency_key, require_scope};
@@ -21,7 +21,7 @@ use crate::http::AppState;
 const WAKE_COMMAND_SCHEMA_VERSION: &str = "v1";
 
 /// Fail-closed GLOBAL_SCHEDULER_READ binding check (server-side).
-async fn require_global_scheduler_read(
+pub(crate) async fn require_global_scheduler_read(
     state: &AppState,
     principal: &AuthenticatedPrincipal,
 ) -> Result<(), ApiError> {
@@ -81,12 +81,10 @@ pub(crate) async fn wake(
         cause: req.cause,
     };
 
-    let result = crate::application::workflow_instance::wake::wake_dispatch_intent(
-        &state.pool,
-        command,
-    )
-    .await
-    .map_err(ApiError::from_wake)?;
+    let result =
+        crate::application::workflow_instance::wake::wake_dispatch_intent(&state.pool, command)
+            .await
+            .map_err(ApiError::from_wake)?;
 
     Ok(Json(WakeDispatchIntentResponse {
         wake_applied: result.wake_applied,
@@ -95,8 +93,6 @@ pub(crate) async fn wake(
         node_visit_id: result.node_visit_id,
         workflow_state_version: result.workflow_state_version,
         event_sequence: result.event_sequence,
-        next_eligible_at: result
-            .next_eligible_at
-            .map(|t| t.to_rfc3339()),
+        next_eligible_at: result.next_eligible_at.map(|t| t.to_rfc3339()),
     }))
 }

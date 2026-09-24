@@ -13,5 +13,6 @@
 pub mod application;
 pub mod auth;
 pub mod domain;
+pub mod forum_sync;
 pub mod http;
 pub mod store;

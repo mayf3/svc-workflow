@@ -46,8 +46,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = config.expect("server configuration loaded above");
-    let state = AppState::new(pool, &config);
+    let state = AppState::new(pool.clone(), &config);
     let app = http::router(state, &config);
+
+    // WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-002): the outbox reconciler
+    // runs alongside the HTTP server; dormant when forum sync is unconfigured.
+    if let Some(forum_config) = svc_workflow::forum_sync::ForumSyncConfig::from_env() {
+        let reconciler_pool = pool.clone();
+        tokio::spawn(async move {
+            svc_workflow::forum_sync::run_loop(reconciler_pool, forum_config).await;
+        });
+        tracing::info!("forum sync reconciler started");
+    } else {
+        tracing::info!(
+            "forum sync disabled (WORKFLOW_FORUM_SYNC_ENABLED unset) — outbox stays queued"
+        );
+    }
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     tracing::info!(address = %config.bind_addr, "svc-workflow HTTP server listening");
     axum::serve(listener, app)
@@ -201,8 +215,7 @@ async fn run_repair_command(
                         std::process::exit(2);
                     }
                 };
-            let admission =
-                AdmissionGate::new(Some(&admission_client)).with_pool(Some(&pool));
+            let admission = AdmissionGate::new(Some(&admission_client)).with_pool(Some(&pool));
             apply_repair_context(pool, admission, request).await
         } else {
             apply_repair_context(pool, AdmissionGate::disabled(), request).await

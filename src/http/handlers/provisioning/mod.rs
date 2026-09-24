@@ -203,6 +203,9 @@ mod tests {
                 deadline_ms: crate::auth::admission::ADMISSION_DEADLINE_MS,
                 max_in_flight: 8,
             },
+            execution_control: crate::http::ExecutionControlConfig {
+                max_returns_per_edge: 3,
+            },
         };
         (principal, AppState::new(pool, &config))
     }

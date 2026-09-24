@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use crate::auth::admission::AdmissionError;
 use super::errors::{ExecuteWorkflowTransitionError, ReviseWorkflowContextError};
+use crate::auth::admission::AdmissionError;
 
 #[derive(Debug, Clone)]
 pub enum ReviseContextAndTransitionError {
@@ -25,6 +25,10 @@ pub enum ReviseContextAndTransitionError {
     /// VISIT_ACTIVATION_V1: legacy-only combined command on a new-model
     /// instance (deterministic 422, CTR-VAI-012).
     LegacyCommandNotSupported,
+    /// WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-005): deterministic 409.
+    ReturnPolicyExhausted {
+        limit: i32,
+    },
     ContextValidationFailed(String),
     SubmissionValidationFailed(String),
     SizeLimitExceeded(String),
@@ -51,6 +55,11 @@ impl fmt::Display for ReviseContextAndTransitionError {
             Self::PrincipalNotCreator => write!(f, "caller is not the workflow creator"),
             Self::PrincipalNotAssignee => write!(f, "caller is not the current assignee"),
             Self::AssistanceOpen => write!(f, "current visit has an open assistance case"),
+            Self::ReturnPolicyExhausted { limit } => write!(
+                f,
+                "RETURN policy limit reached ({} returns per edge) — human required",
+                limit
+            ),
             Self::CurrentNodeNotDraft => write!(f, "current node is not DRAFT"),
             Self::DefinitionVersionRevoked => write!(f, "definition version is REVOKED"),
             Self::DefinitionVersionDraft => write!(f, "definition version is DRAFT"),
@@ -113,6 +122,7 @@ pub fn error_code(error: &ReviseContextAndTransitionError) -> i32 {
         ReviseContextAndTransitionError::CurrentNodeNotDraft
         | ReviseContextAndTransitionError::DefinitionVersionRevoked
         | ReviseContextAndTransitionError::AssistanceOpen
+        | ReviseContextAndTransitionError::ReturnPolicyExhausted { .. }
         | ReviseContextAndTransitionError::WorkflowStateVersionConflict { .. }
         | ReviseContextAndTransitionError::TransitionNotApplicable(_)
         | ReviseContextAndTransitionError::IdempotencyConflict { .. } => 409,
@@ -138,6 +148,7 @@ pub fn error_label(error: &ReviseContextAndTransitionError) -> &'static str {
         ReviseContextAndTransitionError::PrincipalNotCreator => "principal_not_creator",
         ReviseContextAndTransitionError::PrincipalNotAssignee => "principal_not_assignee",
         ReviseContextAndTransitionError::AssistanceOpen => "assistance_open",
+        ReviseContextAndTransitionError::ReturnPolicyExhausted { .. } => "return_policy_exhausted",
         ReviseContextAndTransitionError::CurrentNodeNotDraft => "current_node_not_draft",
         ReviseContextAndTransitionError::DefinitionVersionRevoked => "definition_version_revoked",
         ReviseContextAndTransitionError::DefinitionVersionDraft => "definition_version_draft",
@@ -173,6 +184,9 @@ impl From<ExecuteWorkflowTransitionError> for ReviseContextAndTransitionError {
             ExecuteWorkflowTransitionError::CurrentVisitNotFound => Self::CurrentVisitNotFound,
             ExecuteWorkflowTransitionError::PrincipalNotAssignee => Self::PrincipalNotAssignee,
             ExecuteWorkflowTransitionError::AssistanceOpen => Self::AssistanceOpen,
+            ExecuteWorkflowTransitionError::ReturnPolicyExhausted { limit } => {
+                Self::ReturnPolicyExhausted { limit }
+            }
             ExecuteWorkflowTransitionError::SourceNodeTerminal => Self::CurrentNodeNotDraft,
             ExecuteWorkflowTransitionError::DefinitionVersionRevoked => {
                 Self::DefinitionVersionRevoked
@@ -202,9 +216,7 @@ impl From<ExecuteWorkflowTransitionError> for ReviseContextAndTransitionError {
             ExecuteWorkflowTransitionError::AssigneeResolutionFailed(detail) => {
                 Self::AssigneeResolutionFailed(detail)
             }
-            ExecuteWorkflowTransitionError::AdmissionFailed(error) => {
-                Self::AdmissionFailed(error)
-            }
+            ExecuteWorkflowTransitionError::AdmissionFailed(error) => Self::AdmissionFailed(error),
             ExecuteWorkflowTransitionError::InternalConsistency(detail) => {
                 Self::InternalConsistency(detail)
             }

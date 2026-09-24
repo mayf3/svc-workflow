@@ -54,6 +54,9 @@ fn build_config(
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -178,7 +181,8 @@ async fn create_and_advance(
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        command,
     )
     .await
     .expect("create instance");
@@ -194,7 +198,8 @@ async fn create_and_advance(
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        transition,
     )
     .await
     .expect("advance to normal");
@@ -223,7 +228,8 @@ async fn create_draft_only(
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        command,
     )
     .await
     .expect("create draft instance");
@@ -928,7 +934,8 @@ async fn role_binding_revoked_hides_items() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        transition,
     )
     .await
     .expect("advance to terminal");

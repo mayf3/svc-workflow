@@ -423,9 +423,14 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     let pool = create_pool().await;
     let seed = seed_query_fixture(&pool).await;
     let created = create_query_instance(&pool, &seed).await;
+    // WORKFLOW_EXECUTION_CONTROL_V1: this fixture intentionally loops one edge
+    // 26x to synthesize >50 upstream submissions for the QUERY cap. It is a
+    // query-semantics test, not a loop test, so the RETURN policy is raised
+    // explicitly (the default max 3 would REQUIRE_HUMAN on cycle 2).
+    let max_returns_per_edge = 1000;
     let mut state = 1;
     for cycle in 0..26 {
-        let advanced = execute_workflow_transition(
+        let advanced = execute_workflow_transition_with_policy(
             &pool,
             svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             make_transition_command(
@@ -435,11 +440,12 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
                 seed.draft_advance,
                 Some(serde_json::json!({"cycle": cycle})),
             ),
+            max_returns_per_edge,
         )
         .await
         .unwrap();
         state += 1;
-        execute_workflow_transition(
+        execute_workflow_transition_with_policy(
             &pool,
             svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
             make_transition_command(
@@ -454,6 +460,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
                     "relatedSubmissionIds": []
                 })),
             ),
+            max_returns_per_edge,
         )
         .await
         .unwrap();
