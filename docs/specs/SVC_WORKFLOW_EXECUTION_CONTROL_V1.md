@@ -29,7 +29,7 @@ external_authorities:
     relation: interoperates_with
   - repository: mayf3/agent-forum
     authority_id: AGENT_FORUM_WORKFLOW_INSTANCE_CONTEXT_V1
-    revision: 9734f6c5e6d378087008f4573a1efc01b00568e3
+    revision: 71882c48593599c550259892e255ec9c3d73b7f2
     relation: interoperates_with
 supersedes: []
 superseded_by: null
