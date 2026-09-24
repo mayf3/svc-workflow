@@ -39,7 +39,7 @@ architecture_authority: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
 local_authority_relations:
   - authority_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
     relation: amended_by
-    note: due-set narrowing in Amendment A section 6
+    note: due-set narrowing in Amendment A section 7
   - authority_id: SVC_WORKFLOW_DISPATCH_INTENT_KEYSET_CONTINUATION_V1
     relation: preserved_untouched
     note: cursor/order semantics byte-identical
