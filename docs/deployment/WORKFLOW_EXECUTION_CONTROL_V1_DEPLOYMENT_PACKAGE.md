@@ -3,6 +3,12 @@
 Owner closure: GOAL = WORKFLOW_EXECUTION_CONTROL_V1_CLOSURE_AND_DEPLOYMENT_READINESS (2026-09-24).
 CLOSURE = PASS (see final closure report; SHIP_BLOCKERS resolved in this package's step 0).
 
+System Product API binding amendment accepted by mayf3 on 2026-09-24:
+`/Users/yanfenma/workspace/artifacts/DEPLOYMENT_BACKLOG/wec-live-base-candidate-20260924/RECOMMENDED-SERVICE-BINDING-DELTA.md`
+(SHA-256 `2cabc4515fa45aec048ea43b9b6221905fcd9c4ec397c5dda73de19afab7d9a5`).
+The canonical system/authsvc runtime serves this release's Product API on
+`127.0.0.1:8788`; the existing GUI/502 runtime remains on `127.0.0.1:8787`.
+
 Feature branches (all `goal/workflow-execution-control-v1`):
 
 | repo | base (canonical main) | FINAL_SHA | acceptance commit |
@@ -60,10 +66,12 @@ curl -s http://127.0.0.1:3460/api/health   # expect 200
 
 ## Step 2 — dsh-agent-core
 
-No configuration is REQUIRED: without `WORKFLOW_EXECUTION_POLLER_AGENT_ID` the
-engine stays evidence-only; the new routes 401 fail-closed without the token
-verifier. Deploy the new bytes (Phase 1), keep `SCHEDULER_AUTH_JWKS_URL` as
-already required for scheduler routes — the SAME verifier now also gates:
+The accepted one-time system service binding enables the canonical authsvc
+Product API on `127.0.0.1:8788`. Without
+`WORKFLOW_EXECUTION_POLLER_AGENT_ID` the engine stays evidence-only; the new
+routes 401 fail-closed without the token verifier. Deploy the new bytes
+(Phase 1). Before authenticated route acceptance, bind the existing trusted
+`SCHEDULER_AUTH_JWKS_URL` verifier; the SAME verifier also gates:
 
 - `GET  /workflow-execution/traces`   (bearer + workflow.execute scope)
 - `POST /workflow-execution/kicks`    (bearer + workflow.execute scope)
@@ -94,7 +102,7 @@ WORKFLOW_FORUM_AUDIENCE=svc-forum
 Phase 3 enablement (push kick) env:
 
 ```text
-WORKFLOW_EXECUTION_KICK_URL=http://127.0.0.1:8787/workflow-execution/kicks
+WORKFLOW_EXECUTION_KICK_URL=http://127.0.0.1:8788/workflow-execution/kicks
 WORKFLOW_EXECUTION_KICK_TOKEN=<token for the poller principal, audience per
                              SCHEDULER_AUTH_* verifier config, scope workflow.execute>
 ```
@@ -116,7 +124,10 @@ SELECT * FROM global_role_bindings
 Health gates per phase:
 
 - Phase 1: svc `/healthz` 200, `version.schemaVersion = 0023`, migrations = 27;
-  dsh product-api `/health` 200; forum `/api/health` 200.
+  canonical system/authsvc product-api `http://127.0.0.1:8788/health` 200
+  with the listener PID/UID/source generation bound to the deployed system
+  runtime; existing GUI/502 `127.0.0.1:8787` unchanged; forum
+  `/api/health` 200.
 - Phase 2: create one BUSINESS workflow → canonical thread appears exactly once
   (`GET /api/threads?contextType=workflow_instance&contextId=<id>` → 1 item);
   forum events post in order; forum outage during the phase must NOT fail any
