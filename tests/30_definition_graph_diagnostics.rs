@@ -29,6 +29,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::
                 .map(svc_workflow::domain::ids::PrincipalId::from_uuid)
                 .collect(),
         ),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,

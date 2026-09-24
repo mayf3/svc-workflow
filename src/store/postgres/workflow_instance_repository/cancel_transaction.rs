@@ -487,6 +487,20 @@ pub(crate) async fn cancel_workflow_instance_atomically(
 
     let response_body = serde_json::to_value(&result)
         .map_err(|e| CancelWorkflowInstanceError::StorageError(e.to_string()))?;
+    // CTR-SWEC-008: the cancellation is projected to the canonical forum
+    // thread via the outbox (delivery never blocks the business command).
+    super::super::outbox::queue_forum_event(
+        &mut tx,
+        instance_uuid,
+        &format!("workflow_cancelled:{instance_uuid}"),
+        serde_json::json!({
+            "eventType": "workflow_cancelled",
+            "workflowInstanceId": instance_uuid,
+            "reason": &cmd.reason,
+        }),
+    )
+    .await
+    .map_err(|e| CancelWorkflowInstanceError::StorageError(e.to_string()))?;
 
     complete_receipt(&mut tx, actual_command_id, 200, &response_body).await?;
 

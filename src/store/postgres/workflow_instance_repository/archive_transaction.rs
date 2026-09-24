@@ -314,12 +314,10 @@ pub(crate) async fn archive_workflow_instance_atomically(
     .map_err(storage)?;
     if semantic_model_version == 3 {
         if let Some(visit_id) = current_visit_id {
-            let has_active = super::activation_facts::visit_has_active_activation_tx(
-                &mut tx,
-                visit_id,
-            )
-            .await
-            .map_err(storage)?;
+            let has_active =
+                super::activation_facts::visit_has_active_activation_tx(&mut tx, visit_id)
+                    .await
+                    .map_err(storage)?;
             if has_active {
                 return Err(ArchiveWorkflowInstanceError::ActiveActivationExists);
             }
@@ -421,6 +419,18 @@ pub(crate) async fn archive_workflow_instance_atomically(
 
     let response_body = serde_json::to_value(&result)
         .map_err(|e| ArchiveWorkflowInstanceError::StorageError(e.to_string()))?;
+    // CTR-SWEC-008: archive projected to the canonical forum thread.
+    super::super::outbox::queue_forum_event(
+        &mut tx,
+        instance_uuid,
+        &format!("workflow_archived:{instance_uuid}"),
+        serde_json::json!({
+            "eventType": "workflow_archived",
+            "workflowInstanceId": instance_uuid,
+        }),
+    )
+    .await
+    .map_err(|e| ArchiveWorkflowInstanceError::StorageError(e.to_string()))?;
 
     complete_receipt(&mut tx, actual_command_id, 200, &response_body).await?;
 

@@ -87,7 +87,10 @@ fn serve_connection(
     let Some((path, body)) = read_request(&mut stream) else {
         return;
     };
-    requests.lock().expect("stub requests lock").push(path.clone());
+    requests
+        .lock()
+        .expect("stub requests lock")
+        .push(path.clone());
 
     let principal_status = match mode {
         StubMode::Admit => "active",
@@ -136,9 +139,7 @@ fn reason(status: u16) -> &'static str {
 }
 
 fn token_body(scope: &str) -> String {
-    format!(
-        r#"{{"access_token":"tok","token_type":"Bearer","expires_in":3600,"scope":"{scope}"}}"#
-    )
+    format!(r#"{{"access_token":"tok","token_type":"Bearer","expires_in":3600,"scope":"{scope}"}}"#)
 }
 
 /// The stub keeps the most recent request body for the token endpoint.
@@ -170,12 +171,7 @@ fn read_request(stream: &mut std::net::TcpStream) -> Option<(String, String)> {
         }
     }
     let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
-    let path = head
-        .lines()
-        .next()?
-        .split_whitespace()
-        .nth(1)?
-        .to_string();
+    let path = head.lines().next()?.split_whitespace().nth(1)?.to_string();
     let content_length = head
         .lines()
         .find_map(|line| {
@@ -254,6 +250,9 @@ fn http_config(jwks_url: &str, admission: AdmissionConfig) -> HttpConfig {
             clock_skew_seconds: 60,
         },
         admission,
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
     }
 }
 
@@ -508,7 +507,13 @@ async fn publish_admits_every_identity_literal_and_publishes() {
     let agent_two_schema = default_literal_schema(Uuid::new_v4());
     // Re-seed with a known agent_two UUID: build the fixture, then read the
     // review node's fixed principal back for assertion symmetry.
-    let fixture = seed(&pool, SeedGraph { context_schema: agent_two_schema.clone() }).await;
+    let fixture = seed(
+        &pool,
+        SeedGraph {
+            context_schema: agent_two_schema.clone(),
+        },
+    )
+    .await;
 
     let (agent_one,): (Option<Uuid>,) = sqlx::query_as(
         "SELECT fixed_principal_id FROM workflow_node_definitions \
@@ -522,7 +527,11 @@ async fn publish_admits_every_identity_literal_and_publishes() {
 
     let stub = StubDirectory::spawn(StubMode::Admit);
     let mock = MockJwksServer::start().await;
-    let app = build_app(pool.clone(), &mock.url, admission_config_enabled(&stub.url()));
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        admission_config_enabled(&stub.url()),
+    );
 
     let bearer = token(fixture.caller, "workflow.execute", &mock.key_pair);
     let (status, body) = send(
@@ -617,7 +626,10 @@ async fn publish_rejected_fails_closed_zero_delta() {
 
     // Zero business delta: the version stays DRAFT and no receipt persists.
     assert_eq!(version_status(&pool, fixture.version_id).await, "DRAFT");
-    assert_eq!(receipt_count(&pool, fixture.caller, "pub-adm-rejected").await, 0);
+    assert_eq!(
+        receipt_count(&pool, fixture.caller, "pub-adm-rejected").await,
+        0
+    );
     assert_eq!(distinct_auth_principals(&rejecting.requests()).len(), 2);
 
     // Retry with the SAME idempotency key against an admitting directory.
@@ -652,11 +664,21 @@ async fn publish_invalid_schema_literal_fails_validation_without_directory() {
     let pool = common::create_pool().await;
     let mut schema = default_literal_schema(Uuid::new_v4());
     schema["properties"]["ownerAgent"]["default"] = json!("not-a-uuid");
-    let fixture = seed(&pool, SeedGraph { context_schema: schema }).await;
+    let fixture = seed(
+        &pool,
+        SeedGraph {
+            context_schema: schema,
+        },
+    )
+    .await;
 
     let stub = StubDirectory::spawn(StubMode::Admit);
     let mock = MockJwksServer::start().await;
-    let app = build_app(pool.clone(), &mock.url, admission_config_enabled(&stub.url()));
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        admission_config_enabled(&stub.url()),
+    );
 
     let bearer = token(fixture.caller, "workflow.execute", &mock.key_pair);
     let (status, body) = send(

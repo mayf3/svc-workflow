@@ -38,6 +38,9 @@ fn app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 0,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             ..Default::default()
@@ -149,10 +152,13 @@ async fn create_dlist_instance(
         metadata: json!({"source": "domain-list-test"}),
         context_payload: json!({"title": title}),
     };
-    let created = create_workflow_instance(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command)
-        .await
-        .expect("create instance");
+    let created = create_workflow_instance(
+        pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        command,
+    )
+    .await
+    .expect("create instance");
     created.workflow_instance_id
 }
 
@@ -172,10 +178,13 @@ async fn advance_to_normal(
         transition_definition_id: TransitionId::from_uuid(draft_advance_id),
         submission_payload: Some(json!({"work": "ready"})),
     };
-    execute_workflow_transition(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition)
-        .await
-        .expect("advance to normal");
+    execute_workflow_transition(
+        pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        transition,
+    )
+    .await
+    .expect("advance to normal");
 }
 
 /// Advance an instance from NORMAL → DONE (terminal).
@@ -194,10 +203,13 @@ async fn advance_to_terminal(
         transition_definition_id: TransitionId::from_uuid(normal_advance_id),
         submission_payload: Some(json!({"work": "done"})),
     };
-    execute_workflow_transition(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition)
-        .await
-        .expect("advance to terminal");
+    execute_workflow_transition(
+        pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        transition,
+    )
+    .await
+    .expect("advance to terminal");
 }
 
 fn domain_list_uri(domain_id: Uuid) -> String {

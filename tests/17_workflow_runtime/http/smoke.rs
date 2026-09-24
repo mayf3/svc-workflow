@@ -34,6 +34,9 @@ fn build_config(
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -132,18 +135,24 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
     assert_eq!(version.status(), StatusCode::OK);
     let version_body = json_body(version).await;
     assert_eq!(version_body["service"], "svc-workflow");
-    assert_eq!(version_body["schemaVersion"], "0022");
+    assert_eq!(version_body["schemaVersion"], "0023");
     assert_eq!(version_body["apiContractVersion"], "internal-v0");
     // Provenance metadata must be present and honest: debug/dev builds may be
     // "dirty", but the fields must never be empty placeholders.
-    assert!(!version_body["gitSha"].as_str().unwrap_or_default().is_empty());
+    assert!(!version_body["gitSha"]
+        .as_str()
+        .unwrap_or_default()
+        .is_empty());
     let tree_state = version_body["gitTreeState"].as_str().unwrap_or_default();
     assert!(
         matches!(tree_state, "clean" | "dirty" | "unknown"),
         "unexpected gitTreeState: {tree_state}"
     );
     assert!(
-        !version_body["buildTimestamp"].as_str().unwrap_or_default().is_empty(),
+        !version_body["buildTimestamp"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty(),
         "buildTimestamp must not be empty"
     );
 

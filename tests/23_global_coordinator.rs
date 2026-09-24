@@ -60,6 +60,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::
                 .map(svc_workflow::domain::ids::PrincipalId::from_uuid)
                 .collect(),
         ),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -230,7 +233,7 @@ async fn create_instance(
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(definition_version_id),
             external_reference: None,
@@ -333,30 +336,35 @@ async fn move_to_terminal(pool: &PgPool, instance_id: Uuid, definition_version_i
     .expect("make terminal visit current");
 }
 
-async fn get_all_global_items(
-    app: axum::Router,
-    token: &str,
-    base_query: &str,
-) -> Vec<Value> {
+async fn get_all_global_items(app: axum::Router, token: &str, base_query: &str) -> Vec<Value> {
     let mut items = Vec::new();
     let mut cursor: Option<(String, String)> = None;
     loop {
         let separator = if base_query.contains('?') { '&' } else { '?' };
         let path = match &cursor {
-            Some((created_at, id)) => format!(
-                "{base_query}{separator}limit=2&beforeCreatedAt={created_at}&beforeId={id}"
-            ),
+            Some((created_at, id)) => {
+                format!("{base_query}{separator}limit=2&beforeCreatedAt={created_at}&beforeId={id}")
+            }
             None => format!("{base_query}{separator}limit=2"),
         };
         let (status, body) = do_get(app.clone(), &path, token).await;
         assert_eq!(status, 200, "global page must succeed: {body}");
-        items.extend(body["items"].as_array().expect("items array").iter().cloned());
+        items.extend(
+            body["items"]
+                .as_array()
+                .expect("items array")
+                .iter()
+                .cloned(),
+        );
         let next = &body["next_cursor"];
         if next.is_null() {
             return items;
         }
         cursor = Some((
-            next["created_at"].as_str().expect("cursor created_at").to_string(),
+            next["created_at"]
+                .as_str()
+                .expect("cursor created_at")
+                .to_string(),
             next["id"].as_str().expect("cursor id").to_string(),
         ));
     }
@@ -380,25 +388,32 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
     let reader = seed_agent(&pool).await;
     grant_global_reader(&pool, reader).await;
 
-    let (active_agent_a, _) = create_instance(&pool, agent, domain_a, ver_a, "active-agent-a").await;
-    let (active_agent_b, _) = create_instance(&pool, agent, domain_b, ver_b, "active-agent-b").await;
+    let (active_agent_a, _) =
+        create_instance(&pool, agent, domain_a, ver_a, "active-agent-a").await;
+    let (active_agent_b, _) =
+        create_instance(&pool, agent, domain_b, ver_b, "active-agent-b").await;
     let (active_human, _) = create_instance(&pool, owner_a, domain_a, ver_a, "active-human").await;
 
-    let (cancelled_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "cancelled-agent").await;
+    let (cancelled_agent, _) =
+        create_instance(&pool, agent, domain_a, ver_a, "cancelled-agent").await;
     sqlx::query("UPDATE workflow_instances SET cancelled = TRUE WHERE workflow_instance_id = $1")
         .bind(cancelled_agent)
         .execute(&pool)
         .await
         .expect("cancel fixture");
 
-    let (archived_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "archived-agent").await;
-    sqlx::query("UPDATE workflow_instances SET archived_at = NOW() WHERE workflow_instance_id = $1")
-        .bind(archived_agent)
-        .execute(&pool)
-        .await
-        .expect("archive fixture");
+    let (archived_agent, _) =
+        create_instance(&pool, agent, domain_a, ver_a, "archived-agent").await;
+    sqlx::query(
+        "UPDATE workflow_instances SET archived_at = NOW() WHERE workflow_instance_id = $1",
+    )
+    .bind(archived_agent)
+    .execute(&pool)
+    .await
+    .expect("archive fixture");
 
-    let (terminal_agent, _) = create_instance(&pool, agent, domain_a, ver_a, "terminal-agent").await;
+    let (terminal_agent, _) =
+        create_instance(&pool, agent, domain_a, ver_a, "terminal-agent").await;
     move_to_terminal(&pool, terminal_agent, ver_a).await;
 
     let app = build_app(pool.clone(), &mock.url, vec![]);
@@ -410,7 +425,10 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         &token,
     )
     .await;
-    assert_eq!(status, 422, "executor enum is exact and case-sensitive: {body}");
+    assert_eq!(
+        status, 422,
+        "executor enum is exact and case-sensitive: {body}"
+    );
     assert_eq!(body["error"]["code"], "invalid_current_executor_type");
 
     let (status, body) = do_get(
@@ -428,14 +446,28 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         "/internal/v1/workflow-instances/global?lifecycle=all&status=all&currentExecutorType=AGENT",
     )
     .await;
-    assert!(agent_items.iter().all(|item| item["current_executor_type"] == "AGENT"));
+    assert!(agent_items
+        .iter()
+        .all(|item| item["current_executor_type"] == "AGENT"));
     let agent_ids: std::collections::HashSet<Uuid> = agent_items
         .iter()
         .map(|item| Uuid::parse_str(item["workflow_instance_id"].as_str().unwrap()).unwrap())
         .collect();
-    assert_eq!(agent_items.len(), agent_ids.len(), "pagination must not duplicate items");
-    for expected in [active_agent_a, active_agent_b, cancelled_agent, archived_agent] {
-        assert!(agent_ids.contains(&expected), "AGENT filter missed {expected}");
+    assert_eq!(
+        agent_items.len(),
+        agent_ids.len(),
+        "pagination must not duplicate items"
+    );
+    for expected in [
+        active_agent_a,
+        active_agent_b,
+        cancelled_agent,
+        archived_agent,
+    ] {
+        assert!(
+            agent_ids.contains(&expected),
+            "AGENT filter missed {expected}"
+        );
     }
     assert!(!agent_ids.contains(&active_human));
     assert!(!agent_ids.contains(&terminal_agent));
@@ -446,8 +478,12 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         "/internal/v1/workflow-instances/global?lifecycle=all&status=all&currentExecutorType=HUMAN",
     )
     .await;
-    assert!(human_items.iter().all(|item| item["current_executor_type"] == "HUMAN"));
-    assert!(human_items.iter().any(|item| item["workflow_instance_id"] == active_human.to_string()));
+    assert!(human_items
+        .iter()
+        .all(|item| item["current_executor_type"] == "HUMAN"));
+    assert!(human_items
+        .iter()
+        .any(|item| item["workflow_instance_id"] == active_human.to_string()));
 
     let omitted_items = get_all_global_items(
         app.clone(),
@@ -467,10 +503,22 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         })
         .collect();
     assert_eq!(omitted_items.len(), omitted_by_id.len());
-    assert_eq!(omitted_by_id[&active_agent_a]["current_executor_type"], "AGENT");
-    assert_eq!(omitted_by_id[&active_human]["current_executor_type"], "HUMAN");
-    assert_eq!(omitted_by_id[&cancelled_agent]["current_executor_type"], "AGENT");
-    assert_eq!(omitted_by_id[&archived_agent]["current_executor_type"], "AGENT");
+    assert_eq!(
+        omitted_by_id[&active_agent_a]["current_executor_type"],
+        "AGENT"
+    );
+    assert_eq!(
+        omitted_by_id[&active_human]["current_executor_type"],
+        "HUMAN"
+    );
+    assert_eq!(
+        omitted_by_id[&cancelled_agent]["current_executor_type"],
+        "AGENT"
+    );
+    assert_eq!(
+        omitted_by_id[&archived_agent]["current_executor_type"],
+        "AGENT"
+    );
     assert!(omitted_by_id[&terminal_agent]["current_executor_type"].is_null());
 
     let owner_token = direct_token(owner_a, "workflow.read", &mock.key_pair);
@@ -482,7 +530,10 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         &owner_token,
     )
     .await;
-    assert_eq!(domain_status, 200, "domain list must remain compatible: {domain_body}");
+    assert_eq!(
+        domain_status, 200,
+        "domain list must remain compatible: {domain_body}"
+    );
     let domain_item = domain_body["items"]
         .as_array()
         .and_then(|items| items.first())
@@ -512,7 +563,10 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
     .into_iter()
     .collect();
     assert_eq!(domain_keys, expected_domain_keys);
-    assert!(!domain_item.as_object().unwrap().contains_key("current_executor_type"));
+    assert!(!domain_item
+        .as_object()
+        .unwrap()
+        .contains_key("current_executor_type"));
 
     let terminal_items = get_all_global_items(
         app.clone(),
@@ -558,12 +612,26 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
     .expect("canonical Agent relation")
     .into_iter()
     .collect();
-    assert_eq!(api_ids, canonical_ids, "API set must equal the canonical DB relation");
+    assert_eq!(
+        api_ids, canonical_ids,
+        "API set must equal the canonical DB relation"
+    );
     for expected in [active_agent_a, active_agent_b] {
-        assert!(api_ids.contains(&expected), "active Agent fixture missing: {expected}");
+        assert!(
+            api_ids.contains(&expected),
+            "active Agent fixture missing: {expected}"
+        );
     }
-    for excluded in [active_human, cancelled_agent, archived_agent, terminal_agent] {
-        assert!(!api_ids.contains(&excluded), "excluded fixture leaked: {excluded}");
+    for excluded in [
+        active_human,
+        cancelled_agent,
+        archived_agent,
+        terminal_agent,
+    ] {
+        assert!(
+            !api_ids.contains(&excluded),
+            "excluded fixture leaked: {excluded}"
+        );
     }
 
     let service_principal = Uuid::new_v4();
@@ -596,7 +664,10 @@ async fn canonical_current_executor_projection_filter_and_active_agent_set() {
         .execute(&pool)
         .await
         .expect("restore SERVICE fixture so other tests remain isolated");
-    assert_eq!(service_status, 500, "SERVICE ownership must fail closed: {service_body}");
+    assert_eq!(
+        service_status, 500,
+        "SERVICE ownership must fail closed: {service_body}"
+    );
     assert_eq!(service_body["error"]["code"], "internal_consistency_error");
 }
 
@@ -1143,7 +1214,10 @@ async fn reader_gains_no_write_or_assistance_powers() {
         "reader-canonical-create-1",
     )
     .await;
-    assert_eq!(status, 200, "reader self-domain create must succeed: {body}");
+    assert_eq!(
+        status, 200,
+        "reader self-domain create must succeed: {body}"
+    );
     assert_eq!(body["ownerPrincipalId"], reader.to_string());
 
     // Domain owner replacement → coordinator-only.

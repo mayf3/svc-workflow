@@ -52,6 +52,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(vec![]),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -316,7 +319,10 @@ async fn plain_agent_creates_domain_and_becomes_owner() {
     assert_eq!(body["ownerPrincipalId"], plain_agent.to_string());
     // displayName absent → defaults to the domainKey.
     assert_eq!(body["displayName"], plain_key);
-    assert!(!domain_enabled(&pool, domain_id).await, "enabled=false is honored");
+    assert!(
+        !domain_enabled(&pool, domain_id).await,
+        "enabled=false is honored"
+    );
     // The owner binding is established even for a disabled domain.
     assert!(owner_binding_enabled(&pool, domain_id, plain_agent).await);
 }
@@ -363,7 +369,10 @@ async fn duplicate_domain_key_conflicts_with_zero_mutation() {
         "dup-key-first",
     )
     .await;
-    assert_eq!(status3, 409, "changed inputs under same key must conflict: {body3}");
+    assert_eq!(
+        status3, 409,
+        "changed inputs under same key must conflict: {body3}"
+    );
     assert_eq!(body3["error"]["code"], "idempotency_conflict");
 }
 
@@ -392,7 +401,10 @@ async fn caller_supplied_domain_id_is_rejected_unknown_field() {
         "legacy-domain-id-1",
     )
     .await;
-    assert_eq!(status, 400, "caller-supplied domainId must be rejected: {body}");
+    assert_eq!(
+        status, 400,
+        "caller-supplied domainId must be rejected: {body}"
+    );
     assert_eq!(body["error"]["code"], "unknown_field");
     assert_eq!(domain_count_by_key(&pool, &legacy_key).await, 0);
 }
@@ -446,7 +458,10 @@ async fn canonical_principal_create_chain() {
     let pool = common::create_pool().await;
     let canonical_principal_id = std::env::var("CANONICAL_CREATE_TEST_PRINCIPAL_ID")
         .ok()
-        .map(|v| v.parse::<Uuid>().expect("CANONICAL_CREATE_TEST_PRINCIPAL_ID must be a UUID"));
+        .map(|v| {
+            v.parse::<Uuid>()
+                .expect("CANONICAL_CREATE_TEST_PRINCIPAL_ID must be a UUID")
+        });
     let Some(principal_id) = canonical_principal_id else {
         eprintln!(
             "skipped: set CANONICAL_CREATE_TEST_PRINCIPAL_ID to a seeded canonical \
@@ -472,7 +487,10 @@ async fn canonical_principal_create_chain() {
         "canonical-principal-create-1",
     )
     .await;
-    assert_eq!(status, 200, "canonical principal create must succeed: {body}");
+    assert_eq!(
+        status, 200,
+        "canonical principal create must succeed: {body}"
+    );
     assert_eq!(body["ownerPrincipalId"], principal_id.to_string());
     let domain_id: Uuid = body["domainId"]
         .as_str()

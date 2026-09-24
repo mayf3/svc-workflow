@@ -61,6 +61,9 @@ fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(vec![]),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,
@@ -208,7 +211,7 @@ async fn create_v1_instance(
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain_id),
             definition_version_id: DefinitionVersionId::from_uuid(ver_id),
             external_reference: None,
@@ -231,11 +234,7 @@ async fn create_v1_instance(
 /// uses; the activation fact tables themselves are trigger-immutable, so
 /// the COALESCE(latest event, initial) in the feed query picks this value
 /// up as the current eligibility). Returns the activation id.
-async fn force_next_eligible_at(
-    pool: &PgPool,
-    node_visit_id: Uuid,
-    at: DateTime<Utc>,
-) -> Uuid {
+async fn force_next_eligible_at(pool: &PgPool, node_visit_id: Uuid, at: DateTime<Utc>) -> Uuid {
     let row: (Uuid, DateTime<Utc>) = sqlx::query_as(
         "SELECT activation_id, initial_next_eligible_at FROM workflow_activations WHERE node_visit_id = $1 AND activation_kind = 'DISPATCH_INTENT'",
     )
@@ -285,8 +284,7 @@ async fn seed_due_intents(
     let mut seeded = Vec::with_capacity(count);
     for i in 1..=count {
         let at = base + chrono::Duration::seconds(i as i64);
-        let (instance_id, visit_id, _) =
-            create_v1_instance(pool, creator, domain_id, ver_id).await;
+        let (instance_id, visit_id, _) = create_v1_instance(pool, creator, domain_id, ver_id).await;
         let activation_id = force_next_eligible_at(pool, visit_id, at).await;
         seeded.push(SeededIntent {
             dispatch_intent_id: activation_id,
@@ -355,8 +353,12 @@ async fn acc_dkc_001_no_cursor_unchanged() {
             .filter(|it| it["dispatchIntentId"] == json!(intent.dispatch_intent_id.to_string()))
             .collect();
         assert_eq!(mine.len(), 1, "exactly one record for the seeded intent");
-        let mut keys: Vec<&str> =
-            mine[0].as_object().unwrap().keys().map(|k| k.as_str()).collect();
+        let mut keys: Vec<&str> = mine[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
         keys.sort();
         assert_eq!(
             keys,
@@ -384,7 +386,9 @@ async fn acc_dkc_001_no_cursor_unchanged() {
         .map(|intent| {
             items
                 .iter()
-                .position(|it| it["dispatchIntentId"] == json!(intent.dispatch_intent_id.to_string()))
+                .position(|it| {
+                    it["dispatchIntentId"] == json!(intent.dispatch_intent_id.to_string())
+                })
                 .expect("seeded intent in feed")
         })
         .collect();
@@ -447,20 +451,34 @@ async fn acc_dkc_002_exhaustion_walk() {
         ));
     }
 
-    assert!(pages.len() >= 3, "the walk spans multiple windows: {pages:?}");
-    assert!(*pages.last().unwrap() < 3, "the walk terminates on a SHORT page: {pages:?}");
+    assert!(
+        pages.len() >= 3,
+        "the walk spans multiple windows: {pages:?}"
+    );
+    assert!(
+        *pages.last().unwrap() < 3,
+        "the walk terminates on a SHORT page: {pages:?}"
+    );
     let expected: Vec<String> = seeded
         .iter()
         .map(|s| s.dispatch_intent_id.to_string())
         .collect();
     let positions: Vec<usize> = expected
         .iter()
-        .map(|id| seen.iter().position(|s| s == id).expect("fixture reached by the walk"))
+        .map(|id| {
+            seen.iter()
+                .position(|s| s == id)
+                .expect("fixture reached by the walk")
+        })
         .collect();
     let mut sorted = positions.clone();
     sorted.sort();
     assert_eq!(positions, sorted, "fixture order follows the feed order");
-    assert_eq!(positions.len(), 7, "every fixture reached exactly once (no skips)");
+    assert_eq!(
+        positions.len(),
+        7,
+        "every fixture reached exactly once (no skips)"
+    );
 }
 
 /// ACC-DKC-003: equal-nextEligibleAt ties break by activation_id in both the
@@ -529,8 +547,14 @@ async fn acc_dkc_003_tie_break_by_activation_id() {
         }
     }
 
-    let pos0 = walk.iter().position(|(id, _)| id == &tied_ids[0]).expect("tie half 0 reached");
-    let pos1 = walk.iter().position(|(id, _)| id == &tied_ids[1]).expect("tie half 1 reached");
+    let pos0 = walk
+        .iter()
+        .position(|(id, _)| id == &tied_ids[0])
+        .expect("tie half 0 reached");
+    let pos1 = walk
+        .iter()
+        .position(|(id, _)| id == &tied_ids[1])
+        .expect("tie half 1 reached");
     assert_eq!(pos1, pos0 + 1, "the tie pair is ADJACENT in the walk order");
     assert!(
         tied_ids[0] < tied_ids[1],
@@ -564,7 +588,9 @@ async fn acc_dkc_004_cursor_validation() {
     let app = build_app(pool.clone(), &mock.url);
     let token = direct_token(scheduler, "workflow.read", &mock.key_pair);
 
-    let valid_ts = seeded[0].next_eligible_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
+    let valid_ts = seeded[0]
+        .next_eligible_at
+        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
     let valid_id = seeded[0].dispatch_intent_id.to_string();
     let cases: Vec<(String, &str)> = vec![
         (
@@ -593,7 +619,11 @@ async fn acc_dkc_004_cursor_validation() {
     for (path, label) in cases {
         let (status, body) = do_get(app.clone(), &path, &token).await;
         assert_eq!(status, 422, "{label} must 422: {body}");
-        assert_eq!(body["error"]["code"], json!("invalid_pagination"), "{label}");
+        assert_eq!(
+            body["error"]["code"],
+            json!("invalid_pagination"),
+            "{label}"
+        );
     }
 
     // Validation is not destructive: a valid cursor still works afterwards.
@@ -606,7 +636,9 @@ async fn acc_dkc_004_cursor_validation() {
     assert_eq!(status, 200, "valid cursor after rejections: {body}");
     let items = body["items"].as_array().unwrap();
     assert!(
-        !items.iter().any(|it| it["dispatchIntentId"] == json!(valid_id)),
+        !items
+            .iter()
+            .any(|it| it["dispatchIntentId"] == json!(valid_id)),
         "exclusive keyset excludes the cursor row itself"
     );
 }
@@ -634,13 +666,19 @@ async fn acc_dkc_005_starvation_proof() {
     let app = build_app(pool.clone(), &mock.url);
     let token = direct_token(scheduler, "workflow.read", &mock.key_pair);
 
-    let seeded_ids: Vec<String> =
-        seeded.iter().map(|s| s.dispatch_intent_id.to_string()).collect();
+    let seeded_ids: Vec<String> = seeded
+        .iter()
+        .map(|s| s.dispatch_intent_id.to_string())
+        .collect();
 
     // Window 1: no cursor, limit=100 — FULL page (leftovers from earlier
     // tests sort strictly BEFORE this window and are part of it).
-    let (status, body) =
-        do_get(app.clone(), "/internal/v1/dispatch-intents?limit=100", &token).await;
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/dispatch-intents?limit=100",
+        &token,
+    )
+    .await;
     assert_eq!(status, 200, "window 1: {body}");
     let window1 = body["items"].as_array().unwrap().clone();
     assert_eq!(window1.len(), 100, "window 1 is exactly one full page");
@@ -650,8 +688,12 @@ async fn acc_dkc_005_starvation_proof() {
         .collect();
     // The FIRST window is closed under repetition: another cursorless read
     // returns the same first 100 — this is the starvation itself.
-    let (status, body) =
-        do_get(app.clone(), "/internal/v1/dispatch-intents?limit=100", &token).await;
+    let (status, body) = do_get(
+        app.clone(),
+        "/internal/v1/dispatch-intents?limit=100",
+        &token,
+    )
+    .await;
     assert_eq!(status, 200);
     let window1_again: Vec<&str> = body["items"]
         .as_array()
@@ -659,7 +701,10 @@ async fn acc_dkc_005_starvation_proof() {
         .iter()
         .map(|it| it["dispatchIntentId"].as_str().unwrap())
         .collect();
-    assert_eq!(seen, window1_again, "cursorless reads repeat the same window");
+    assert_eq!(
+        seen, window1_again,
+        "cursorless reads repeat the same window"
+    );
     // Intent #101 is the largest key of our block: it is not in window 1...
     assert!(
         !seen.contains(&seeded_ids[100].as_str()),
@@ -668,8 +713,14 @@ async fn acc_dkc_005_starvation_proof() {
     // ...while all leftover fixtures + intents #1..#(100-L) fill the page:
     // the count of OUR records in window 1 is exactly 100 - L (L = earlier
     // leftovers), which is >= 1 because the page is full of oldest-first.
-    let ours_in_window1 = seen.iter().filter(|id| seeded_ids[..100].contains(&id.to_string())).count();
-    assert!(ours_in_window1 >= 1, "window 1 reaches into our fixture block");
+    let ours_in_window1 = seen
+        .iter()
+        .filter(|id| seeded_ids[..100].contains(&id.to_string()))
+        .count();
+    assert!(
+        ours_in_window1 >= 1,
+        "window 1 reaches into our fixture block"
+    );
 
     // Window 2: cursor = EXACT last-item strings of window 1. Everything
     // strictly below the cursor is gone; our block's remainder starts at
@@ -707,7 +758,10 @@ async fn acc_dkc_005_starvation_proof() {
         for item in &items {
             let id = item["dispatchIntentId"].as_str().unwrap();
             assert!(!seen.contains(&id), "no repeat across windows: {id}");
-            assert!(!reached.contains(&id.to_string()), "no repeat within continuation: {id}");
+            assert!(
+                !reached.contains(&id.to_string()),
+                "no repeat within continuation: {id}"
+            );
             reached.push(id.to_string());
         }
         if page_len < 100 {
@@ -724,19 +778,24 @@ async fn acc_dkc_005_starvation_proof() {
     // read — is REACHABLE through the keyset continuation.
     assert!(
         reached.contains(&seeded_ids[100]),
-        "intent 101 must be reachable via continuation; reached={} of {}", reached.len(), seeded_ids.len()
+        "intent 101 must be reachable via continuation; reached={} of {}",
+        reached.len(),
+        seeded_ids.len()
     );
     // Full discovery: window 1 UNION the continuation covers ALL 101 fixtures
     // exactly once, in feed order (window 1 holds the oldest slice, the
     // continuation holds everything past the cursor).
-    let mut discovered: Vec<String> =
-        seen.iter().map(|s| s.to_string()).collect();
+    let mut discovered: Vec<String> = seen.iter().map(|s| s.to_string()).collect();
     discovered.extend(reached.iter().cloned());
     let positions: Vec<usize> = seeded_ids
         .iter()
         .filter_map(|id| discovered.iter().position(|r| r == id))
         .collect();
-    assert_eq!(positions.len(), 101, "all 101 fixtures discovered exactly once across window 1 + continuation");
+    assert_eq!(
+        positions.len(),
+        101,
+        "all 101 fixtures discovered exactly once across window 1 + continuation"
+    );
     let mut sorted = positions.clone();
     sorted.sort();
     assert_eq!(positions, sorted, "fixture order follows the feed order");
@@ -765,7 +824,9 @@ async fn acc_dkc_006_role_gate_with_cursor() {
     let reader_token = direct_token(reader, "workflow.read", &mock.key_pair);
     let scheduler_token = direct_token(scheduler, "workflow.read", &mock.key_pair);
 
-    let valid_ts = seeded[0].next_eligible_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
+    let valid_ts = seeded[0]
+        .next_eligible_at
+        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true);
     let valid_id = seeded[0].dispatch_intent_id.to_string();
 
     // Role-less caller (no binding at all) with a VALID cursor -> 403.
@@ -775,7 +836,10 @@ async fn acc_dkc_006_role_gate_with_cursor() {
         enc(&valid_id)
     );
     let (status, body) = do_get(app.clone(), &path, &reader_token).await;
-    assert_eq!(status, 403, "role gate unchanged with valid cursors: {body}");
+    assert_eq!(
+        status, 403,
+        "role gate unchanged with valid cursors: {body}"
+    );
     assert_eq!(body["error"]["code"], json!("scheduler_read_role_required"));
 
     // Malformed cursor on the SAME role-less caller -> 422 (validation

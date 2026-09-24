@@ -68,6 +68,9 @@ async fn assistance_http_agent_owner_human_query_and_resume_contract() {
             clock_skew_seconds: 60,
         },
         provisioning_config: ProvisioningConfig::new(Vec::new()),
+        execution_control: svc_workflow::http::ExecutionControlConfig {
+            max_returns_per_edge: 3,
+        },
         auth_v1_canary_config: AuthV1CanaryConfig {
             enabled: true,
             write_enabled: true,

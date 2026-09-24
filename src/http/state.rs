@@ -9,6 +9,34 @@ use crate::application::workflow_instance::query_service::WorkflowQueryService;
 use crate::auth::admission::{AdmissionClient, AdmissionConfig};
 use crate::auth::{AuthV1CanaryConfig, JwksConfig, JwksVerifier};
 
+/// WORKFLOW_EXECUTION_CONTROL_V1 policy configuration.
+#[derive(Debug, Clone)]
+pub struct ExecutionControlConfig {
+    /// CTR-SWEC-005: the per-(instance, transitionDefinitionId) RETURN limit.
+    /// Reaching the limit escalates the target visit to HUMAN_REQUIRED
+    /// in-transaction; further RETURNs fail closed (409
+    /// return_policy_exhausted). Env WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE,
+    /// default 3, minimum 1.
+    pub max_returns_per_edge: u32,
+}
+
+impl ExecutionControlConfig {
+    pub fn from_env() -> Result<Self, String> {
+        let max_returns_per_edge = std::env::var("WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse::<u32>()
+            .map_err(|_| {
+                "WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE must be a positive integer".to_string()
+            })?;
+        if max_returns_per_edge < 1 {
+            return Err("WORKFLOW_POLICY_MAX_RETURNS_PER_EDGE must be >= 1".to_string());
+        }
+        Ok(Self {
+            max_returns_per_edge,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
     pub bind_addr: SocketAddr,
@@ -21,6 +49,8 @@ pub struct HttpConfig {
     /// Canonical identity admission configuration (CTR-CIR-003,
     /// SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2).
     pub admission: AdmissionConfig,
+    /// WORKFLOW_EXECUTION_CONTROL_V1 policy configuration.
+    pub execution_control: ExecutionControlConfig,
 }
 
 impl HttpConfig {
@@ -46,6 +76,7 @@ impl HttpConfig {
         let provisioning_config = ProvisioningConfig::from_env()?;
         let auth_v1_canary_config = AuthV1CanaryConfig::from_env();
         let admission = AdmissionConfig::from_env().map_err(|error| error.to_string())?;
+        let execution_control = ExecutionControlConfig::from_env()?;
 
         Ok(Self {
             bind_addr: SocketAddr::new(ip, port),
@@ -55,6 +86,7 @@ impl HttpConfig {
             provisioning_config,
             auth_v1_canary_config,
             admission,
+            execution_control,
         })
     }
 }
@@ -82,6 +114,8 @@ pub struct AppState {
     /// `None`. A failed construction while enabled is a fail-closed boot
     /// panic with a sanitized message.
     pub admission_client: Option<AdmissionClient>,
+    /// WORKFLOW_EXECUTION_CONTROL_V1 policy configuration.
+    pub execution_control: ExecutionControlConfig,
 }
 
 impl AppState {
@@ -103,6 +137,7 @@ impl AppState {
             pool,
             auth_v1_canary_config: config.auth_v1_canary_config.clone(),
             admission_client,
+            execution_control: config.execution_control.clone(),
         }
     }
 }

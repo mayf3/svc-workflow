@@ -61,6 +61,31 @@ pub struct ExecuteWorkflowTransitionResponse {
     pub current_node_visit_id: Uuid,
     pub submission_id: Option<Uuid>,
     pub event_sequence: i32,
+    /// WORKFLOW_EXECUTION_CONTROL_V1: present when this transition was the
+    /// limit-reaching RETURN and escalated its target visit to
+    /// HUMAN_REQUIRED (CTR-SWEC-005).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_policy_escalation: Option<ReturnPolicyEscalation>,
+}
+
+/// POST /internal/v1/workflow-instances/{id}/execution-escalations response
+/// (CTR-SWEC-004). `escalated=false` means an open case already existed
+/// (idempotent replay of the same visit).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionEscalationResponse {
+    pub escalated: bool,
+    pub assistance_case_id: Uuid,
+    pub workflow_state_version: i32,
+    pub event_sequence: i32,
+}
+
+/// The escalation attached to a limit-reaching RETURN (CTR-SWEC-005).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReturnPolicyEscalation {
+    pub assistance_case_id: Uuid,
+    pub reason: &'static str,
 }
 
 impl From<ExecuteWorkflowTransitionResult> for ExecuteWorkflowTransitionResponse {
@@ -73,6 +98,12 @@ impl From<ExecuteWorkflowTransitionResult> for ExecuteWorkflowTransitionResponse
             current_node_visit_id: value.current_node_visit_id,
             submission_id: value.submission_id,
             event_sequence: value.event_sequence,
+            return_policy_escalation: value.assistance_case_id.map(|assistance_case_id| {
+                ReturnPolicyEscalation {
+                    assistance_case_id,
+                    reason: "RETURN_POLICY_EXHAUSTED",
+                }
+            }),
         }
     }
 }
