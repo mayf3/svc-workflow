@@ -1,34 +1,39 @@
 ---
-spec_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-status: superseded
+spec_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
 production_apply_authority: none
-accepted_date: 2026-09-02
-date: 2026-09-02
+accepted_date: 2026-09-15
+date: 2026-09-15
 scope:
   - svc-workflow VISIT_ACTIVATION_V1 runtime core (canonical activation facts, DISPATCH_INTENT, wake, due-intent read)
 governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_0
-supersedes: []
-superseded_by: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
+supersedes:
+  - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+superseded_by: null
 owners:
   - mayf3
 ---
 
-# SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 — Visit-Activation Runtime Core (Slice D phase 1)
+# SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2 — Visit-Activation Runtime Core (Slice D phase 1, INSTANCE_INPUT owners)
 
 ```text
 SPEC_GOVERNANCE_MODE = AUTHOR
-SPEC_ID = SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+SPEC_ID = SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
 STATUS = accepted
 BASE_REPOSITORY = mayf3/svc-workflow
-BASE_COMMIT = b5bb7eecdb9bfdf41b96e470df9c845c538edcad (accepted SVC_WORKFLOW_ARCHITECTURE_V0_4_0 merge)
+BASE_COMMIT = 6c05e0f (github/main at successor authoring; accepted V1 remains authoritative base text)
 CHANGE_CLASS = NON_MECHANICAL
-PREFLIGHT_MODE = IMPLEMENT (v0.4.0 §10.4 sequencing satisfied)
-AUTHORITY_HANDLING = governed_by accepted V6 + accepted v0.4.0
+PREFLIGHT_MODE = SUPERSEDE (SPEC_GOVERNANCE_V0 §9.2 — whole-authority successor)
+AUTHORITY_HANDLING = supersedes accepted SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1 (atomic docs-only
+  transition in this PR: V2.status=accepted; V1.status=superseded, superseded_by=V2)
+SUPERSESSION_BASIS = Owner ruling E1 (PRESERVE_INSTANCE_INPUT_PRINCIPAL_SEMANTICS, 2026-09-14):
+  the V1 normative owner closed set (CTR-VAI-002/004/011) rewrites normative meaning, therefore
+  AMEND is invalid per SPEC_GOVERNANCE_V0 §9.1 and SUPERSEDE is the only legal handling.
 PRODUCT_CODE_CHANGE = THIS SPEC AUTHORIZES IT
 PRODUCTION_CHANGE = NONE
 PRODUCTION_APPLY_AUTHORITY = none
@@ -68,8 +73,9 @@ GOVERNING_ARCHITECTURE = SVC_WORKFLOW_ARCHITECTURE_V0_4_0 (accepted, merged b5bb
 BASE_COMMIT = b5bb7eecdb9bfdf41b96e470df9c845c538edcad
 PRIOR_ARCHITECTURE = SVC_WORKFLOW_ARCHITECTURE_V0_3_1 (superseded, historical)
 RETAINED_REFINEMENT = SVC_WORKFLOW_ARCHITECTURE_V0_3_2 (unchanged)
-EXPECTED_MIGRATION_VERSION_BEFORE = 22
-EXPECTED_MIGRATION_VERSION_AFTER = 23
+EXPECTED_MIGRATION_VERSION_BEFORE = 23
+EXPECTED_MIGRATION_VERSION_AFTER = 23 (no schema change in this successor;
+the delta is validator + create/transition guards only)
 ```
 
 ## 3. Storage contracts (migration `0023_visit_activation_v1.sql`)
@@ -91,9 +97,11 @@ EXPECTED_MIGRATION_VERSION_AFTER = 23
 ### CTR-VAI-002 — Node model encoding
 
 `node_type` enum gains `'TASK'`. `VISIT_ACTIVATION_V1` graphs use exactly
-`TASK | TERMINAL`; the graph validator (CTR-VAI-004) rejects `DRAFT`/`NORMAL`
-and `INSTANCE_INPUT_PRINCIPAL` owner refs in new-model graphs. Legacy rows and
-validators are unchanged. TERMINAL nodes carry no resolved owner (visits are
+`TASK | TERMINAL`; the graph validator (CTR-VAI-011) rejects `DRAFT`/`NORMAL`
+node kinds in new-model graphs. TASK owner refs come from the closed set
+`WORKFLOW_CREATOR | DOMAIN_OWNER | FIXED_PRINCIPAL | INSTANCE_INPUT_PRINCIPAL`
+(CTR-VAI-015 extends the set with INSTANCE_INPUT_PRINCIPAL, Owner ruling E1).
+Legacy rows and validators are unchanged. TERMINAL nodes carry no resolved owner (visits are
 never created for TERMINAL).
 
 ### CTR-VAI-003 — Immutable activation fact tables
@@ -169,12 +177,22 @@ failure (missing/disabled/SERVICE/not HUMAN-or-AGENT) commits nothing with a
 deterministic `owner_resolution_failed` class. No caller field can supply the
 owner or timestamp.
 
+Create-time safety gate (CTR-VAI-015): every INSTANCE_INPUT_PRINCIPAL owner
+key declared by the Definition must resolve at creation — key present in the
+initial context payload, value a string UUID, Principal canonical, enabled,
+and of type HUMAN or AGENT — otherwise creation commits nothing with the same
+`owner_resolution_failed` class. Half-valid instances are never created.
+
 ### CTR-VAI-005 — Transition atomic closure
 
 A successful Transition on a `VISIT_ACTIVATION_V1` Instance closes the source
 Visit activation (one `workflow_activation_closures` row, reason
 `TRANSITIONED`) and creates the target Visit + its activation in the same
-transaction; TERMINAL targets create no target activation. Existing
+transaction; TERMINAL targets create no target activation. A target TASK
+with `INSTANCE_INPUT_PRINCIPAL` resolves its owner from the current
+authoritative context revision (assignee_input_key -> UUID -> canonical,
+enabled, HUMAN|AGENT) inside the SAME transaction, and the created activation
+kind derives only from that resolved Principal type. Existing
 version/Event/Receipt/audit invariants are unchanged (one increment, one
 Event).
 
@@ -258,9 +276,13 @@ exactly one entry TASK (no incoming primary ADVANCE); every TASK has exactly
 one primary ADVANCE; primary ADVANCE edges form one acyclic deterministic
 path ending at a TERMINAL; RETURN edges target a strictly earlier reachable
 TASK; TERMINATE edges target a TERMINAL; TERMINAL has no outgoing edge; all
-nodes reachable from the entry TASK; `DRAFT`/`NORMAL` node kinds and
-`INSTANCE_INPUT_PRINCIPAL` refs are rejected. Draft-time and publish-time
-validation both run it. Model `1`/`2` paths are byte-for-meaning unchanged.
+nodes reachable from the entry TASK; `DRAFT`/`NORMAL` node kinds are
+rejected; TASK owner refs come from the closed set `WORKFLOW_CREATOR |
+DOMAIN_OWNER | FIXED_PRINCIPAL | INSTANCE_INPUT_PRINCIPAL`, where an
+`INSTANCE_INPUT_PRINCIPAL` TASK must declare an `assignee_input_key` covered
+by the Definition's context schema (required-key coverage per CTR-VAI-015).
+Draft-time and publish-time validation both run it. Model `1`/`2` paths are
+byte-for-meaning unchanged.
 
 ### CTR-VAI-012 — Legacy protection (mutual fail-closed)
 
@@ -293,6 +315,33 @@ attempt-audit/security-audit machinery). Wake keeps existing receipt
 idempotency semantics (same key+request replays; changed request conflicts).
 The due read performs its role check inside the same read snapshot as the
 query.
+
+### CTR-VAI-015 — INSTANCE_INPUT_PRINCIPAL owner semantics (E1)
+
+`VISIT_ACTIVATION_V1` TASK nodes may declare
+`INSTANCE_INPUT_PRINCIPAL` + `assignee_input_key`. The semantic is the
+instance-scoped dynamic assignee: each Instance resolves its own owner from
+its context payload at Visit creation.
+
+- Owner resolution happens at NODE VISIT CREATION (entry or transition),
+  always from the current authoritative context revision, inside the same
+  authoritative transaction that writes the Visit and activation:
+  context value -> string UUID -> canonical Principal -> enabled check ->
+  type check (HUMAN | AGENT; SERVICE never owns new-model work).
+- The resolved Principal is written to `NodeVisit.assignee_principal_id`
+  and becomes the activation `owner_principal_id`; the activation kind
+  derives ONLY from that resolved Principal's canonical type
+  (`AGENT -> DISPATCH_INTENT`, `HUMAN -> HUMAN_WORK_ITEM`) — never from any
+  caller hint, node name, or context self-report.
+- Resolved Visits are immutable: later context or identity changes never
+  rewrite an existing Visit's assignee (subsequent INSTANCE_INPUT TASKs
+  resolve from the then-current authoritative context).
+- The Definition stores only `assignee_input_key`; no principal UUID is
+  frozen into the graph, and the context key is NOT a legacy-identity
+  successor slot (create/admission-time canonical identity gating applies to
+  every concrete context value).
+- All other V1 contracts (immutable activation facts, wake, due read,
+  legacy protection, audit/idempotency) are unchanged.
 
 ## 4. Explicit out of scope (FOLLOW_UP_DEBT, not blocking this Spec)
 
@@ -357,11 +406,26 @@ production authorization.
   validates activation cardinality/consistency and fails closed on injected
   drift; Legacy instance rebuild behavior is unchanged. Required evidence:
   rebuild traces for clean and drifted fixtures.
+- **ACC-VAI-012 (CTR-VAI-015)** — E1 acceptance matrix (A–L, no reductions):
+  (A) validator accepts TASK+INSTANCE_INPUT_PRINCIPAL with a covered key;
+  (B) missing `assignee_input_key` fails publish; (C) missing context value
+  fails create; (D) non-UUID value fails create; (E) disabled Principal
+  fails; (F) SERVICE Principal fails; (G) resolved AGENT yields
+  DISPATCH_INTENT; (H) resolved HUMAN yields HUMAN_WORK_ITEM; (I) two
+  Instances of the same Definition with context assignees A/B resolve their
+  Visits independently to A/B; (J) an existing Visit assigned A remains A
+  after later context/identity changes; (K) a later INSTANCE_INPUT TASK
+  resolves from the current authoritative context revision; (L) the legacy
+  retro migration maps `INSTANCE_INPUT_PRINCIPAL(assignee)` -> SMV3
+  `INSTANCE_INPUT_PRINCIPAL(assignee)` with machine diff C_COUNT=0.
+  Required evidence: positive/negative fixtures + row traces per case.
 
 ## 6. Test gate
 
 The implementation candidate ships with: `cargo test --lib` green,
-`cargo test --test 28_visit_activation_v1` green, full workspace
+`cargo test --test 28_visit_activation_v1` green,
+`cargo test --test 30_visit_activation_v2_instance_input` green (E1 A–L),
+full workspace
 `cargo test --workspace` green against the run-scoped test database
 (known pre-existing failures outside scope remain as documented baseline).
 `git diff --check` clean.
