@@ -76,6 +76,7 @@ pub struct ExecuteWorkflowTransitionResponse {
 pub struct ExecutionEscalationResponse {
     pub escalated: bool,
     pub assistance_case_id: Uuid,
+    pub owner_principal_id: Option<Uuid>,
     pub workflow_state_version: i32,
     pub event_sequence: i32,
 }

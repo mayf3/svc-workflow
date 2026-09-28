@@ -2,7 +2,8 @@
 //!
 //! WORKFLOW_EXECUTION_CONTROL_V1 system ingress (CTR-SWEC-004): the
 //! execution runtime reports an exhausted attempt policy; the CURRENT visit
-//! is escalated to HUMAN_REQUIRED through the existing assistance machinery.
+//! opens OWNER_PENDING assistance for the enabled Domain Owner. Human escalation
+//! remains an explicit Domain Owner assistance action.
 //! Gate mirrors wake exactly: `workflow.execute` scope + direct token +
 //! server-side `GLOBAL_SCHEDULER_READ` binding (fail-closed; denied attempts
 //! get the same durable security audit). Idempotent: an open case on the
@@ -78,6 +79,7 @@ pub(crate) async fn create(
     Ok(Json(ExecutionEscalationResponse {
         escalated: outcome.escalated,
         assistance_case_id: outcome.assistance_case_id,
+        owner_principal_id: outcome.owner_principal_id,
         workflow_state_version: outcome.workflow_state_version,
         event_sequence: outcome.event_sequence,
     }))

@@ -64,9 +64,10 @@ pub(crate) async fn request_assistance(
     if instance.assignee_principal_id != Some(actor) {
         return deterministic_failure(tx, command_id, AssistanceError::PrincipalNotAssignee).await;
     }
-    if let Err(error) = effective_owner(&mut tx, instance.domain_id).await {
-        return deterministic_failure(tx, command_id, error).await;
-    }
+    let owner = match effective_owner(&mut tx, instance.domain_id).await {
+        Ok(owner) => owner,
+        Err(error) => return deterministic_failure(tx, command_id, error).await,
+    };
     let open_exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM workflow_assistance_cases
          WHERE node_visit_id = $1 AND status IN ('OWNER_PENDING','HUMAN_REQUIRED'))",
@@ -128,7 +129,18 @@ pub(crate) async fn request_assistance(
             "workflowInstanceId": instance_id,
             "nodeVisitId": requested_visit,
             "assistanceCaseId": case_id,
+            "ownerPrincipalId": owner,
         }),
+    )
+    .await
+    .map_err(storage)?;
+    super::super::super::outbox::queue_owner_assistance_wake(
+        &mut tx,
+        instance_id,
+        requested_visit,
+        case_id,
+        owner,
+        "ASSISTANCE_REQUESTED",
     )
     .await
     .map_err(storage)?;

@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_EXECUTION_CONTROL_V1
-title: Workflow Execution Control — canonical forum binding, durable outbox with reconciler, RETURN policy projection with REQUIRE_HUMAN escalation, system execution-escalation ingress, push-first kick, due-set HUMAN_REQUIRED narrowing
+title: Workflow Execution Control — canonical forum binding, durable outbox with reconciler, RETURN policy projection with owner-attention assistance, system execution-escalation ingress, push-first kick, open-assistance due-set narrowing
 status: accepted
 accepted_date: 2026-09-24
 accepted_by: mayf3
@@ -64,11 +64,11 @@ canonical WorkflowInstance → ForumThread binding owned by svc-workflow and
 materialized through a durable outbox + reconciler (forum is never a
 business authority and never blocks a business transaction); (D) a
 deterministic RETURN-policy projection computed from `workflow_events`
-(system-counted, never agent-counted) with REQUIRE_HUMAN escalation through
+(system-counted, never agent-counted) with OWNER_PENDING assistance through
 the EXISTING assistance machinery; (E/F) a system execution-escalation
 ingress for the execution runtime and a push-first kick outbox — the
 scheduler/due-feed poll stays the correctness path; and a due-set narrowing
-that stops dispatching into a visit that is HUMAN_REQUIRED. No separate
+that stops dispatching into any visit with an open assistance case. No separate
 execution ledger is stored here; no attempt facts are mirrored.
 
 ## 1. Data model (migration `0027_execution_control_v1.sql`)
@@ -178,14 +178,14 @@ Transaction (one tx, mirroring assistance write discipline):
 4. Else insert the assistance case as OWNER_PENDING
    (`requested_by = caller`, request payload = `{message, supportingPayload:
    {reason, attemptCount, lastAttemptId, dispatchIntentId, source:
-   'execution_policy'}}`), then in the SAME tx escalate it to
-   HUMAN_REQUIRED (escalation fields set by the same command id — satisfies
-   the 0021 CHECK constraints), event `ASSISTANCE_ESCALATED_TO_HUMAN` via
-   the existing `increment_instance_and_event` (version bump ⇒ the
-   engine's stale probe mechanically sees `progressed`).
+   'execution_policy'}}`) and emit `ASSISTANCE_REQUESTED` using the policy's
+   synthetic request receipt. The version bump makes the engine's stale probe
+   mechanically see `progressed`. The system MUST NOT auto-escalate this case;
+   the Domain Owner uses the existing assistance resolve/escalate commands to
+   either solve it or explicitly move it to HUMAN_REQUIRED.
 5. Queue a `FORUM_EVENT` outbox row `event_key =
-   assistance_escalated:<caseId>` (Goal Scope G: HUMAN_REQUIRED visible on
-   the canonical thread).
+   assistance_requested:<caseId>` with `eventType=owner_attention_requested`
+   so the owner-attention fact is visible on the canonical thread.
 
 Response: `{escalated, assistanceCaseId, workflowStateVersion, eventSequence}`.
 
@@ -204,14 +204,16 @@ existing effect validation:
 - `returnCount >= max` ⇒ deterministic failure 409
   `return_policy_exhausted` (no side effects; the escalation for the
   exhausted edge happened when the max-th RETURN committed — see below).
-- `returnCount + 1 == max` ⇒ the committing tx ALSO escalates: create +
-  escalate an assistance case on the transition's TARGET visit (the visit
-  the instance is about to sit on), in the same tx, using the same
-  mechanics as §5 step 4 (caller = transitioning principal; provenance
+- `returnCount + 1 == max` ⇒ the committing tx ALSO opens an OWNER_PENDING
+  assistance case on the transition's TARGET visit (the visit the instance is
+  about to sit on), in the same tx, using the same owner-attention mechanics as
+  §5 step 4 (caller = transitioning principal; provenance
   `source: 'return_policy'`), plus the FORUM_EVENT outbox row
   `return_policy_reached:<instanceId>:<transitionId>`.
 
-Default disposition is REQUIRE_HUMAN; nothing force-advances, ever.
+Default disposition is REQUIRE_OWNER_ATTENTION; nothing force-advances, ever.
+Only an explicit Domain Owner assistance escalation changes the case to
+HUMAN_REQUIRED.
 
 ## 7. CTR-SWEC-006 — AMENDMENT A to CTR-VAI-009 (due-set narrowing)
 
@@ -266,9 +268,9 @@ committed business facts only.
 - Case 2: kick endpoint unreachable ⇒ row retries; poll loop still admits
   exactly one attempt (covered agent-side).
 - Case 5: RETURN commits; per-edge count query returns 1; forum row queued.
-- Case 6: max-th RETURN auto-escalates (HUMAN_REQUIRED on target visit);
+- Case 6: max-th RETURN opens OWNER_PENDING on the target visit;
   further RETURN ⇒ 409 `return_policy_exhausted`.
-- Case 4: escalation endpoint creates HUMAN_REQUIRED assistance case,
+- Case 4: escalation endpoint creates OWNER_PENDING assistance case,
   bumps state version, is idempotent on a second call; due feed excludes
   the escalated visit (§7).
 - Case 8: forum sync disabled ⇒ create/transition still 2xx; enabling
