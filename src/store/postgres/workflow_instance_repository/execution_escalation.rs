@@ -1,13 +1,10 @@
-//! WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-004/005) — the REQUIRE_HUMAN
-//! escalation primitive.
+//! WORKFLOW_EXECUTION_CONTROL_V1 owner-attention policy primitive.
 //!
-//! One shared transaction-scoped helper creates + escalates an assistance
-//! case to HUMAN_REQUIRED in the CALLER's transaction (system escalation
-//! ingress for the execution runtime, and the RETURN-policy threshold inside
-//! the transition transaction). It rides the EXISTING assistance machinery —
-//! same table, same status CHECKs, same event type — so every reader surface
-//! (fail-close on open cases, human-required inbox, version bump ⇒ the
-//! execution engine's stale probe sees `progressed`) works unchanged.
+//! One shared transaction-scoped helper opens an OWNER_PENDING assistance
+//! case in the CALLER's transaction (system attempt-limit ingress and the
+//! RETURN-policy threshold). Domain Owner then uses the EXISTING assistance
+//! escalation/resolve commands to either solve the case or explicitly move it
+//! to HUMAN_REQUIRED. Open-case fail-close and version-bump behavior remain.
 
 use chrono::{DateTime, Utc};
 use sqlx::{Postgres, Transaction};
@@ -16,7 +13,7 @@ use uuid::Uuid;
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::events::{
-    AssistanceEventData, ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE, EVENT_SCHEMA_VERSION,
+    AssistanceEventData, ASSISTANCE_REQUESTED_EVENT_TYPE, EVENT_SCHEMA_VERSION,
 };
 
 pub(crate) const MAX_ESCALATION_MESSAGE_CHARS: usize = 2000;
@@ -37,6 +34,7 @@ fn hex_digest(material: &str) -> String {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub(crate) struct PolicyEscalationOutcome {
     pub assistance_case_id: Uuid,
+    pub owner_principal_id: Uuid,
     /// false ⇒ an open case already existed (idempotent replay).
     pub escalated: bool,
     pub workflow_state_version: i32,
@@ -45,10 +43,9 @@ pub(crate) struct PolicyEscalationOutcome {
     pub receipt_command_id: Uuid,
 }
 
-/// Create + escalate ONE assistance case for `node_visit_id` to
-/// HUMAN_REQUIRED inside the caller's transaction. Idempotent: an existing
-/// open case on the visit is returned with `escalated = false` and NO new
-/// rows or version bump.
+/// Open ONE OWNER_PENDING assistance case for `node_visit_id` inside the
+/// caller's transaction. Idempotent: an existing open case on the visit is
+/// returned with `escalated = false` and NO new rows or version bump.
 ///
 /// Caller contract: `node_visit_id` MUST be the instance's CURRENT visit and
 /// the instance must be unlocked-in-tx (this helper takes its own
@@ -56,7 +53,7 @@ pub(crate) struct PolicyEscalationOutcome {
 /// safe). `actor` is the command principal (poller principal for the system
 /// ingress, transitioning principal for the RETURN policy).
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn escalate_visit_tx(
+pub(crate) async fn open_owner_pending_visit_tx(
     tx: &mut Transaction<'_, Postgres>,
     workflow_instance_id: Uuid,
     node_visit_id: Uuid,
@@ -83,6 +80,7 @@ pub(crate) async fn escalate_visit_tx(
     // Lock the instance row (same discipline as the assistance commands).
     let instance: Option<(
         Uuid,
+        Uuid,
         Option<Uuid>,
         i32,
         bool,
@@ -91,7 +89,7 @@ pub(crate) async fn escalate_visit_tx(
         Option<Uuid>,
         Option<Uuid>,
     )> = sqlx::query_as(
-        "SELECT wi.workflow_instance_id, wi.current_node_visit_id, wi.workflow_state_version,
+        "SELECT wi.workflow_instance_id, wi.domain_id, wi.current_node_visit_id, wi.workflow_state_version,
                 wi.cancelled, wi.archived_at, nd.node_type::text AS node_type,
                 wi.current_context_revision_id, nv.node_id
            FROM workflow_instances wi
@@ -106,6 +104,7 @@ pub(crate) async fn escalate_visit_tx(
     .map_err(storage)?;
     let (
         _,
+        domain_id,
         current_visit,
         version,
         cancelled,
@@ -130,6 +129,22 @@ pub(crate) async fn escalate_visit_tx(
         return Err(AssistanceError::SourceNodeTerminal);
     }
 
+    // OWNER_PENDING must always have a live authority to handle it. Resolve
+    // the current enabled Domain Owner before opening/replaying the case;
+    // never create an owner-attention dead end.
+    let owner_principal_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT b.principal_id
+           FROM domain_role_bindings b
+           JOIN domains d ON d.domain_id=b.domain_id AND d.enabled=TRUE
+           JOIN principals p ON p.principal_id=b.principal_id AND p.enabled=TRUE
+          WHERE b.domain_id=$1 AND b.role_key='DOMAIN_OWNER' AND b.enabled=TRUE",
+    )
+    .bind(domain_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?;
+    let owner_principal_id = owner_principal_id.ok_or(AssistanceError::DomainOwnerMissing)?;
+
     // Idempotency: an open case on this visit replays as escalated=false.
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT assistance_case_id FROM workflow_assistance_cases
@@ -142,6 +157,7 @@ pub(crate) async fn escalate_visit_tx(
     if let Some(case_id) = existing {
         return Ok(PolicyEscalationOutcome {
             assistance_case_id: case_id,
+            owner_principal_id,
             escalated: false,
             workflow_state_version: version,
             event_sequence: version,
@@ -149,23 +165,17 @@ pub(crate) async fn escalate_visit_tx(
         });
     }
 
-    // 0022 governance (fn_validate_assistance_command_refs): the case's
-    // request/escalation command refs must point at COMPLETED receipts of the
-    // exact types held by THIS actor. The policy escalation therefore mints
-    // and completes BOTH synthetic receipts inside the caller's transaction —
+    // 0022 governance (fn_validate_assistance_command_refs): the request
+    // command ref must point at a COMPLETED receipt of the exact type held by
+    // THIS actor. The policy request therefore mints and completes one
+    // synthetic assistance-request receipt inside the caller's transaction;
     // the outer receipt stays the caller's idempotency anchor.
     let body_json = serde_json::json!({ "source": "execution_policy" });
     let receipt_digest =
         digest::compute_json_digest(&body_json).map_err(AssistanceError::InternalConsistency)?;
     let request_receipt_id = Uuid::new_v4();
-    let escalation_receipt_id = Uuid::new_v4();
     for (receipt_id, command_type, idem_suffix) in [
         (request_receipt_id, "REQUEST_WORKFLOW_ASSISTANCE", "req"),
-        (
-            escalation_receipt_id,
-            "ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN",
-            "esc",
-        ),
     ] {
         sqlx::query(
             "INSERT INTO workflow_command_receipts
@@ -194,9 +204,8 @@ pub(crate) async fn escalate_visit_tx(
         .map_err(storage)?;
     }
 
-    // OWNER_PENDING insert, then the SAME policy escalates it to
-    // HUMAN_REQUIRED (satisfies the 0021 CHECK constraints: every escalation
-    // field set, no resolution fields).
+    // OWNER_PENDING is the terminal state of the system policy action.
+    // Domain Owner decides the next step through the normal assistance API.
     let case_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_assistance_cases
@@ -223,22 +232,6 @@ pub(crate) async fn escalate_visit_tx(
         }
     })?;
 
-    sqlx::query(
-        "UPDATE workflow_assistance_cases
-            SET status='HUMAN_REQUIRED', escalated_by_principal_id=$2,
-                escalation_payload=$3, escalation_payload_digest=$4,
-                escalation_command_id=$5, escalated_at=now(), updated_at=now()
-          WHERE assistance_case_id=$1 AND status='OWNER_PENDING'",
-    )
-    .bind(case_id)
-    .bind(actor)
-    .bind(&request_payload)
-    .bind(&payload_digest)
-    .bind(escalation_receipt_id)
-    .execute(&mut **tx)
-    .await
-    .map_err(storage)?;
-
     // Version bump + event — same reader contract as the manual escalation.
     let new_version = version + 1;
     let affected = sqlx::query(
@@ -261,8 +254,8 @@ pub(crate) async fn escalate_visit_tx(
 
     let event_data = serde_json::to_value(AssistanceEventData {
         assistance_case_id: case_id.to_string(),
-        previous_status: Some("OWNER_PENDING".to_string()),
-        new_status: "HUMAN_REQUIRED".to_string(),
+        previous_status: None,
+        new_status: "OWNER_PENDING".to_string(),
         payload_digest: payload_digest.clone(),
     })
     .map_err(|error| AssistanceError::InternalConsistency(error.to_string()))?;
@@ -282,11 +275,9 @@ pub(crate) async fn escalate_visit_tx(
     .bind(workflow_instance_id)
     .bind(new_version)
     .bind(EVENT_SCHEMA_VERSION)
-    // The event rides the ESCALATION-stage receipt: workflow_events allows
-    // at most one event per command (0006) and the transition command already
-    // wrote its own event.
-    .bind(escalation_receipt_id)
-    .bind(ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE)
+    // The policy-created request has its own synthetic request receipt.
+    .bind(request_receipt_id)
+    .bind(ASSISTANCE_REQUESTED_EVENT_TYPE)
     .bind(node_visit_id)
     .bind(context_revision_id)
     .bind(&event_data)
@@ -298,8 +289,25 @@ pub(crate) async fn escalate_visit_tx(
     .await
     .map_err(storage)?;
 
+    let wake_reason = request_payload
+        .get("supportingPayload")
+        .and_then(|value| value.get("reason"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("OWNER_ATTENTION_REQUIRED");
+    super::super::outbox::queue_owner_assistance_wake(
+        tx,
+        workflow_instance_id,
+        node_visit_id,
+        case_id,
+        owner_principal_id,
+        wake_reason,
+    )
+    .await
+    .map_err(storage)?;
+
     Ok(PolicyEscalationOutcome {
         assistance_case_id: case_id,
+        owner_principal_id,
         escalated: true,
         workflow_state_version: new_version,
         event_sequence: new_version,
@@ -332,6 +340,8 @@ pub struct SystemEscalationCommand {
 #[serde(rename_all = "camelCase")]
 pub struct SystemEscalationOutcome {
     pub assistance_case_id: Uuid,
+    /// None only when replaying a receipt written by a pre-owner-attention build.
+    pub owner_principal_id: Option<Uuid>,
     pub escalated: bool,
     pub workflow_state_version: i32,
     pub event_sequence: i32,
@@ -421,9 +431,9 @@ async fn complete_receipt(
     Ok(())
 }
 
-/// Execute the system escalation ingress: validate, escalate the CURRENT
-/// visit to HUMAN_REQUIRED (idempotent on an open case), queue the forum
-/// projection row, complete the receipt. One transaction.
+/// Execute the system escalation ingress: validate, open OWNER_PENDING on the
+/// CURRENT visit (idempotent on an open case), queue the forum projection row,
+/// complete the receipt. One transaction.
 pub(crate) async fn system_execution_escalation(
     pool: &sqlx::PgPool,
     command: SystemEscalationCommand,
@@ -452,12 +462,31 @@ pub(crate) async fn system_execution_escalation(
             Ok(outcome)
         }
         Receipt::Replay(_status, body) => {
-            tx.commit().await.map_err(storage)?;
-            let outcome: SystemEscalationOutcome = serde_json::from_value(body).map_err(|e| {
+            let mut outcome: SystemEscalationOutcome = serde_json::from_value(body).map_err(|e| {
                 AssistanceError::InternalConsistency(format!(
                     "escalation replay body mismatch: {e}"
                 ))
             })?;
+            // Pre-owner-attention receipts do not carry ownerPrincipalId. Enrich
+            // the replay from current authoritative Domain bindings without
+            // mutating the historical receipt.
+            if outcome.owner_principal_id.is_none() {
+                outcome.owner_principal_id = sqlx::query_scalar(
+                    "SELECT b.principal_id
+                       FROM workflow_assistance_cases ac
+                       JOIN workflow_instances wi ON wi.workflow_instance_id=ac.workflow_instance_id
+                       JOIN domain_role_bindings b ON b.domain_id=wi.domain_id
+                       JOIN domains d ON d.domain_id=b.domain_id AND d.enabled=TRUE
+                       JOIN principals p ON p.principal_id=b.principal_id AND p.enabled=TRUE
+                      WHERE ac.assistance_case_id=$1
+                        AND b.role_key='DOMAIN_OWNER' AND b.enabled=TRUE",
+                )
+                .bind(outcome.assistance_case_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(storage)?;
+            }
+            tx.commit().await.map_err(storage)?;
             Ok(outcome)
         }
         Receipt::Conflict => {
@@ -477,7 +506,7 @@ async fn escalate_and_project(
     command: &SystemEscalationCommand,
 ) -> Result<SystemEscalationOutcome, AssistanceError> {
     let message = format!(
-        "Execution policy escalation ({}) on the current node visit — a human must take over",
+        "Execution policy assistance ({}) on the current node visit — Domain Owner attention required",
         command.reason
     );
     let supporting = serde_json::json!({
@@ -487,7 +516,7 @@ async fn escalate_and_project(
         "lastAttemptId": command.last_attempt_id,
         "dispatchIntentId": command.dispatch_intent_id,
     });
-    let outcome = escalate_visit_tx(
+    let outcome = open_owner_pending_visit_tx(
         tx,
         command.workflow_instance_id,
         command.node_visit_id,
@@ -498,16 +527,17 @@ async fn escalate_and_project(
     )
     .await?;
 
-    // Forum projection row for the escalation (Goal Scope G).
+    // Forum projection row for the owner-attention request.
     super::super::outbox::queue_forum_event(
         tx,
         command.workflow_instance_id,
-        &format!("assistance_escalated:{}", outcome.assistance_case_id),
+        &format!("assistance_requested:{}", outcome.assistance_case_id),
         serde_json::json!({
-            "eventType": "attempts_exhausted",
+            "eventType": "owner_attention_requested",
             "workflowInstanceId": command.workflow_instance_id,
             "nodeVisitId": command.node_visit_id,
             "assistanceCaseId": outcome.assistance_case_id,
+            "ownerPrincipalId": outcome.owner_principal_id,
             "reason": command.reason,
             "attemptCount": command.attempt_count,
         }),
@@ -517,6 +547,7 @@ async fn escalate_and_project(
 
     Ok(SystemEscalationOutcome {
         assistance_case_id: outcome.assistance_case_id,
+        owner_principal_id: Some(outcome.owner_principal_id),
         escalated: outcome.escalated,
         workflow_state_version: outcome.workflow_state_version,
         event_sequence: outcome.event_sequence,

@@ -350,7 +350,20 @@ pub(crate) fn forum_text(payload: &serde_json::Value) -> String {
         }
         "assistance_resolved" => format!("✔️ Assistance resolved on workflow `{instance}`"),
         "return_policy_reached" => {
-            format!("🚨 RETURN policy limit reached on workflow `{instance}` — HUMAN_REQUIRED")
+            if payload["assistanceStatus"].as_str() == Some("OWNER_PENDING") {
+                format!("🧭 RETURN policy limit reached on workflow `{instance}` — Domain Owner attention (OWNER_PENDING)")
+            } else {
+                // Backward-compatible rendering for historical rows written by
+                // the pre-owner-attention build, which auto-escalated to human.
+                format!("🚨 RETURN policy limit reached on workflow `{instance}` — HUMAN_REQUIRED")
+            }
+        }
+        "owner_attention_requested" => {
+            let n = payload["attemptCount"]
+                .as_i64()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".to_string());
+            format!("🧭 Execution attempts exhausted ({n}) on workflow `{instance}` — Domain Owner attention (OWNER_PENDING)")
         }
         "attempts_exhausted" => {
             let n = payload["attemptCount"]
@@ -448,6 +461,7 @@ pub(crate) async fn run_once(pool: &PgPool, forum: &ForumClient) -> usize {
         let result = match row.outbox_kind.as_str() {
             "FORUM_EVENT" => deliver_forum_event(pool, forum, &row).await,
             "EXECUTION_KICK" => deliver_kick(forum, &row).await,
+            "OWNER_ASSISTANCE_WAKE" => deliver_owner_assistance_wake(forum, &row).await,
             other => {
                 tracing::warn!(
                     kind = other,
@@ -529,6 +543,43 @@ async fn deliver_kick(forum: &ForumClient, row: &outbox::OutboxRow) -> DeliverRe
     }
 }
 
+async fn deliver_owner_assistance_wake(
+    forum: &ForumClient,
+    row: &outbox::OutboxRow,
+) -> DeliverResult {
+    let kick = forum
+        .kick_config()
+        .ok_or("Agent Core push endpoint not configured (WORKFLOW_EXECUTION_KICK_URL/TOKEN)")?;
+    let mut url = reqwest::Url::parse(&kick.url)
+        .map_err(|error| format!("invalid WORKFLOW_EXECUTION_KICK_URL: {error}"))?;
+    url.set_path("/workflow-execution/owner-assistance-wakes");
+    url.set_query(None);
+    url.set_fragment(None);
+
+    let response = forum
+        .http
+        .post(url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", kick.token),
+        )
+        .json(&row.payload)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else {
+        // Unlike latency-only execution kicks, owner assistance wake is part
+        // of the exception-handling correctness path. Keep the durable row
+        // pending across every non-2xx so configuration/deployment drift can
+        // be repaired without silently losing the Domain Owner notification.
+        Err(format!("owner assistance wake endpoint returned {}", status.as_u16()))
+    }
+}
+
 /// The background loop. Spawned by main when the forum sync config resolves.
 pub async fn run_loop(pool: PgPool, config: ForumSyncConfig) {
     let forum = ForumClient::new(config);
@@ -540,5 +591,134 @@ pub async fn run_loop(pool: PgPool, config: ForumSyncConfig) {
         if delivered > 0 {
             tracing::info!(delivered, "outbox reconciler delivered rows");
         }
+    }
+}
+
+#[cfg(test)]
+mod owner_assistance_wake_tests {
+    use super::*;
+    use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Json, Router};
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    #[derive(Clone, Default)]
+    struct Capture {
+        authorization: Arc<StdMutex<Option<String>>>,
+        body: Arc<StdMutex<Option<serde_json::Value>>>,
+    }
+
+    fn client(url: String, token: &str) -> ForumClient {
+        ForumClient::new(ForumSyncConfig {
+            auth_base_url: "http://127.0.0.1:9".to_string(),
+            client_id: "unused".to_string(),
+            client_secret: "unused".to_string(),
+            forum_origin: "http://127.0.0.1:9".to_string(),
+            audience: "svc-forum".to_string(),
+            poll_interval_ms: 5_000,
+            kick: Some(ExecutionKickConfig { url, token: token.to_string() }),
+        })
+    }
+    fn row(payload: serde_json::Value) -> outbox::OutboxRow {
+        outbox::OutboxRow {
+            outbox_id: Uuid::new_v4(),
+            workflow_instance_id: Uuid::new_v4(),
+            outbox_kind: "OWNER_ASSISTANCE_WAKE".to_string(),
+            event_key: "owner-assistance:test".to_string(),
+            payload,
+            attempt_count: 0,
+        }
+    }
+
+    async fn capture_handler(
+        State(capture): State<Capture>,
+        headers: HeaderMap,
+        Json(body): Json<serde_json::Value>,
+    ) -> StatusCode {
+        *capture.authorization.lock().unwrap() = headers
+            .get(reqwest::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .map(ToOwned::to_owned);
+        *capture.body.lock().unwrap() = Some(body);
+        StatusCode::OK
+    }
+
+    #[tokio::test]
+    async fn owner_wake_derives_endpoint_reuses_token_and_forwards_payload() {
+        let capture = Capture::default();
+        let app = Router::new()
+            .route("/workflow-execution/owner-assistance-wakes", post(capture_handler))
+            .with_state(capture.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let payload = serde_json::json!({
+            "workflowInstanceId": Uuid::new_v4(),
+            "nodeVisitId": Uuid::new_v4(),
+            "assistanceCaseId": Uuid::new_v4(),
+            "ownerPrincipalId": Uuid::new_v4(),
+            "reason": "RETURN_POLICY_EXHAUSTED",
+        });
+        let forum = client(
+            format!("http://{addr}/workflow-execution/kicks?ignored=yes"),
+            "push-secret",
+        );
+        deliver_owner_assistance_wake(&forum, &row(payload.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            capture.authorization.lock().unwrap().as_deref(),
+            Some("Bearer push-secret")
+        );
+        assert_eq!(capture.body.lock().unwrap().as_ref(), Some(&payload));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn owner_wake_keeps_non_success_retryable() {
+        let app = Router::new().route(
+            "/workflow-execution/owner-assistance-wakes",
+            post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let forum = client(
+            format!("http://{addr}/workflow-execution/kicks"),
+            "push-secret",
+        );
+        let error = deliver_owner_assistance_wake(&forum, &row(serde_json::json!({})))
+            .await
+            .unwrap_err();
+        assert!(error.contains("503"));
+        server.abort();
+    }
+    #[test]
+    fn owner_attention_forum_projection_preserves_old_and_new_semantics() {
+        let workflow = Uuid::new_v4();
+        let new_return = forum_text(&serde_json::json!({
+            "eventType": "return_policy_reached",
+            "workflowInstanceId": workflow,
+            "assistanceStatus": "OWNER_PENDING",
+        }));
+        assert!(new_return.contains("OWNER_PENDING"));
+        assert!(new_return.contains("Domain Owner"));
+
+        let historical = forum_text(&serde_json::json!({
+            "eventType": "return_policy_reached",
+            "workflowInstanceId": workflow,
+        }));
+        assert!(historical.contains("HUMAN_REQUIRED"));
+
+        let attempts = forum_text(&serde_json::json!({
+            "eventType": "owner_attention_requested",
+            "workflowInstanceId": workflow,
+            "attemptCount": 3,
+        }));
+        assert!(attempts.contains("OWNER_PENDING"));
     }
 }

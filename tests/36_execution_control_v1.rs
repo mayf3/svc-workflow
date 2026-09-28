@@ -3,7 +3,7 @@
 //!
 //! Goal §12 mapping (svc side):
 //! - Case 1: create queues the execution kick + forum binding/event facts
-//! - Case 4: system escalation endpoint → HUMAN_REQUIRED case; the escalated
+//! - Case 4: system escalation endpoint → OWNER_PENDING case; the owner-attention
 //!   visit leaves the due feed; idempotent replay (escalated=false)
 //! - Case 5: RETURN commits are counted from workflow_events and projected
 //! - Case 6: the limit-reaching RETURN escalates in-tx; further RETURNs fail
@@ -443,7 +443,7 @@ async fn acc04_return_limit_escalates_then_blocks() {
         .assistance_case_id
         .expect("limit-reaching RETURN escalates");
 
-    // The escalated visit carries an open HUMAN_REQUIRED case.
+    // The limit-reaching visit carries an open OWNER_PENDING case.
     let status: (String,) = sqlx::query_as(
         "SELECT status::text FROM workflow_assistance_cases WHERE assistance_case_id = $1",
     )
@@ -451,7 +451,7 @@ async fn acc04_return_limit_escalates_then_blocks() {
     .fetch_one(&pool)
     .await
     .expect("case");
-    assert_eq!(status.0, "HUMAN_REQUIRED");
+    assert_eq!(status.0, "OWNER_PENDING");
 
     // The instance moved back to start (creator's visit); further transitions
     // are fail-closed by the open case (Goal Case 6: the loop STOPS).
@@ -472,7 +472,7 @@ async fn acc04_return_limit_escalates_then_blocks() {
             assistance_case_id: AssistanceCaseId::from_uuid(case_id),
             expected_workflow_state_version: 4,
             resolution: svc_workflow::domain::workflow_instance::assistance::AssistancePayload {
-                message: "human took over".to_string(),
+                message: "domain owner resolved the blocker".to_string(),
                 supporting_payload: None,
             },
         },
@@ -520,7 +520,8 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     let mock = common::MockJwksServer::start().await;
     let app = build_app_with_policy(pool.clone(), &mock.url, 3);
 
-    let (_owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    let (owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    common::seed_domain_owner(&pool, domain_id, owner).await;
     // AGENT creator ⇒ the entry visit owns a DISPATCH_INTENT (due-feedable).
     let creator = seed_agent(&pool).await;
     seed_domain_member(&pool, domain_id, creator).await;
@@ -572,9 +573,10 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     .await;
     assert_eq!(status, 200, "escalation body: {body}");
     assert_eq!(body["escalated"], json!(true));
+    assert_eq!(body["ownerPrincipalId"], json!(owner));
     let case_id = body["assistanceCaseId"].as_str().unwrap().to_string();
 
-    // The case exists in HUMAN_REQUIRED.
+    // The system-created case stops at OWNER_PENDING for Domain Owner action.
     let status_row: (String,) = sqlx::query_as(
         "SELECT status::text FROM workflow_assistance_cases WHERE assistance_case_id = $1",
     )
@@ -582,7 +584,7 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     .fetch_one(&pool)
     .await
     .expect("case row");
-    assert_eq!(status_row.0, "HUMAN_REQUIRED");
+    assert_eq!(status_row.0, "OWNER_PENDING");
 
     // Due feed AFTER escalation: the visit is GONE (CTR-SWEC-006 narrowing).
     let (status, body) = do_get(

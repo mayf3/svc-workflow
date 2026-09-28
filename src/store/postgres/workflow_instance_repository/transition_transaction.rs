@@ -389,7 +389,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // The count is computed from authoritative workflow_events under the
     // instance lock — nothing agent-maintained, fully rebuildable. At the
     // limit the RETURN is refused fail-closed (deterministic 409); the
-    // HUMAN_REQUIRED escalation happened when the limit-reaching RETURN
+    // OWNER_PENDING assistance was opened when the limit-reaching RETURN
     // committed (below, after the transition event).
     // ---------------------------------------------------------------
     let prior_return_count: i64 = if effect == "RETURN" {
@@ -746,7 +746,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     }
 
     // CTR-SWEC-005: the limit-REACHING RETURN escalates its TARGET visit to
-    // HUMAN_REQUIRED in this same transaction (REQUIRE_HUMAN; nothing
+    // OWNER_PENDING in this same transaction (owner attention; nothing
     // force-advances). Further RETURNs on the edge are refused fail-closed
     // by Step 11c. The escalation bumps the version once more (v+2): the
     // receipt reports the FINAL state version, keeping the invariant that
@@ -757,14 +757,14 @@ pub(crate) async fn execute_workflow_transition_atomically(
         // workflow_events carries at most ONE event per command (0006) and the
         // 0022 governance requires per-stage assistance receipts — the
         // escalation helper mints its OWN compliant receipts inside this tx.
-        let escalation = crate::store::postgres::workflow_instance_repository::execution_escalation::escalate_visit_tx(
+        let escalation = crate::store::postgres::workflow_instance_repository::execution_escalation::open_owner_pending_visit_tx(
             &mut tx,
             instance_uuid,
             new_node_visit_id,
             principal_uuid,
             _actual_command_id,
             &format!(
-                "RETURN policy limit reached: transition {} recorded return {} of {} — a human must intervene",
+                "RETURN policy limit reached: transition {} recorded return {} of {} — Domain Owner attention required",
                 transition.transition_key,
                 prior_return_count + 1,
                 max_returns_per_edge,
@@ -787,6 +787,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
                 "workflowInstanceId": instance_uuid,
                 "nodeVisitId": new_node_visit_id,
                 "assistanceCaseId": escalation.assistance_case_id,
+                "assistanceStatus": "OWNER_PENDING",
                 "transitionDefinitionId": transition.transition_id,
                 "reason": "RETURN_POLICY_EXHAUSTED",
             }),
