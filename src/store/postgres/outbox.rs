@@ -73,6 +73,47 @@ pub(crate) async fn queue_execution_kick(
     Ok(())
 }
 
+/// Queue one durable Domain Owner assistance wake. The outbox event key is
+/// the assistance case identity, so retries/replays converge on one row. Only
+/// BUSINESS workflows wake an Agent; NON_BUSINESS_TEST stays side-effect free.
+pub(crate) async fn queue_owner_assistance_wake(
+    tx: &mut Transaction<'_, Postgres>,
+    workflow_instance_id: Uuid,
+    node_visit_id: Uuid,
+    assistance_case_id: Uuid,
+    owner_principal_id: Uuid,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    let class: String = sqlx::query_scalar(
+        "SELECT execution_class::text FROM workflow_instances WHERE workflow_instance_id = $1",
+    )
+    .bind(workflow_instance_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if class != "BUSINESS" {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO workflow_outbox
+             (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+         VALUES ($1, $2, 'OWNER_ASSISTANCE_WAKE', $3, $4)
+         ON CONFLICT (outbox_kind, event_key) DO NOTHING",
+    )
+    .bind(Uuid::new_v4())
+    .bind(workflow_instance_id)
+    .bind(format!("owner-assistance:{assistance_case_id}"))
+    .bind(serde_json::json!({
+        "workflowInstanceId": workflow_instance_id,
+        "nodeVisitId": node_visit_id,
+        "assistanceCaseId": assistance_case_id,
+        "ownerPrincipalId": owner_principal_id,
+        "reason": reason,
+    }))
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 /// The PENDING canonical binding fact, written in the create transaction for
 /// BUSINESS-class instances (CTR-SWEC-001). Non-BUSINESS instances get none
 /// (no forum surface for canaries).

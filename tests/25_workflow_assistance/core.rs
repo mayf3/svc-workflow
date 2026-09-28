@@ -192,3 +192,27 @@ async fn human_required_coordinator_query_owner_resolve_then_agent_transition(po
         5
     );
 }
+
+#[sqlx::test]
+async fn request_assistance_queues_domain_owner_wake_fact(pool: PgPool) {
+    let fixture = setup(&pool).await;
+    let case = request_case(&pool, &fixture).await;
+
+    let row: (String, serde_json::Value) = sqlx::query_as(
+        "SELECT outbox_kind, payload
+           FROM workflow_outbox
+          WHERE outbox_kind='OWNER_ASSISTANCE_WAKE'
+            AND event_key=$1",
+    )
+    .bind(format!("owner-assistance:{}", case.assistance_case_id))
+    .fetch_one(&pool)
+    .await
+    .expect("owner assistance wake outbox row");
+
+    assert_eq!(row.0, "OWNER_ASSISTANCE_WAKE");
+    assert_eq!(row.1["workflowInstanceId"], serde_json::json!(fixture.instance));
+    assert_eq!(row.1["nodeVisitId"], serde_json::json!(fixture.visit));
+    assert_eq!(row.1["assistanceCaseId"], serde_json::json!(case.assistance_case_id));
+    assert_eq!(row.1["ownerPrincipalId"], serde_json::json!(fixture.owner));
+    assert_eq!(row.1["reason"], "ASSISTANCE_REQUESTED");
+}
