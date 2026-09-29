@@ -16,7 +16,7 @@ pub fn compute_escalation_request_hash(
     node_visit_id: &uuid::Uuid,
     reason: &str,
     attempt_count: Option<i64>,
-    last_attempt_id: Option<uuid::Uuid>,
+    last_attempt_id: Option<&str>,
     dispatch_intent_id: Option<uuid::Uuid>,
 ) -> Result<String, AssistanceError> {
     let envelope = serde_json::json!({

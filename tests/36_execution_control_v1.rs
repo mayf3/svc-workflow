@@ -628,6 +628,107 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
 }
 
 // ============================================================================
+// ACC-WEC1-005b (CTR-SWEC-004): lastAttemptId is opaque string evidence
+// ============================================================================
+
+/// Durable regression for the opaque attempt identity: the escalation body's
+/// `lastAttemptId` carries the producer's fence id (`wfeat-*`), which is NOT
+/// a UUID. Through the real http::router it must be (1) accepted, (2) stored
+/// byte-exact in the case's supportingPayload, (3) receipt-replayable with
+/// the same idempotency key + body, (4) hash-conflicting when mutated under
+/// the same key, while (5) the sibling UUID fields stay strictly typed.
+#[tokio::test]
+async fn acc05b_escalation_last_attempt_id_is_opaque_string() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let app = build_app_with_policy(pool.clone(), &mock.url, 3);
+
+    let (owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    common::seed_domain_owner(&pool, domain_id, owner).await;
+    let creator = seed_agent(&pool).await;
+    seed_domain_member(&pool, domain_id, creator).await;
+    let agent = seed_agent(&pool).await;
+    let poller = seed_agent(&pool).await;
+    let (ver_id, _start, _work, _ret) = seed_v1_definition(&pool, domain_id, agent).await;
+    let (instance, visit, _version) = create_instance(&pool, creator, domain_id, ver_id).await;
+
+    let poller_token = direct_token(poller, "workflow.execute", &mock.key_pair);
+    grant_scheduler_read(&pool, poller).await;
+    let path = format!("/internal/v1/workflow-instances/{instance}/execution-escalations");
+
+    let dispatch_intent_id = Uuid::new_v4();
+    let body = json!({
+        "nodeVisitId": visit,
+        "reason": "ATTEMPTS_EXHAUSTED",
+        "attemptCount": 3,
+        "lastAttemptId": "wfeat-test-opaque",
+        "dispatchIntentId": dispatch_intent_id,
+    });
+    let idem_key = format!("esc-opaque-{}", Uuid::new_v4());
+    let (status, resp) =
+        do_post(app.clone(), &path, &poller_token, body.clone(), &idem_key).await;
+    assert_eq!(status, 200, "opaque lastAttemptId accepted: {resp}");
+    assert_eq!(resp["escalated"], json!(true));
+    assert_eq!(resp["ownerPrincipalId"], json!(owner));
+    let case_id = resp["assistanceCaseId"].as_str().unwrap().to_string();
+
+    // The stored supporting payload preserves the EXACT string (no UUID
+    // coercion, no nulling) next to the typed UUID evidence.
+    let (stored_attempt, stored_dispatch): (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT request_payload->'supportingPayload'->>'lastAttemptId',
+                request_payload->'supportingPayload'->>'dispatchIntentId'
+           FROM workflow_assistance_cases
+          WHERE assistance_case_id = $1",
+    )
+    .bind(Uuid::parse_str(&case_id).unwrap())
+    .fetch_one(&pool)
+    .await
+    .expect("case row");
+    assert_eq!(stored_attempt.as_deref(), Some("wfeat-test-opaque"));
+    let expected_dispatch = dispatch_intent_id.to_string();
+    assert_eq!(stored_dispatch.as_deref(), Some(expected_dispatch.as_str()));
+
+    // Receipt replay: SAME idempotency key + SAME body → 200 with the SAME
+    // case (no second case, no conflict).
+    let (status, replay) =
+        do_post(app.clone(), &path, &poller_token, body.clone(), &idem_key).await;
+    assert_eq!(status, 200, "same-key replay: {replay}");
+    assert_eq!(replay["assistanceCaseId"], json!(case_id));
+    assert_eq!(replay["escalated"], json!(true));
+
+    // SAME key + mutated lastAttemptId → different request hash → 409.
+    let mutated = json!({
+        "nodeVisitId": visit,
+        "reason": "ATTEMPTS_EXHAUSTED",
+        "attemptCount": 3,
+        "lastAttemptId": "wfeat-test-opaque-mutated",
+        "dispatchIntentId": dispatch_intent_id,
+    });
+    let (status, conflict) =
+        do_post(app.clone(), &path, &poller_token, mutated, &idem_key).await;
+    assert_eq!(status, 409, "mutated lastAttemptId must conflict: {conflict}");
+    assert_eq!(conflict["error"]["code"], json!("idempotency_conflict"));
+
+    // Unrelated fields stay strictly typed: a non-UUID nodeVisitId is a
+    // body-level rejection (400), not silently coerced into opaque evidence.
+    let (status, typed) = do_post(
+        app.clone(),
+        &path,
+        &poller_token,
+        json!({
+            "nodeVisitId": "not-a-uuid",
+            "reason": "ATTEMPTS_EXHAUSTED",
+            "attemptCount": 3,
+            "lastAttemptId": "wfeat-test-opaque",
+        }),
+        &format!("esc-typed-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(status, 400, "nodeVisitId must remain a typed UUID: {typed}");
+    assert_eq!(typed["error"]["code"], json!("invalid_json"));
+}
+
+// ============================================================================
 // ACC-WEC1-006 (Case 10 support): outbox event_key uniqueness
 // ============================================================================
 
