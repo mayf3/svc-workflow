@@ -332,7 +332,8 @@ pub struct SystemEscalationCommand {
     /// `ATTEMPTS_EXHAUSTED` | `STALE_LOOP_EXHAUSTED`
     pub reason: String,
     pub attempt_count: Option<i64>,
-    pub last_attempt_id: Option<Uuid>,
+    /// The producer's opaque execution attempt identity (dsh `wfeat-*`).
+    pub last_attempt_id: Option<String>,
     pub dispatch_intent_id: Option<Uuid>,
 }
 

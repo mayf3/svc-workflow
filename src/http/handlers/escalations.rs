@@ -32,7 +32,10 @@ pub(crate) struct ExecutionEscalationBody {
     node_visit_id: Uuid,
     reason: String,
     attempt_count: Option<i64>,
-    last_attempt_id: Option<Uuid>,
+    // The execution-layer attempt identity is the producer's opaque fence id
+    // (dsh ledger `wfeat-*`), not a UUID; the accepted CTR-SWEC-004 body
+    // contract types this field as untyped evidence.
+    last_attempt_id: Option<String>,
     dispatch_intent_id: Option<Uuid>,
 }
 
@@ -54,7 +57,7 @@ pub(crate) async fn create(
         &body.node_visit_id,
         &body.reason,
         body.attempt_count,
-        body.last_attempt_id,
+        body.last_attempt_id.as_deref(),
         body.dispatch_intent_id,
     )
     .map_err(ApiError::from_assistance)?;
