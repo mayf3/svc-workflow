@@ -358,6 +358,12 @@ EOF
   local status=0
   PATH="$CASE_DIR/bin:$PATH" bash "$RELEASE_SCRIPT" "$command" "$SOURCE_SHA" \
     > "$CASE_DIR/output" 2>&1 || status=$?
+  # The entry must reach the lock-timeout failure branch itself; a bash 3.2
+  # expansion abort on the message must never masquerade as success.
+  rg -q '发布锁在 30s 内未释放' "$CASE_DIR/output" \
+    || { printf '%s never reported the lock timeout\n' "$command"; return 1; }
+  ! rg -q 'unbound variable' "$CASE_DIR/output" \
+    || { printf '%s aborted on shell variable expansion\n' "$command"; return 1; }
   [[ "$status" != 0 ]] || { printf '%s bypassed the busy release lock\n' "$command"; return 1; }
   cmp -s "$CASE_DIR/ledger.before" "$SERVICE_DIR/ledger.json"
   [[ "$(cat "$SERVICE_DIR/.release.lock/owner")" == "foreign-owner" ]]
