@@ -402,4 +402,320 @@ mod regression_tests {
         .unwrap();
         assert_eq!(nonbusiness_rows, 0);
     }
+
+    /// Multi-backend regression on the REAL migrated `workflow_outbox` (the
+    /// fixtures above shadow it with per-connection TEMP tables, so no test
+    /// before this one ever exercised several PostgreSQL backends at once):
+    /// concurrent queue dedupe, concurrent backoff arithmetic and the
+    /// partitioned due-batch predicate must hold when multiple reconciler
+    /// readers poll the same rows. Every row is keyed under a unique run
+    /// prefix and deleted before any assertion can fail the test.
+    #[tokio::test]
+    async fn concurrent_backends_partition_kinds_dedupe_and_preserve_backoff() {
+        let url = std::env::var("TEST_DATABASE_URL")
+            .expect("TEST_DATABASE_URL must name an isolated test PostgreSQL instance");
+        let pool = PgPoolOptions::new()
+            .max_connections(8)
+            .connect(&url)
+            .await
+            .expect("connect isolated test database");
+        let migrated: bool =
+            sqlx::query_scalar("SELECT to_regclass('workflow_outbox') IS NOT NULL")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        if !migrated {
+            sqlx::migrate::Migrator::new(std::path::Path::new("migrations"))
+                .await
+                .expect("load migrations")
+                .run(&pool)
+                .await
+                .expect("apply migrations");
+        }
+
+        let run = Uuid::new_v4().simple().to_string();
+        let key = |name: &str| format!("conc:{run}:{name}");
+
+        // The real schema FKs every outbox row to a workflow instance; build
+        // the minimal parent chain with the same INSERTs the integration
+        // seeds use (tests/common).
+        let principal_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO principals (principal_id, principal_type, display_name, email, enabled)
+             VALUES ($1, 'HUMAN', 'Outbox Concurrency', 'outbox-conc@example.com', TRUE)",
+        )
+        .bind(principal_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let domain_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO domains (domain_id, domain_key, display_name, enabled)
+             VALUES ($1, $2, 'Outbox Concurrency', TRUE)",
+        )
+        .bind(domain_id)
+        .bind(format!("outbox-conc-{run}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let definition_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name)
+             VALUES ($1, $2, $3, 'Outbox Concurrency')",
+        )
+        .bind(definition_id)
+        .bind(domain_id)
+        .bind(format!("outbox-conc-def-{run}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let version_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_definition_versions
+                 (definition_version_id, workflow_definition_id, version_number, version_status,
+                  context_schema, submission_schema)
+             VALUES ($1, $2, 1, 'DRAFT', '{\"type\":\"object\"}'::jsonb, '{\"type\":\"object\"}'::jsonb)",
+        )
+        .bind(version_id)
+        .bind(definition_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let instance_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_instances
+                 (workflow_instance_id, domain_id, definition_version_id, created_by_principal_id)
+             VALUES ($1, $2, $3, $4)",
+        )
+        .bind(instance_id)
+        .bind(domain_id)
+        .bind(version_id)
+        .bind(principal_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        for name in ["wake:1", "wake:2", "wake:3"] {
+            sqlx::query(
+                "INSERT INTO workflow_outbox
+                     (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+                 VALUES ($1,$2,'OWNER_ASSISTANCE_WAKE',$3,'{}'::jsonb)",
+            )
+            .bind(Uuid::new_v4())
+            .bind(instance_id)
+            .bind(key(name))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        for name in ["kick:1", "kick:2", "kick:3"] {
+            sqlx::query(
+                "INSERT INTO workflow_outbox
+                     (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+                 VALUES ($1,$2,'EXECUTION_KICK',$3,'{}'::jsonb)",
+            )
+            .bind(Uuid::new_v4())
+            .bind(instance_id)
+            .bind(key(name))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+                 (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+             VALUES ($1,$2,'FORUM_EVENT',$3,'{}'::jsonb)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(instance_id)
+        .bind(key("forum:1"))
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Eight backends race the same queue insert: the (outbox_kind,
+        // event_key) dedupe must leave exactly one row.
+        let dedupe_key = key("wake:dedupe");
+        let racers = (0..8).map(|_| {
+            let pool = pool.clone();
+            let dedupe_key = dedupe_key.clone();
+            tokio::spawn(async move {
+                sqlx::query(
+                    "INSERT INTO workflow_outbox
+                         (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+                     VALUES ($1,$2,'OWNER_ASSISTANCE_WAKE',$3,'{}'::jsonb)
+                     ON CONFLICT (outbox_kind, event_key) DO NOTHING",
+                )
+                .bind(Uuid::new_v4())
+                .bind(instance_id)
+                .bind(dedupe_key)
+                .execute(&pool)
+                .await
+            })
+        });
+        for racer in racers {
+            racer.await.unwrap().unwrap();
+        }
+
+        // Two backends record a failure for the same row: the atomic
+        // attempt_count increment must land exactly twice.
+        let backoff_row: Uuid =
+            sqlx::query_scalar("SELECT outbox_id FROM workflow_outbox WHERE event_key = $1")
+                .bind(key("kick:2"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let failing = |pool: sqlx::PgPool, outbox_id: Uuid| {
+            tokio::spawn(async move {
+                mark_attempt_failed(&pool, outbox_id, "concurrent backoff probe").await
+            })
+        };
+        tokio::join!(
+            failing(pool.clone(), backoff_row),
+            failing(pool.clone(), backoff_row)
+        );
+
+        // Four reconciler readers poll their own partition concurrently.
+        // Wake readers may only see wakes; kick readers may only see kicks
+        // (the real schema's CHECK constraint admits no other kind, so the
+        // unsupported-kind arm stays covered by the TEMP-table tests above).
+        let reader = |outbox_kind: &'static str, pool: sqlx::PgPool| async move {
+            let mut violations = Vec::new();
+            for _ in 0..10 {
+                let rows = match next_pending_batch(&pool, 20, outbox_kind).await {
+                    Ok(rows) => rows,
+                    Err(error) => {
+                        violations.push(format!("{outbox_kind} batch query failed: {error}"));
+                        return violations;
+                    }
+                };
+                if rows.is_empty() {
+                    return violations;
+                }
+                for row in rows {
+                    let allowed = match outbox_kind {
+                        "OWNER_ASSISTANCE_WAKE" => row.outbox_kind == "OWNER_ASSISTANCE_WAKE",
+                        "EXECUTION_KICK" => row.outbox_kind == "EXECUTION_KICK",
+                        _ => false,
+                    };
+                    if !allowed {
+                        violations.push(format!(
+                            "{outbox_kind} batch returned foreign kind {}",
+                            row.outbox_kind
+                        ));
+                        return violations;
+                    }
+                    if let Err(error) = mark_delivered(&pool, row.outbox_id).await {
+                        violations.push(format!("mark delivered failed: {error}"));
+                        return violations;
+                    }
+                }
+            }
+            violations.push(format!("{outbox_kind} batch never drained"));
+            violations
+        };
+        let (wake_a, wake_b, kick_a, kick_b) = tokio::join!(
+            tokio::spawn(reader("OWNER_ASSISTANCE_WAKE", pool.clone())),
+            tokio::spawn(reader("OWNER_ASSISTANCE_WAKE", pool.clone())),
+            tokio::spawn(reader("EXECUTION_KICK", pool.clone())),
+            tokio::spawn(reader("EXECUTION_KICK", pool.clone())),
+        );
+        let mut violations = Vec::new();
+        for handle in [wake_a, wake_b, kick_a, kick_b] {
+            violations.extend(handle.unwrap());
+        }
+
+        let wakes_total: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM workflow_outbox WHERE event_key LIKE $1")
+                .bind(format!("conc:{run}:wake:%"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let wakes_delivered: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM workflow_outbox
+              WHERE event_key LIKE $1 AND delivered_at IS NOT NULL",
+        )
+        .bind(format!("conc:{run}:wake:%"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let healthy_kicks_delivered: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM workflow_outbox
+              WHERE event_key IN ($1, $2) AND delivered_at IS NOT NULL",
+        )
+        .bind(key("kick:1"))
+        .bind(key("kick:3"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let (backoff_attempts, backoff_pending): (i32, bool) = sqlx::query_as(
+            "SELECT attempt_count, delivered_at IS NULL FROM workflow_outbox WHERE event_key = $1",
+        )
+        .bind(key("kick:2"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let forum_untouched: (i32, bool) = sqlx::query_as(
+            "SELECT attempt_count, delivered_at IS NULL FROM workflow_outbox WHERE event_key = $1",
+        )
+        .bind(key("forum:1"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query("DELETE FROM workflow_outbox WHERE event_key LIKE $1")
+            .bind(format!("conc:{run}:%"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (statement, id) in [
+            (
+                "DELETE FROM workflow_instances WHERE workflow_instance_id = $1",
+                instance_id,
+            ),
+            (
+                "DELETE FROM workflow_definition_versions WHERE definition_version_id = $1",
+                version_id,
+            ),
+            (
+                "DELETE FROM workflow_definitions WHERE workflow_definition_id = $1",
+                definition_id,
+            ),
+            ("DELETE FROM domains WHERE domain_id = $1", domain_id),
+            (
+                "DELETE FROM principals WHERE principal_id = $1",
+                principal_id,
+            ),
+        ] {
+            sqlx::query(statement)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        assert!(
+            violations.is_empty(),
+            "partition violations: {violations:?}"
+        );
+        assert_eq!(
+            wakes_total, 4,
+            "dedupe must keep exactly one raced wake row"
+        );
+        assert_eq!(wakes_delivered, 4, "every wake row must stay drainable");
+        assert_eq!(
+            healthy_kicks_delivered, 2,
+            "healthy kicks must deliver once"
+        );
+        assert_eq!(
+            backoff_attempts, 2,
+            "both concurrent failures must increment"
+        );
+        assert!(backoff_pending, "backoff must keep the row pending");
+        assert_eq!(
+            forum_untouched,
+            (0, true),
+            "forum rows must not leak into wake/kick batches"
+        );
+    }
 }
