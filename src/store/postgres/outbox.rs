@@ -143,17 +143,21 @@ pub(crate) struct OutboxRow {
     pub attempt_count: i32,
 }
 
-/// The due batch, oldest first. `delivered_at IS NULL AND next_attempt_at <=
-/// now()` mirrors the partial index.
+/// One kind's due batch, oldest first. Owner wakes have their own bound so
+/// kick/projection backlogs cannot consume their delivery batch. Unsupported
+/// kinds remain in the kick batch for retry across forward deployment/rollback.
 pub(crate) async fn next_pending_batch(
     pool: &sqlx::PgPool,
     limit: i64,
+    outbox_kind: &str,
 ) -> Result<Vec<OutboxRow>, sqlx::Error> {
     sqlx::query_as::<_, OutboxRow>(
         "SELECT o.outbox_id, o.workflow_instance_id, o.outbox_kind, o.event_key,
                 o.payload, o.attempt_count
            FROM workflow_outbox o
           WHERE o.delivered_at IS NULL AND o.next_attempt_at <= now()
+            AND (o.outbox_kind = $2 OR ($2 = 'EXECUTION_KICK' AND
+                 o.outbox_kind NOT IN ('FORUM_EVENT','EXECUTION_KICK','OWNER_ASSISTANCE_WAKE')))
             AND (o.outbox_kind <> 'FORUM_EVENT' OR NOT EXISTS (
                 SELECT 1 FROM workflow_outbox earlier
                  WHERE earlier.workflow_instance_id = o.workflow_instance_id
@@ -165,6 +169,7 @@ pub(crate) async fn next_pending_batch(
           LIMIT $1",
     )
     .bind(limit)
+    .bind(outbox_kind)
     .fetch_all(pool)
     .await
 }
@@ -246,23 +251,6 @@ pub(crate) async fn bind_thread(
     .execute(pool)
     .await?;
     Ok(())
-}
-
-/// The oldest PENDING bindings (thread ensure pass).
-pub(crate) async fn pending_bindings(
-    pool: &sqlx::PgPool,
-    limit: i64,
-) -> Result<Vec<Uuid>, sqlx::Error> {
-    sqlx::query_scalar(
-        "SELECT b.workflow_instance_id
-           FROM workflow_forum_bindings b
-          WHERE b.binding_state = 'PENDING'
-          ORDER BY b.created_at, b.workflow_instance_id
-          LIMIT $1",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await
 }
 
 #[cfg(test)]
@@ -351,13 +339,16 @@ mod regression_tests {
             .await
             .unwrap();
         }
-        assert!(next_pending_batch(&pool, 20).await.unwrap().is_empty());
+        assert!(next_pending_batch(&pool, 20, "FORUM_EVENT")
+            .await
+            .unwrap()
+            .is_empty());
         sqlx::query("UPDATE workflow_outbox SET next_attempt_at = now() WHERE outbox_id = $1")
             .bind(old)
             .execute(&pool)
             .await
             .unwrap();
-        let rows = next_pending_batch(&pool, 20).await.unwrap();
+        let rows = next_pending_batch(&pool, 20, "FORUM_EVENT").await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.outbox_id).collect::<Vec<_>>(),
             vec![old]
@@ -367,7 +358,7 @@ mod regression_tests {
             .execute(&pool)
             .await
             .unwrap();
-        let rows = next_pending_batch(&pool, 20).await.unwrap();
+        let rows = next_pending_batch(&pool, 20, "FORUM_EVENT").await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.outbox_id).collect::<Vec<_>>(),
             vec![later]
