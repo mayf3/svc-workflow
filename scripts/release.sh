@@ -48,7 +48,9 @@ acquire_release_lock() {
     fi
     sleep 1
   done
-  fail "发布锁在 30s 内未释放: $RELEASE_LOCK_DIR（确认无发布运行后再恢复残锁）"
+  # ${...} 大括号必须封闭变量名：bash 3.2 会把紧随的多字节字符并入变量名，
+  # set -u 中止后 EXIT trap 会把状态归零，锁竞争会被误报为成功。
+  fail "发布锁在 30s 内未释放: ${RELEASE_LOCK_DIR} (确认无发布运行后再恢复残锁)"
 }
 
 release_cleanup() {
