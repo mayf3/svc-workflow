@@ -50,16 +50,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = http::router(state, &config);
 
     // WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-002): the outbox reconciler
-    // runs alongside the HTTP server; dormant when forum sync is unconfigured.
+    // runs alongside the HTTP server when Forum or Core delivery is configured.
     if let Some(forum_config) = svc_workflow::forum_sync::ForumSyncConfig::from_env() {
         let reconciler_pool = pool.clone();
         tokio::spawn(async move {
             svc_workflow::forum_sync::run_loop(reconciler_pool, forum_config).await;
         });
-        tracing::info!("forum sync reconciler started");
+        tracing::info!("outbox reconciler started");
     } else {
         tracing::info!(
-            "forum sync disabled (WORKFLOW_FORUM_SYNC_ENABLED unset) — outbox stays queued"
+            "outbox delivery unconfigured (Forum and Core destinations disabled) — outbox stays queued"
         );
     }
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;

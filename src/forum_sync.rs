@@ -12,8 +12,8 @@
 //!     guarantees one thread per workflow instance: CTR-FWIC-001).
 //!   - A forum/agent-core outage delays projection but can never roll a
 //!     business transaction back nor lose a queued fact.
-//!   - Dormant by configuration: without WORKFLOW_FORUM_SYNC_ENABLED the
-//!     loop never starts and startup logs the honest disabled line.
+//!   - Destinations are independently configured: Forum projection may
+//!     remain dormant while Core kicks and owner-assistance wakes drain.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -23,8 +23,11 @@ use uuid::Uuid;
 
 use crate::store::postgres::outbox;
 
+const FORUM_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Duration helpers for the token cache.
 pub struct ForumSyncConfig {
+    pub forum_enabled: bool,
     pub auth_base_url: String,
     pub client_id: String,
     pub client_secret: String,
@@ -41,17 +44,14 @@ pub struct ExecutionKickConfig {
 }
 
 impl ForumSyncConfig {
-    /// `Some(config)` only when WORKFLOW_FORUM_SYNC_ENABLED=1|true AND the
-    /// auth credentials are present; otherwise None (dormant).
+    /// Start the existing outbox loop when either destination is configured.
+    /// Forum credentials gate Forum projection only; Core delivery is independent.
     pub fn from_env() -> Option<Self> {
         let enabled = matches!(
             std::env::var("WORKFLOW_FORUM_SYNC_ENABLED").as_deref(),
             Ok("1") | Ok("true") | Ok("TRUE")
         );
-        if !enabled {
-            return None;
-        }
-        let (auth_base_url, client_id, client_secret) = match (
+        let credentials = match (
             std::env::var("WORKFLOW_FORUM_AUTH_BASE_URL"),
             std::env::var("WORKFLOW_FORUM_CLIENT_ID"),
             std::env::var("WORKFLOW_FORUM_CLIENT_SECRET"),
@@ -59,12 +59,9 @@ impl ForumSyncConfig {
             (Ok(a), Ok(id), Ok(secret))
                 if !a.is_empty() && !id.is_empty() && !secret.is_empty() =>
             {
-                (a, id, secret)
+                Some((a, id, secret))
             }
-            _ => {
-                tracing::warn!("forum sync enabled but WORKFLOW_FORUM_AUTH_BASE_URL/CLIENT_ID/CLIENT_SECRET incomplete — reconciler stays dormant");
-                return None;
-            }
+            _ => None,
         };
         let kick = match (
             std::env::var("WORKFLOW_EXECUTION_KICK_URL"),
@@ -75,7 +72,16 @@ impl ForumSyncConfig {
             }
             _ => None,
         };
+        let forum_enabled = enabled && credentials.is_some();
+        if enabled && credentials.is_none() {
+            tracing::warn!("forum sync enabled but WORKFLOW_FORUM_AUTH_BASE_URL/CLIENT_ID/CLIENT_SECRET incomplete — Forum projection stays dormant");
+        }
+        if !forum_enabled && kick.is_none() {
+            return None;
+        }
+        let (auth_base_url, client_id, client_secret) = credentials.unwrap_or_default();
         Some(Self {
+            forum_enabled,
             auth_base_url,
             client_id,
             client_secret,
@@ -125,7 +131,7 @@ impl ForumClient {
     pub(crate) fn new(config: ForumSyncConfig) -> Self {
         Self {
             http: reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
+                .timeout(FORUM_HTTP_TIMEOUT)
                 .build()
                 .expect("forum sync http client"),
             config,
@@ -433,47 +439,64 @@ async fn ensure_thread(
 /// ONE reconciler pass. Returns the number of delivered rows.
 pub(crate) async fn run_once(pool: &PgPool, forum: &ForumClient) -> usize {
     let mut delivered = 0usize;
-
-    // 1. Ensure pending bindings (batch of 20, oldest first).
-    match outbox::pending_bindings(pool, 20).await {
-        Ok(instances) => {
-            for instance_id in instances {
-                if let Err(error) = ensure_thread(pool, forum, instance_id).await {
-                    tracing::warn!(instance = %instance_id, error = %error, "forum binding ensure failed; retries with backoff");
-                }
-            }
-        }
-        Err(error) => {
-            tracing::warn!(error = %error, "pending binding query failed");
-            return delivered;
-        }
+    // Correctness-critical owner wakes cannot share a bounded batch with kicks.
+    drain_batch(pool, forum, "OWNER_ASSISTANCE_WAKE", &mut delivered, None).await;
+    drain_batch(pool, forum, "EXECUTION_KICK", &mut delivered, None).await;
+    if !forum.config.forum_enabled {
+        return delivered;
     }
 
-    // 2. Drain the due outbox batch.
-    let rows = match outbox::next_pending_batch(pool, 20).await {
+    // Each event ensures its own binding. Attribute a budget timeout to that
+    // row and persist its existing backoff before ending this projection pass.
+    let budget = Duration::from_millis(forum.config.poll_interval_ms).min(FORUM_HTTP_TIMEOUT);
+    drain_batch(pool, forum, "FORUM_EVENT", &mut delivered, Some(budget)).await;
+    delivered
+}
+
+async fn drain_batch(
+    pool: &PgPool,
+    forum: &ForumClient,
+    kind: &str,
+    delivered: &mut usize,
+    budget: Option<Duration>,
+) {
+    let rows = match outbox::next_pending_batch(pool, 20, kind).await {
         Ok(rows) => rows,
         Err(error) => {
-            tracing::warn!(error = %error, "outbox batch query failed");
-            return delivered;
+            tracing::warn!(error = %error, kind, "outbox batch query failed");
+            return;
         }
     };
+    let deadline = budget.map(|budget| tokio::time::Instant::now() + budget);
     for row in rows {
-        let result = match row.outbox_kind.as_str() {
-            "FORUM_EVENT" => deliver_forum_event(pool, forum, &row).await,
-            "EXECUTION_KICK" => deliver_kick(forum, &row).await,
-            "OWNER_ASSISTANCE_WAKE" => deliver_owner_assistance_wake(forum, &row).await,
-            other => {
-                tracing::warn!(
-                    kind = other,
-                    "unknown outbox kind — marked delivered to avoid an endless loop"
-                );
-                Ok(())
+        if deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
+            break;
+        }
+        let delivery = async {
+            match row.outbox_kind.as_str() {
+                "FORUM_EVENT" => deliver_forum_event(pool, forum, &row).await,
+                "EXECUTION_KICK" => deliver_kick(forum, &row).await,
+                "OWNER_ASSISTANCE_WAKE" => deliver_owner_assistance_wake(forum, &row).await,
+                other => {
+                    tracing::warn!(kind = other, "unsupported outbox kind — retained for retry");
+                    Err(format!("unsupported outbox kind: {other}"))
+                }
             }
+        };
+        let result = match deadline {
+            Some(deadline) => match tokio::time::timeout_at(deadline, delivery).await {
+                Ok(result) => result,
+                Err(_) => {
+                    tracing::warn!(outbox_id = %row.outbox_id, "Forum work budget exhausted; recording retry backoff");
+                    Err("Forum work budget exhausted".to_string())
+                }
+            },
+            None => delivery.await,
         };
         match result {
             Ok(()) => {
                 if outbox::mark_delivered(pool, row.outbox_id).await.is_ok() {
-                    delivered += 1;
+                    *delivered += 1;
                 }
             }
             Err(error) => {
@@ -481,7 +504,6 @@ pub(crate) async fn run_once(pool: &PgPool, forum: &ForumClient) -> usize {
             }
         }
     }
-    delivered
 }
 
 type DeliverResult = Result<(), String>;
@@ -491,8 +513,8 @@ async fn deliver_forum_event(
     forum: &ForumClient,
     row: &outbox::OutboxRow,
 ) -> DeliverResult {
-    // The binding must be BOUND before any event can post; ensure it now (the
-    // row's instance may not have been in this pass's pending batch).
+    // Ensure the binding within this event's attempt so binding failures and
+    // timeouts use the same durable row and retry backoff as message delivery.
     ensure_thread(pool, forum, row.workflow_instance_id).await?;
     let binding = outbox::get_binding(pool, row.workflow_instance_id)
         .await
@@ -576,11 +598,14 @@ async fn deliver_owner_assistance_wake(
         // of the exception-handling correctness path. Keep the durable row
         // pending across every non-2xx so configuration/deployment drift can
         // be repaired without silently losing the Domain Owner notification.
-        Err(format!("owner assistance wake endpoint returned {}", status.as_u16()))
+        Err(format!(
+            "owner assistance wake endpoint returned {}",
+            status.as_u16()
+        ))
     }
 }
 
-/// The background loop. Spawned by main when the forum sync config resolves.
+/// The existing background loop, spawned when either outbox destination resolves.
 pub async fn run_loop(pool: PgPool, config: ForumSyncConfig) {
     let forum = ForumClient::new(config);
     let mut ticker = tokio::time::interval(Duration::from_millis(forum.config.poll_interval_ms));
@@ -597,8 +622,408 @@ pub async fn run_loop(pool: PgPool, config: ForumSyncConfig) {
 #[cfg(test)]
 mod owner_assistance_wake_tests {
     use super::*;
-    use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Json, Router};
+    use axum::{
+        extract::{Path, State},
+        http::{HeaderMap, StatusCode},
+        routing::post,
+        Json, Router,
+    };
     use std::sync::{Arc, Mutex as StdMutex};
+
+    static CONFIG_ENV: StdMutex<()> = StdMutex::new(());
+
+    fn config_with_forum_flag(
+        flag: Option<&str>,
+        core: bool,
+        credentials: bool,
+    ) -> Option<ForumSyncConfig> {
+        let _lock = CONFIG_ENV.lock().unwrap();
+        let values = [
+            ("WORKFLOW_FORUM_SYNC_ENABLED", flag),
+            (
+                "WORKFLOW_FORUM_AUTH_BASE_URL",
+                credentials.then_some("http://127.0.0.1:9"),
+            ),
+            (
+                "WORKFLOW_FORUM_CLIENT_ID",
+                credentials.then_some("forum-client"),
+            ),
+            (
+                "WORKFLOW_FORUM_CLIENT_SECRET",
+                credentials.then_some("forum-secret"),
+            ),
+            (
+                "WORKFLOW_EXECUTION_KICK_URL",
+                core.then_some("http://127.0.0.1:9/workflow-execution/kicks"),
+            ),
+            (
+                "WORKFLOW_EXECUTION_KICK_TOKEN",
+                core.then_some("push-secret"),
+            ),
+        ];
+        let previous: Vec<_> = values
+            .iter()
+            .map(|(key, _)| (*key, std::env::var_os(key)))
+            .collect();
+        for (key, value) in values {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        let config = ForumSyncConfig::from_env();
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        config
+    }
+
+    #[test]
+    fn core_push_configuration_starts_outbox_without_forum_configuration() {
+        for flag in [None, Some("false"), Some("true")] {
+            let config = config_with_forum_flag(flag, true, false)
+                .expect("configured Core delivery must not depend on optional Forum configuration");
+            assert!(!config.forum_enabled);
+            assert_eq!(config.kick.unwrap().token, "push-secret");
+        }
+    }
+
+    #[test]
+    fn unconfigured_destinations_stay_dormant_and_forum_can_run_alone() {
+        assert!(config_with_forum_flag(None, false, false).is_none());
+        assert!(config_with_forum_flag(Some("true"), false, false).is_none());
+        let forum = config_with_forum_flag(Some("true"), false, true).unwrap();
+        assert!(forum.forum_enabled);
+        assert!(forum.kick.is_none());
+    }
+
+    async fn outbox_pool(with_bindings: bool) -> PgPool {
+        let url = std::env::var("TEST_DATABASE_URL")
+            .expect("TEST_DATABASE_URL must name an isolated test database");
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
+        sqlx::query("CREATE TEMP TABLE workflow_outbox (
+            outbox_id UUID PRIMARY KEY, workflow_instance_id UUID NOT NULL,
+            outbox_kind TEXT NOT NULL, event_key TEXT NOT NULL, payload JSONB NOT NULL,
+            attempt_count INT NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            delivered_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_error TEXT,
+            UNIQUE (outbox_kind, event_key)
+        )").execute(&pool).await.unwrap();
+        if with_bindings {
+            sqlx::query(
+                "CREATE TEMP TABLE workflow_forum_bindings (
+                workflow_instance_id UUID PRIMARY KEY, forum_thread_id TEXT,
+                binding_state TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        pool
+    }
+
+    async fn insert_wake(pool: &PgPool) -> Uuid {
+        let id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+            VALUES ($1,$2,'OWNER_ASSISTANCE_WAKE',$3,'{}'::jsonb)",
+        )
+        .bind(id)
+        .bind(Uuid::new_v4())
+        .bind(format!("owner-assistance:{id}"))
+        .execute(pool)
+        .await
+        .unwrap();
+        id
+    }
+
+    #[tokio::test]
+    async fn core_wake_is_delivered_before_a_failing_forum_query() {
+        let capture = Capture::default();
+        let app = Router::new()
+            .route(
+                "/workflow-execution/owner-assistance-wakes",
+                post(capture_handler),
+            )
+            .with_state(capture.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let pool = outbox_pool(false).await;
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+            VALUES ($1,$2,'FORUM_EVENT','missing-binding-table','{}'::jsonb)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+        insert_wake(&pool).await;
+        let forum = client(
+            format!("http://{addr}/workflow-execution/kicks"),
+            "push-secret",
+        );
+        assert_eq!(run_once(&pool, &forum).await, 1);
+        assert!(capture.body.lock().unwrap().is_some());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn forum_backlog_does_not_fill_the_core_wake_batch() {
+        let capture = Capture::default();
+        let app = Router::new()
+            .route(
+                "/workflow-execution/kicks",
+                post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+            )
+            .route(
+                "/workflow-execution/owner-assistance-wakes",
+                post(capture_handler),
+            )
+            .with_state(capture.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let pool = outbox_pool(true).await;
+        for index in 0..21 {
+            sqlx::query(
+                "INSERT INTO workflow_outbox
+                (outbox_id, workflow_instance_id, outbox_kind, event_key, payload, created_at)
+                VALUES ($1,$2,'FORUM_EVENT',$3,'{}'::jsonb,now() - interval '1 day')",
+            )
+            .bind(Uuid::new_v4())
+            .bind(Uuid::new_v4())
+            .bind(format!("forum:{index}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        for index in 0..21 {
+            sqlx::query(
+                "INSERT INTO workflow_outbox
+                (outbox_id, workflow_instance_id, outbox_kind, event_key, payload, created_at)
+                VALUES ($1,$2,'EXECUTION_KICK',$3,'{}'::jsonb,now() - interval '1 day')",
+            )
+            .bind(Uuid::new_v4())
+            .bind(Uuid::new_v4())
+            .bind(format!("kick:{index}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let wake = insert_wake(&pool).await;
+        let mut forum = client(
+            format!("http://{addr}/workflow-execution/kicks"),
+            "push-secret",
+        );
+        run_once(&pool, &forum).await;
+        assert!(
+            capture.body.lock().unwrap().is_some(),
+            "older Forum backlog must not consume the Core delivery batch"
+        );
+        let delivered: bool = sqlx::query_scalar(
+            "SELECT delivered_at IS NOT NULL FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(wake)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(delivered);
+        let pending: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_outbox WHERE outbox_kind = 'FORUM_EVENT' AND delivered_at IS NULL")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(pending, 21);
+        let attempts: i64 = sqlx::query_scalar("SELECT sum(attempt_count)::bigint FROM workflow_outbox WHERE outbox_kind = 'FORUM_EVENT'")
+            .fetch_one(&pool).await.unwrap();
+        forum.config.forum_enabled = false;
+        insert_wake(&pool).await;
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+            VALUES ($1,$2,'FUTURE_KIND','unknown-kind','{}'::jsonb)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(run_once(&pool, &forum).await, 1);
+        let unknown: (bool, i32, Option<String>) = sqlx::query_as("SELECT delivered_at IS NULL, attempt_count, last_error FROM workflow_outbox WHERE event_key = 'unknown-kind'")
+            .fetch_one(&pool).await.unwrap();
+        assert!(
+            unknown.0,
+            "unsupported kinds must remain pending across forward deployment/rollback"
+        );
+        assert_eq!(unknown.1, 1);
+        assert!(unknown.2.unwrap().contains("FUTURE_KIND"));
+        let attempts_after: i64 = sqlx::query_scalar("SELECT sum(attempt_count)::bigint FROM workflow_outbox WHERE outbox_kind = 'FORUM_EVENT'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(
+            attempts_after, attempts,
+            "disabled Forum projection must stay queued without another attempt"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn unsupported_kind_stays_pending_and_retryable() {
+        let pool = outbox_pool(false).await;
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+            VALUES ($1,$2,'FUTURE_KIND','future-kind','{}'::jsonb)",
+        )
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut forum = client(
+            "http://127.0.0.1:9/workflow-execution/kicks".to_string(),
+            "push-secret",
+        );
+        forum.config.forum_enabled = false;
+        assert_eq!(run_once(&pool, &forum).await, 0);
+        let unknown: (bool, i32, bool, Option<String>) = sqlx::query_as("SELECT delivered_at IS NULL, attempt_count, next_attempt_at > now(), last_error FROM workflow_outbox WHERE event_key = 'future-kind'")
+            .fetch_one(&pool).await.unwrap();
+        assert!(unknown.0);
+        assert_eq!(unknown.1, 1);
+        assert!(unknown.2);
+        assert!(unknown.3.unwrap().contains("FUTURE_KIND"));
+    }
+
+    #[tokio::test]
+    async fn slow_forum_work_is_bounded_and_its_event_remains_pending() {
+        async fn slow_forum(
+            State(capture): State<Capture>,
+            Path(thread_id): Path<String>,
+            Json(body): Json<serde_json::Value>,
+        ) -> StatusCode {
+            *capture.body.lock().unwrap() = Some(body);
+            if thread_id == "thread-1" {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            StatusCode::OK
+        }
+        let capture = Capture::default();
+        let app = Router::new()
+            .route("/api/threads/{thread_id}/messages", post(slow_forum))
+            .with_state(capture.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let pool = outbox_pool(true).await;
+        let instance = Uuid::new_v4();
+        let event = Uuid::new_v4();
+        let healthy_instance = Uuid::new_v4();
+        let healthy_event = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_forum_bindings
+            (workflow_instance_id, forum_thread_id, binding_state) VALUES ($1,'thread-1','BOUND')",
+        )
+        .bind(instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload, created_at)
+            VALUES ($1,$2,'FORUM_EVENT','slow-forum-event','{}'::jsonb,now() - interval '1 day')",
+        )
+        .bind(event)
+        .bind(instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO workflow_forum_bindings
+            (workflow_instance_id, forum_thread_id, binding_state) VALUES ($1,'thread-2','BOUND')",
+        )
+        .bind(healthy_instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+            (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+            VALUES ($1,$2,'FORUM_EVENT','healthy-forum-event','{}'::jsonb)",
+        )
+        .bind(healthy_event)
+        .bind(healthy_instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut forum = client(
+            format!("http://{addr}/workflow-execution/kicks"),
+            "push-secret",
+        );
+        forum.config.forum_origin = format!("http://{addr}");
+        forum.config.poll_interval_ms = 20;
+        *forum.token.lock().unwrap() = Some(CachedToken {
+            token: "cached-forum-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(60),
+        });
+        tokio::time::timeout(Duration::from_millis(140), run_once(&pool, &forum))
+            .await
+            .expect("Forum phase must respect its bounded poll-interval budget");
+        let event_after: (bool, String, i32, bool) = sqlx::query_as(
+            "SELECT delivered_at IS NULL, event_key, attempt_count, next_attempt_at > now() FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(event)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(
+            event_after.0,
+            "cancelled outbound delivery must not become delivered"
+        );
+        assert_eq!(event_after.1, "slow-forum-event");
+        assert_eq!(
+            event_after.2, 1,
+            "timed-out delivery must record its existing retry backoff"
+        );
+        assert!(event_after.3);
+        assert!(
+            capture.body.lock().unwrap().is_some(),
+            "test must exercise a real in-flight Forum HTTP request"
+        );
+        assert_eq!(
+            capture.body.lock().unwrap().as_ref().unwrap()["metadata"]["eventKey"],
+            serde_json::json!("slow-forum-event")
+        );
+        let delivered = tokio::time::timeout(Duration::from_millis(140), run_once(&pool, &forum))
+            .await
+            .expect("healthy other-instance event must drain while the slow event backs off");
+        assert_eq!(delivered, 1);
+        let healthy_delivered: bool = sqlx::query_scalar(
+            "SELECT delivered_at IS NOT NULL FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(healthy_event)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(healthy_delivered);
+        assert_eq!(
+            capture.body.lock().unwrap().as_ref().unwrap()["metadata"]["eventKey"],
+            serde_json::json!("healthy-forum-event")
+        );
+        server.abort();
+    }
 
     #[derive(Clone, Default)]
     struct Capture {
@@ -608,13 +1033,17 @@ mod owner_assistance_wake_tests {
 
     fn client(url: String, token: &str) -> ForumClient {
         ForumClient::new(ForumSyncConfig {
+            forum_enabled: true,
             auth_base_url: "http://127.0.0.1:9".to_string(),
             client_id: "unused".to_string(),
             client_secret: "unused".to_string(),
             forum_origin: "http://127.0.0.1:9".to_string(),
             audience: "svc-forum".to_string(),
             poll_interval_ms: 5_000,
-            kick: Some(ExecutionKickConfig { url, token: token.to_string() }),
+            kick: Some(ExecutionKickConfig {
+                url,
+                token: token.to_string(),
+            }),
         })
     }
     fn row(payload: serde_json::Value) -> outbox::OutboxRow {
@@ -645,7 +1074,10 @@ mod owner_assistance_wake_tests {
     async fn owner_wake_derives_endpoint_reuses_token_and_forwards_payload() {
         let capture = Capture::default();
         let app = Router::new()
-            .route("/workflow-execution/owner-assistance-wakes", post(capture_handler))
+            .route(
+                "/workflow-execution/owner-assistance-wakes",
+                post(capture_handler),
+            )
             .with_state(capture.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
