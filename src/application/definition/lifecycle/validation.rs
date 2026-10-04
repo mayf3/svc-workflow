@@ -126,7 +126,136 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             }
         }
 
+        // Node-declared context inputs must be covered by the context schema
+        // (Product #449): after publish, the only enforcement left is the
+        // context-schema gate at instance creation, so a half-declared
+        // contract would create instances that can never satisfy the
+        // declaring node.
+        validate_declared_context_inputs(graph, &mut errors);
+
         errors
+    }
+}
+
+/// Validate node-declared required context inputs against the context schema.
+///
+/// A node may declare the context keys it consumes via authoring metadata
+/// `requiredContextInputs: [<key>, ...]`. Publication is the last point at
+/// which self-consistency can be enforced: every declared key must be
+/// required by `context_schema`, and an array-typed declared key must be
+/// non-empty (`minItems >= 1`) and registry-backed (a non-empty closed
+/// `items.enum`). Anything weaker re-creates the production Workflow v5
+/// `targetPlatforms` stranding: instances legally created with missing,
+/// empty, or unknown-platform context that can never satisfy `distribution`.
+/// Keys derive only from the graph's own node metadata, never hardcoded —
+/// the same derivation discipline as the assignee-input-key coverage rule.
+fn validate_declared_context_inputs(graph: &WorkflowGraph, errors: &mut Vec<GraphValidationError>) {
+    let required_keys: Vec<&str> = graph
+        .context_schema
+        .as_ref()
+        .and_then(|schema| schema.get("required"))
+        .and_then(|required| required.as_array())
+        .map(|required| required.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+
+    for node in &graph.nodes {
+        let Some(declared) = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("requiredContextInputs"))
+        else {
+            continue;
+        };
+        let Some(keys) = declared.as_array() else {
+            errors.push(GraphValidationError::new(
+                "DECLARED_CONTEXT_INPUTS_MALFORMED",
+                format!(
+                    "node '{}' declares requiredContextInputs that is not an array of context key names",
+                    node.node_key
+                ),
+            ));
+            continue;
+        };
+
+        for key in keys {
+            let Some(key) = key.as_str() else {
+                errors.push(GraphValidationError::new(
+                    "DECLARED_CONTEXT_INPUTS_MALFORMED",
+                    format!(
+                        "node '{}' declares a non-string requiredContextInputs entry",
+                        node.node_key
+                    ),
+                ));
+                continue;
+            };
+
+            if !required_keys.contains(&key) {
+                errors.push(GraphValidationError::new(
+                    "DECLARED_CONTEXT_INPUT_NOT_REQUIRED",
+                    format!(
+                        "node '{}' declares context input '{}' but context_schema.required \
+                         does not include it",
+                        node.node_key, key
+                    ),
+                ));
+            }
+
+            let property = graph
+                .context_schema
+                .as_ref()
+                .and_then(|schema| schema.get("properties"))
+                .and_then(|properties| properties.get(key));
+            let declared_type = property
+                .and_then(|p| p.get("type"))
+                .and_then(|t| t.as_str());
+            let Some(declared_type) = declared_type else {
+                // Required-but-untyped accepts any present value, so the
+                // declared contract could still strand (e.g. `[]`).
+                errors.push(GraphValidationError::new(
+                    "DECLARED_CONTEXT_INPUT_UNTYPED",
+                    format!(
+                        "node '{}' declares context input '{}' but the schema has no \
+                         properties entry with a type for it",
+                        node.node_key, key
+                    ),
+                ));
+                continue;
+            };
+
+            if declared_type != "array" {
+                continue;
+            }
+
+            let min_items = property
+                .and_then(|p| p.get("minItems"))
+                .and_then(|m| m.as_u64());
+            if !matches!(min_items, Some(min) if min >= 1) {
+                errors.push(GraphValidationError::new(
+                    "DECLARED_CONTEXT_INPUT_ALLOWS_EMPTY",
+                    format!(
+                        "node '{}' declares array context input '{}' but the schema has no \
+                         minItems >= 1; an empty array would satisfy creation",
+                        node.node_key, key
+                    ),
+                ));
+            }
+
+            let enum_closed = property
+                .and_then(|p| p.get("items"))
+                .and_then(|items| items.get("enum"))
+                .and_then(|enum_values| enum_values.as_array())
+                .is_some_and(|enum_values| !enum_values.is_empty());
+            if !enum_closed {
+                errors.push(GraphValidationError::new(
+                    "DECLARED_CONTEXT_INPUT_UNBOUNDED_VALUES",
+                    format!(
+                        "node '{}' declares array context input '{}' but the schema items have \
+                         no closed non-empty enum value set; unknown values would satisfy creation",
+                        node.node_key, key
+                    ),
+                ));
+            }
+        }
     }
 }
 
@@ -318,5 +447,103 @@ mod tests {
             }
         });
         assert!(check_external_refs(&val).is_ok());
+    }
+
+    fn declared_input_codes(schema: serde_json::Value) -> Vec<String> {
+        let graph = WorkflowGraph {
+            nodes: vec![NodeDefinition {
+                node_id: crate::domain::ids::NodeId::from_uuid(uuid::Uuid::new_v4()),
+                definition_version_id: crate::domain::ids::DefinitionVersionId::from_uuid(
+                    uuid::Uuid::new_v4(),
+                ),
+                node_key: "distribution".to_string(),
+                display_name: "Distribution".to_string(),
+                order_index: 1,
+                node_type: crate::domain::enums::NodeType::NORMAL,
+                assignee_ref: None,
+                instructions: None,
+                primary_advance_transition_id: None,
+                metadata: Some(serde_json::json!({
+                    "requiredContextInputs": ["targetPlatforms", 7]
+                })),
+                created_at: chrono::Utc::now(),
+            }],
+            transitions: vec![],
+            context_schema: Some(schema),
+        };
+        let mut errors = Vec::new();
+        validate_declared_context_inputs(&graph, &mut errors);
+        errors.into_iter().map(|e| e.code).collect()
+    }
+
+    #[test]
+    fn declared_input_edge_cases_are_pinned() {
+        // No context schema at all: declared input cannot be covered.
+        let codes = declared_input_codes(serde_json::Value::Null);
+        assert!(
+            codes.contains(&"DECLARED_CONTEXT_INPUT_NOT_REQUIRED".to_string()),
+            "{codes:?}"
+        );
+
+        // minItems 0 still allows an empty array.
+        let codes = declared_input_codes(serde_json::json!({
+            "type": "object",
+            "required": ["targetPlatforms"],
+            "properties": {"targetPlatforms": {"type": "array", "minItems": 0,
+                                                "items": {"enum": ["a"]}}}
+        }));
+        assert!(
+            codes.contains(&"DECLARED_CONTEXT_INPUT_ALLOWS_EMPTY".to_string()),
+            "{codes:?}"
+        );
+
+        // Fractional minItems is not a satisfying integer >= 1.
+        let codes = declared_input_codes(serde_json::json!({
+            "type": "object",
+            "required": ["targetPlatforms"],
+            "properties": {"targetPlatforms": {"type": "array", "minItems": 0.5,
+                                                "items": {"enum": ["a"]}}}
+        }));
+        assert!(
+            codes.contains(&"DECLARED_CONTEXT_INPUT_ALLOWS_EMPTY".to_string()),
+            "{codes:?}"
+        );
+
+        // Empty enum closes nothing.
+        let codes = declared_input_codes(serde_json::json!({
+            "type": "object",
+            "required": ["targetPlatforms"],
+            "properties": {"targetPlatforms": {"type": "array", "minItems": 1,
+                                                "items": {"enum": []}}}
+        }));
+        assert!(
+            codes.contains(&"DECLARED_CONTEXT_INPUT_UNBOUNDED_VALUES".to_string()),
+            "{codes:?}"
+        );
+
+        // Non-string declaration entries are malformed.
+        let codes = declared_input_codes(serde_json::json!({
+            "type": "object",
+            "required": ["targetPlatforms"],
+            "properties": {"targetPlatforms": {"type": "array", "minItems": 1,
+                                                "items": {"enum": ["a"]}}}
+        }));
+        assert!(
+            codes.contains(&"DECLARED_CONTEXT_INPUTS_MALFORMED".to_string()),
+            "{codes:?}"
+        );
+
+        // A fully covered declaration is silent.
+        let codes = declared_input_codes(serde_json::json!({
+            "type": "object",
+            "required": ["targetPlatforms"],
+            "properties": {"targetPlatforms": {"type": "array", "minItems": 1,
+                                                "items": {"enum": ["a", "b"]}}}
+        }));
+        assert_eq!(
+            codes,
+            vec!["DECLARED_CONTEXT_INPUTS_MALFORMED"],
+            "{codes:?}"
+        );
     }
 }
