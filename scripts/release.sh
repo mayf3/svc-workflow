@@ -96,10 +96,38 @@ load_provenance() {
     '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'
 }
 
+# 解析唯一的 svc-workflow launchd 目标（gui/UID 或 system，二选一）。
+# 必须在 ANY live 写入前调用；同一绑定供 deploy/restart/verify/rollback 共用。
+# 失败模式（零写入）：0 个匹配=无 daemon；2 个匹配=域歧义；运行 UID 不符=目标错。
+LAUNCHCTL_TARGET=""
+SERVICE_PID=""
+
+resolve_service_target() {
+  local gui_target="gui/$(id -u)/$LABEL"
+  local sys_target="system/$LABEL"
+  local found="" pid="" hits=0 uid expected_uid
+  expected_uid="${EXPECTED_RUNNING_UID:-$(id -u)}"
+  for t in "$gui_target" "$sys_target"; do
+    pid="$(launchctl print "$t" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}' || true)"
+    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
+      hits=$((hits+1)); found="$t"; SERVICE_PID="$pid"
+    fi
+  done
+  if [[ $hits -ne 1 ]]; then
+    fail "service target resolution failed: $hits matching launchd units (expected exactly one of: $gui_target OR $sys_target); zero live writes performed"
+  fi
+  uid="$(ps -o uid= -p "$SERVICE_PID" 2>/dev/null | tr -d '[:space:]')"
+  if [[ "$uid" != "$expected_uid" ]]; then
+    fail "service process uid=$uid != expected $expected_uid; refusing to bind target=$found; zero live writes performed"
+  fi
+  LAUNCHCTL_TARGET="$found"
+  log "service target resolved: $LAUNCHCTL_TARGET (pid $SERVICE_PID, uid $uid)"
+}
+
 # 返回运行中 svc-workflow 进程的 txt（可执行）文件路径；进程未运行则返回空
 running_binary_path() {
   local pid
-  pid="$(launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}')"
+  pid="$(launchctl print "$LAUNCHCTL_TARGET" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}')"
   [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 0
   lsof -p "$pid" -a -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
 }
@@ -164,6 +192,18 @@ deploy() {
   provenance="$(load_provenance "$sha")"
   dir="$RELEASES_DIR/$sha"
 
+  # 0) 解析唯一服务目标（system/gui 互斥；UID 校验）——必须先于任何写入
+  resolve_service_target
+
+  # 0b) 目标 preimage 门：部署者可声明 EXPECTED_PREIMAGE_SHA256，不符零写入
+  local target_preimage_sha256=""
+  if [[ -f "$SERVICE_DIR/$BINARY" ]]; then
+    target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
+    if [[ -n "${EXPECTED_PREIMAGE_SHA256:-}" && "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
+      fail "PREIMAGE MISMATCH: 目标 binary sha256=$target_preimage_sha256 != 声明 $EXPECTED_PREIMAGE_SHA256；未写入任何 live 状态"
+    fi
+  fi
+
   local artifact_sha256 migration_max migration_digest previous_sha256 deployed_at
   artifact_sha256="$(jq -r '.artifactSha256' <<<"$provenance")"
   migration_max="$(jq -r '.migrationMaxVersion' <<<"$provenance")"
@@ -209,15 +249,17 @@ deploy() {
     --arg previousArtifactSha256 "${previous_sha256:-}" \
     --arg migrationMaxVersion "$migration_max" \
     --arg migrationBundleDigest "$migration_digest" \
-    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}' \
+    --arg launchctlTarget "$LAUNCHCTL_TARGET" \
+    --arg targetPreimage "${target_preimage_sha256:-}" \
+    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage}' \
     >> "$LEDGER"
   log "deployment ledger 已追加: $LEDGER"
 
-  # 6) restart
-  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 \
-    || fail "launchctl 服务不存在: ${LABEL}（先加载 plist）"
-  log "restart $LABEL (launchctl kickstart -k)"
-  launchctl kickstart -k "gui/$(id -u)/$LABEL"
+  # 6) restart（与解析/写入同一绑定）
+  launchctl print "$LAUNCHCTL_TARGET" >/dev/null 2>&1 \
+    || fail "launchctl 服务不存在: $LAUNCHCTL_TARGET（先加载 plist）"
+  log "restart $LAUNCHCTL_TARGET (launchctl kickstart -k)"
+  launchctl kickstart -k "$LAUNCHCTL_TARGET"
 }
 
 # 等待 /version 可访问；返回响应体
@@ -234,6 +276,7 @@ wait_for_version() {
 verify() {
   local sha="$1"
   assert_source_sha "$sha"
+  resolve_service_target
   local provenance
   provenance="$(load_provenance "$sha")"
 
