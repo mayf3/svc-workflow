@@ -16,11 +16,12 @@
 #   AUTH_TOKEN                可选：部署后基础认证请求使用的 Bearer token
 #   EXPECTED_SERVICE_UID      预期服务 UID（#683 G1，与调用 EUID 分开；root 调用必填）
 #   EXPECTED_PREIMAGE_SHA256  必填（#683 G3/P3）：目标 binary 的精确 sha256（无首装例外）
-#   EXPECTED_LAUNCHCTL_TARGET 当 ledger 缺失、或最新记录为 legacy 旧 schema
-#                             （无 binding 字段）时必填（#683 P5/兼容）：固定目标
+#   EXPECTED_LAUNCHCTL_TARGET 当 active ledger 不存在时必填（#683 P5）：固定目标
 #                             绑定，取值须来自已批准证据（如 REALM-MISMATCH
-#                             只读记录 actualLoaded）；ledger 存在且最新记录为
-#                             现代记录时以记录为准，本输入被忽略
+#                             只读记录 actualLoaded）；ledger 存在时以记录为准，
+#                             本输入被忽略。active ledger 只有一种格式（现代
+#                             记录，含非空 launchctlTarget）；旧格式历史用
+#                             `release.sh archive` 一次性归档后即不存在。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -264,6 +265,54 @@ ledger_field() {  # $1=record(compact JSON)  $2=字段名  $3=错误前缀；输
   printf '%s' "$v"
 }
 
+# 一次性归档既有 deployment ledger（#683 之前的混合格式历史：六字段记录、
+# 带旧 .verification 的记录、rollbackArtifact 条目、非部署对象等）。历史
+# 仅作不透明字节保留：不解析、不改写、不删除、不据此取得任何权限；归档
+# 完成后 active 不存在，首次部署以 EXPECTED_LAUNCHCTL_TARGET 固定绑定生成
+# 全新记录。幂等：切换完成后再次运行仅核验归档完整性（摘要不符即报）。
+# 冲突一律显式拒绝、不覆盖既有归档、不盲删。这是显式子命令，不随
+# deploy/verify 触发。
+ARCHIVE_FILE="$SERVICE_DIR/ledger.json.archived"
+ARCHIVE_RECEIPT="$SERVICE_DIR/ledger.json.archived.receipt.json"
+
+archive_ledger() {
+  local orig_bytes orig_sha arch_bytes arch_sha receipt_sha
+  if [[ -f "$ARCHIVE_RECEIPT" ]]; then
+    if [[ -f "$LEDGER" ]]; then
+      fail "archive conflict: receipt $ARCHIVE_RECEIPT exists but an active ledger is also present; an earlier switch did not complete — resolve manually (compare the active file against the receipt digest, keep exactly one) ; refusing to overwrite anything"
+    fi
+    receipt_sha="$(jq -r '.originalSha256 // empty' "$ARCHIVE_RECEIPT" 2>/dev/null)"
+    [[ "$receipt_sha" =~ ^[0-9a-f]{64}$ ]] \
+      || fail "archive receipt is corrupt (missing/invalid originalSha256): $ARCHIVE_RECEIPT"
+    arch_sha="$("$SHASUM" -a 256 "$ARCHIVE_FILE" 2>/dev/null | awk '{print $1}')"
+    [[ "$arch_sha" == "$receipt_sha" ]] \
+      || fail "archived ledger digest mismatch: $ARCHIVE_FILE sha256=${arch_sha:-missing} != receipt $receipt_sha; the archive was modified after the switch"
+    log "ledger already archived (integrity verified): $ARCHIVE_RECEIPT"
+    return 0
+  fi
+  if [[ ! -f "$LEDGER" ]]; then
+    log "no active ledger to archive (already switched or fresh site): $LEDGER absent, no receipt"
+    return 0
+  fi
+  [[ -s "$LEDGER" ]] \
+    || fail "active ledger is empty: $LEDGER; nothing to preserve — remove it manually if it is truly empty; refusing to archive"
+  if [[ -e "$ARCHIVE_FILE" ]]; then
+    fail "refusing to overwrite existing archive: $ARCHIVE_FILE; an earlier archive attempt left it behind without a receipt — resolve manually"
+  fi
+  orig_bytes="$(wc -c < "$LEDGER" | tr -d ' ')"
+  orig_sha="$("$SHASUM" -a 256 "$LEDGER" | awk '{print $1}')"
+  cp "$LEDGER" "$ARCHIVE_FILE"
+  arch_bytes="$(wc -c < "$ARCHIVE_FILE" | tr -d ' ')"
+  arch_sha="$("$SHASUM" -a 256 "$ARCHIVE_FILE" | awk '{print $1}')"
+  [[ "$arch_bytes" == "$orig_bytes" && "$arch_sha" == "$orig_sha" ]] \
+    || fail "archived copy verification failed (bytes $orig_bytes vs $arch_bytes or sha256 mismatch); the partial archive is left in place at $ARCHIVE_FILE without a receipt — resolve manually"
+  jq -n --arg archivedAt "$(now_iso)"     --arg originalLedger "$(basename "$LEDGER")"     --arg archivedLedger "$(basename "$ARCHIVE_FILE")"     --arg originalBytes "$orig_bytes"     --arg originalSha256 "$orig_sha"     '{archivedAt: $archivedAt, originalLedger: $originalLedger, archivedLedger: $archivedLedger, originalBytes: $originalBytes, originalSha256: $originalSha256, note: "pre-#683 mixed-format deployment history preserved verbatim; opaque archive; not a rollback source"}'     > "$ARCHIVE_RECEIPT.tmp"
+  mv "$ARCHIVE_RECEIPT.tmp" "$ARCHIVE_RECEIPT"
+  rm "$LEDGER"
+  log "ledger archived: $(basename "$LEDGER") -> $(basename "$ARCHIVE_FILE") (bytes $orig_bytes, sha256 $orig_sha)"
+  log "switch receipt: $(basename "$ARCHIVE_RECEIPT"); the next deploy starts a fresh ledger pinned by EXPECTED_LAUNCHCTL_TARGET"
+}
+
 # 返回运行中 svc-workflow 进程的 txt（可执行）文件路径；进程未运行则返回空
 running_binary_path() {
   local pid
@@ -336,73 +385,38 @@ deploy() {
   #    ——必须先于任何写入；program 绑定安装目标；身份实核；system 域 root 准入
   resolve_service_target
 
-  # 0a) ledger 绑定（#683 G5/P5/兼容）：ledger 是多个 JSON 值的拼接流，逐条分类：
-  #   现代记录 = launchctlTarget 为非空字符串 → 其值即该记录的固定绑定；
-  #     任何现代记录的 target 与本次解析结果不一致 → binding drift 拒绝（混合
-  #     记录中任何已存在冲突 target 一律拒绝，不只看最新一条）。
-  #   legacy 记录 = 完全没有 launchctlTarget 键，且与原入口（main 18fb2f8b）
-  #     写出的 schema 完全一致：恰好六个键（deployedAt、sourceSha、
-  #     artifactSha256、previousArtifactSha256、migrationMaxVersion、
-  #     migrationBundleDigest），无任何额外键（targetPreimageSha256/
-  #     otherRealmState 等现代专有字段存在即非 legacy）；类型按原写入器
-  #     实际允许值收紧——六值全部经 jq --arg 写入故必为字符串
-  #     （previousArtifactSha256 允许空串=首次部署，否则 64hex；deployedAt
-  #     非空；sourceSha 40hex；artifactSha256/migrationBundleDigest 64hex；
-  #     migrationMaxVersion 数字串）。原写入器不可能产出 null/数字/嵌套值
-  #     或额外键，故无 null 默许；合法 hash 的现代缺 target 记录、或缺
-  #     previousArtifactSha256 的记录均不再可伪作 legacy。
-  #     合法历史记录不补写、不迁移；若其为最新记录，本次部署的
-  #     绑定必须来自固定目标输入 EXPECTED_LAUNCHCTL_TARGET（值须来自已批准
-  #     证据，如 REALM-MISMATCH 只读记录 actualLoaded），缺失或不符即拒绝；
-  #     本次部署新追加的记录写真实 binding，此后 ledger 恢复固定绑定驱动。
-  #   其余一切（键存在但为空、带现代专有字段却无 target、键集不符/缺
-  #     previousArtifactSha256/类型或形状非法、非对象、流损坏）→ 一律拒绝，
-  #     不得当作可信 legacy 绕过保护。
-  # ledger 缺失（首次以本入口更新既有服务）→ 同样必须 EXPECTED_LAUNCHCTL_TARGET
+  # 0a) ledger 绑定（#683 G5/P5）：active ledger 只有一种格式——现代记录
+  #     （launchctlTarget 为非空字符串，另携带本次核验的预像与 realm 状态）。
+  #     逐条校验：非现代记录（缺/空/坏 binding、非对象、流损坏）一律首写拒绝；
+  #     任何记录的 target 与本次解析结果不一致 → binding drift 拒绝（不只看
+  #     最新一条）；最新记录即本次固定绑定。
+  #     旧格式历史（#683 之前的混合内容）不在部署路径上做兼容：用
+  #     `release.sh archive` 一次性按字节归档并记录回执后，active 不存在，
+  #     首次部署以 EXPECTED_LAUNCHCTL_TARGET（已批准证据）固定绑定生成全新
+  #     记录——不补造旧 target，不逐字段打兼容补丁。
+  # ledger 缺失（归档后首次部署或全新站点）→ 必须 EXPECTED_LAUNCHCTL_TARGET
   #   显式绑定，缺失即拒绝——缺 ledger 时不得重新发现另一 realm。
   local prior_target
   if [[ -f "$LEDGER" ]]; then
-    local prior_all class_lines line last_kind="" last_target="" rec_target
+    local prior_all class_lines line last_target="" rec_target
     prior_all="$(jq -c '.' "$LEDGER")" \
       || fail "deployment ledger corrupt (JSON stream parse failed): $LEDGER; zero live writes performed"
     [[ -n "$prior_all" ]] || fail "deployment ledger empty: $LEDGER; zero live writes performed"
     class_lines="$(printf '%s\n' "$prior_all" | jq -r '
-      if type != "object" then "invalid"
-      elif (has("launchctlTarget") and (.launchctlTarget|type=="string") and (.launchctlTarget|length>0)) then "modern \(.launchctlTarget)"
-      elif has("launchctlTarget") then "invalid"
-      elif ((keys | sort) == (["artifactSha256","deployedAt","migrationBundleDigest","migrationMaxVersion","previousArtifactSha256","sourceSha"]))
-       and ((.deployedAt // "") | type=="string" and length>0)
-       and ((.sourceSha // "") | tostring | test("^[0-9a-f]{40}$"))
-       and ((.artifactSha256 // "") | tostring | test("^[0-9a-f]{64}$"))
-       and ((.previousArtifactSha256 // "") | type=="string" and test("^(|[0-9a-f]{64})$"))
-       and ((.migrationBundleDigest // "") | tostring | test("^[0-9a-f]{64}$"))
-       and ((.migrationMaxVersion // "") | tostring | test("^[0-9]+$")) then "legacy"
+      if type == "object" and (has("launchctlTarget") and (.launchctlTarget|type=="string") and (.launchctlTarget|length>0)) then "modern \(.launchctlTarget)"
       else "invalid" end')" \
       || fail "deployment ledger corrupt (record classification failed): $LEDGER; zero live writes performed"
     while IFS= read -r line; do
-      case "$line" in
-        modern\ *)
-          rec_target="${line#modern }"
-          [[ "$rec_target" == "$LAUNCHCTL_TARGET" ]] \
-            || fail "binding drift: ledger records $rec_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
-          last_kind="modern"; last_target="$rec_target"
-          ;;
-        legacy)
-          last_kind="legacy"; last_target=""
-          ;;
-        *)
-          fail "deployment ledger record is neither a modern binding record nor valid legacy schema (exactly the six original fields, all strings: deployedAt/sourceSha/artifactSha256/previousArtifactSha256/migrationMaxVersion/migrationBundleDigest; previousArtifactSha256 may be empty; no extra keys); refusing pre-write; zero live writes performed"
-          ;;
-      esac
-    done <<<"$class_lines"
-    if [[ "$last_kind" == "modern" ]]; then
-      prior_target="$last_target"
-    else
-      if [[ -z "${EXPECTED_LAUNCHCTL_TARGET:-}" ]]; then
-        fail "deployment binding unavailable: latest ledger record is legacy schema without launchctlTarget and EXPECTED_LAUNCHCTL_TARGET is not set; pin the binding from approved evidence; refusing pre-write; zero live writes performed"
+      if [[ "$line" == modern\ * ]]; then
+        rec_target="${line#modern }"
+        [[ "$rec_target" == "$LAUNCHCTL_TARGET" ]] \
+          || fail "binding drift: ledger records $rec_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
+        last_target="$rec_target"
+      else
+        fail "deployment ledger record has no valid modern binding (launchctlTarget must be a non-empty string); archive pre-#683 history with 'release.sh archive' and start a fresh ledger; refusing pre-write; zero live writes performed"
       fi
-      prior_target="$EXPECTED_LAUNCHCTL_TARGET"
-    fi
+    done <<<"$class_lines"
+    prior_target="$last_target"
   else
     if [[ -z "${EXPECTED_LAUNCHCTL_TARGET:-}" ]]; then
       fail "deployment binding record missing: $LEDGER does not exist and EXPECTED_LAUNCHCTL_TARGET is not set; first update of an existing service must pin the binding from approved evidence; refusing pre-write; zero live writes performed"
@@ -586,14 +600,22 @@ verify() {
     log "注意: readyz=${readyz}（已知独立问题：JWKS/auth 缓存，本轮只记录不修）"
   fi
 
-  # 验收结果并入 ledger 最近一条
-  jq -c \
-    --arg healthz "$healthz" \
-    --arg readyz "$readyz" \
-    --arg authHttpStatus "$auth_code" \
-    --arg runningBinaryPath "$bin_path" \
-    '.verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}' \
-    "$LEDGER" > "$LEDGER.tmp" && mv "$LEDGER.tmp" "$LEDGER"
+  # 验收结果只并入本次最新事件：历史前缀逐字节保持，不重写其他任何记录；
+  # 若 ledger 最新事件不是本次部署（另一 sourceSha 在后），拒绝注释旧事件——
+  # 不凭相同 sourceSha 改错记录。
+  local split_at last_orig new_last last_sha
+  split_at="$(LC_ALL=C awk 'BEGIN{b=0; s=0} { if ($0 == "{") s=b; b += length($0) + 1 } END{ print s+0 }' "$LEDGER")"
+  last_orig="$(tail -c +$((split_at + 1)) "$LEDGER")"
+  last_sha="$(jq -r '.sourceSha // empty' <<<"$last_orig")"
+  [[ "$last_sha" == "$sha" ]] \
+    || fail "VERIFY FAIL: ledger's latest event is sourceSha=$last_sha, not this deployment ($sha); refusing to annotate a stale record"
+  new_last="$(jq     --arg healthz "$healthz"     --arg readyz "$readyz"     --arg authHttpStatus "$auth_code"     --arg runningBinaryPath "$bin_path"     '.verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}' <<<"$last_orig")"
+  if [[ "$split_at" -gt 0 ]]; then
+    { head -c "$split_at" "$LEDGER"; printf '%s\n' "$new_last"; } > "$LEDGER.tmp"
+  else
+    printf '%s\n' "$new_last" > "$LEDGER.tmp"
+  fi
+  mv "$LEDGER.tmp" "$LEDGER"
 
   log "VERIFY PASSED: 运行中的 svc-workflow = clean commit ${sha} 的产物（sha256 ${artifact_sha256}）"
 }
@@ -601,7 +623,11 @@ verify() {
 main() {
   local cmd="${1:-all}"
   local sha="${2:-}"
-  [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha>"
+  if [[ "$cmd" == "archive" ]]; then
+    archive_ledger
+    return 0
+  fi
+  [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha> | release.sh archive"
   case "$cmd" in
     build) build "$sha" ;;
     deploy) deploy "$sha" ;;
