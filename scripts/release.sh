@@ -14,6 +14,8 @@
 #   SVC_WORKFLOW_SERVICE_DIR  部署目录（默认 ~/.local/services/svc-workflow）
 #   SVC_WORKFLOW_PORT         /version 探测端口（默认 8989）
 #   AUTH_TOKEN                可选：部署后基础认证请求使用的 Bearer token
+#   EXPECTED_SERVICE_UID      预期服务 UID（#683 G1，与调用 EUID 分开；root 调用必填）
+#   EXPECTED_PREIMAGE_SHA256  更新既有目标时必填（#683 G3）：目标 binary 的精确 sha256
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -98,30 +100,152 @@ load_provenance() {
 
 # 解析唯一的 svc-workflow launchd 目标（gui/UID 或 system，二选一）。
 # 必须在 ANY live 写入前调用；同一绑定供 deploy/restart/verify/rollback 共用。
-# 失败模式（零写入）：0 个匹配=无 daemon；2 个匹配=域歧义；运行 UID 不符=目标错。
+# print 结果按 present running / present stopped / absent / denied_unknown 分类
+# （#683 G4）：任一 denied_unknown 先行拒绝（另一 realm 的成功不得掩盖探测异常）；
+# present>1（含 running+stopped 组合）= 域歧义；present=0 = 无 daemon；全部零写入。
+# unit 顶层键为真实输出的单 TAB 缩进（嵌套块两 TAB 起，不得误读）；
+# 非秘密输出样本来源：2026-10-08 只读证据 REALM-MISMATCH.json。
+# 身份（#683 G1）：预期服务 UID（EXPECTED_SERVICE_UID）与调用 EUID 分开；GUI
+# 候选以服务 UID 探测；运行单位以 ps 实核运行 UID（root/声明不得替代）；停止
+# 单位身份只能取自既有 unit 配置（uid 行），不能核则拒；不改实际权限或服务。
 LAUNCHCTL_TARGET=""
 SERVICE_PID=""
+UNIT_PROGRAM=""
+SERVICE_UID=""
+GUI_STATE="absent"
+SYS_STATE="absent"
+OTHER_REALM_STATE="none"
+
+# launchctl print 顶层字段（恰好单 TAB 缩进）解析；嵌套块（两 TAB 起）不匹配
+unit_field() {
+  awk -F'= ' -v pat="^\t$2 = " '$0 ~ pat {print $2; exit}' <<<"${1:-}"
+}
+
+# 路径规范化等值：解析已存在目录的符号链接后比较；不同路径即使内容同 hash 也不等价
+norm_path() {
+  local d b
+  d="$(dirname "$1")"
+  b="$(basename "$1")"
+  if [[ -d "$d" ]]; then d="$(cd "$d" && pwd -P)"; fi
+  printf '%s/%s' "$d" "$b"
+}
+
+# 服务身份预期：EXPECTED_SERVICE_UID 未声明时回退调用 EUID；root 回退被拒
+# （系统域服务以专用 UID 运行时，root 回退 0 必然错绑且属替代身份验证）
+require_expected_service_uid() {
+  local euid
+  euid="$(id -u)"
+  if [[ -z "${EXPECTED_SERVICE_UID:-}" ]]; then
+    [[ "$euid" != "0" ]] \
+      || fail "service identity unverifiable: EXPECTED_SERVICE_UID must be set when running as root (root must not substitute the service identity); zero live writes performed"
+    EXPECTED_SERVICE_UID="$euid"
+  fi
+}
 
 resolve_service_target() {
-  local gui_target="gui/$(id -u)/$LABEL"
+  require_expected_service_uid
+  local gui_target="gui/$EXPECTED_SERVICE_UID/$LABEL"
   local sys_target="system/$LABEL"
-  local found="" pid="" hits=0 uid expected_uid
-  expected_uid="${EXPECTED_RUNNING_UID:-$(id -u)}"
+  local t rc out err pid program uid_val
+  local present=0 denied_unknown=0
+  LAUNCHCTL_TARGET=""; SERVICE_PID=""; UNIT_PROGRAM=""; SERVICE_UID=""
+  GUI_STATE="absent"; SYS_STATE="absent"; OTHER_REALM_STATE="none"
+
   for t in "$gui_target" "$sys_target"; do
-    pid="$(launchctl print "$t" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}' || true)"
-    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
-      hits=$((hits+1)); found="$t"; SERVICE_PID="$pid"
+    rc=0
+    err="$(mktemp)"
+    out="$(launchctl print "$t" 2>"$err")" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+      pid="$(unit_field "$out" "pid")"
+      program="$(unit_field "$out" "program")"
+      uid_val="$(unit_field "$out" "uid")"
+      if [[ "$t" == "$gui_target" ]]; then
+        GUI_STATE="present"; [[ -n "$pid" ]] || GUI_STATE="present_stopped"
+      else
+        SYS_STATE="present"; [[ -n "$pid" ]] || SYS_STATE="present_stopped"
+      fi
+      present=$((present+1))
+      LAUNCHCTL_TARGET="$t"; SERVICE_PID="$pid"; UNIT_PROGRAM="$program"; SERVICE_UID="$uid_val"
+    elif grep -qi "could not find service" "$err" 2>/dev/null; then
+      if [[ "$t" == "$gui_target" ]]; then GUI_STATE="absent"; else SYS_STATE="absent"; fi
+    else
+      if [[ "$t" == "$gui_target" ]]; then GUI_STATE="denied_unknown"; else SYS_STATE="denied_unknown"; fi
+      denied_unknown=$((denied_unknown+1))
     fi
+    rm -f "$err"
   done
-  if [[ $hits -ne 1 ]]; then
-    fail "service target resolution failed: $hits matching launchd units (expected exactly one of: $gui_target OR $sys_target); zero live writes performed"
+
+  if [[ $denied_unknown -gt 0 ]]; then
+    fail "service target resolution: denied/unknown launchctl print result (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
   fi
-  uid="$(ps -o uid= -p "$SERVICE_PID" 2>/dev/null | tr -d '[:space:]')"
-  if [[ "$uid" != "$expected_uid" ]]; then
-    fail "service process uid=$uid != expected $expected_uid; refusing to bind target=$found; zero live writes performed"
+  if [[ $present -eq 0 ]]; then
+    fail "service target resolution: no unit found (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
   fi
-  LAUNCHCTL_TARGET="$found"
-  log "service target resolved: $LAUNCHCTL_TARGET (pid $SERVICE_PID, uid $uid)"
+  if [[ $present -gt 1 ]]; then
+    fail "service target resolution: ambiguous, $present present units (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
+  fi
+
+  # unit program 绑定（#683 G2）：launchd 配置的可执行文件必须就是本脚本管理的
+  # 安装目标（路径规范化等值；同 hash 异路径不等价），否则任何写入都指向错误安装
+  if [[ -z "$UNIT_PROGRAM" ]]; then
+    fail "service target resolution: unit program UNKNOWN from launchctl print; zero live writes performed"
+  fi
+  if [[ "$(norm_path "$UNIT_PROGRAM")" != "$(norm_path "$SERVICE_DIR/$BINARY")" ]]; then
+    fail "service target resolution: unit program ($UNIT_PROGRAM) != $SERVICE_DIR/$BINARY; refusing to manage a foreign install (same-hash different-path is not equivalent); zero live writes performed"
+  fi
+
+  # 身份实核（#683 G1）：运行单位 ps 实核运行 UID，unit 配置 uid 与之互证；
+  # 停止单位身份只能取自既有 unit 配置，缺即拒（不放宽、不以 root 替代）
+  if [[ -n "$SERVICE_PID" ]]; then
+    local ps_uid
+    ps_uid="$(ps -o uid= -p "$SERVICE_PID" 2>/dev/null | tr -d '[:space:]')"
+    if [[ "$ps_uid" != "$EXPECTED_SERVICE_UID" ]]; then
+      fail "service process uid=${ps_uid:-unknown} != expected $EXPECTED_SERVICE_UID; refusing to bind target=$LAUNCHCTL_TARGET; zero live writes performed"
+    fi
+    if [[ -n "$SERVICE_UID" && "$SERVICE_UID" != "$ps_uid" ]]; then
+      fail "service identity drift: unit config uid=$SERVICE_UID != running pid uid=$ps_uid; refusing target=$LAUNCHCTL_TARGET; zero live writes performed"
+    fi
+  else
+    if [[ -z "$SERVICE_UID" ]]; then
+      fail "stopped unit identity unverifiable: no uid in unit config for $LAUNCHCTL_TARGET; restore refused; zero live writes performed"
+    fi
+    if [[ "$SERVICE_UID" != "$EXPECTED_SERVICE_UID" ]]; then
+      fail "stopped unit config uid=$SERVICE_UID != expected $EXPECTED_SERVICE_UID; refusing target=$LAUNCHCTL_TARGET; zero live writes performed"
+    fi
+  fi
+
+  # system 域写动作的 root 准入（pre-write；gui 域即属主用户会话）
+  if [[ "$LAUNCHCTL_TARGET" == system/* && "$(id -u)" != "0" ]]; then
+    fail "system-domain control requires root execution (current euid $(id -u)); hand to the deploy Owner; zero live writes performed"
+  fi
+
+  if [[ "$LAUNCHCTL_TARGET" == "$gui_target" ]]; then
+    OTHER_REALM_STATE="$SYS_STATE"
+  else
+    OTHER_REALM_STATE="$GUI_STATE"
+  fi
+  log "service target resolved: $LAUNCHCTL_TARGET (pid ${SERVICE_PID:-none}, uid $SERVICE_UID, program $UNIT_PROGRAM; other realm: $OTHER_REALM_STATE)"
+}
+
+# ledger 解析（#683 G5）：deploy 以 jq -n 追加 pretty 多行 JSON 对象，ledger 是
+# 多个 JSON 值的拼接流——不是行分隔 JSONL。对原始文件逐行 tail 只会读到 '}'
+# 且 jq 静默空结果（2cace 缺陷：binding 检查被跳过）。此处以 jq 解析完整流：
+# 任一损坏段都使 jq 失败 → 显式拒绝；无匹配记录 → 显式失败。
+ledger_last_record_for() {  # $1=sourceSha  $2=错误前缀；输出该 sha 最近一条记录（compact 单行）
+  local sha="$1" prefix="$2" out
+  [[ -f "$LEDGER" ]] || fail "$prefix: deployment ledger missing: $LEDGER"
+  out="$(jq -c --arg sha "$sha" 'select(.sourceSha == $sha)' "$LEDGER")" \
+    || fail "$prefix: deployment ledger corrupt (JSON stream parse failed): $LEDGER"
+  out="$(printf '%s\n' "$out" | tail -1)"
+  [[ -n "$out" ]] || fail "$prefix: no deployment ledger record for sourceSha=$sha in $LEDGER"
+  printf '%s' "$out"
+}
+
+ledger_field() {  # $1=record(compact JSON)  $2=字段名  $3=错误前缀；输出非空字段值
+  local v
+  v="$(jq -r --arg f "$2" '.[$f] // empty' <<<"$1")"
+  [[ -n "$v" ]] || fail "$3: ledger record missing $2"
+  printf '%s' "$v"
 }
 
 # 返回运行中 svc-workflow 进程的 txt（可执行）文件路径；进程未运行则返回空
@@ -192,16 +316,39 @@ deploy() {
   provenance="$(load_provenance "$sha")"
   dir="$RELEASES_DIR/$sha"
 
-  # 0) 解析唯一服务目标（system/gui 互斥；UID 校验）——必须先于任何写入
+  # 0) 解析唯一服务目标（分类：present running/stopped、absent、denied_unknown）
+  #    ——必须先于任何写入；program 绑定安装目标；身份实核；system 域 root 准入
   resolve_service_target
 
-  # 0b) 目标 preimage 门：部署者可声明 EXPECTED_PREIMAGE_SHA256，不符零写入
-  local target_preimage_sha256=""
-  if [[ -f "$SERVICE_DIR/$BINARY" ]]; then
-    target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
-    if [[ -n "${EXPECTED_PREIMAGE_SHA256:-}" && "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
-      fail "PREIMAGE MISMATCH: 目标 binary sha256=$target_preimage_sha256 != 声明 $EXPECTED_PREIMAGE_SHA256；未写入任何 live 状态"
+  # 0a) ledger 同绑定一致性（#683 G5）：回退（deploy oldSha）=同 binding 恢复，
+  #     不接受替代 realm；ledger 损坏或最近记录缺 launchctlTarget 亦拒绝（零写入）
+  if [[ -f "$LEDGER" ]]; then
+    local prior_line prior_target
+    prior_line="$(jq -c '.' "$LEDGER")" \
+      || fail "deployment ledger corrupt (JSON stream parse failed): $LEDGER; zero live writes performed"
+    prior_line="$(printf '%s\n' "$prior_line" | tail -1)"
+    [[ -n "$prior_line" ]] || fail "deployment ledger empty: $LEDGER; zero live writes performed"
+    prior_target="$(ledger_field "$prior_line" "launchctlTarget" "deployment ledger")"
+    if [[ "$prior_target" != "$LAUNCHCTL_TARGET" ]]; then
+      fail "binding drift: ledger records $prior_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
     fi
+  fi
+
+  # 0b) 目标 preimage 门（#683 G3）：既有目标的更新必须声明精确合法预像；
+  #     目标必须存在、可读且匹配声明；缺项/不符一律零写入失败
+  local target_preimage_sha256=""
+  if [[ -e "$SERVICE_DIR/$BINARY" ]]; then
+    [[ -f "$SERVICE_DIR/$BINARY" && -r "$SERVICE_DIR/$BINARY" ]] \
+      || fail "target preimage unreadable: $SERVICE_DIR/$BINARY is not a readable regular file; zero live writes performed"
+    if [[ -z "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
+      fail "declared preimage missing: EXPECTED_PREIMAGE_SHA256 must be set for an existing-service update; zero live writes performed"
+    fi
+    target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
+    if [[ "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
+      fail "PREIMAGE MISMATCH: target sha256=$target_preimage_sha256 != declared $EXPECTED_PREIMAGE_SHA256; zero live writes performed"
+    fi
+  elif [[ -n "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
+    fail "target preimage missing: $SERVICE_DIR/$BINARY does not exist but EXPECTED_PREIMAGE_SHA256 is declared; zero live writes performed"
   fi
 
   local artifact_sha256 migration_max migration_digest previous_sha256 deployed_at
@@ -250,8 +397,9 @@ deploy() {
     --arg migrationMaxVersion "$migration_max" \
     --arg migrationBundleDigest "$migration_digest" \
     --arg launchctlTarget "$LAUNCHCTL_TARGET" \
-    --arg targetPreimage "${target_preimage_sha256:-}" \
-    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage}' \
+    --arg targetPreimage "$target_preimage_sha256" \
+    --arg otherRealmState "$OTHER_REALM_STATE" \
+    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage, otherRealmState: $otherRealmState}' \
     >> "$LEDGER"
   log "deployment ledger 已追加: $LEDGER"
 
@@ -276,7 +424,34 @@ wait_for_version() {
 verify() {
   local sha="$1"
   assert_source_sha "$sha"
-  resolve_service_target
+
+  # 7.0) 固定绑定（#683 G5）：从 ledger 完整 JSON 流取本 sourceSha 最近一条
+  # 记录；记录缺/坏/必要字段缺一律失败。不重新做域解析、不接受替代 realm。
+  local rec fixed_target
+  rec="$(ledger_last_record_for "$sha" "VERIFY FAIL")"
+  fixed_target="$(ledger_field "$rec" "launchctlTarget" "VERIFY FAIL")"
+  ledger_field "$rec" "artifactSha256" "VERIFY FAIL" >/dev/null
+  jq -e 'has("sourceSha") and has("targetPreimageSha256")' <<<"$rec" >/dev/null \
+    || fail "VERIFY FAIL: ledger record missing required fields for sourceSha=$sha"
+  LAUNCHCTL_TARGET="$fixed_target"
+  require_expected_service_uid
+
+  # 7.0b) 固定绑定当前状态核验：unit 仍 present 且 running、program 仍绑定本
+  # 安装、运行 UID 仍等于服务 UID；记录的 realm 缺席即失败，绝不换 realm。
+  local out rc=0 pid program ps_uid
+  out="$(launchctl print "$LAUNCHCTL_TARGET" 2>/dev/null)" || rc=$?
+  [[ $rc -eq 0 ]] \
+    || fail "VERIFY FAIL: ledger-recorded binding $LAUNCHCTL_TARGET not present per launchctl print (rc=$rc); substitute realms are not accepted"
+  pid="$(unit_field "$out" "pid")"
+  [[ -n "$pid" ]] || fail "VERIFY FAIL: ledger-recorded binding $LAUNCHCTL_TARGET is not running"
+  program="$(unit_field "$out" "program")"
+  [[ "$(norm_path "${program:-}")" == "$(norm_path "$SERVICE_DIR/$BINARY")" ]] \
+    || fail "VERIFY FAIL: binding drift — unit program (${program:-UNKNOWN}) != $SERVICE_DIR/$BINARY"
+  ps_uid="$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+  [[ "$ps_uid" == "$EXPECTED_SERVICE_UID" ]] \
+    || fail "VERIFY FAIL: service process uid=${ps_uid:-unknown} != expected $EXPECTED_SERVICE_UID"
+  log "ledger-recorded binding $LAUNCHCTL_TARGET verified (pid $pid, uid $ps_uid)"
+
   local provenance
   provenance="$(load_provenance "$sha")"
 
