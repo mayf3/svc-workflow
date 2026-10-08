@@ -203,6 +203,54 @@ pub(crate) async fn get_definition_detail(
 }
 
 // ---------------------------------------------------------------------------
+// GET /internal/v1/domains/{domainId}/definitions/{definitionId}/versions/{versionId}
+// ---------------------------------------------------------------------------
+
+/// Precise single-version read for the same-domain owner: full graph
+/// (nodes/transitions) plus the exact version row. Reuses the existing
+/// DefinitionService authorization (H-5 domain owner + enabled principal).
+/// Path ownership must be consistent — a version that does not belong to the
+/// path definition/domain is reported as intentionally not visible (opaque
+/// 404, no existence leak). DRAFT and PUBLISHED versions are both readable
+/// by the owner, matching the definition-detail read policy.
+pub(crate) async fn get_definition_version_detail(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path((domain_id, definition_id, version_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+
+    let repo = PgDefinitionRepository::new(state.pool.clone());
+    let service = DefinitionService::new(repo);
+
+    let result = service
+        .get_definition_version(GetDefinitionVersion {
+            actor_principal_id: principal.principal_id.into_uuid(),
+            definition_version_id: version_id,
+        })
+        .await
+        .map_err(|e| map_definition_error(e, Some(domain_id)))?;
+
+    let def = &result.version.definition;
+    if def.id.into_uuid() != definition_id || def.domain_id.into_uuid() != domain_id {
+        return Err(ApiError::new(
+            axum::http::StatusCode::NOT_FOUND,
+            "definition_not_found",
+            "workflow definition not found",
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "definition": result.version.definition,
+        "version": result.version.version,
+        "nodes": result.version.nodes,
+        "transitions": result.version.transitions,
+        "nodes_count": result.nodes_count,
+        "transitions_count": result.transitions_count,
+    })))
+}
+
+// ---------------------------------------------------------------------------
 // POST /internal/v1/domains/{domainId}/definitions
 // ---------------------------------------------------------------------------
 
