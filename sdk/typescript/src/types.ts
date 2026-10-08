@@ -15,6 +15,7 @@ import type {
   createWorkflowInstanceResponseSchema,
   creatorDraftPageSchema,
   definitionDetailResponseSchema,
+  definitionInputContractResponseSchema,
   definitionItemSchema,
   definitionListPageSchema,
   definitionListQuerySchema,
@@ -98,6 +99,7 @@ export type MemberRemoveResponse = z.infer<typeof memberRemoveResponseSchema>;
 export type DefinitionItem = z.infer<typeof definitionItemSchema>;
 export type DefinitionVersionSummary = z.infer<typeof definitionVersionSummarySchema>;
 export type DefinitionDetailResponse = z.infer<typeof definitionDetailResponseSchema>;
+export type DefinitionInputContractResponse = z.infer<typeof definitionInputContractResponseSchema>;
 export type DefinitionListPage = z.infer<typeof definitionListPageSchema>;
 export type DefinitionListQuery = z.infer<typeof definitionListQuerySchema>;
 export type CreateDefinitionRequest = z.infer<typeof createDefinitionRequestSchema>;
