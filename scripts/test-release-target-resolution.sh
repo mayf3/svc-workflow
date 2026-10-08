@@ -79,6 +79,21 @@
 #      binding); V4 restore OLD on the same binding; V5 corrupt ledger refuses
 #      the rollback; V6 realm drift refuses the rollback; W missing ledger
 #      without a pin refuses pre-write (no realm re-discovery).
+#   L  legacy-ledger compatibility (real-site shape: 26 original-schema records,
+#      none carrying launchctlTarget):
+#      L1 pinned update over a legacy ledger succeeds; the NEW record written
+#         by this deploy carries the real binding; the 26 historical records
+#         stay byte-identical (no backfill, no migration);
+#      L3 one historical MODERN record with a conflicting target (gui) among
+#         legacy records → binding-drift refusal even though the latest is
+#         legacy;
+#      L4 a record with modern-only fields but no launchctlTarget → refused as
+#         neither-modern-nor-legacy (distinguishable from genuine legacy);
+#      L5 wrong pin over a legacy ledger → binding-drift refusal;
+#      L6 wrong declared preimage over a legacy ledger → preimage gate
+#         (proves the legacy path reaches later gates in order);
+#      L7 after L1: same-target rollback on the MIXED ledger (26 legacy +
+#         modern records) succeeds — the modern record now drives binding.
 #   Z  assertion self-test: the zero-write/rc checks themselves must be able to
 #      fail (deleted/altered fingerprint, missing rc file).
 
@@ -456,6 +471,65 @@ KICK_GUI_BEFORE=$(kick_count "gui/502/com.svc-workflow")
 run_deploy_env W "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$ECHO_SHA"
 assert_gate "W: missing binding record refuses pre-write" W "deployment binding record missing"
 assert "W: no kickstart on any realm" $([ "$KICK_BEFORE" = "$(kick_count "$SYS_TARGET")" ] && [ "$KICK_GUI_BEFORE" = "$(kick_count "gui/502/com.svc-workflow")" ] && echo 1 || echo 0) "kick changed"
+
+# ── L. legacy-ledger compatibility: original six-field records, no binding ─
+append_legacy_record() {  # 精确复刻 main 18fb2f8b 原入口写出的记录（六字段、无 binding 字段）
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "${1:-$MERGE_SHA}"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg previousArtifactSha256 ""     --arg migrationMaxVersion "0001"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
+}
+append_modern_record() {  # $1 = target：本入口 d4baf7e 起写出的记录形状
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg launchctlTarget "$1"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: "$LEGACY_MIG_DIGEST", launchctlTarget: $launchctlTarget, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+}
+append_modern_missing_field_record() {  # 有现代专有字段但缺 launchctlTarget：既非现代也非 legacy
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: "$LEGACY_MIG_DIGEST", targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+}
+build_legacy_site() {  # 真实现场形状：既有 binary + 26 条旧 schema 记录（无 binding 字段）
+  stage_release
+  cp /bin/echo "$SVC/svc-workflow"
+  set_state system 0 502
+  LEGACY_ART_SHA=$(shasum -a 256 /bin/echo | awk '{print $1}')
+  LEGACY_MIG_DIGEST=$(cd "$SVC/releases/$MERGE_SHA" && find migrations -name '*.sql' -type f | sort | xargs shasum -a 256 | shasum -a 256 | awk '{print $1}')
+  rm -f "$SVC/ledger.json" "$STATE/kickstart.log"
+  local i; for i in $(seq 1 26); do append_legacy_record; done
+}
+
+# L1: pinned update over the legacy ledger → success, new record carries the
+#     real binding, the 26 historical records stay byte-identical.
+build_legacy_site
+cp "$SVC/ledger.json" "$STATE/ledger-before-L1.json"
+run_deploy_env L1 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+RC=$(rc_of L1)
+assert "L1: pinned update succeeds over 26 legacy records" $([ "$(have_rc L1)" = "1" ] && [ "$RC" = "0" ] && [ "$(kick_count "$SYS_TARGET")" -ge 1 ] && echo 1 || echo 0) "rc=$RC (see out-L1)"
+assert "L1: new record written with real binding, history untouched" $([ "$(jq -s 'length' "$SVC/ledger.json")" = "27" ]     && [ "$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json" | tr -d '"')" = "$SYS_TARGET" ]     && [ "$(jq -s --slurpfile before "$STATE/ledger-before-L1.json" '.[0:26] == $before' "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "records=$(jq -s 'length' "$SVC/ledger.json") last=$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json")"
+
+# L7: after L1 — same-target rollback on the MIXED ledger (26 legacy + modern).
+run_deploy_env L7 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+RC=$(rc_of L7)
+assert "L7: same-target rollback on mixed ledger succeeds" $([ "$(have_rc L7)" = "1" ] && [ "$RC" = "0" ] && [ "$(kick_count "$SYS_TARGET")" -ge 2 ] && [ "$(kick_count "gui/502/com.svc-workflow")" = "0" ] && echo 1 || echo 0) "rc=$RC kicks=$(kick_count "$SYS_TARGET") (see out-L7)"
+assert "L7: latest record still carries the real binding" $([ "$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json" | tr -d '"')" = "$SYS_TARGET" ] && echo 1 || echo 0) "last=$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json")"
+
+# L3: one historical MODERN record with a conflicting target → refuse.
+build_legacy_site
+append_legacy_record; append_legacy_record
+append_modern_record "gui/502/com.svc-workflow"   # 冲突 target，位于中段；最新仍是 legacy
+append_legacy_record
+run_deploy_env L3 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+assert_gate "L3: conflicting historical binding refuses" L3 "binding drift: ledger records gui/502/com.svc-workflow"
+
+# L4: modern-only fields but no launchctlTarget → neither modern nor legacy.
+build_legacy_site
+append_modern_missing_field_record   # 最新记录：现代字段、无 binding 字段
+run_deploy_env L4 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+assert_gate "L4: modern-missing-field is distinguishable from legacy" L4 "nor valid legacy schema"
+
+# L5: wrong pin over a legacy ledger → drift refusal.
+build_legacy_site
+run_deploy_env L5 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="gui/502/com.svc-workflow"
+assert_gate "L5: wrong pin refuses" L5 "binding drift: ledger records gui/502/com.svc-workflow but resolved system/com.svc-workflow"
+
+# L6: wrong declared preimage over a legacy ledger → preimage gate.
+build_legacy_site
+run_deploy_env L6 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="deadbeef" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+assert_gate "L6: legacy path reaches the preimage gate" L6 "PREIMAGE MISMATCH"
 
 # ── Z. assertion self-test: the checks themselves must be able to fail ────
 cp "$WORK/fp-before-O2.txt" "$WORK/fp-before-Z.txt"   # O2 refuses corrupt ledger → intact pair
