@@ -341,14 +341,23 @@ deploy() {
   #     任何现代记录的 target 与本次解析结果不一致 → binding drift 拒绝（混合
   #     记录中任何已存在冲突 target 一律拒绝，不只看最新一条）。
   #   legacy 记录 = 完全没有 launchctlTarget 键，且与原入口（main 18fb2f8b）
-  #     写出的六字段 schema 完全一致且形状合法（deployedAt 非空、sourceSha
-  #     40hex、artifactSha256/migrationBundleDigest 64hex、migrationMaxVersion
-  #     数字）→ 合法历史记录，不补写、不迁移；若其为最新记录，本次部署的
+  #     写出的 schema 完全一致：恰好六个键（deployedAt、sourceSha、
+  #     artifactSha256、previousArtifactSha256、migrationMaxVersion、
+  #     migrationBundleDigest），无任何额外键（targetPreimageSha256/
+  #     otherRealmState 等现代专有字段存在即非 legacy）；类型按原写入器
+  #     实际允许值收紧——六值全部经 jq --arg 写入故必为字符串
+  #     （previousArtifactSha256 允许空串=首次部署，否则 64hex；deployedAt
+  #     非空；sourceSha 40hex；artifactSha256/migrationBundleDigest 64hex；
+  #     migrationMaxVersion 数字串）。原写入器不可能产出 null/数字/嵌套值
+  #     或额外键，故无 null 默许；合法 hash 的现代缺 target 记录、或缺
+  #     previousArtifactSha256 的记录均不再可伪作 legacy。
+  #     合法历史记录不补写、不迁移；若其为最新记录，本次部署的
   #     绑定必须来自固定目标输入 EXPECTED_LAUNCHCTL_TARGET（值须来自已批准
   #     证据，如 REALM-MISMATCH 只读记录 actualLoaded），缺失或不符即拒绝；
   #     本次部署新追加的记录写真实 binding，此后 ledger 恢复固定绑定驱动。
-  #   其余一切（键存在但为空、带现代专有字段却无 target、缺旧字段/形状非法、
-  #     非对象、流损坏）→ 一律拒绝，不得当作可信 legacy 绕过保护。
+  #   其余一切（键存在但为空、带现代专有字段却无 target、键集不符/缺
+  #     previousArtifactSha256/类型或形状非法、非对象、流损坏）→ 一律拒绝，
+  #     不得当作可信 legacy 绕过保护。
   # ledger 缺失（首次以本入口更新既有服务）→ 同样必须 EXPECTED_LAUNCHCTL_TARGET
   #   显式绑定，缺失即拒绝——缺 ledger 时不得重新发现另一 realm。
   local prior_target
@@ -361,9 +370,11 @@ deploy() {
       if type != "object" then "invalid"
       elif (has("launchctlTarget") and (.launchctlTarget|type=="string") and (.launchctlTarget|length>0)) then "modern \(.launchctlTarget)"
       elif has("launchctlTarget") then "invalid"
-      elif ((.deployedAt // "") | type=="string" and length>0)
+      elif ((keys | sort) == (["artifactSha256","deployedAt","migrationBundleDigest","migrationMaxVersion","previousArtifactSha256","sourceSha"]))
+       and ((.deployedAt // "") | type=="string" and length>0)
        and ((.sourceSha // "") | tostring | test("^[0-9a-f]{40}$"))
        and ((.artifactSha256 // "") | tostring | test("^[0-9a-f]{64}$"))
+       and ((.previousArtifactSha256 // "") | type=="string" and test("^(|[0-9a-f]{64})$"))
        and ((.migrationBundleDigest // "") | tostring | test("^[0-9a-f]{64}$"))
        and ((.migrationMaxVersion // "") | tostring | test("^[0-9]+$")) then "legacy"
       else "invalid" end')" \
@@ -380,7 +391,7 @@ deploy() {
           last_kind="legacy"; last_target=""
           ;;
         *)
-          fail "deployment ledger record is neither a modern binding record nor valid legacy schema (original six-field record: deployedAt/sourceSha/artifactSha256/previousArtifactSha256/migrationMaxVersion/migrationBundleDigest); refusing pre-write; zero live writes performed"
+          fail "deployment ledger record is neither a modern binding record nor valid legacy schema (exactly the six original fields, all strings: deployedAt/sourceSha/artifactSha256/previousArtifactSha256/migrationMaxVersion/migrationBundleDigest; previousArtifactSha256 may be empty; no extra keys); refusing pre-write; zero live writes performed"
           ;;
       esac
     done <<<"$class_lines"

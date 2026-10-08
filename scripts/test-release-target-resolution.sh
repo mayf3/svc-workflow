@@ -87,11 +87,15 @@
 #      L3 one historical MODERN record with a conflicting target (gui) among
 #         legacy records → binding-drift refusal even though the latest is
 #         legacy;
-#      L4 a record with modern-only fields but no launchctlTarget → refused as
-#         neither-modern-nor-legacy (distinguishable from genuine legacy);
+#      L4 a record whose ONLY defect is modern-only fields (targetPreimageSha256/
+#         otherRealmState) with the target missing and every other field valid
+#         → refused as neither-modern-nor-legacy (valid hashes alone must not
+#         make it pass as legacy);
 #      L5 wrong pin over a legacy ledger → binding-drift refusal;
 #      L6 wrong declared preimage over a legacy ledger → preimage gate
 #         (proves the legacy path reaches later gates in order);
+#      L8 a record exactly missing previousArtifactSha256 (five valid fields,
+#         no modern fields) → refused: the legacy key set must be exact.
 #      L7 after L1: same-target rollback on the MIXED ledger (26 legacy +
 #         modern records) succeeds — the modern record now drives binding.
 #   Z  assertion self-test: the zero-write/rc checks themselves must be able to
@@ -477,10 +481,13 @@ append_legacy_record() {  # 精确复刻 main 18fb2f8b 原入口写出的记录�
   jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "${1:-$MERGE_SHA}"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg previousArtifactSha256 ""     --arg migrationMaxVersion "0001"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
 }
 append_modern_record() {  # $1 = target：本入口 d4baf7e 起写出的记录形状
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg launchctlTarget "$1"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: "$LEGACY_MIG_DIGEST", launchctlTarget: $launchctlTarget, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     --arg launchctlTarget "$1"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
 }
-append_modern_missing_field_record() {  # 有现代专有字段但缺 launchctlTarget：既非现代也非 legacy
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: "$LEGACY_MIG_DIGEST", targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+append_modern_missing_field_record() {  # 其余字段全部合法，唯一异常：现代专有字段存在而 target 缺
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+}
+append_missing_previous_record() {  # 恰好缺 previousArtifactSha256，其余五字段全部合法、无现代字段
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
 }
 build_legacy_site() {  # 真实现场形状：既有 binary + 26 条旧 schema 记录（无 binding 字段）
   stage_release
@@ -493,13 +500,16 @@ build_legacy_site() {  # 真实现场形状：既有 binary + 26 条旧 schema �
 }
 
 # L1: pinned update over the legacy ledger → success, new record carries the
-#     real binding, the 26 historical records stay byte-identical.
+#     real binding; deploy appends — the pre-deploy ledger must be a byte-exact
+#     prefix afterwards (JSON-equality AND raw byte-prefix both checked).
 build_legacy_site
 cp "$SVC/ledger.json" "$STATE/ledger-before-L1.json"
+LEDGER_BYTES=$(wc -c < "$SVC/ledger.json")
 run_deploy_env L1 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
 RC=$(rc_of L1)
 assert "L1: pinned update succeeds over 26 legacy records" $([ "$(have_rc L1)" = "1" ] && [ "$RC" = "0" ] && [ "$(kick_count "$SYS_TARGET")" -ge 1 ] && echo 1 || echo 0) "rc=$RC (see out-L1)"
 assert "L1: new record written with real binding, history untouched" $([ "$(jq -s 'length' "$SVC/ledger.json")" = "27" ]     && [ "$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json" | tr -d '"')" = "$SYS_TARGET" ]     && [ "$(jq -s --slurpfile before "$STATE/ledger-before-L1.json" '.[0:26] == $before' "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "records=$(jq -s 'length' "$SVC/ledger.json") last=$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json")"
+assert "L1: pre-deploy ledger is a byte-exact prefix after deploy" $([ "$(head -c "$LEDGER_BYTES" "$SVC/ledger.json" | cmp -s - "$STATE/ledger-before-L1.json" && echo 1 || echo 0)" = "1" ] && echo 1 || echo 0) "byte-prefix differs"
 
 # L7: after L1 — same-target rollback on the MIXED ledger (26 legacy + modern).
 run_deploy_env L7 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
@@ -515,7 +525,9 @@ append_legacy_record
 run_deploy_env L3 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
 assert_gate "L3: conflicting historical binding refuses" L3 "binding drift: ledger records gui/502/com.svc-workflow"
 
-# L4: modern-only fields but no launchctlTarget → neither modern nor legacy.
+# L4: all other fields valid, the ONLY defect being modern-only fields present
+#     while the target is missing → neither modern nor legacy (must not be
+#     accepted as legacy on the strength of its valid hashes alone).
 build_legacy_site
 append_modern_missing_field_record   # 最新记录：现代字段、无 binding 字段
 run_deploy_env L4 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
@@ -530,6 +542,13 @@ assert_gate "L5: wrong pin refuses" L5 "binding drift: ledger records gui/502/co
 build_legacy_site
 run_deploy_env L6 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="deadbeef" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
 assert_gate "L6: legacy path reaches the preimage gate" L6 "PREIMAGE MISMATCH"
+
+# L8: exactly missing previousArtifactSha256, all five other fields valid and
+#     no modern fields → key set incomplete, refused as non-legacy.
+build_legacy_site
+append_missing_previous_record   # 最新记录：五字段合法、缺 previous
+run_deploy_env L8 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+assert_gate "L8: record missing only previousArtifactSha256 is not legacy" L8 "nor valid legacy schema"
 
 # ── Z. assertion self-test: the checks themselves must be able to fail ────
 cp "$WORK/fp-before-O2.txt" "$WORK/fp-before-Z.txt"   # O2 refuses corrupt ledger → intact pair
