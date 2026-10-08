@@ -96,10 +96,75 @@ load_provenance() {
     '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'
 }
 
+# 解析唯一的 svc-workflow launchd 目标（gui/UID 或 system，二选一）。
+# 必须在 ANY live 写入前调用；同一绑定供 deploy/restart/verify/rollback 共用。
+# 失败模式（零写入）：0 个匹配=无 daemon；2 个匹配=域歧义；运行 UID 不符=目标错。
+LAUNCHCTL_TARGET=""
+SERVICE_PID=""
+
+resolve_service_target() {
+  local gui_target="gui/$(id -u)/$LABEL"
+  local sys_target="system/$LABEL"
+  local t rc err state pid program uid_val
+  local present=0 denied_unknown=0
+  LAUNCHCTL_TARGET=""; SERVICE_PID=""; UNIT_PROGRAM=""; SERVICE_UID=""; OTHER_REALM_STATE="none"
+
+  for t in "$gui_target" "$sys_target"; do
+    err="$(mktemp)"
+    rc=0
+    out="$(launchctl print "$t" 2>"$err")" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+      pid="$(awk -F'= ' '/pid = /{print $2; exit}' <<<"$out" || true)"
+      program="$(awk -F'= ' '/^program = /{print $2; exit}' <<<"$out" || true)"
+      uid_val="$(awk -F'= ' '/^uid = /{print $2; exit}' <<<"$out" || true)"
+      if [[ "$t" == "$gui_target" ]]; then
+        GUI_STATE="present"; [[ -n "$pid" ]] || GUI_STATE="present_stopped"
+      else
+        SYS_STATE="present"; [[ -n "$pid" ]] || SYS_STATE="present_stopped"
+      fi
+      present=$((present+1))
+      LAUNCHCTL_TARGET="$t"; SERVICE_PID="$pid"; UNIT_PROGRAM="$program"; SERVICE_UID="$uid_val"
+    elif grep -qi "could not find service" "$err" 2>/dev/null; then
+      if [[ "$t" == "$gui_target" ]]; then GUI_STATE="absent"; else SYS_STATE="absent"; fi
+    else
+      if [[ "$t" == "$gui_target" ]]; then GUI_STATE="denied_unknown"; else SYS_STATE="denied_unknown"; fi
+      denied_unknown=$((denied_unknown+1))
+    fi
+    rm -f "$err"
+  done
+
+  if [[ $present -eq 0 ]]; then
+    if [[ $denied_unknown -gt 0 ]]; then
+      fail "service target resolution: no present unit and denied/unknown print results (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
+    fi
+    fail "service target resolution: no unit found (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
+  fi
+  if [[ $present -gt 1 ]]; then
+    fail "service target resolution: ambiguous, $present present units (gui=$GUI_STATE system=$SYS_STATE); zero live writes performed"
+  fi
+
+  # unit program binding: the launchd-configured executable must be exactly
+  # the $SERVICE_DIR/$BINARY this script manages — otherwise this SERVICE_DIR
+  # is the wrong target and any write would hit the wrong install.
+  if [[ -z "$UNIT_PROGRAM" ]]; then
+    fail "service target resolution: unit program UNKNOWN from launchctl print; zero live writes performed"
+  fi
+  if [[ "$UNIT_PROGRAM" != "$SERVICE_DIR/$BINARY" ]]; then
+    fail "service target resolution: unit program ($UNIT_PROGRAM) != $SERVICE_DIR/$BINARY; refusing to manage a foreign install; zero live writes performed"
+  fi
+
+  # realm control admission (pre-write): system-domain kickstart requires
+  # root; gui-domain requires the owning user. The restart itself is never a
+  # probe — this check exists so writes never precede a control we cannot do.
+  if [[ "$LAUNCHCTL_TARGET" == system/* && "$(id -u)" != "0" ]]; then
+    fail "system-domain control requires root execution (current euid $(id -u)); hand to the deploy Owner; zero live writes performed"
+  fi
+}
+
 # 返回运行中 svc-workflow 进程的 txt（可执行）文件路径；进程未运行则返回空
 running_binary_path() {
   local pid
-  pid="$(launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}')"
+  pid="$(launchctl print "$LAUNCHCTL_TARGET" 2>/dev/null | awk -F'= ' '/pid = /{print $2; exit}')"
   [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 0
   lsof -p "$pid" -a -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
 }
@@ -164,6 +229,24 @@ deploy() {
   provenance="$(load_provenance "$sha")"
   dir="$RELEASES_DIR/$sha"
 
+  # 0) 解析唯一服务目标（分类：present running/stopped、absent、denied_unknown）
+  #    ——必须先于任何写入；program 绑定 $SERVICE_DIR/$BINARY；realm 准入。
+  resolve_service_target
+
+  # 0b) 目标 preimage 门（#684 G3）：既有服务更新必须声明精确合法预像；
+  #     目标必须存在、可读且匹配声明；缺项/不符一律零写入失败。
+  local target_preimage_sha256=""
+  if [[ -z "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
+    fail "declared preimage missing: EXPECTED_PREIMAGE_SHA256 must be set for an existing-service update; zero live writes performed"
+  fi
+  if [[ ! -f "$SERVICE_DIR/$BINARY" ]]; then
+    fail "target preimage missing: $SERVICE_DIR/$BINARY does not exist; zero live writes performed"
+  fi
+  target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
+  if [[ "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
+    fail "PREIMAGE MISMATCH: target sha256=$target_preimage_sha256 != declared $EXPECTED_PREIMAGE_SHA256; zero live writes performed"
+  fi
+
   local artifact_sha256 migration_max migration_digest previous_sha256 deployed_at
   artifact_sha256="$(jq -r '.artifactSha256' <<<"$provenance")"
   migration_max="$(jq -r '.migrationMaxVersion' <<<"$provenance")"
@@ -209,15 +292,18 @@ deploy() {
     --arg previousArtifactSha256 "${previous_sha256:-}" \
     --arg migrationMaxVersion "$migration_max" \
     --arg migrationBundleDigest "$migration_digest" \
-    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}' \
+    --arg launchctlTarget "$LAUNCHCTL_TARGET" \
+    --arg targetPreimage "$target_preimage_sha256" \
+    --arg otherRealmState "$OTHER_REALM_STATE" \
+    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage, otherRealmState: $otherRealmState}' \
     >> "$LEDGER"
   log "deployment ledger 已追加: $LEDGER"
 
-  # 6) restart
-  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 \
-    || fail "launchctl 服务不存在: ${LABEL}（先加载 plist）"
-  log "restart $LABEL (launchctl kickstart -k)"
-  launchctl kickstart -k "gui/$(id -u)/$LABEL"
+  # 6) restart（与解析/写入同一绑定）
+  launchctl print "$LAUNCHCTL_TARGET" >/dev/null 2>&1 \
+    || fail "launchctl 服务不存在: $LAUNCHCTL_TARGET（先加载 plist）"
+  log "restart $LAUNCHCTL_TARGET (launchctl kickstart -k)"
+  launchctl kickstart -k "$LAUNCHCTL_TARGET"
 }
 
 # 等待 /version 可访问；返回响应体
@@ -234,6 +320,14 @@ wait_for_version() {
 verify() {
   local sha="$1"
   assert_source_sha "$sha"
+  local prior_target=""
+  if [[ -f "$LEDGER" ]]; then
+    prior_target="$(tail -1 "$LEDGER" | jq -r '.launchctlTarget // empty' 2>/dev/null || true)"
+  fi
+  resolve_service_target
+  if [[ -n "$prior_target" && "$LAUNCHCTL_TARGET" != "$prior_target" ]]; then
+    fail "VERIFY FAIL: binding drift — ledger records $prior_target but fresh resolution is $LAUNCHCTL_TARGET"
+  fi
   local provenance
   provenance="$(load_provenance "$sha")"
 
