@@ -54,6 +54,15 @@ impl DefinitionRepository for PgDefinitionRepository {
             .await
     }
 
+    async fn has_active_membership_binding(
+        &self,
+        principal_id: uuid::Uuid,
+        domain_id: uuid::Uuid,
+    ) -> Result<bool, DefinitionError> {
+        self.check_active_membership_binding_inner(principal_id, domain_id)
+            .await
+    }
+
     // -- Definition CRUD -------------------------------------------------------
 
     async fn create_definition(

@@ -5,10 +5,12 @@
 
 use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::WorkflowGraph;
+use crate::domain::enums::DefinitionVersionStatus;
 
 use super::super::queries::{
     DefinitionQueryResult, DomainDefinitionListResult, GetCompleteVersionGraph, GetDefinition,
-    GetDefinitionVersion, GraphQueryResult, ListDefinitionVersions, ListDomainDefinitions,
+    GetDefinitionVersion, GetPublishedVersionInputContract, GraphQueryResult,
+    ListDefinitionVersions, ListDomainDefinitions, PublishedVersionInputContract,
     VersionListResult, VersionQueryResult,
 };
 use super::super::repository::DefinitionData;
@@ -145,6 +147,60 @@ impl<R: DefinitionRepository> DefinitionService<R> {
                 transitions,
                 context_schema: version.context_schema,
             },
+        })
+    }
+
+    /// Get the input contract of a PUBLISHED definition version.
+    ///
+    /// Admission predicate is the EXACT create-instance admission sequence
+    /// (SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1): principal
+    /// enabled -> version exists -> active domain membership binding -> domain
+    /// enabled -> version PUBLISHED. Denials for non-members stay in the
+    /// opaque-404 mapper bucket; only the five contract fields are returned.
+    pub async fn get_published_version_input_contract(
+        &self,
+        query: GetPublishedVersionInputContract,
+    ) -> Result<PublishedVersionInputContract, DefinitionError> {
+        // 1. Principal exists and enabled (same first gate as every read).
+        self.ensure_principal_enabled(query.actor_principal_id)
+            .await?;
+
+        // 2. Version exists (404 bucket on miss).
+        let version = self.repo.get_version(query.definition_version_id).await?;
+        let definition = self
+            .repo
+            .get_definition(version.workflow_definition_id.into_uuid())
+            .await?;
+
+        // 3. Create-instance admission predicate: any ACTIVE binding in the
+        //    version's domain (role_key unrestricted). Domain comes from the
+        //    stored row, never from caller input.
+        let is_member = self
+            .repo
+            .has_active_membership_binding(
+                query.actor_principal_id,
+                definition.domain_id.into_uuid(),
+            )
+            .await?;
+        if !is_member {
+            return Err(DefinitionError::PermissionDenied);
+        }
+
+        // 4. Domain enabled (mirrors create's 403 domain_disabled).
+        self.ensure_domain_enabled(definition.domain_id.into_uuid())
+            .await?;
+
+        // 5. PUBLISHED only (mirrors create's 409 version_not_published).
+        if version.version_status != DefinitionVersionStatus::PUBLISHED {
+            return Err(DefinitionError::VersionNotPublished);
+        }
+
+        Ok(PublishedVersionInputContract {
+            definition_id: definition.id.into_uuid(),
+            definition_version_id: version.id.into_uuid(),
+            version_number: version.version_number,
+            version_status: version.version_status,
+            context_schema: version.context_schema,
         })
     }
 
