@@ -23,6 +23,9 @@ pub enum DefinitionError {
     DefinitionKeyConflict,
     /// The version is not in DRAFT state for the requested operation.
     VersionNotDraft,
+    /// The version is not PUBLISHED, so its input contract cannot be read
+    /// (mirrors the create-instance admission gate).
+    VersionNotPublished,
     /// The lifecycle transition is not allowed (e.g., REVOKED → PUBLISHED).
     InvalidLifecycleTransition,
     /// Graph validation failed with specific errors.
@@ -53,6 +56,7 @@ impl fmt::Display for DefinitionError {
             Self::DefinitionVersionNotFound => write!(f, "definition version not found"),
             Self::DefinitionKeyConflict => write!(f, "definition key already exists in domain"),
             Self::VersionNotDraft => write!(f, "version is not in DRAFT status"),
+            Self::VersionNotPublished => write!(f, "version is not PUBLISHED"),
             Self::InvalidLifecycleTransition => {
                 write!(f, "invalid lifecycle status transition")
             }
