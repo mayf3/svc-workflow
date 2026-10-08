@@ -27,11 +27,52 @@ BASE_URL="http://127.0.0.1:$PORT"
 GIT=$(command -v git)
 SHASUM=$(command -v shasum)
 RELEASE_WT=""
+RELEASE_LOCK_DIR="$SERVICE_DIR/.release.lock"
+RELEASE_LOCK_HELD=0
 
 log() { printf '[release] %s\n' "$*"; }
 fail() { printf '[release] ERROR: %s\n' "$*" >&2; exit 1; }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# 所有正式发布入口共用同一锁；不依赖 macOS 默认不提供的 flock。
+# 残锁只会 fail closed，不能按时间/PID 推断并抢占另一个发布。
+acquire_release_lock() {
+  mkdir -p "$SERVICE_DIR"
+  local attempt
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    if mkdir "$RELEASE_LOCK_DIR" 2>/dev/null; then
+      RELEASE_LOCK_HELD=1
+      printf '%s\n' "$$" > "$RELEASE_LOCK_DIR/owner"
+      return 0
+    fi
+    sleep 1
+  done
+  # ${...} 大括号必须封闭变量名：bash 3.2 会把紧随的多字节字符并入变量名，
+  # set -u 中止后 EXIT trap 会把状态归零，锁竞争会被误报为成功。
+  fail "发布锁在 30s 内未释放: ${RELEASE_LOCK_DIR} (确认无发布运行后再恢复残锁)"
+}
+
+release_cleanup() {
+  local status=$? lock_owner
+  trap - EXIT
+  trap '' INT TERM
+  if [[ -n "$RELEASE_WT" ]]; then
+    "$GIT" -C "$REPO_ROOT" worktree remove --force "$RELEASE_WT" >/dev/null 2>&1 \
+      || { rm -rf "$RELEASE_WT" || { log "ERROR: 无法清理 release worktree: $RELEASE_WT" >&2; [[ "$status" != 0 ]] || status=1; }; }
+  fi
+  if [[ "$RELEASE_LOCK_HELD" == 1 ]]; then
+    lock_owner="$(cat "$RELEASE_LOCK_DIR/owner" 2>/dev/null || true)"
+    if [[ "$lock_owner" == "$$" ]]; then
+      rm "$RELEASE_LOCK_DIR/owner" && rmdir "$RELEASE_LOCK_DIR" \
+        || { log "ERROR: 无法清理发布锁: $RELEASE_LOCK_DIR" >&2; [[ "$status" != 0 ]] || status=1; }
+    else
+      log "ERROR: 发布锁 owner 不匹配，保留锁: $RELEASE_LOCK_DIR" >&2
+      [[ "$status" != 0 ]] || status=1
+    fi
+  fi
+  exit "$status"
+}
 
 assert_source_sha() {
   local sha="$1"
@@ -112,8 +153,7 @@ build() {
   RELEASE_WT="$(mktemp -d "${TMPDIR:-/tmp}/svc-workflow-release.XXXXXX")"
   log "创建 clean worktree: $RELEASE_WT (commit $sha)"
   "$GIT" -C "$REPO_ROOT" worktree add --detach "$RELEASE_WT" "$sha" >/dev/null
-  # 全局变量 + EXIT trap：无论成功失败都清理 worktree（local 变量在函数返回后不可用）
-  trap 'git -C "$REPO_ROOT" worktree remove --force "$RELEASE_WT" >/dev/null 2>&1 || rm -rf "$RELEASE_WT"' EXIT
+  # main 的统一 EXIT cleanup 同时清理 worktree 和发布锁。
 
   log "release build（独立 CARGO_TARGET_DIR，确保产物只来自该 commit 的干净源码）"
   (cd "$RELEASE_WT" && cargo build --release --locked)
@@ -274,28 +314,43 @@ verify() {
   log "migration bundle max=$deployed_max, digest=$deployed_digest == provenance ✓"
 
   # 8) 基础只读 HTTP smoke + 记录
-  local healthz readyz auth_code
+  local healthz readyz unauth_code auth_code expected_auth_code
   healthz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/healthz" || echo 000)"
   readyz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/readyz" || echo 000)"
   # 只读认证端点：无 token 应 401；有 AUTH_TOKEN 则期望 200
-  auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
+  expected_auth_code="401"
+  unauth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
+  auth_code="$unauth_code"
   if [[ -n "${AUTH_TOKEN:-}" ]]; then
+    expected_auth_code="200"
     auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
   fi
-  log "smoke: healthz=$healthz readyz=$readyz auth(domains)=$auth_code"
+  log "smoke: healthz=$healthz readyz=$readyz unauth=$unauth_code auth(domains)=$auth_code"
   [[ "$healthz" == "200" ]] || fail "VERIFY FAIL: healthz=$healthz"
-  if [[ "$readyz" != "200" ]]; then
-    log "注意: readyz=${readyz}（已知独立问题：JWKS/auth 缓存，本轮只记录不修）"
-  fi
+  [[ "$readyz" == "200" ]] || fail "VERIFY FAIL: readyz=$readyz"
+  [[ "$unauth_code" == "401" ]] || fail "VERIFY FAIL: unauthHttpStatus=$unauth_code expected=401"
+  [[ "$auth_code" == "$expected_auth_code" ]] \
+    || fail "VERIFY FAIL: authHttpStatus=$auth_code expected=$expected_auth_code"
 
-  # 验收结果并入 ledger 最近一条
-  jq -c \
+  # 仅验收当前 deployment receipt；同一 SHA 的历史部署也不可改写。
+  jq -ecs \
+    --arg sourceSha "$sha" \
+    --arg artifactSha256 "$artifact_sha256" \
+    --arg migrationMaxVersion "$migration_max" \
+    --arg migrationBundleDigest "$migration_digest" \
     --arg healthz "$healthz" \
     --arg readyz "$readyz" \
     --arg authHttpStatus "$auth_code" \
     --arg runningBinaryPath "$bin_path" \
-    '.verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}' \
-    "$LEDGER" > "$LEDGER.tmp" && mv "$LEDGER.tmp" "$LEDGER"
+    'if length == 0 then error("deployment ledger is empty")
+     elif .[-1].sourceSha != $sourceSha or .[-1].artifactSha256 != $artifactSha256 or
+          .[-1].migrationMaxVersion != $migrationMaxVersion or .[-1].migrationBundleDigest != $migrationBundleDigest
+     then error("latest deployment receipt does not match verified provenance")
+     else .[-1].verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}
+          | .[]
+     end' \
+    "$LEDGER" > "$LEDGER.tmp" || fail "VERIFY FAIL: 无法更新当前 deployment receipt"
+  mv "$LEDGER.tmp" "$LEDGER"
 
   log "VERIFY PASSED: 运行中的 svc-workflow = clean commit ${sha} 的产物（sha256 ${artifact_sha256}）"
 }
@@ -304,6 +359,14 @@ main() {
   local cmd="${1:-all}"
   local sha="${2:-}"
   [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha>"
+  case "$cmd" in
+    build|deploy|verify|all) ;;
+    *) fail "未知子命令: $cmd" ;;
+  esac
+  trap release_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  acquire_release_lock
   case "$cmd" in
     build) build "$sha" ;;
     deploy) deploy "$sha" ;;
@@ -318,3 +381,4 @@ main() {
 }
 
 main "$@"
+
