@@ -16,8 +16,11 @@
 #   AUTH_TOKEN                可选：部署后基础认证请求使用的 Bearer token
 #   EXPECTED_SERVICE_UID      预期服务 UID（#683 G1，与调用 EUID 分开；root 调用必填）
 #   EXPECTED_PREIMAGE_SHA256  必填（#683 G3/P3）：目标 binary 的精确 sha256（无首装例外）
-#   EXPECTED_LAUNCHCTL_TARGET 仅当 ledger 尚不存在时必填（#683 P5）：固定目标绑定，
-#                             取值须来自已批准证据（如 REALM-MISMATCH 只读记录 actualLoaded）
+#   EXPECTED_LAUNCHCTL_TARGET 当 ledger 缺失、或最新记录为 legacy 旧 schema
+#                             （无 binding 字段）时必填（#683 P5/兼容）：固定目标
+#                             绑定，取值须来自已批准证据（如 REALM-MISMATCH
+#                             只读记录 actualLoaded）；ledger 存在且最新记录为
+#                             现代记录时以记录为准，本输入被忽略
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -333,20 +336,62 @@ deploy() {
   #    ——必须先于任何写入；program 绑定安装目标；身份实核；system 域 root 准入
   resolve_service_target
 
-  # 0a) ledger 绑定（#683 G5/P5）：ledger 存在 → 以完整流最新记录为固定绑定，
-  #     缺/坏/字段缺一律首写拒绝（回退=同 binding 恢复，不接受替代 realm）；
-  #     ledger 缺失（首次以本入口更新既有服务）→ 必须以固定目标输入
-  #     EXPECTED_LAUNCHCTL_TARGET 显式绑定（取值须来自已批准证据，如
-  #     REALM-MISMATCH 只读记录 actualLoaded），缺失或不符即拒绝——
-  #     缺 ledger 时不得重新发现另一 realm。
+  # 0a) ledger 绑定（#683 G5/P5/兼容）：ledger 是多个 JSON 值的拼接流，逐条分类：
+  #   现代记录 = launchctlTarget 为非空字符串 → 其值即该记录的固定绑定；
+  #     任何现代记录的 target 与本次解析结果不一致 → binding drift 拒绝（混合
+  #     记录中任何已存在冲突 target 一律拒绝，不只看最新一条）。
+  #   legacy 记录 = 完全没有 launchctlTarget 键，且与原入口（main 18fb2f8b）
+  #     写出的六字段 schema 完全一致且形状合法（deployedAt 非空、sourceSha
+  #     40hex、artifactSha256/migrationBundleDigest 64hex、migrationMaxVersion
+  #     数字）→ 合法历史记录，不补写、不迁移；若其为最新记录，本次部署的
+  #     绑定必须来自固定目标输入 EXPECTED_LAUNCHCTL_TARGET（值须来自已批准
+  #     证据，如 REALM-MISMATCH 只读记录 actualLoaded），缺失或不符即拒绝；
+  #     本次部署新追加的记录写真实 binding，此后 ledger 恢复固定绑定驱动。
+  #   其余一切（键存在但为空、带现代专有字段却无 target、缺旧字段/形状非法、
+  #     非对象、流损坏）→ 一律拒绝，不得当作可信 legacy 绕过保护。
+  # ledger 缺失（首次以本入口更新既有服务）→ 同样必须 EXPECTED_LAUNCHCTL_TARGET
+  #   显式绑定，缺失即拒绝——缺 ledger 时不得重新发现另一 realm。
   local prior_target
   if [[ -f "$LEDGER" ]]; then
-    local prior_line
-    prior_line="$(jq -c '.' "$LEDGER")" \
+    local prior_all class_lines line last_kind="" last_target="" rec_target
+    prior_all="$(jq -c '.' "$LEDGER")" \
       || fail "deployment ledger corrupt (JSON stream parse failed): $LEDGER; zero live writes performed"
-    prior_line="$(printf '%s\n' "$prior_line" | tail -1)"
-    [[ -n "$prior_line" ]] || fail "deployment ledger empty: $LEDGER; zero live writes performed"
-    prior_target="$(ledger_field "$prior_line" "launchctlTarget" "deployment ledger")"
+    [[ -n "$prior_all" ]] || fail "deployment ledger empty: $LEDGER; zero live writes performed"
+    class_lines="$(printf '%s\n' "$prior_all" | jq -r '
+      if type != "object" then "invalid"
+      elif (has("launchctlTarget") and (.launchctlTarget|type=="string") and (.launchctlTarget|length>0)) then "modern \(.launchctlTarget)"
+      elif has("launchctlTarget") then "invalid"
+      elif ((.deployedAt // "") | type=="string" and length>0)
+       and ((.sourceSha // "") | tostring | test("^[0-9a-f]{40}$"))
+       and ((.artifactSha256 // "") | tostring | test("^[0-9a-f]{64}$"))
+       and ((.migrationBundleDigest // "") | tostring | test("^[0-9a-f]{64}$"))
+       and ((.migrationMaxVersion // "") | tostring | test("^[0-9]+$")) then "legacy"
+      else "invalid" end')" \
+      || fail "deployment ledger corrupt (record classification failed): $LEDGER; zero live writes performed"
+    while IFS= read -r line; do
+      case "$line" in
+        modern\ *)
+          rec_target="${line#modern }"
+          [[ "$rec_target" == "$LAUNCHCTL_TARGET" ]] \
+            || fail "binding drift: ledger records $rec_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
+          last_kind="modern"; last_target="$rec_target"
+          ;;
+        legacy)
+          last_kind="legacy"; last_target=""
+          ;;
+        *)
+          fail "deployment ledger record is neither a modern binding record nor valid legacy schema (original six-field record: deployedAt/sourceSha/artifactSha256/previousArtifactSha256/migrationMaxVersion/migrationBundleDigest); refusing pre-write; zero live writes performed"
+          ;;
+      esac
+    done <<<"$class_lines"
+    if [[ "$last_kind" == "modern" ]]; then
+      prior_target="$last_target"
+    else
+      if [[ -z "${EXPECTED_LAUNCHCTL_TARGET:-}" ]]; then
+        fail "deployment binding unavailable: latest ledger record is legacy schema without launchctlTarget and EXPECTED_LAUNCHCTL_TARGET is not set; pin the binding from approved evidence; refusing pre-write; zero live writes performed"
+      fi
+      prior_target="$EXPECTED_LAUNCHCTL_TARGET"
+    fi
   else
     if [[ -z "${EXPECTED_LAUNCHCTL_TARGET:-}" ]]; then
       fail "deployment binding record missing: $LEDGER does not exist and EXPECTED_LAUNCHCTL_TARGET is not set; first update of an existing service must pin the binding from approved evidence; refusing pre-write; zero live writes performed"
