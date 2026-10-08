@@ -79,25 +79,25 @@
 #      binding); V4 restore OLD on the same binding; V5 corrupt ledger refuses
 #      the rollback; V6 realm drift refuses the rollback; W missing ledger
 #      without a pin refuses pre-write (no realm re-discovery).
-#   L  legacy-ledger compatibility (real-site shape: 26 original-schema records,
-#      none carrying launchctlTarget):
-#      L1 pinned update over a legacy ledger succeeds; the NEW record written
-#         by this deploy carries the real binding; the 26 historical records
-#         stay byte-identical (no backfill, no migration);
-#      L3 one historical MODERN record with a conflicting target (gui) among
-#         legacy records → binding-drift refusal even though the latest is
-#         legacy;
-#      L4 a record whose ONLY defect is modern-only fields (targetPreimageSha256/
-#         otherRealmState) with the target missing and every other field valid
-#         → refused as neither-modern-nor-legacy (valid hashes alone must not
-#         make it pass as legacy);
-#      L5 wrong pin over a legacy ledger → binding-drift refusal;
-#      L6 wrong declared preimage over a legacy ledger → preimage gate
-#         (proves the legacy path reaches later gates in order);
-#      L8 a record exactly missing previousArtifactSha256 (five valid fields,
-#         no modern fields) → refused: the legacy key set must be exact.
-#      L7 after L1: same-target rollback on the MIXED ledger (26 legacy +
-#         modern records) succeeds — the modern record now drives binding.
+#   AR one-time archive of the pre-#683 mixed-format ledger (user-approved
+#      "split it out" design — the active ledger handles exactly ONE format,
+#      all per-field legacy tolerance removed):
+#      AR1 archive succeeds: byte-identical archive file + switch receipt
+#          (bytes/sha256 baseline), active gone, no service control;
+#      AR2 re-archive after the switch is idempotent with integrity check;
+#      AR3 tampered archive → digest-mismatch refusal;
+#      AR4 receipt present but an active ledger re-appeared → conflict refusal;
+#      AR5 archive file left without a receipt (crashed attempt) → refuses
+#          to overwrite.
+#   UP full switch chain over synthetic four-class old structures (six-field
+#      records, old-verify annotated records, rollbackArtifact entries, a
+#      synthetic type/grant object — all dummy values, no real private data):
+#      archive → first pinned deploy → verify → second deploy (new version)
+#      → verify → same-binding rollback → rollback-verify. Verify annotates
+#      ONLY the latest event (historical prefix byte-identical) and with
+#      duplicate sourceSha records annotates the LAST one only.
+#   E1 modern-format record without a binding (launchctlTarget) refuses;
+#      E2 un-archived old-format active ledger refuses deploy (archive first).
 #   Z  assertion self-test: the zero-write/rc checks themselves must be able to
 #      fail (deleted/altered fingerprint, missing rc file).
 
@@ -384,14 +384,16 @@ assert_gate "O1: deploy refuses corrupt ledger" O1 "deployment ledger corrupt"
 run_verify O2
 assert_gate "O2: verify refuses corrupt ledger" O2 "deployment ledger corrupt"
 
-# ── P. multi-record multi-line ledger: verify selects the sha's record ────
+# ── P. multi-record ledger: verify uses the sha's recorded binding, then
+#      refuses to annotate a stale event (latest record is another deployment)
 run_deploy system P
 jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg s "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"     --arg a "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb01"     '{deployedAt: $t, sourceSha: $s, artifactSha256: $a, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc01", launchctlTarget: "system/com.svc-workflow", targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
 set_state system 0 502
 printf '{"service":"svc-workflow","gitSha":"%s","gitTreeState":"clean"}\n' "$MERGE_SHA" > "$STATE/fake-version.json"
 run_verify P
-assert "P: verify passes on multi-record multi-line ledger" $([ "$(have_rc P)" = "1" ] && [ "$(rc_of P)" = "0" ] && echo 1 || echo 0) "rc=$(rc_of P) (see out-P)"
-assert "P: verify used the ledger-recorded binding" $([ "$(grep -c 'ledger-recorded binding system/com.svc-workflow' "$WORK/out-P.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "no recorded-binding use (see out-P)"
+assert "P: verify used the sha's ledger-recorded binding on multi-record ledger" $([ "$(grep -c 'ledger-recorded binding system/com.svc-workflow verified' "$WORK/out-P.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "no recorded-binding use (see out-P)"
+assert "P: refuses to annotate when latest event is another deployment" $([ "$(have_rc P)" = "1" ] && [ "$(rc_of P)" != "0" ] && [ "$(grep -c 'refusing to annotate a stale record' "$WORK/out-P.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "rc=$(rc_of P) (see out-P)"
+assert "P: the sha's own record was NOT annotated (nothing rewritten)" $([ "$(jq -s '.[0].verification' "$SVC/ledger.json")" = "null" ] && echo 1 || echo 0) "record rewritten"
 
 # ── Q. ledger records system, fresh resolution lands gui: drift gate ──────
 set_state gui-drift 0 502
@@ -476,79 +478,142 @@ run_deploy_env W "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$ECHO_SHA"
 assert_gate "W: missing binding record refuses pre-write" W "deployment binding record missing"
 assert "W: no kickstart on any realm" $([ "$KICK_BEFORE" = "$(kick_count "$SYS_TARGET")" ] && [ "$KICK_GUI_BEFORE" = "$(kick_count "gui/502/com.svc-workflow")" ] && echo 1 || echo 0) "kick changed"
 
-# ── L. legacy-ledger compatibility: original six-field records, no binding ─
-append_legacy_record() {  # 精确复刻 main 18fb2f8b 原入口写出的记录（六字段、无 binding 字段）
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "${1:-$MERGE_SHA}"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg previousArtifactSha256 ""     --arg migrationMaxVersion "0001"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
+# ── 一次性归档 + 单一现代格式（用户批准的“切开”方案）──────────────────────
+# 合成四类真实旧结构（全部哑值，不含真实私料/grant 内容）：
+ECHO_SHA_CACHE=""
+OLD_MIG_DIGEST=""
+append_old_record() {  # 类1：原入口六字段记录（无 binding 字段）
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$ECHO_SHA_CACHE"     --arg previousArtifactSha256 ""     --arg migrationMaxVersion "0001"     --arg migrationBundleDigest "$OLD_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
 }
-append_modern_record() {  # $1 = target：本入口 d4baf7e 起写出的记录形状
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     --arg launchctlTarget "$1"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+append_old_verified_record() {  # 类2：被旧 verify 加过 .verification 的记录
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$ECHO_SHA_CACHE"     --arg migrationBundleDigest "$OLD_MIG_DIGEST"     --arg path "/synthetic/old/path"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, verification: {healthz: "200", readyz: "200", authHttpStatus: "401", runningBinaryPath: $path}}'     >> "$SVC/ledger.json"
 }
-append_modern_missing_field_record() {  # 其余字段全部合法，唯一异常：现代专有字段存在而 target 缺
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, targetPreimageSha256: "", otherRealmState: "none"}'     >> "$SVC/ledger.json"
+append_old_rollback_record() {  # 类3：带 rollbackArtifact 字段的旧记录
+  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$ECHO_SHA_CACHE"     --arg migrationBundleDigest "$OLD_MIG_DIGEST"     --arg rbSha "$ECHO_SHA_CACHE"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, rollbackArtifact: {sourceSha: $sourceSha, artifactSha256: $rbSha}}'     >> "$SVC/ledger.json"
 }
-append_missing_previous_record() {  # 恰好缺 previousArtifactSha256，其余五字段全部合法、无现代字段
-  jq -n --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"     --arg sourceSha "$MERGE_SHA"     --arg artifactSha256 "$LEGACY_ART_SHA"     --arg migrationBundleDigest "$LEGACY_MIG_DIGEST"     '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest}'     >> "$SVC/ledger.json"
+append_synthetic_object() {  # 类4：非部署对象（合成 type/grant 哑值，绝不放真实私料）
+  printf '{\n  "type": "synthetic-marker",\n  "grant": {\n    "subject": "synthetic-subject",\n    "scope": "none"\n  }\n}\n' >> "$SVC/ledger.json"
 }
-build_legacy_site() {  # 真实现场形状：既有 binary + 26 条旧 schema 记录（无 binding 字段）
+build_old_site() {  # 26 条混合旧结构 + 既有 binary + system running（真实现场形状）
   stage_release
   cp /bin/echo "$SVC/svc-workflow"
   set_state system 0 502
-  LEGACY_ART_SHA=$(shasum -a 256 /bin/echo | awk '{print $1}')
-  LEGACY_MIG_DIGEST=$(cd "$SVC/releases/$MERGE_SHA" && find migrations -name '*.sql' -type f | sort | xargs shasum -a 256 | shasum -a 256 | awk '{print $1}')
+  ECHO_SHA_CACHE=$(shasum -a 256 /bin/echo | awk '{print $1}')
+  OLD_MIG_DIGEST=$(cd "$SVC/releases/$MERGE_SHA" && find migrations -name '*.sql' -type f | sort | xargs shasum -a 256 | shasum -a 256 | awk '{print $1}')
   rm -f "$SVC/ledger.json" "$STATE/kickstart.log"
-  local i; for i in $(seq 1 26); do append_legacy_record; done
+  local i
+  for i in $(seq 1 26); do
+    case $((i % 4)) in
+      0) append_old_verified_record ;;
+      1) append_old_record ;;
+      2) append_old_rollback_record ;;
+      3) if [ "$i" = "3" ]; then append_synthetic_object; else append_old_record; fi ;;
+    esac
+  done
+}
+run_archive() {  # $1 = tag
+  local rc before after
+  before=$(fingerprint)
+  SVC_WORKFLOW_SERVICE_DIR="$SVC" PATH="$FAKEBIN:$PATH"     bash "$RELEASE_SH" archive > "$WORK/out-$1.txt" 2>&1
+  rc=$?
+  after=$(fingerprint)
+  printf '%s' "$rc" > "$WORK/rc-$1.txt"
+  printf '%s' "$before" > "$WORK/fp-before-$1.txt"
+  printf '%s' "$after" > "$WORK/fp-after-$1.txt"
+}
+ledger_record_count() { jq -s 'length' "$SVC/ledger.json" 2>/dev/null || echo 0; }
+ledger_last_start_offset() {  # 与 release.sh verify 相同的最后一记录起始偏移算法
+  LC_ALL=C awk 'BEGIN{b=0; s=0} { if ($0 == "{") s=b; b += length($0) + 1 } END{ print s+0 }' "$SVC/ledger.json"
 }
 
-# L1: pinned update over the legacy ledger → success, new record carries the
-#     real binding; deploy appends — the pre-deploy ledger must be a byte-exact
-#     prefix afterwards (JSON-equality AND raw byte-prefix both checked).
-build_legacy_site
-cp "$SVC/ledger.json" "$STATE/ledger-before-L1.json"
-LEDGER_BYTES=$(wc -c < "$SVC/ledger.json")
-run_deploy_env L1 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-RC=$(rc_of L1)
-assert "L1: pinned update succeeds over 26 legacy records" $([ "$(have_rc L1)" = "1" ] && [ "$RC" = "0" ] && [ "$(kick_count "$SYS_TARGET")" -ge 1 ] && echo 1 || echo 0) "rc=$RC (see out-L1)"
-assert "L1: new record written with real binding, history untouched" $([ "$(jq -s 'length' "$SVC/ledger.json")" = "27" ]     && [ "$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json" | tr -d '"')" = "$SYS_TARGET" ]     && [ "$(jq -s --slurpfile before "$STATE/ledger-before-L1.json" '.[0:26] == $before' "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "records=$(jq -s 'length' "$SVC/ledger.json") last=$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json")"
-assert "L1: pre-deploy ledger is a byte-exact prefix after deploy" $([ "$(head -c "$LEDGER_BYTES" "$SVC/ledger.json" | cmp -s - "$STATE/ledger-before-L1.json" && echo 1 || echo 0)" = "1" ] && echo 1 || echo 0) "byte-prefix differs"
+# ── AR1: 一次性归档 → 回执 + 归档字节一致 + active 消失 + 无服务控制 ──────
+build_old_site
+cp "$SVC/ledger.json" "$STATE/old-ledger-copy.json"
+KICK_BEFORE=$(kick_count "$SYS_TARGET")
+run_archive AR1
+RC=$(rc_of AR1)
+assert "AR1: one-time archive succeeds" $([ "$(have_rc AR1)" = "1" ] && [ "$RC" = "0" ] && [ -f "$SVC/ledger.json.archived" ] && [ -f "$SVC/ledger.json.archived.receipt.json" ] && [ ! -f "$SVC/ledger.json" ] && echo 1 || echo 0) "rc=$RC (see out-AR1)"
+assert "AR1: archive byte-identical to original + receipt digest matches" $(cmp -s "$SVC/ledger.json.archived" "$STATE/old-ledger-copy.json"     && [ "$(jq -r '.originalSha256' "$SVC/ledger.json.archived.receipt.json")" = "$(shasum -a 256 "$SVC/ledger.json.archived" | awk '{print $1}')" ] && echo 1 || echo 0) "digest/receipt mismatch"
+assert "AR1: archive performs no service control" $([ "$KICK_BEFORE" = "$(kick_count "$SYS_TARGET")" ] && echo 1 || echo 0) "kick changed"
 
-# L7: after L1 — same-target rollback on the MIXED ledger (26 legacy + modern).
-run_deploy_env L7 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-RC=$(rc_of L7)
-assert "L7: same-target rollback on mixed ledger succeeds" $([ "$(have_rc L7)" = "1" ] && [ "$RC" = "0" ] && [ "$(kick_count "$SYS_TARGET")" -ge 2 ] && [ "$(kick_count "gui/502/com.svc-workflow")" = "0" ] && echo 1 || echo 0) "rc=$RC kicks=$(kick_count "$SYS_TARGET") (see out-L7)"
-assert "L7: latest record still carries the real binding" $([ "$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json" | tr -d '"')" = "$SYS_TARGET" ] && echo 1 || echo 0) "last=$(jq -s '.[-1].launchctlTarget' "$SVC/ledger.json")"
+# ── AR2: 幂等重入（切换已完成）→ rc0 + 完整性核验 ─────────────────────────
+run_archive AR2
+RC=$(rc_of AR2)
+assert "AR2: re-archive after switch is idempotent" $([ "$(have_rc AR2)" = "1" ] && [ "$RC" = "0" ] && [ "$(grep -c 'already archived' "$WORK/out-AR2.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "rc=$RC (see out-AR2)"
 
-# L3: one historical MODERN record with a conflicting target → refuse.
-build_legacy_site
-append_legacy_record; append_legacy_record
-append_modern_record "gui/502/com.svc-workflow"   # 冲突 target，位于中段；最新仍是 legacy
-append_legacy_record
-run_deploy_env L3 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-assert_gate "L3: conflicting historical binding refuses" L3 "binding drift: ledger records gui/502/com.svc-workflow"
+# ── AR3: 归档文件被改动 → 幂等路径摘要不符显式报错 ─────────────────────────
+printf 'tampered\n' >> "$SVC/ledger.json.archived"
+run_archive AR3
+assert_gate "AR3: tampered archive digest mismatch reported" AR3 "archived ledger digest mismatch"
+# 恢复干净归档字节（为后续案例）
+cp "$STATE/old-ledger-copy.json" "$SVC/ledger.json.archived"
 
-# L4: all other fields valid, the ONLY defect being modern-only fields present
-#     while the target is missing → neither modern nor legacy (must not be
-#     accepted as legacy on the strength of its valid hashes alone).
-build_legacy_site
-append_modern_missing_field_record   # 最新记录：现代字段、无 binding 字段
-run_deploy_env L4 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-assert_gate "L4: modern-missing-field is distinguishable from legacy" L4 "nor valid legacy schema"
+# ── AR4: 回执存在但 active 又出现（切换未完成的失败重入）→ 冲突拒绝 ───────
+printf '{}' > "$SVC/ledger.json"
+run_archive AR4
+assert "AR4: receipt+active conflict refuses explicitly" $([ "$(have_rc AR4)" = "1" ] && [ "$(rc_of AR4)" != "0" ] && [ "$(grep -c 'archive conflict' "$WORK/out-AR4.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "rc=$(rc_of AR4) (see out-AR4)"
+rm -f "$SVC/ledger.json"   # 清理模拟残留，恢复 AR1 完成态
 
-# L5: wrong pin over a legacy ledger → drift refusal.
-build_legacy_site
-run_deploy_env L5 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="gui/502/com.svc-workflow"
-assert_gate "L5: wrong pin refuses" L5 "binding drift: ledger records gui/502/com.svc-workflow but resolved system/com.svc-workflow"
+# ── AR5: 崩溃残留（归档文件在、回执缺失）→ 拒绝覆盖既有归档 ────────────────
+mv "$SVC/ledger.json.archived.receipt.json" "$STATE/receipt-stash.json"
+build_old_site
+cp "$SVC/ledger.json" "$SVC/ledger.json.archived"   # 模拟：复制完成、回执未写
+run_archive AR5
+assert "AR5: existing archive without receipt refuses overwrite" $([ "$(have_rc AR5)" = "1" ] && [ "$(rc_of AR5)" != "0" ] && [ "$(grep -c 'refusing to overwrite existing archive' "$WORK/out-AR5.txt" 2>/dev/null)" -ge 1 ] && echo 1 || echo 0) "rc=$(rc_of AR5) (see out-AR5)"
+rm -f "$SVC/ledger.json.archived"
+mv "$STATE/receipt-stash.json" "$SVC/ledger.json.archived.receipt.json"   # 恢复切换完成态
+rm -f "$SVC/ledger.json"
 
-# L6: wrong declared preimage over a legacy ledger → preimage gate.
-build_legacy_site
-run_deploy_env L6 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="deadbeef" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-assert_gate "L6: legacy path reaches the preimage gate" L6 "PREIMAGE MISMATCH"
+# ── UP: 归档→首次deploy→verify→再次deploy→verify→同binding rollback→verify
+build_old_site
+run_archive UPPRE
+stage_release_for "$NEW_SHA" /bin/test
+ECHO_SHA=$(shasum -a 256 /bin/echo | awk '{print $1}')
+TEST_SHA=$(shasum -a 256 /bin/test | awk '{print $1}')
+run_deploy_env UP1 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$ECHO_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
+RC=$(rc_of UP1)
+assert "UP1: first pinned deploy after archive creates fresh modern ledger" $([ "$(have_rc UP1)" = "1" ] && [ "$RC" = "0" ] && [ "$(ledger_record_count)" = "1" ] && [ "$(jq -r '.launchctlTarget' "$SVC/ledger.json")" = "$SYS_TARGET" ] && [ "$(kick_count "$SYS_TARGET")" -ge 1 ] && echo 1 || echo 0) "rc=$RC records=$(ledger_record_count) (see out-UP1)"
+cp "$SVC/ledger.json" "$STATE/ledger-pre-UP1V.json"
+printf '{"service":"svc-workflow","gitSha":"%s","gitTreeState":"clean"}\n' "$MERGE_SHA" > "$STATE/fake-version.json"
+run_verify UP1V
+RC=$(rc_of UP1V)
+assert "UP1V: verify annotates only this event, record body unchanged" $([ "$(have_rc UP1V)" = "1" ] && [ "$RC" = "0" ] && [ "$(ledger_record_count)" = "1" ]     && [ "$(jq -c 'del(.verification)' "$SVC/ledger.json")" = "$(jq -c 'del(.verification)' "$STATE/ledger-pre-UP1V.json")" ]     && [ "$(jq '.verification != null' "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "rc=$RC (see out-UP1V)"
+run_deploy_env UP2 "$NEW_SHA" EXPECTED_PREIMAGE_SHA256="$ECHO_SHA"
+RC=$(rc_of UP2)
+assert "UP2: second deploy (new version) appends modern record" $([ "$(have_rc UP2)" = "1" ] && [ "$RC" = "0" ] && [ "$(ledger_record_count)" = "2" ] && echo 1 || echo 0) "rc=$RC records=$(ledger_record_count) (see out-UP2)"
+cp "$SVC/ledger.json" "$STATE/ledger-pre-UP2V.json"
+SPLIT_BEFORE=$(ledger_last_start_offset)
+printf '{"service":"svc-workflow","gitSha":"%s","gitTreeState":"clean"}\n' "$NEW_SHA" > "$STATE/fake-version.json"
+run_verify UP2V "$NEW_SHA"
+RC=$(rc_of UP2V)
+PREFIX_SAME=0
+if head -c "$SPLIT_BEFORE" "$SVC/ledger.json" | cmp -s - <(head -c "$SPLIT_BEFORE" "$STATE/ledger-pre-UP2V.json"); then PREFIX_SAME=1; fi
+assert "UP2V: historical prefix byte-identical, only last event annotated" $([ "$(have_rc UP2V)" = "1" ] && [ "$RC" = "0" ] && [ "$PREFIX_SAME" = "1" ]     && [ "$(jq -s '.[-1].verification != null' "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "rc=$RC prefix-same=$PREFIX_SAME"
+run_deploy_env UP3 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$TEST_SHA"
+RC=$(rc_of UP3)
+assert "UP3: same-binding rollback appends third record, all kickstarts system" $([ "$(have_rc UP3)" = "1" ] && [ "$RC" = "0" ] && [ "$(ledger_record_count)" = "3" ] && [ "$(kick_count "gui/502/com.svc-workflow")" = "0" ] && echo 1 || echo 0) "rc=$RC records=$(ledger_record_count) (see out-UP3)"
+printf '{"service":"svc-workflow","gitSha":"%s","gitTreeState":"clean"}\n' "$MERGE_SHA" > "$STATE/fake-version.json"
+cp "$SVC/ledger.json" "$STATE/ledger-pre-UP3V.json"
+run_verify UP3V "$MERGE_SHA"
+RC=$(rc_of UP3V)
+assert "UP3V: duplicate sourceSha — annotates ONLY the latest event" $([ "$(have_rc UP3V)" = "1" ] && [ "$RC" = "0" ]     && [ "$(jq -s --slurpfile pre "$STATE/ledger-pre-UP3V.json" '.[0:2] == $pre[0:2]' "$SVC/ledger.json")" = "true" ]     && [ "$(jq -s '.[-1].verification != null and .[-1].sourceSha == $s' --arg s "$MERGE_SHA" "$SVC/ledger.json")" = "true" ] && echo 1 || echo 0) "rc=$RC (see out-UP3V)"
 
-# L8: exactly missing previousArtifactSha256, all five other fields valid and
-#     no modern fields → key set incomplete, refused as non-legacy.
-build_legacy_site
-append_missing_previous_record   # 最新记录：五字段合法、缺 previous
-run_deploy_env L8 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$LEGACY_ART_SHA" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"
-assert_gate "L8: record missing only previousArtifactSha256 is not legacy" L8 "nor valid legacy schema"
+# ── E1/E2: 单一格式之外的一切 → 显式首写拒绝 ──────────────────────────────
+printf '{\n  "targetPreimageSha256": "",\n  "otherRealmState": "none"\n}\n' >> "$SVC/ledger.json"
+before=$(fingerprint)
+SVC_WORKFLOW_SERVICE_DIR="$SVC" PATH="$FAKEBIN:$PATH" EXPECTED_SERVICE_UID=502 EXPECTED_PREIMAGE_SHA256="$ECHO_SHA"     bash "$RELEASE_SH" deploy "$MERGE_SHA" > "$WORK/out-E1.txt" 2>&1
+echo "$?" > "$WORK/rc-E1.txt"
+after=$(fingerprint)
+echo "$before" > "$WORK/fp-before-E1.txt"; echo "$after" > "$WORK/fp-after-E1.txt"
+assert_gate "E1: modern record missing binding refuses" E1 "no valid modern binding"
+
+build_old_site
+before=$(fingerprint)
+SVC_WORKFLOW_SERVICE_DIR="$SVC" PATH="$FAKEBIN:$PATH" EXPECTED_SERVICE_UID=502 EXPECTED_PREIMAGE_SHA256="$ECHO_SHA_CACHE" EXPECTED_LAUNCHCTL_TARGET="$SYS_TARGET"     bash "$RELEASE_SH" deploy "$MERGE_SHA" > "$WORK/out-E2.txt" 2>&1
+echo "$?" > "$WORK/rc-E2.txt"
+after=$(fingerprint)
+echo "$before" > "$WORK/fp-before-E2.txt"; echo "$after" > "$WORK/fp-after-E2.txt"
+assert_gate "E2: un-archived old-format active refuses deploy (archive first)" E2 "no valid modern binding"
 
 # ── Z. assertion self-test: the checks themselves must be able to fail ────
 cp "$WORK/fp-before-O2.txt" "$WORK/fp-before-Z.txt"   # O2 refuses corrupt ledger → intact pair
