@@ -293,6 +293,14 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/admin/definition-versions/{definitionVersionId}",
             get(handlers::provisioning::definitions::get),
         )
+        // SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: caller-scoped
+        // read of a PUBLISHED version's input contract, gated server-side by
+        // the exact create-instance admission predicate. Not an admin route;
+        // no management data in the payload.
+        .route(
+            "/internal/v1/definition-versions/{definitionVersionId}/input-contract",
+            get(handlers::definitions::get_definition_version_input_contract),
+        )
         .fallback(|| async {
             error::ApiError::new(StatusCode::NOT_FOUND, "route_not_found", "route not found")
         })

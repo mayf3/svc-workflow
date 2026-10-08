@@ -75,3 +75,28 @@ pub struct DomainDefinitionListResult {
     pub definitions: Vec<super::repository::DefinitionData>,
     pub next_cursor: Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>,
 }
+
+/// Get the input contract of a PUBLISHED definition version.
+///
+/// Admission reuses the exact create-instance predicate; see
+/// SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1.
+#[derive(Debug, Clone)]
+pub struct GetPublishedVersionInputContract {
+    pub actor_principal_id: uuid::Uuid,
+    pub definition_version_id: uuid::Uuid,
+}
+
+/// The PUBLISHED version's input contract — and nothing else.
+///
+/// Wire shape is frozen to exactly these five fields: no nodes, transitions,
+/// instructions, assignee configs, submission schemas, lifecycle operator
+/// fields, digest, metadata, or timestamps.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishedVersionInputContract {
+    pub definition_id: uuid::Uuid,
+    pub definition_version_id: uuid::Uuid,
+    pub version_number: i32,
+    pub version_status: crate::domain::enums::DefinitionVersionStatus,
+    pub context_schema: Option<serde_json::Value>,
+}
