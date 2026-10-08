@@ -474,6 +474,19 @@ export const definitionListQuerySchema = z
     'beforeCreatedAt and beforeId must be provided together',
   );
 
+// SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: exactly the five
+// fields svc-workflow returns for the member-readable PUBLISHED input
+// contract. strict() so any management-data leak fails parsing loudly.
+export const definitionInputContractResponseSchema = z
+  .object({
+    definitionVersionId: uuidSchema,
+    definitionId: uuidSchema,
+    versionNumber: z.number().int(),
+    versionStatus: z.string(),
+    contextSchema: jsonValueSchema.nullable(),
+  })
+  .strict();
+
 export const createDefinitionRequestSchema = z
   .object({
     definitionKey: z.string().min(1).max(128),
