@@ -15,7 +15,9 @@
 #   SVC_WORKFLOW_PORT         /version 探测端口（默认 8989）
 #   AUTH_TOKEN                可选：部署后基础认证请求使用的 Bearer token
 #   EXPECTED_SERVICE_UID      预期服务 UID（#683 G1，与调用 EUID 分开；root 调用必填）
-#   EXPECTED_PREIMAGE_SHA256  更新既有目标时必填（#683 G3）：目标 binary 的精确 sha256
+#   EXPECTED_PREIMAGE_SHA256  必填（#683 G3/P3）：目标 binary 的精确 sha256（无首装例外）
+#   EXPECTED_LAUNCHCTL_TARGET 仅当 ledger 尚不存在时必填（#683 P5）：固定目标绑定，
+#                             取值须来自已批准证据（如 REALM-MISMATCH 只读记录 actualLoaded）
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -205,6 +207,17 @@ resolve_service_target() {
     if [[ -n "$SERVICE_UID" && "$SERVICE_UID" != "$ps_uid" ]]; then
       fail "service identity drift: unit config uid=$SERVICE_UID != running pid uid=$ps_uid; refusing target=$LAUNCHCTL_TARGET; zero live writes performed"
     fi
+    # 实际运行 executable 绑定（#683 P2）：运行 PID 的可执行文件必须与固定
+    # install target 规范化同路径——另一目录的同 hash 副本不等价，拒绝。
+    # （停止单位无 PID：沿既有 unit 身份/配置/preimage，不伪造运行路径。）
+    local run_path
+    run_path="$(lsof -p "$SERVICE_PID" -a -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+    if [[ -z "$run_path" ]]; then
+      fail "running executable path unknown for pid $SERVICE_PID; refusing target=$LAUNCHCTL_TARGET; zero live writes performed"
+    fi
+    if [[ "$(norm_path "$run_path")" != "$(norm_path "$SERVICE_DIR/$BINARY")" ]]; then
+      fail "running executable ($run_path) != install target $SERVICE_DIR/$BINARY (same-hash different-path is not equivalent); refusing target=$LAUNCHCTL_TARGET; zero live writes performed"
+    fi
   else
     if [[ -z "$SERVICE_UID" ]]; then
       fail "stopped unit identity unverifiable: no uid in unit config for $LAUNCHCTL_TARGET; restore refused; zero live writes performed"
@@ -320,35 +333,42 @@ deploy() {
   #    ——必须先于任何写入；program 绑定安装目标；身份实核；system 域 root 准入
   resolve_service_target
 
-  # 0a) ledger 同绑定一致性（#683 G5）：回退（deploy oldSha）=同 binding 恢复，
-  #     不接受替代 realm；ledger 损坏或最近记录缺 launchctlTarget 亦拒绝（零写入）
+  # 0a) ledger 绑定（#683 G5/P5）：ledger 存在 → 以完整流最新记录为固定绑定，
+  #     缺/坏/字段缺一律首写拒绝（回退=同 binding 恢复，不接受替代 realm）；
+  #     ledger 缺失（首次以本入口更新既有服务）→ 必须以固定目标输入
+  #     EXPECTED_LAUNCHCTL_TARGET 显式绑定（取值须来自已批准证据，如
+  #     REALM-MISMATCH 只读记录 actualLoaded），缺失或不符即拒绝——
+  #     缺 ledger 时不得重新发现另一 realm。
+  local prior_target
   if [[ -f "$LEDGER" ]]; then
-    local prior_line prior_target
+    local prior_line
     prior_line="$(jq -c '.' "$LEDGER")" \
       || fail "deployment ledger corrupt (JSON stream parse failed): $LEDGER; zero live writes performed"
     prior_line="$(printf '%s\n' "$prior_line" | tail -1)"
     [[ -n "$prior_line" ]] || fail "deployment ledger empty: $LEDGER; zero live writes performed"
     prior_target="$(ledger_field "$prior_line" "launchctlTarget" "deployment ledger")"
-    if [[ "$prior_target" != "$LAUNCHCTL_TARGET" ]]; then
-      fail "binding drift: ledger records $prior_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
+  else
+    if [[ -z "${EXPECTED_LAUNCHCTL_TARGET:-}" ]]; then
+      fail "deployment binding record missing: $LEDGER does not exist and EXPECTED_LAUNCHCTL_TARGET is not set; first update of an existing service must pin the binding from approved evidence; refusing pre-write; zero live writes performed"
     fi
+    prior_target="$EXPECTED_LAUNCHCTL_TARGET"
+  fi
+  if [[ "$prior_target" != "$LAUNCHCTL_TARGET" ]]; then
+    fail "binding drift: ledger records $prior_target but resolved $LAUNCHCTL_TARGET; rollback is same-binding only; zero live writes performed"
   fi
 
-  # 0b) 目标 preimage 门（#683 G3）：既有目标的更新必须声明精确合法预像；
-  #     目标必须存在、可读且匹配声明；缺项/不符一律零写入失败
+  # 0b) 目标 preimage 门（#683 G3/P3）：本入口只服务既有 service 的更新/回退，
+  #     首装例外已废除——目标必须无条件存在、可读，且声明 EXPECTED_PREIMAGE_SHA256
+  #     精确匹配；文件与声明同时缺失同样拒绝。不符一律零写入失败。
   local target_preimage_sha256=""
-  if [[ -e "$SERVICE_DIR/$BINARY" ]]; then
-    [[ -f "$SERVICE_DIR/$BINARY" && -r "$SERVICE_DIR/$BINARY" ]] \
-      || fail "target preimage unreadable: $SERVICE_DIR/$BINARY is not a readable regular file; zero live writes performed"
-    if [[ -z "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
-      fail "declared preimage missing: EXPECTED_PREIMAGE_SHA256 must be set for an existing-service update; zero live writes performed"
-    fi
-    target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
-    if [[ "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
-      fail "PREIMAGE MISMATCH: target sha256=$target_preimage_sha256 != declared $EXPECTED_PREIMAGE_SHA256; zero live writes performed"
-    fi
-  elif [[ -n "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
-    fail "target preimage missing: $SERVICE_DIR/$BINARY does not exist but EXPECTED_PREIMAGE_SHA256 is declared; zero live writes performed"
+  [[ -f "$SERVICE_DIR/$BINARY" && -r "$SERVICE_DIR/$BINARY" ]] \
+    || fail "target preimage missing: $SERVICE_DIR/$BINARY does not exist or is not a readable regular file; zero live writes performed"
+  if [[ -z "${EXPECTED_PREIMAGE_SHA256:-}" ]]; then
+    fail "declared preimage missing: EXPECTED_PREIMAGE_SHA256 must be set for an existing-service update; zero live writes performed"
+  fi
+  target_preimage_sha256="$("$SHASUM" -a 256 "$SERVICE_DIR/$BINARY" | awk '{print $1}')"
+  if [[ "$target_preimage_sha256" != "$EXPECTED_PREIMAGE_SHA256" ]]; then
+    fail "PREIMAGE MISMATCH: target sha256=$target_preimage_sha256 != declared $EXPECTED_PREIMAGE_SHA256; zero live writes performed"
   fi
 
   local artifact_sha256 migration_max migration_digest previous_sha256 deployed_at
@@ -474,6 +494,10 @@ verify() {
   if [[ "$bin_path" == *"(deleted)"* ]]; then
     fail "VERIFY FAIL: 运行中的 binary 文件已被替换（${bin_path}）"
   fi
+  # 运行 binary 路径绑定（#683 P2）：运行中的可执行文件必须就是固定 install
+  # target 本身（规范化同路径）——另一目录的同 hash 副本不得通过仅 hash 比对
+  [[ "$(norm_path "$bin_path")" == "$(norm_path "$SERVICE_DIR/$BINARY")" ]] \
+    || fail "VERIFY FAIL: running binary ($bin_path) != install target $SERVICE_DIR/$BINARY (same-hash different-path is not equivalent)"
   actual_sha256="$("$SHASUM" -a 256 "$bin_path" | awk '{print $1}')"
   [[ "$actual_sha256" == "$artifact_sha256" ]] \
     || fail "VERIFY FAIL: 运行中 binary sha256=$actual_sha256 != provenance.artifactSha256=$artifact_sha256"
