@@ -206,6 +206,67 @@ pub(crate) async fn get_definition_detail(
 // GET /internal/v1/domains/{domainId}/definitions/{definitionId}/versions/{versionId}
 // ---------------------------------------------------------------------------
 
+/// Closed internal result categories for `get_definition_version_detail`,
+/// classified 1:1 from `DefinitionError`. The diagnostic event records WHICH
+/// cause folded into the public opaque error; the public response keeps being
+/// mapped by `map_definition_error` exactly as before. Exhaustive by
+/// construction — no wildcard arm — so a new `DefinitionError` variant fails
+/// compilation until it is classified here.
+fn definition_version_detail_error_category(e: &DefinitionError) -> &'static str {
+    use DefinitionError as E;
+    match e {
+        E::PrincipalNotFound => "principal_not_found",
+        E::PrincipalDisabled => "principal_disabled",
+        E::DomainNotFound => "domain_not_found",
+        E::DomainDisabled => "domain_disabled",
+        E::PermissionDenied => "permission_denied",
+        E::DefinitionNotFound => "definition_not_found",
+        E::DefinitionVersionNotFound => "definition_version_not_found",
+        E::DefinitionKeyConflict => "definition_key_conflict",
+        E::VersionNotDraft => "version_not_draft",
+        E::InvalidLifecycleTransition => "invalid_lifecycle_transition",
+        E::GraphValidationFailed(_) => "graph_validation_failed",
+        E::SchemaValidationFailed(_) => "schema_validation_failed",
+        E::DefinitionArchived => "definition_archived",
+        E::FixedPrincipalInvalid(_) => "fixed_principal_invalid",
+        E::DigestFailure(_) => "digest_failure",
+        E::ConcurrentModification(_) => "concurrent_modification",
+        E::AdmissionFailed(_) => "admission_failed",
+        E::StorageError(_) => "storage_error",
+    }
+}
+
+/// Emit the internal structured diagnostic event for the precise version
+/// read. Field list is a closed whitelist: fixed operation, diagnostic
+/// version, the correlated request id (the same `x-request-id` value the
+/// authentication audit sees; honestly absent when none was set — never
+/// fabricated, never used for authorization), the three resolved path UUIDs,
+/// the verified principal id, and the closed result category. Tokens,
+/// headers, queries, payloads and graph content are never recorded. The
+/// event is internal only — status, body and error codes of the HTTP
+/// response are unchanged by it.
+fn emit_definition_version_detail_diagnostic(
+    request_id: Option<&str>,
+    domain_id: Uuid,
+    definition_id: Uuid,
+    version_id: Uuid,
+    actor_principal_id: Uuid,
+    result_category: &str,
+) {
+    tracing::info!(
+        target: "definition_version_detail",
+        operation = "get_definition_version_detail",
+        diagnostic_version = 1u32,
+        request_id = request_id,
+        domain_id = %domain_id,
+        definition_id = %definition_id,
+        version_id = %version_id,
+        actor_principal_id = %actor_principal_id,
+        result_category = result_category,
+        "definition_version_detail_diagnostic"
+    );
+}
+
 /// Precise single-version read for the same-domain owner: full graph
 /// (nodes/transitions) plus the exact version row. Reuses the existing
 /// DefinitionService authorization (H-5 domain owner + enabled principal).
@@ -217,28 +278,65 @@ pub(crate) async fn get_definition_version_detail(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
     Path((domain_id, definition_id, version_id)): Path<(Uuid, Uuid, Uuid)>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_scope(&principal, "workflow.read")?;
+
+    // Correlation only, from the same source the authentication audit reads
+    // (the x-request-id header set by SetRequestIdLayer). Absent when the
+    // layer set none — never fabricated.
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    let actor_principal_id = principal.principal_id.into_uuid();
 
     let repo = PgDefinitionRepository::new(state.pool.clone());
     let service = DefinitionService::new(repo);
 
-    let result = service
+    let result = match service
         .get_definition_version(GetDefinitionVersion {
-            actor_principal_id: principal.principal_id.into_uuid(),
+            actor_principal_id,
             definition_version_id: version_id,
         })
         .await
-        .map_err(|e| map_definition_error(e, Some(domain_id)))?;
+    {
+        Ok(result) => result,
+        Err(e) => {
+            emit_definition_version_detail_diagnostic(
+                request_id,
+                domain_id,
+                definition_id,
+                version_id,
+                actor_principal_id,
+                definition_version_detail_error_category(&e),
+            );
+            return Err(map_definition_error(e, Some(domain_id)));
+        }
+    };
 
     let def = &result.version.definition;
     if def.id.into_uuid() != definition_id || def.domain_id.into_uuid() != domain_id {
+        emit_definition_version_detail_diagnostic(
+            request_id,
+            domain_id,
+            definition_id,
+            version_id,
+            actor_principal_id,
+            "path_binding_mismatch",
+        );
         return Err(ApiError::new(
             axum::http::StatusCode::NOT_FOUND,
             "definition_not_found",
             "workflow definition not found",
         ));
     }
+
+    emit_definition_version_detail_diagnostic(
+        request_id,
+        domain_id,
+        definition_id,
+        version_id,
+        actor_principal_id,
+        "success",
+    );
 
     Ok(Json(serde_json::json!({
         "definition": result.version.definition,
@@ -551,5 +649,195 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             tracing::error!(error = %detail, "definition storage error");
             ApiError::service_unavailable("service_unavailable", "storage is unavailable")
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests: internal diagnostics for the precise version read
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod definition_version_detail_diagnostics_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Minimal in-memory writer so emitted events can be asserted without any
+    /// real log destination. tracing-subscriber is already a dependency;
+    /// nothing new is installed and nothing is written outside the test.
+    #[derive(Clone, Default)]
+    struct SharedBuf(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for SharedBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("shared buffer lock")
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture<F: FnOnce()>(emit: F) -> String {
+        let shared = SharedBuf::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer({
+                let shared = shared.clone();
+                move || shared.clone()
+            })
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(subscriber, emit);
+        let captured = shared.0.lock().expect("shared buffer lock").clone();
+        String::from_utf8(captured).expect("captured diagnostics are utf-8")
+    }
+
+    // Synthetic UUIDs only — never real business coordinates.
+    fn synthetic() -> (Uuid, Uuid, Uuid, Uuid) {
+        (
+            Uuid::from_u128(0x0001_0000_0000_0000_0000_0000_0000_0001),
+            Uuid::from_u128(0x0002_0000_0000_0000_0000_0000_0000_0002),
+            Uuid::from_u128(0x0003_0000_0000_0000_0000_0000_0000_0003),
+            Uuid::from_u128(0x0004_0000_0000_0000_0000_0000_0000_0004),
+        )
+    }
+
+    #[test]
+    fn error_category_mapping_is_exhaustive_and_closed() {
+        use crate::auth::admission::AdmissionError;
+        use DefinitionError as E;
+        let cases: Vec<(E, &str)> = vec![
+            (E::PrincipalNotFound, "principal_not_found"),
+            (E::PrincipalDisabled, "principal_disabled"),
+            (E::DomainNotFound, "domain_not_found"),
+            (E::DomainDisabled, "domain_disabled"),
+            (E::PermissionDenied, "permission_denied"),
+            (E::DefinitionNotFound, "definition_not_found"),
+            (E::DefinitionVersionNotFound, "definition_version_not_found"),
+            (E::DefinitionKeyConflict, "definition_key_conflict"),
+            (E::VersionNotDraft, "version_not_draft"),
+            (
+                E::InvalidLifecycleTransition,
+                "invalid_lifecycle_transition",
+            ),
+            (E::GraphValidationFailed(vec![]), "graph_validation_failed"),
+            (
+                E::SchemaValidationFailed("s".into()),
+                "schema_validation_failed",
+            ),
+            (E::DefinitionArchived, "definition_archived"),
+            (
+                E::FixedPrincipalInvalid("f".into()),
+                "fixed_principal_invalid",
+            ),
+            (E::DigestFailure("d".into()), "digest_failure"),
+            (
+                E::ConcurrentModification("c".into()),
+                "concurrent_modification",
+            ),
+            (
+                E::AdmissionFailed(AdmissionError::Timeout),
+                "admission_failed",
+            ),
+            (E::StorageError("x".into()), "storage_error"),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(definition_version_detail_error_category(&error), expected);
+            assert!(!expected.is_empty());
+            assert_eq!(expected.to_lowercase(), expected);
+        }
+    }
+
+    #[test]
+    fn event_fields_are_the_closed_whitelist_and_no_secret_channel_leaks() {
+        let (dom, def, ver, actor) = synthetic();
+        let line = capture(|| {
+            emit_definition_version_detail_diagnostic(
+                Some("req-whitelist-1"),
+                dom,
+                def,
+                ver,
+                actor,
+                "path_binding_mismatch",
+            )
+        });
+        for expected in [
+            "definition_version_detail_diagnostic",
+            "get_definition_version_detail",
+            "diagnostic_version=1",
+            "req-whitelist-1",
+            &dom.to_string(),
+            &def.to_string(),
+            &ver.to_string(),
+            &actor.to_string(),
+            "path_binding_mismatch",
+        ] {
+            assert!(
+                line.contains(expected),
+                "missing field/value {expected:?} in: {line}"
+            );
+        }
+        // No token, header, query, payload or graph channel may leak.
+        for forbidden in [
+            "authorization",
+            "bearer",
+            "cookie",
+            "jti",
+            "token",
+            "payload",
+            "query",
+            "nodes",
+            "transitions",
+            "context_schema",
+            "submission_schema",
+            "instructions",
+            "assignee",
+            "metadata",
+        ] {
+            assert!(
+                !line.to_lowercase().contains(forbidden),
+                "forbidden token {forbidden:?} leaked into: {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_request_id_is_omitted_not_fabricated() {
+        let (dom, def, ver, actor) = synthetic();
+        let line = capture(|| {
+            emit_definition_version_detail_diagnostic(None, dom, def, ver, actor, "success")
+        });
+        // tracing renders an Option::None field as fully absent — the event
+        // carries no request id at all, never a fabricated placeholder.
+        assert!(!line.contains("request_id"), "request id leaked in: {line}");
+        assert!(line.contains("result_category=\"success\""));
+    }
+
+    #[test]
+    fn success_and_failure_are_correlatable_by_request_id() {
+        let (dom, def, ver, actor) = synthetic();
+        let lines = capture(|| {
+            emit_definition_version_detail_diagnostic(
+                Some("req-corr-9"),
+                dom,
+                def,
+                ver,
+                actor,
+                "success",
+            );
+            emit_definition_version_detail_diagnostic(
+                Some("req-corr-9"),
+                dom,
+                def,
+                ver,
+                actor,
+                "definition_version_not_found",
+            );
+        });
+        assert_eq!(lines.matches("req-corr-9").count(), 2);
+        assert!(lines.contains("result_category=\"success\""));
+        assert!(lines.contains("result_category=\"definition_version_not_found\""));
     }
 }
