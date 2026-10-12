@@ -46,16 +46,34 @@ contract. No roles are added, removed, or reinterpreted.
 
 ```text
 NEW_READ_SURFACE              = GetPublishedVersionInputContract
-ADMISSION_PREDICATE           = IDENTICAL to create-instance admission, applied in the same order:
-                                1. principal exists and enabled
-                                2. version exists (else 404)
-                                3. version's domain exists; caller has an ACTIVE
-                                   domain_role_bindings row in that domain
-                                   (role_key unrestricted, enabled = TRUE — the
-                                   exact `validate_domain_membership` SQL)
-                                4. domain enabled
-                                5. version_status == PUBLISHED (else 409
-                                   version_not_published — mirrors create)
+ADMISSION_PREDICATE           = same five conditions and the same membership SQL
+                                as create-instance admission — the AUTHORIZED
+                                SET is identical. The ORDER below is this
+                                read's own member-safe sequence, NOT create's
+                                internal order (order equivalence is NOT
+                                claimed):
+                                1. principal exists and enabled (opaque-404
+                                   bucket on failure)
+                                2. version exists (opaque-404 bucket on miss)
+                                3. caller has an ACTIVE domain_role_bindings
+                                   row in the version's domain (role_key
+                                   unrestricted, enabled = TRUE — byte-identical
+                                   `validate_domain_membership` SQL)
+                                4. domain enabled (403 domain_disabled)
+                                5. version_status == PUBLISHED (409
+                                   version_not_published)
+                                create's internal sequence differs: sizes ->
+                                version exists + domain-match + PUBLISHED
+                                (inside `lock_and_validate_version`) -> domain
+                                enabled -> principal enabled -> membership, so
+                                observable error precedence differs where
+                                inputs are pathological (e.g. member + disabled
+                                domain + non-PUBLISHED version: read 403
+                                domain_disabled vs create 409
+                                version_not_published; disabled principal: read
+                                opaque 404 vs create non-404). Equal authorized
+                                set is the contract; error-order equivalence is
+                                not.
 RETURNED_FIELDS               = { definitionVersionId, definitionId, versionNumber,
                                   versionStatus, contextSchema }
 RETURNED_FIELDS_EXCLUDE       = nodes, transitions, instructions, assignee configs,

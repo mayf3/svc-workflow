@@ -78,8 +78,11 @@ pub struct DomainDefinitionListResult {
 
 /// Get the input contract of a PUBLISHED definition version.
 ///
-/// Admission reuses the exact create-instance predicate; see
-/// SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1.
+/// Admission applies the same five conditions and the same membership SQL as
+/// create-instance admission — identical authorized set — but in this read's
+/// own member-safe check order (create's internal order differs; order
+/// equivalence is not claimed). See SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_
+/// MEMBER_READ_V1.
 #[derive(Debug, Clone)]
 pub struct GetPublishedVersionInputContract {
     pub actor_principal_id: uuid::Uuid,
