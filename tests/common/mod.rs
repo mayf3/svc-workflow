@@ -530,3 +530,46 @@ pub async fn seed_workflow_definition(
 
     (def_id, ver_id, node_id, trans_id)
 }
+
+/// Seed an AGENT principal with a DOMAIN_MEMBER binding in the given domain.
+/// `enabled` controls the binding's enabled flag (create-instance admission and
+/// the member input-contract read both require enabled = TRUE).
+/// Returns the principal id.
+pub async fn seed_domain_member(pool: &PgPool, domain_id: uuid::Uuid, enabled: bool) -> uuid::Uuid {
+    let principal_id = seed_second_principal(pool).await;
+    let binding_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled)
+        VALUES ($1, $2, $3, 'DOMAIN_MEMBER', $4)
+        "#,
+    )
+    .bind(binding_id)
+    .bind(domain_id)
+    .bind(principal_id)
+    .bind(enabled)
+    .execute(pool)
+    .await
+    .expect("failed to insert domain member binding");
+    principal_id
+}
+
+/// Toggle a principal's enabled flag.
+pub async fn set_principal_enabled(pool: &PgPool, principal_id: uuid::Uuid, enabled: bool) {
+    sqlx::query("UPDATE principals SET enabled = $2 WHERE principal_id = $1")
+        .bind(principal_id)
+        .bind(enabled)
+        .execute(pool)
+        .await
+        .expect("failed to update principal enabled");
+}
+
+/// Toggle a domain's enabled flag.
+pub async fn set_domain_enabled(pool: &PgPool, domain_id: uuid::Uuid, enabled: bool) {
+    sqlx::query("UPDATE domains SET enabled = $2 WHERE domain_id = $1")
+        .bind(domain_id)
+        .bind(enabled)
+        .execute(pool)
+        .await
+        .expect("failed to update domain enabled");
+}

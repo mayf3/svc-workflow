@@ -58,6 +58,28 @@ impl PgDefinitionRepository {
         Ok(row.map(|r| r.0).unwrap_or(false))
     }
 
+    /// The create-instance admission predicate
+    /// (`workflow_instance_repository::validation_helpers::validate_domain_membership`):
+    /// any enabled binding row in the domain, role_key unrestricted.
+    pub(super) async fn check_active_membership_binding_inner(
+        &self,
+        principal_id: uuid::Uuid,
+        domain_id: uuid::Uuid,
+    ) -> Result<bool, DefinitionError> {
+        let membership: Option<(bool,)> = sqlx::query_as(
+            "SELECT enabled FROM domain_role_bindings \
+             WHERE domain_id = $1 AND principal_id = $2 AND enabled = TRUE \
+             LIMIT 1",
+        )
+        .bind(domain_id)
+        .bind(principal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_db_error)?;
+
+        Ok(membership.is_some())
+    }
+
     pub(super) async fn check_principal_exists_inner(
         &self,
         principal_id: uuid::Uuid,

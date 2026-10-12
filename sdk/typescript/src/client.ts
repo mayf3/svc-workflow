@@ -17,6 +17,7 @@ import {
   createWorkflowInstanceResponseSchema,
   creatorDraftPageSchema,
   definitionDetailResponseSchema,
+  definitionInputContractResponseSchema,
   definitionListPageSchema,
   definitionListQuerySchema,
   domainInstancePageSchema,
@@ -60,6 +61,7 @@ import type {
   CreateWorkflowInstanceResponse,
   CreatorDraftPage,
   DefinitionDetailResponse,
+  DefinitionInputContractResponse,
   DefinitionListPage,
   DefinitionListQuery,
   DomainInstancePage,
@@ -531,6 +533,29 @@ export class WorkflowClient {
       path: `/internal/v1/domains/${encodeURIComponent(domainUuid)}/definitions/${encodeURIComponent(defUuid)}`,
       operation: 'get-domain-definition',
       successSchema: definitionDetailResponseSchema,
+      requestId: options.requestId,
+    });
+  }
+
+  /**
+   * SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: read the input
+   * contract (contextSchema) of a PUBLISHED definition version. Admission is
+   * server-side: same five conditions and the same membership SQL as
+   * instance creation (equal authorized set), applied in the read's own
+   * member-safe check order — create's internal order differs, so observable
+   * error precedence may differ. Non-PUBLISHED versions answer 409
+   * version_not_published; denials are opaque 404s.
+   */
+  async getDefinitionVersionInputContract(
+    definitionVersionId: string,
+    options: RequestOptions = {},
+  ): Promise<DefinitionInputContractResponse> {
+    const versionUuid = parseUuid(definitionVersionId, 'get-definition-version-input-contract');
+    return this.request({
+      method: 'GET',
+      path: `/internal/v1/definition-versions/${encodeURIComponent(versionUuid)}/input-contract`,
+      operation: 'get-definition-version-input-contract',
+      successSchema: definitionInputContractResponseSchema,
       requestId: options.requestId,
     });
   }
