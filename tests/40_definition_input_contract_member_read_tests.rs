@@ -19,6 +19,9 @@
 
 mod common;
 
+#[path = "definition_input_contract/snapshot.rs"]
+mod snapshot;
+
 use common::{
     create_pool, seed_domain_member, seed_domain_owner, seed_principal_and_domain,
     seed_second_principal, set_domain_enabled, set_principal_enabled,
