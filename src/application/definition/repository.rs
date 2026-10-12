@@ -46,8 +46,10 @@ pub trait DefinitionRepository {
     ) -> Result<bool, DefinitionError>;
 
     /// Check that a principal holds ANY active (enabled) role binding in the
-    /// domain. This is the exact create-instance admission predicate
-    /// (`validate_domain_membership`): role_key is unrestricted, enabled=TRUE.
+    /// domain. Same SQL as create-instance admission's
+    /// `validate_domain_membership` (role_key unrestricted, enabled=TRUE);
+    /// the read invokes it at its own point in the check order (see reads.rs
+    /// — order equivalence with create is not claimed).
     async fn has_active_membership_binding(
         &self,
         principal_id: Uuid,

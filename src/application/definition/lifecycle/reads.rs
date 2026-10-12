@@ -152,8 +152,14 @@ impl<R: DefinitionRepository> DefinitionService<R> {
 
     /// Get the input contract of a PUBLISHED definition version.
     ///
-    /// Admission predicate is the EXACT create-instance admission sequence
-    /// (SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1): principal
+    /// Admission applies the same five conditions and the same membership SQL
+    /// as create-instance admission (SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_
+    /// MEMBER_READ_V1) — the AUTHORIZED SET is identical; the ORDER below is
+    /// this read's own member-safe sequence, not create's internal one
+    /// (create checks sizes -> version exists + domain-match + PUBLISHED
+    /// inside `lock_and_validate_version`, THEN domain enabled -> principal
+    /// enabled -> membership, so observable error precedence differs on
+    /// pathological inputs; order equivalence is NOT claimed): principal
     /// enabled -> version exists -> active domain membership binding -> domain
     /// enabled -> version PUBLISHED. Denials for non-members stay in the
     /// opaque-404 mapper bucket; only the five contract fields are returned.
