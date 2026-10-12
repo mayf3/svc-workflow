@@ -8,6 +8,7 @@ mod definition_crud;
 mod error_mapping;
 mod graph_read;
 mod graph_write;
+mod input_contract;
 mod lifecycle_transactions;
 
 use crate::application::definition::DefinitionRepository;
@@ -31,6 +32,18 @@ impl PgDefinitionRepository {
 
 #[allow(async_fn_in_trait)]
 impl DefinitionRepository for PgDefinitionRepository {
+    async fn get_published_version_input_contract(
+        &self,
+        actor_principal_id: uuid::Uuid,
+        definition_version_id: uuid::Uuid,
+    ) -> Result<
+        crate::application::definition::queries::PublishedVersionInputContract,
+        DefinitionError,
+    > {
+        self.get_published_version_input_contract_inner(actor_principal_id, definition_version_id)
+            .await
+    }
+
     // -- Principals & Domains ---------------------------------------------------
 
     async fn check_principal_enabled(

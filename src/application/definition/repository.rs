@@ -7,6 +7,7 @@ use sqlx::Postgres;
 use sqlx::Transaction;
 use uuid::Uuid;
 
+use super::queries::PublishedVersionInputContract;
 use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::{
     NodeDefinition, TransitionDefinition, WorkflowDefinition, WorkflowDefinitionVersion,
@@ -27,6 +28,15 @@ pub struct DefinitionData {
 /// All methods are fallible and return [`DefinitionError`].
 #[allow(async_fn_in_trait)]
 pub trait DefinitionRepository {
+    /// Read the exact version's minimal input contract and all five admission
+    /// conditions from one consistent database snapshot, preserving the read's
+    /// principal -> version/definition -> membership -> domain -> status order.
+    async fn get_published_version_input_contract(
+        &self,
+        actor_principal_id: Uuid,
+        definition_version_id: Uuid,
+    ) -> Result<PublishedVersionInputContract, DefinitionError>;
+
     // -----------------------------------------------------------------------
     // Principals & Domains (read-only checks)
     // -----------------------------------------------------------------------
