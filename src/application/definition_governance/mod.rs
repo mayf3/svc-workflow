@@ -132,6 +132,11 @@ impl From<DefinitionError> for DefinitionGovernanceError {
             DefinitionError::DomainDisabled => Self::DomainDisabled,
             DefinitionError::DefinitionArchived => Self::DefinitionArchived,
             DefinitionError::VersionNotDraft => Self::DefinitionVersionImmutable,
+            // Read-only admission variant (input-contract member read); the
+            // governance write paths never produce it. Fail closed.
+            DefinitionError::VersionNotPublished => {
+                Self::InternalConsistency("version_not_published on write path".to_string())
+            }
             DefinitionError::DefinitionKeyConflict => Self::DefinitionKeyConflict,
             DefinitionError::ConcurrentModification(_) => Self::RevisionConflict,
             DefinitionError::InvalidLifecycleTransition => Self::DefinitionNotEditable,
