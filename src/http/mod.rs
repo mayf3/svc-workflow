@@ -218,6 +218,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::definitions::get_definition_detail),
         )
         .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/versions/{versionId}",
+            get(handlers::definitions::get_definition_version_detail),
+        )
+        .route(
             "/internal/v1/domains/{domainId}/definitions",
             post(handlers::definitions::create_definition).layer(middleware::from_fn_with_state(
                 state.clone(),
