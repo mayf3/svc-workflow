@@ -135,7 +135,9 @@ async fn internal_api_create_detail_transition_timeline_and_security() {
     assert_eq!(version.status(), StatusCode::OK);
     let version_body = json_body(version).await;
     assert_eq!(version_body["service"], "svc-workflow");
-    assert_eq!(version_body["schemaVersion"], "0023");
+    // T71 r3: schemaVersion is DERIVED from EXPECTED_MIGRATION_VERSION —
+    // the assertion stays correct automatically as migrations advance.
+    assert_eq!(version_body["schemaVersion"], "0028");
     assert_eq!(version_body["apiContractVersion"], "internal-v0");
     // Provenance metadata must be present and honest: debug/dev builds may be
     // "dirty", but the fields must never be empty placeholders.
