@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -13,7 +13,7 @@ governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V6
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_0
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
 owners:
   - mayf3
 ---
