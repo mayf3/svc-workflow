@@ -357,7 +357,7 @@ pub(crate) fn forum_text(payload: &serde_json::Value) -> String {
                 .as_i64()
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "?".to_string());
-            format!("🚨 Execution attempts exhausted ({n}) on workflow `{instance}` — HUMAN_REQUIRED requested")
+            format!("🙋 Execution attempts exhausted ({n}) on workflow `{instance}` — Domain Owner assistance requested")
         }
         other => format!("ℹ️ {other} on workflow `{instance}`"),
     }
