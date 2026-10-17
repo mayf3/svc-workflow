@@ -69,13 +69,18 @@ pub struct ExecuteWorkflowTransitionResponse {
 }
 
 /// POST /internal/v1/workflow-instances/{id}/execution-escalations response
-/// (CTR-SWEC-004). `escalated=false` means an open case already existed
-/// (idempotent replay of the same visit).
+/// (CTR-SWEC-004). The system ingress opens OWNER_PENDING only; `escalated`
+/// is retained as a compatibility flag meaning the case was newly created.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionEscalationResponse {
     pub escalated: bool,
     pub assistance_case_id: Uuid,
+    pub status: String,
+    pub workflow_instance_id: Uuid,
+    pub node_visit_id: Uuid,
+    pub domain_id: Uuid,
+    pub owner_principal_id: Uuid,
     pub workflow_state_version: i32,
     pub event_sequence: i32,
 }

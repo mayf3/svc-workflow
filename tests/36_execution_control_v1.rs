@@ -520,7 +520,7 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     let mock = common::MockJwksServer::start().await;
     let app = build_app_with_policy(pool.clone(), &mock.url, 3);
 
-    let (_owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    let (owner, domain_id) = common::seed_principal_and_domain(&pool).await;
     // AGENT creator ⇒ the entry visit owns a DISPATCH_INTENT (due-feedable).
     let creator = seed_agent(&pool).await;
     seed_domain_member(&pool, domain_id, creator).await;
@@ -561,7 +561,7 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
         body.as_array().unwrap().len()
     );
 
-    // Escalation WITH the role → 200 escalated=true.
+    // Exhaustion WITH the role → 200 and opens OWNER_PENDING only.
     let (status, body) = do_post(
         app.clone(),
         &path,
@@ -572,17 +572,24 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     .await;
     assert_eq!(status, 200, "escalation body: {body}");
     assert_eq!(body["escalated"], json!(true));
+    assert_eq!(body["status"], json!("OWNER_PENDING"));
+    assert_eq!(body["workflowInstanceId"], json!(instance));
+    assert_eq!(body["nodeVisitId"], json!(visit));
+    assert_eq!(body["domainId"], json!(domain_id));
+    assert_eq!(body["ownerPrincipalId"], json!(owner));
     let case_id = body["assistanceCaseId"].as_str().unwrap().to_string();
 
-    // The case exists in HUMAN_REQUIRED.
-    let status_row: (String,) = sqlx::query_as(
-        "SELECT status::text FROM workflow_assistance_cases WHERE assistance_case_id = $1",
+    // System execution exhaustion must NOT impersonate the Domain Owner: the
+    // case remains OWNER_PENDING and carries no escalation stage fields.
+    let status_row: (String, Option<Uuid>) = sqlx::query_as(
+        "SELECT status::text, escalated_by_principal_id FROM workflow_assistance_cases WHERE assistance_case_id = $1",
     )
     .bind(Uuid::parse_str(&case_id).unwrap())
     .fetch_one(&pool)
     .await
     .expect("case row");
-    assert_eq!(status_row.0, "HUMAN_REQUIRED");
+    assert_eq!(status_row.0, "OWNER_PENDING");
+    assert_eq!(status_row.1, None);
 
     // Due feed AFTER escalation: the visit is GONE (CTR-SWEC-006 narrowing).
     let (status, body) = do_get(
@@ -600,7 +607,7 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     assert!(!offered, "the escalated visit must leave the due feed");
 
     // Idempotent replay: a NEW idempotency key on the SAME visit answers
-    // escalated=false with the SAME case id (no second case).
+    // escalated=false with the SAME OWNER_PENDING case id (no second case or wake fact).
     let (status, body2) = do_post(
         app.clone(),
         &path,
@@ -611,7 +618,9 @@ async fn acc05_escalation_endpoint_gates_idempotency_and_due_feed() {
     .await;
     assert_eq!(status, 200);
     assert_eq!(body2["escalated"], json!(false));
+    assert_eq!(body2["status"], json!("OWNER_PENDING"));
     assert_eq!(body2["assistanceCaseId"], json!(case_id));
+    assert_eq!(body2["ownerPrincipalId"], json!(owner));
 
     // Invalid reason → 422.
     let (status, _body) = do_post(

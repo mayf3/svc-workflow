@@ -16,7 +16,8 @@ use uuid::Uuid;
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::assistance::AssistanceError;
 use crate::domain::workflow_instance::events::{
-    AssistanceEventData, ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE, EVENT_SCHEMA_VERSION,
+    AssistanceEventData, ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE,
+    ASSISTANCE_REQUESTED_EVENT_TYPE, EVENT_SCHEMA_VERSION,
 };
 
 pub(crate) const MAX_ESCALATION_MESSAGE_CHARS: usize = 2000;
@@ -307,6 +308,260 @@ pub(crate) async fn escalate_visit_tx(
     })
 }
 
+
+/// System execution exhaustion opens an OWNER_PENDING assistance case only.
+/// RETURN-policy escalation continues to use escalate_visit_tx above; this
+/// path deliberately does not mint any human-escalation receipt.
+#[derive(Debug, Clone)]
+struct OwnerPendingPolicyOutcome {
+    assistance_case_id: Uuid,
+    created: bool,
+    status: String,
+    workflow_state_version: i32,
+    event_sequence: i32,
+    domain_id: Uuid,
+    owner_principal_id: Uuid,
+}
+
+async fn request_owner_pending_visit_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    workflow_instance_id: Uuid,
+    node_visit_id: Uuid,
+    actor: Uuid,
+    command_id: Uuid,
+    message: &str,
+    supporting_payload: serde_json::Value,
+) -> Result<OwnerPendingPolicyOutcome, AssistanceError> {
+    if message.trim() != message
+        || message.is_empty()
+        || message.chars().count() > MAX_ESCALATION_MESSAGE_CHARS
+    {
+        return Err(AssistanceError::InvalidPayload(
+            "assistance message must be trimmed and contain 1-2000 characters".to_string(),
+        ));
+    }
+    let request_payload = serde_json::json!({
+        "message": message,
+        "supportingPayload": supporting_payload,
+    });
+    let payload_digest = digest::compute_json_digest(&request_payload)
+        .map_err(AssistanceError::InternalConsistency)?;
+
+    let instance: Option<(
+        Uuid,
+        Uuid,
+        Option<Uuid>,
+        i32,
+        bool,
+        Option<DateTime<Utc>>,
+        Option<String>,
+        Option<Uuid>,
+        Option<Uuid>,
+    )> = sqlx::query_as(
+        "SELECT wi.workflow_instance_id, wi.domain_id, wi.current_node_visit_id,
+                wi.workflow_state_version, wi.cancelled, wi.archived_at,
+                nd.node_type::text AS node_type, wi.current_context_revision_id, nv.node_id
+           FROM workflow_instances wi
+           LEFT JOIN workflow_node_visits nv ON nv.node_visit_id = wi.current_node_visit_id
+           LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
+          WHERE wi.workflow_instance_id = $1
+          FOR UPDATE OF wi",
+    )
+    .bind(workflow_instance_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    let (
+        _,
+        domain_id,
+        current_visit,
+        version,
+        cancelled,
+        archived_at,
+        node_type,
+        context_revision_id,
+        node_id,
+    ) = instance.ok_or(AssistanceError::AssistanceCaseNotFoundOrNotVisible)?;
+
+    if current_visit.is_none() {
+        return Err(AssistanceError::CurrentVisitNotFound);
+    }
+    if current_visit != Some(node_visit_id) {
+        return Err(AssistanceError::CurrentNodeVisitMismatch);
+    }
+    if cancelled {
+        return Err(AssistanceError::InstanceCancelled);
+    }
+    if archived_at.is_some() {
+        return Err(AssistanceError::InstanceArchived);
+    }
+    if node_type.as_deref() == Some("TERMINAL") {
+        return Err(AssistanceError::SourceNodeTerminal);
+    }
+
+    let owners: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT b.principal_id
+           FROM domain_role_bindings b
+           JOIN domains d ON d.domain_id=b.domain_id AND d.enabled=TRUE
+           JOIN principals p ON p.principal_id=b.principal_id AND p.enabled=TRUE
+          WHERE b.domain_id=$1 AND b.role_key='DOMAIN_OWNER' AND b.enabled=TRUE
+          ORDER BY b.principal_id
+          FOR SHARE OF b, p",
+    )
+    .bind(domain_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(storage)?;
+    if owners.len() != 1 {
+        return Err(AssistanceError::DomainOwnerMissing);
+    }
+    let owner_principal_id = owners[0];
+
+    let existing: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT assistance_case_id, status::text
+           FROM workflow_assistance_cases
+          WHERE node_visit_id=$1 AND status IN ('OWNER_PENDING','HUMAN_REQUIRED')
+          ORDER BY created_at DESC, assistance_case_id DESC
+          LIMIT 1",
+    )
+    .bind(node_visit_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?;
+    if let Some((assistance_case_id, status)) = existing {
+        return Ok(OwnerPendingPolicyOutcome {
+            assistance_case_id,
+            created: false,
+            status,
+            workflow_state_version: version,
+            event_sequence: version,
+            domain_id,
+            owner_principal_id,
+        });
+    }
+
+    let receipt_body = serde_json::json!({ "source": "execution_policy" });
+    let receipt_digest = digest::compute_json_digest(&receipt_body)
+        .map_err(AssistanceError::InternalConsistency)?;
+    let request_receipt_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_command_receipts
+             (command_id, principal_id, idempotency_key, command_type, request_hash, receipt_status)
+         VALUES ($1,$2,$3,'REQUEST_WORKFLOW_ASSISTANCE',$4,'PROCESSING')",
+    )
+    .bind(request_receipt_id)
+    .bind(actor)
+    .bind(format!("policy-req:{command_id}"))
+    .bind(hex_digest(&format!("policy-req:{command_id}")))
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?;
+    sqlx::query(
+        "UPDATE workflow_command_receipts
+            SET receipt_status='COMPLETED', response_status=200,
+                response_body=$2, response_digest=$3, completed_at=now()
+          WHERE command_id=$1",
+    )
+    .bind(request_receipt_id)
+    .bind(&receipt_body)
+    .bind(&receipt_digest)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    let assistance_case_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_assistance_cases
+             (assistance_case_id, workflow_instance_id, node_visit_id, status,
+              requested_by_principal_id, request_payload, request_payload_digest, request_command_id)
+         VALUES ($1,$2,$3,'OWNER_PENDING',$4,$5,$6,$7)",
+    )
+    .bind(assistance_case_id)
+    .bind(workflow_instance_id)
+    .bind(node_visit_id)
+    .bind(actor)
+    .bind(&request_payload)
+    .bind(&payload_digest)
+    .bind(request_receipt_id)
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| {
+        if error.as_database_error().and_then(|e| e.constraint())
+            == Some("uq_assistance_one_open_per_visit")
+        {
+            AssistanceError::AssistanceAlreadyOpen
+        } else {
+            storage(error)
+        }
+    })?;
+
+    let new_version = version + 1;
+    let affected = sqlx::query(
+        "UPDATE workflow_instances
+            SET workflow_state_version=$2, updated_at=now()
+          WHERE workflow_instance_id=$1 AND workflow_state_version=$3",
+    )
+    .bind(workflow_instance_id)
+    .bind(new_version)
+    .bind(version)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+    if affected != 1 {
+        return Err(AssistanceError::InternalConsistency(
+            "owner-pending policy state-version update affected unexpected row count".to_string(),
+        ));
+    }
+
+    let event_data = serde_json::to_value(AssistanceEventData {
+        assistance_case_id: assistance_case_id.to_string(),
+        previous_status: None,
+        new_status: "OWNER_PENDING".to_string(),
+        payload_digest: payload_digest.clone(),
+    })
+    .map_err(|error| AssistanceError::InternalConsistency(error.to_string()))?;
+    let event_digest = digest::compute_json_digest(&event_data)
+        .map_err(AssistanceError::InternalConsistency)?;
+    sqlx::query(
+        "INSERT INTO workflow_events
+             (event_id, workflow_instance_id, event_sequence, event_schema_version,
+              command_id, event_type, transition_effect,
+              source_node_visit_id, target_node_visit_id,
+              context_revision_id, submission_id, event_data, event_data_digest,
+              actor_principal_id, from_node_id, to_node_id,
+              old_workflow_state_version, new_workflow_state_version)
+         VALUES ($1,$2,$3,$4,$5,$6,NULL::transition_effect,$7,$7,$8,NULL,$9,$10,$11,$12,$12,$13,$3)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(workflow_instance_id)
+    .bind(new_version)
+    .bind(EVENT_SCHEMA_VERSION)
+    .bind(request_receipt_id)
+    .bind(ASSISTANCE_REQUESTED_EVENT_TYPE)
+    .bind(node_visit_id)
+    .bind(context_revision_id)
+    .bind(&event_data)
+    .bind(&event_digest)
+    .bind(actor)
+    .bind(node_id)
+    .bind(version)
+    .execute(&mut **tx)
+    .await
+    .map_err(storage)?;
+
+    Ok(OwnerPendingPolicyOutcome {
+        assistance_case_id,
+        created: true,
+        status: "OWNER_PENDING".to_string(),
+        workflow_state_version: new_version,
+        event_sequence: new_version,
+        domain_id,
+        owner_principal_id,
+    })
+}
+
 // ── CTR-SWEC-004: the system escalation ingress command ───────────────────
 
 /// Stable command type for the system execution-escalation ingress.
@@ -332,7 +587,14 @@ pub struct SystemEscalationCommand {
 #[serde(rename_all = "camelCase")]
 pub struct SystemEscalationOutcome {
     pub assistance_case_id: Uuid,
+    /// Compatibility flag: true when this ingress created the open case.
+    /// The case itself remains OWNER_PENDING; no human escalation occurs here.
     pub escalated: bool,
+    pub status: String,
+    pub workflow_instance_id: Uuid,
+    pub node_visit_id: Uuid,
+    pub domain_id: Uuid,
+    pub owner_principal_id: Uuid,
     pub workflow_state_version: i32,
     pub event_sequence: i32,
 }
@@ -421,9 +683,10 @@ async fn complete_receipt(
     Ok(())
 }
 
-/// Execute the system escalation ingress: validate, escalate the CURRENT
-/// visit to HUMAN_REQUIRED (idempotent on an open case), queue the forum
-/// projection row, complete the receipt. One transaction.
+/// Execute the system exhaustion ingress: validate, open an OWNER_PENDING
+/// case for the CURRENT visit (idempotent on an existing open case), queue
+/// the forum projection row, complete the receipt. Only the Domain Owner may
+/// later resolve or explicitly escalate the case to HUMAN_REQUIRED.
 pub(crate) async fn system_execution_escalation(
     pool: &sqlx::PgPool,
     command: SystemEscalationCommand,
@@ -444,7 +707,7 @@ pub(crate) async fn system_execution_escalation(
     .await?
     {
         Receipt::Owned(command_id) => {
-            let outcome = escalate_and_project(&mut tx, command_id, &command).await?;
+            let outcome = request_owner_pending_and_project(&mut tx, command_id, &command).await?;
             let body = serde_json::to_value(&outcome)
                 .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
             complete_receipt(&mut tx, command_id, 200, &body).await?;
@@ -471,13 +734,13 @@ pub(crate) async fn system_execution_escalation(
     }
 }
 
-async fn escalate_and_project(
+async fn request_owner_pending_and_project(
     tx: &mut Transaction<'_, Postgres>,
     command_id: Uuid,
     command: &SystemEscalationCommand,
 ) -> Result<SystemEscalationOutcome, AssistanceError> {
     let message = format!(
-        "Execution policy escalation ({}) on the current node visit — a human must take over",
+        "Execution policy exhausted ({}) on the current node visit — Domain Owner assistance requested",
         command.reason
     );
     let supporting = serde_json::json!({
@@ -487,7 +750,7 @@ async fn escalate_and_project(
         "lastAttemptId": command.last_attempt_id,
         "dispatchIntentId": command.dispatch_intent_id,
     });
-    let outcome = escalate_visit_tx(
+    let outcome = request_owner_pending_visit_tx(
         tx,
         command.workflow_instance_id,
         command.node_visit_id,
@@ -498,16 +761,18 @@ async fn escalate_and_project(
     )
     .await?;
 
-    // Forum projection row for the escalation (Goal Scope G).
     super::super::outbox::queue_forum_event(
         tx,
         command.workflow_instance_id,
-        &format!("assistance_escalated:{}", outcome.assistance_case_id),
+        &format!("assistance_requested:{}", outcome.assistance_case_id),
         serde_json::json!({
             "eventType": "attempts_exhausted",
             "workflowInstanceId": command.workflow_instance_id,
             "nodeVisitId": command.node_visit_id,
             "assistanceCaseId": outcome.assistance_case_id,
+            "status": outcome.status,
+            "domainId": outcome.domain_id,
+            "ownerPrincipalId": outcome.owner_principal_id,
             "reason": command.reason,
             "attemptCount": command.attempt_count,
         }),
@@ -517,7 +782,12 @@ async fn escalate_and_project(
 
     Ok(SystemEscalationOutcome {
         assistance_case_id: outcome.assistance_case_id,
-        escalated: outcome.escalated,
+        escalated: outcome.created,
+        status: outcome.status,
+        workflow_instance_id: command.workflow_instance_id,
+        node_visit_id: command.node_visit_id,
+        domain_id: outcome.domain_id,
+        owner_principal_id: outcome.owner_principal_id,
         workflow_state_version: outcome.workflow_state_version,
         event_sequence: outcome.event_sequence,
     })
