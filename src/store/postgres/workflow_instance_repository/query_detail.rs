@@ -135,7 +135,13 @@ async fn load_outgoing(
             && Some(row.transition_id) != base.current_primary_advance_transition_id
         {
             Some(TransitionBlockedReason::AdvanceNotPrimary)
-        } else if base.current_assignee_principal_id != Some(actor) {
+        } else if !super::query_visibility::actor_is_effective_current_assignee(
+            &mut *tx,
+            base.current_assignee_principal_id,
+            actor,
+        )
+        .await?
+        {
             Some(TransitionBlockedReason::ActorNotCurrentAssignee)
         } else if !target_available {
             Some(TransitionBlockedReason::TargetAssigneeUnavailable)

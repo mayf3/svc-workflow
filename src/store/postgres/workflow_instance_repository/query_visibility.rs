@@ -93,6 +93,29 @@ pub(crate) async fn check_global_workflow_read_role(
     .map_err(storage)
 }
 
+/// Effective current-assignee check under the canonical identity lineage
+/// (migration 0025, CTR-CIR V2): the stored assignee itself, or its unique
+/// canonical successor, holds the assignee's read and current-node
+/// authority. Mirrors the my_tasks projection contract in
+/// `query_worklists` so worklist visibility, instance read visibility and
+/// transition authorization agree on one identity answer. The stored
+/// assignee UUID is never rewritten.
+pub(crate) async fn actor_is_effective_current_assignee(
+    tx: &mut Transaction<'_, Postgres>,
+    stored_assignee: Option<Uuid>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    let Some(stored) = stored_assignee else {
+        return Ok(false);
+    };
+    let effective = crate::store::postgres::identity_successor::resolve_current_principal(
+        &mut **tx, stored,
+    )
+    .await
+    .map_err(storage)?;
+    Ok(effective == Some(actor))
+}
+
 /// The fail-closed server-side mapping of the V6 `GLOBAL_SCHEDULER_READ`
 /// product capability: only an enabled `GLOBAL_SCHEDULER_READ` binding
 /// satisfies it. Existing GLOBAL_WORKFLOW_READER / GLOBAL_WORKFLOW_COORDINATOR
@@ -300,7 +323,10 @@ async fn classify_visibility(
     if auditor {
         return Ok(Some(QueryVisibility::DomainOwnerFull));
     }
-    if base.current_assignee_principal_id == Some(actor)
+    let effective_assignee =
+        actor_is_effective_current_assignee(&mut *tx, base.current_assignee_principal_id, actor)
+            .await?;
+    if effective_assignee
         && base.current_node_type.as_deref() != Some("TERMINAL")
         && base.visit_instance_id == Some(base.workflow_instance_id)
         && base.node_definition_version_id == Some(base.definition_version_id)
