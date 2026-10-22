@@ -210,7 +210,19 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 7: Validate caller is current visit assignee
     // ---------------------------------------------------------------
-    if current_visit.assignee_principal_id != Some(principal_uuid) {
+    let effective_assignee = match super::query_visibility::actor_is_effective_current_assignee(
+        &mut tx,
+        current_visit.assignee_principal_id,
+        principal_uuid,
+    )
+    .await
+    {
+        Ok(matches) => matches,
+        Err(error) => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(error.to_string()));
+        }
+    };
+    if !effective_assignee {
         deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
     }
 
