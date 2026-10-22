@@ -58,6 +58,23 @@ impl PgDefinitionRepository {
         Ok(row.map(|r| r.0).unwrap_or(false))
     }
 
+    pub(super) async fn check_global_role_inner(
+        &self,
+        principal_id: uuid::Uuid,
+        role_key: &str,
+    ) -> Result<bool, DefinitionError> {
+        let row: Option<(bool,)> = sqlx::query_as(
+            "SELECT enabled FROM global_role_bindings WHERE principal_id = $1 AND role_key = $2",
+        )
+        .bind(principal_id)
+        .bind(role_key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_db_error)?;
+
+        Ok(row.map(|r| r.0).unwrap_or(false))
+    }
+
     pub(super) async fn check_principal_exists_inner(
         &self,
         principal_id: uuid::Uuid,
