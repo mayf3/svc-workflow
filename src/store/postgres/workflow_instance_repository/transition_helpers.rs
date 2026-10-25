@@ -251,6 +251,7 @@ pub(super) async fn update_instance(
         r#"
         UPDATE workflow_instances
         SET current_node_visit_id = $1,
+            updated_at = now(),
             workflow_state_version = $2
         WHERE workflow_instance_id = $3
           AND workflow_state_version = $4
