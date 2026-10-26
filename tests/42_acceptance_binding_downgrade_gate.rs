@@ -15,6 +15,24 @@
 //!    rejected by the old binary as well. Readback proves the downgrade
 //!    gate — this is NOT a health/readback-only claim.
 //!
+//! F3 hardening (review ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW):
+//! - explicit isolated `TEST_DATABASE_URL` is REQUIRED; the shared default
+//!   database and any default-port PostgreSQL are refused outright;
+//! - the old binary is launched with `env_clear` plus a minimal, closed
+//!   variable set — Forum sync and canonical-identity admission are
+//!   explicitly disabled and can never be enabled by an inherited or
+//!   worktree-`.env` value;
+//! - the child runs in an owned temp cwd containing an empty `.env` and a
+//!   copy of `migrations/` (the server loads both relative to cwd);
+//! - the child is wrapped in an RAII guard so every failure/panic path kills
+//!   and reaps it;
+//! - the old binary's SHA-256 is pinned, binding the executable to its
+//!   declared source commit.
+//!
+//! The instance used for the old-binary leg is `NON_BUSINESS_TEST` (the
+//! actor is its enabled DOMAIN_OWNER), so no Forum binding/outbox facts are
+//! seeded in the first place.
+//!
 //! Environment:
 //! - `TEST_DATABASE_URL`: isolated PostgreSQL 16 test database (required).
 //! - `ACB_OLD_BINARY`: path to the base-commit server binary. When unset,
@@ -27,13 +45,13 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
 use std::time::Duration;
 
-use axum::body::{to_bytes, Body};
-use axum::http::Request;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use tower::ServiceExt;
 use uuid::Uuid;
 
 use svc_workflow::application::definition::commands::{PublishVersion, RevokeVersion};
@@ -45,6 +63,233 @@ use svc_workflow::domain::workflow_instance::commands::{
 };
 use svc_workflow::store::postgres::admission_gate::AdmissionGate;
 use svc_workflow::store::postgres::definition_repository::PgDefinitionRepository;
+
+/// SHA-256 of the archived pre-implementation server binary used for the
+/// downgrade leg. The hash binds the executable to its declared source
+/// identity; a binary that does not match is refused, never silently used.
+const OLD_BINARY_SHA256: &str =
+    "d97aa01913b9324675af45b2384075bd542c4c0d91d8fedc0e463c6857ec20d5";
+/// Source commit the archived old binary was built from (pre-implementation
+/// deployment line; it does not contain this feature).
+const OLD_BINARY_SOURCE_HEAD: &str = "b2e4736f4f7e6350bcf1db44e016d583b20e2b21";
+
+// ============================================================================
+// Isolation primitives (pure; covered by the tests below)
+// ============================================================================
+
+/// Require an explicitly configured, non-default, non-default-port test
+/// database. The shared default (`localhost:5432/svc_workflow`) and any
+/// default-port PostgreSQL are refused; this suite may only run against the
+/// dedicated isolated instance.
+fn ensure_explicit_isolated_db(url: Option<String>) -> String {
+    let url = url.unwrap_or_default();
+    assert!(
+        !url.trim().is_empty(),
+        "TEST_DATABASE_URL must be set explicitly; refusing to fall back to the \
+         shared default database"
+    );
+    let lower = url.to_lowercase();
+    assert!(
+        !lower.contains("@localhost:5432/") && !lower.contains("@127.0.0.1:5432/"),
+        "TEST_DATABASE_URL must not point at a default-port PostgreSQL \
+         (localhost:5432 / 127.0.0.1:5432); use the dedicated isolated instance"
+    );
+    assert!(
+        !lower.ends_with("/svc_workflow"),
+        "TEST_DATABASE_URL must not use the shared default database name \
+         'svc_workflow'"
+    );
+    url
+}
+
+fn sha256_file(path: &str) -> String {
+    let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    hex::encode(hasher.finalize())
+}
+
+/// Create an owned temp cwd for the old binary: empty `.env` (the server
+/// runs dotenvy::dotenv() at startup) and a copy of `migrations/` (the
+/// server loads migrations relative to cwd).
+fn prepare_owned_cwd() -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("acb-old-binary-cwd-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create owned cwd");
+    std::fs::write(dir.join(".env"), "").expect("write empty .env");
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let dst = dir.join("migrations");
+    std::fs::create_dir_all(&dst).expect("create migrations dir");
+    for entry in std::fs::read_dir(&src).expect("read migrations source") {
+        let entry = entry.expect("migrations entry");
+        if entry.file_type().unwrap().is_file() {
+            std::fs::copy(entry.path(), dst.join(entry.file_name()))
+                .expect("copy migration file");
+        }
+    }
+    dir
+}
+
+/// Build the old-binary command with a CLOSED environment: `env_clear` plus
+/// the minimal variables the server needs, with Forum sync and canonical
+/// identity admission explicitly disabled. No parent or `.env` value can
+/// enable an integration.
+fn build_old_binary_command(
+    binary: &str,
+    db_url: &str,
+    port: u16,
+    jwks_url: &str,
+    admin_principal: Uuid,
+    cwd: &Path,
+) -> Command {
+    let mut cmd = Command::new(binary);
+    cmd.env_clear()
+        .env("DATABASE_URL", db_url)
+        .env("WORKFLOW_BIND_ADDR", "127.0.0.1")
+        .env("WORKFLOW_PORT", port.to_string())
+        .env("WORKFLOW_JWKS_URL", jwks_url)
+        .env("WORKFLOW_JWT_ISSUER", "auth-service")
+        .env("WORKFLOW_JWT_AUDIENCE", "svc-workflow")
+        .env("AUTH_V1_CANARY_ENABLED", "true")
+        .env("AUTH_V1_CANARY_WRITE_ENABLED", "true")
+        .env("AUTH_V1_CANARY_ALLOWED_CLIENT_ID", "test-client")
+        .env("WORKFLOW_PROVISIONING_PRINCIPAL_IDS", admin_principal.to_string())
+        // Explicit disablement: both integrations are opt-in via env; pin
+        // the off values so inheritance bugs cannot flip them on.
+        .env("WORKFLOW_ADMISSION_ENABLED", "0")
+        .env("WORKFLOW_FORUM_SYNC_ENABLED", "false")
+        .current_dir(cwd);
+    cmd
+}
+
+/// RAII guard: the old server is killed and reaped on every path, including
+/// assertion failures and panics inside the leg.
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn minimal_env_keys() -> &'static [&'static str] {
+    &[
+        "DATABASE_URL",
+        "WORKFLOW_BIND_ADDR",
+        "WORKFLOW_PORT",
+        "WORKFLOW_JWKS_URL",
+        "WORKFLOW_JWT_ISSUER",
+        "WORKFLOW_JWT_AUDIENCE",
+        "AUTH_V1_CANARY_ENABLED",
+        "AUTH_V1_CANARY_WRITE_ENABLED",
+        "AUTH_V1_CANARY_ALLOWED_CLIENT_ID",
+        "WORKFLOW_PROVISIONING_PRINCIPAL_IDS",
+        "WORKFLOW_ADMISSION_ENABLED",
+        "WORKFLOW_FORUM_SYNC_ENABLED",
+    ]
+}
+
+// ============================================================================
+// Isolation coverage (no server, no database)
+// ============================================================================
+
+#[test]
+fn isolated_db_guard_rejects_shared_defaults() {
+    ensure_explicit_isolated_db(Some(
+        "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct".to_string(),
+    ));
+    for hostile in [
+        None,
+        Some("".to_string()),
+        Some("postgres://postgres:postgres@localhost:5432/svc_workflow".to_string()),
+        Some("postgres://postgres:postgres@127.0.0.1:5432/svc_workflow".to_string()),
+        Some("postgres://postgres:postgres@127.0.0.1:55432/svc_workflow".to_string()),
+    ] {
+        let result = std::panic::catch_unwind(|| ensure_explicit_isolated_db(hostile.clone()));
+        assert!(result.is_err(), "hostile URL must be refused: {hostile:?}");
+    }
+}
+
+#[test]
+fn old_binary_command_isolation_is_closed() {
+    let cwd = prepare_owned_cwd();
+    let admin = Uuid::new_v4();
+    let cmd = build_old_binary_command(
+        "/definitely/not/started",
+        "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct",
+        19999,
+        "http://127.0.0.1:1/jwks",
+        admin,
+        &cwd,
+    );
+
+    // The environment is exactly the minimal closed set — nothing inherited.
+    let keys: std::collections::BTreeSet<String> = cmd
+        .get_envs()
+        .filter_map(|(k, _)| k.to_str().map(str::to_string))
+        .collect();
+    let expected: std::collections::BTreeSet<String> = minimal_env_keys()
+        .iter()
+        .map(|k| k.to_string())
+        .collect();
+    assert_eq!(
+        keys, expected,
+        "child env must be exactly the minimal closed set"
+    );
+
+    // Integrations are pinned off; no integration URL key exists at all.
+    let value_of = |name: &str| {
+        cmd.get_envs()
+            .find(|(k, _)| k.to_str() == Some(name))
+            .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()))
+    };
+    assert_eq!(value_of("WORKFLOW_ADMISSION_ENABLED").as_deref(), Some("0"));
+    assert_eq!(
+        value_of("WORKFLOW_FORUM_SYNC_ENABLED").as_deref(),
+        Some("false")
+    );
+    for integration_key in [
+        "WORKFLOW_FORUM_AUTH_BASE_URL",
+        "WORKFLOW_FORUM_CLIENT_ID",
+        "WORKFLOW_FORUM_CLIENT_SECRET",
+        "WORKFLOW_ADMISSION_AUTH_BASE_URL",
+        "WORKFLOW_ADMISSION_CORE_BASE_URL",
+        "WORKFLOW_EXECUTION_KICK_URL",
+        "AUTH_V1_CANARY_ALLOWED_SUB",
+        "AUTH_V1_CANARY_ALLOWED_DELEGATING_SUB",
+    ] {
+        assert!(
+            !keys.contains(integration_key),
+            "{integration_key} must be absent from the child env"
+        );
+    }
+
+    // The cwd is owned: empty `.env`, migrations copied, not the worktree.
+    let actual_cwd = cmd.get_current_dir().expect("cwd set").to_path_buf();
+    assert_eq!(actual_cwd, cwd);
+    assert_ne!(
+        actual_cwd,
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        "child must not run in the worktree"
+    );
+    let env_meta = std::fs::metadata(cwd.join(".env")).expect(".env exists");
+    assert_eq!(env_meta.len(), 0, ".env must be empty");
+    assert!(
+        std::fs::metadata(cwd.join("migrations")).unwrap().is_dir(),
+        "migrations copied into owned cwd"
+    );
+    let migrated = std::fs::read_dir(cwd.join("migrations")).unwrap().count();
+    assert!(
+        migrated >= 28,
+        "all migration files copied (found {migrated})"
+    );
+
+    let _ = std::fs::remove_dir_all(&cwd);
+}
+
+// ============================================================================
+// Fixtures (definition via the real publish service; NON_BUSINESS_TEST work)
+// ============================================================================
 
 const ANNOTATION_KEY: &str = "x-workflow-acceptance-binding-v1";
 
@@ -69,8 +314,8 @@ fn annotated_submission_schema() -> Value {
     })
 }
 
-/// Seed the same model3 DRAFT graph as tests/41 and publish through the real
-/// service. Returns (version_id, start->work, work->done transitions).
+/// Seed the model3 DRAFT graph and publish through the real service with an
+/// enabled DOMAIN_OWNER actor. Returns (version_id, start->work, work->done).
 async fn seed_and_publish_annotated(
     pool: &PgPool,
     domain: Uuid,
@@ -120,7 +365,6 @@ async fn seed_and_publish_annotated(
     sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id = $1 WHERE node_id = $2")
         .bind(t2).bind(work_id).execute(pool).await.unwrap();
 
-    // Publish through the REAL application service (enabled DOMAIN_OWNER).
     let repo = PgDefinitionRepository::new(pool.clone());
     let service = DefinitionService::new(repo);
     service
@@ -138,15 +382,22 @@ async fn seed_and_publish_annotated(
     (ver_id, t1, t2)
 }
 
+// ============================================================================
+// The downgrade-gate test
+// ============================================================================
+
 #[tokio::test]
 async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
+    // F3: explicit isolated database — never the shared default.
+    let db_url = ensure_explicit_isolated_db(std::env::var("TEST_DATABASE_URL").ok());
     let pool = common::create_pool().await;
     let (owner, domain) = common::seed_principal_domain_with_owner(&pool).await;
     let agent = common::seed_second_principal(&pool).await;
     let (ver_id, t1, t2) = seed_and_publish_annotated(&pool, domain, agent, owner).await;
 
-    // Create an instance with a valid catalog and advance to the annotated
-    // primary ADVANCE (work node).
+    // Create NON_BUSINESS_TEST work (the owner is this domain's enabled
+    // DOMAIN_OWNER): no Forum binding, no Forum event, no execution kick —
+    // the old binary therefore has nothing integration-shaped to touch.
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
         AdmissionGate::disabled(),
@@ -154,7 +405,7 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
             command_schema_version: "v1".to_string(),
-            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::NonBusinessTest,
             domain_id: DomainId::from_uuid(domain),
             definition_version_id: DefinitionVersionId::from_uuid(ver_id),
             external_reference: None,
@@ -237,8 +488,9 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
     );
 
     // ------------------------------------------------------------------
-    // Old-binary leg: the base-commit server (annotation-ignorant) must ALSO
-    // reject ordinary execution of the REVOKED version over real HTTP.
+    // Old-binary leg: the pre-implementation server (annotation-ignorant)
+    // must ALSO reject ordinary execution of the REVOKED version over real
+    // HTTP. Identity is pinned by SHA-256 before spawn.
     // ------------------------------------------------------------------
     let Ok(old_binary) = std::env::var("ACB_OLD_BINARY") else {
         eprintln!(
@@ -247,34 +499,28 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
         );
         return;
     };
-    if !std::path::Path::new(&old_binary).exists() {
-        panic!("ACB_OLD_BINARY is set but the file does not exist: {old_binary}");
-    }
+    assert!(
+        Path::new(&old_binary).exists(),
+        "ACB_OLD_BINARY is set but the file does not exist: {old_binary}"
+    );
+    let actual_hash = sha256_file(&old_binary);
+    assert_eq!(
+        actual_hash, OLD_BINARY_SHA256,
+        "old binary identity mismatch: {old_binary} has sha256 {actual_hash}, \
+         expected {OLD_BINARY_SHA256} (source {OLD_BINARY_SOURCE_HEAD})"
+    );
 
     let jwks = common::MockJwksServer::start().await;
     let port = {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.local_addr().unwrap().port()
     };
-    let db_url = common::test_database_url();
-    let mut child = std::process::Command::new(&old_binary)
-        .env("DATABASE_URL", &db_url)
-        .env("WORKFLOW_BIND_ADDR", "127.0.0.1")
-        .env("WORKFLOW_PORT", port.to_string())
-        .env("WORKFLOW_JWKS_URL", &jwks.url)
-        .env("WORKFLOW_JWT_ISSUER", "auth-service")
-        .env("WORKFLOW_JWT_AUDIENCE", "svc-workflow")
-        .env("AUTH_V1_CANARY_ENABLED", "true")
-        .env("AUTH_V1_CANARY_WRITE_ENABLED", "true")
-        .env("AUTH_V1_CANARY_ALLOWED_CLIENT_ID", "test-client")
-        .env(
-            "WORKFLOW_PROVISIONING_PRINCIPAL_IDS",
-            owner.to_string(),
-        )
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn old binary");
+    let cwd = prepare_owned_cwd();
+    let mut child = ChildGuard(
+        build_old_binary_command(&old_binary, &db_url, port, &jwks.url, owner, &cwd)
+            .spawn()
+            .expect("spawn old binary"),
+    );
 
     let token = common::v1_token(
         agent,
@@ -283,20 +529,13 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
         300,
         &jwks.key_pair,
     );
-    let outcome = run_old_binary_leg(port, token, instance, t2, ctx).await;
-    let _ = child.kill();
-    let _ = child.wait();
-    outcome.expect("old-binary leg");
+    run_old_binary_leg(port, token, instance, t2, ctx).await;
+    // ChildGuard drops here (and on every panic above): kill + wait.
+    drop(child);
+    let _ = std::fs::remove_dir_all(&cwd);
 }
 
-async fn run_old_binary_leg(
-    port: u16,
-    token: String,
-    instance: Uuid,
-    t2: Uuid,
-    ctx: Uuid,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Wait for the old server to come up.
+async fn run_old_binary_leg(port: u16, token: String, instance: Uuid, t2: Uuid, ctx: Uuid) {
     let base = format!("http://127.0.0.1:{port}");
     let client = reqwest::Client::new();
     let mut up = false;
@@ -332,7 +571,8 @@ async fn run_old_binary_leg(
         .header("content-type", "application/json")
         .json(&payload)
         .send()
-        .await?;
+        .await
+        .expect("old binary HTTP request");
     let status = resp.status().as_u16();
     let body: Value = resp.json().await.unwrap_or(json!({}));
     assert!(
@@ -344,6 +584,4 @@ async fn run_old_binary_leg(
         body_str.contains("definition_version_revoked"),
         "expected definition_version_revoked rejection, got: {body}"
     );
-    Ok(())
 }
-
