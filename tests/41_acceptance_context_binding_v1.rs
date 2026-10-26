@@ -19,11 +19,13 @@
 //! Requires TEST_DATABASE_URL pointing at an isolated PostgreSQL 16 test
 //! database. Run with `--test-threads=1` (fact-count deltas are global).
 //!
-//! NOTE (evidence discipline): the ONLY raw-SQL fixture in this file is the
-//! ACC-ACB-004 combined drift definition, which the Spec itself prescribes
-//! ("isolated malformed/drift fixture" — an annotated Legacy schema cannot be
-//! produced by the new binary's publish path). Every publish-path assertion
-//! goes through DefinitionService::publish_version or the HTTP router.
+//! NOTE (evidence discipline): publish-path assertions go through the real
+//! DefinitionService::publish_version or the HTTP router. Draft graphs are
+//! seeded as DRAFT rows via SQL fixtures before invoking the real publish
+//! service (authoring fixture, not a publish bypass). Post-publish drift
+//! fixtures are limited to the Spec-sanctioned ACC-ACB-004 combined
+//! definition and the F1 drifted instances, which the independent review's
+//! counterexamples themselves prescribe.
 
 #![allow(clippy::needless_borrow)]
 #![allow(unused_imports, unused_variables)]
@@ -742,6 +744,88 @@ async fn acc1_validate_draft_reports_binding_errors_like_publish() {
     assert!(
         !codes2.iter().any(|c| c.starts_with("ACCEPTANCE_BINDING")),
         "{codes2:?}"
+    );
+}
+
+// ============================================================================
+// F2 (review ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW) — the reserved
+// annotation is rejected anywhere in the version's context schema; the sole
+// legal location remains the root of a model3 TASK primary ADVANCE
+// submission schema.
+// ============================================================================
+
+#[tokio::test]
+async fn f2_publish_rejects_annotation_in_context_schema() {
+    for (name, context_schema) in [
+        (
+            "root valid value",
+            json!({"type": "object", ANNOTATION_KEY: annotation_value()}),
+        ),
+        (
+            "nested null value",
+            json!({"type": "object", "$defs": {"payload": {ANNOTATION_KEY: null}}}),
+        ),
+        (
+            "nested inside array",
+            json!({"anyOf": [true, {ANNOTATION_KEY: annotation_value()}]}),
+        ),
+    ] {
+        let pool = common::create_pool().await;
+        let (owner, domain) = common::seed_principal_domain_with_owner(&pool).await;
+        let agent = common::seed_second_principal(&pool).await;
+        let fx = seed_model3_draft(&pool, domain, agent, None).await;
+        sqlx::query(
+            "UPDATE workflow_definition_versions SET context_schema = $1 \
+             WHERE definition_version_id = $2",
+        )
+        .bind(context_schema)
+        .bind(fx.version_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let err = publish_draft(&pool, owner, fx.version_id)
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("context schema annotation ({name}) must fail publication"));
+        assert!(
+            graph_errors_contain(&err, "ACCEPTANCE_BINDING"),
+            "{name}: {err:?}"
+        );
+        // Fail closed: version stays DRAFT.
+        let (st,): (String,) = sqlx::query_as(
+            "SELECT version_status::text FROM workflow_definition_versions \
+             WHERE definition_version_id = $1",
+        )
+        .bind(fx.version_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(st, "DRAFT", "{name}");
+    }
+}
+
+#[tokio::test]
+async fn f2_validate_draft_flags_context_schema_annotation() {
+    let pool = common::create_pool().await;
+    let (owner, domain) = common::seed_principal_domain_with_owner(&pool).await;
+    let agent = common::seed_second_principal(&pool).await;
+    let fx = seed_model3_draft(&pool, domain, agent, None).await;
+    sqlx::query(
+        "UPDATE workflow_definition_versions SET context_schema = $1 \
+         WHERE definition_version_id = $2",
+    )
+    .bind(json!({"type": "object", ANNOTATION_KEY: annotation_value()}))
+    .bind(fx.version_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let codes = match validate_draft(&pool, owner, fx.version_id).await {
+        Ok(codes) => codes,
+        Err(codes) => codes,
+    };
+    assert!(
+        codes.iter().any(|c| c.starts_with("ACCEPTANCE_BINDING")),
+        "{codes:?}"
     );
 }
 
@@ -2005,3 +2089,266 @@ mod http_roundtrip {
     }
 }
 
+
+// ============================================================================
+// F1 (review ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW) — an existing,
+// correctly linked Context whose catalog content is missing/invalid fails as
+// a deterministic 422 `submission_validation_failed` with the failure
+// Receipt; the wrong-instance authoritative linkage is structurally fenced
+// by the composite FK, leaving the InternalConsistency branch as
+// defense-in-depth.
+// ============================================================================
+
+#[allow(clippy::type_complexity)]
+async fn binding_fact_counts(pool: &PgPool) -> (i64, i64, i64, i64, i64, i64, i64) {
+    let (instances, visits, submissions, events, contexts, receipts) = fact_counts(pool).await;
+    let activations: (i64,) = sqlx::query_as("SELECT count(*) FROM workflow_activations")
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    (instances, visits, submissions, events, contexts, receipts, activations.0)
+}
+
+/// Insert a drift Instance on the published annotated version: a Context
+/// revision whose payload carries the given (missing/invalid) catalog, an
+/// Instance row correctly linked to it (composite FK satisfied), and a
+/// current visit on the `work` TASK owned by `agent`. The create gate cannot
+/// produce these states on the public path — that is exactly the drifted
+/// classification surface F1 pins. The definition itself is published through
+/// the real service (publish-path purity preserved).
+async fn seed_drift_instance_with_context(
+    pool: &PgPool,
+    domain: Uuid,
+    agent: Uuid,
+    owner: Uuid,
+    version_id: Uuid,
+    context_payload: Value,
+) -> (Uuid, Uuid, Uuid) {
+    let def_row: (Uuid, Uuid) = sqlx::query_as(
+        "SELECT n.node_id, t.transition_id \
+         FROM workflow_node_definitions n \
+         JOIN workflow_transition_definitions t \
+           ON t.definition_version_id = n.definition_version_id \
+          AND t.source_node_id = n.node_id \
+         WHERE n.definition_version_id = $1 AND n.node_key = 'work' \
+           AND t.transition_key = 'advance-2'",
+    )
+    .bind(version_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    let (work_node_id, advance_work_done) = def_row;
+
+    let instance = Uuid::new_v4();
+    let ctx = Uuid::new_v4();
+    let visit = Uuid::new_v4();
+
+    // The instance/context FKs are circular; the composite
+    // fk_instance_current_ctx permits a NULL context reference, so the
+    // fixture inserts the instance first and links the context afterwards.
+    sqlx::query(
+        "INSERT INTO workflow_instances \
+         (workflow_instance_id, domain_id, definition_version_id, created_by_principal_id, \
+          workflow_state_version, current_context_revision_id, current_node_visit_id, \
+          external_reference, external_url, metadata, semantic_model_version, execution_class) \
+         VALUES ($1, $2, $3, $4, 2, NULL, NULL, NULL, NULL, '{}', 3, 'BUSINESS')",
+    )
+    .bind(instance)
+    .bind(domain)
+    .bind(version_id)
+    .bind(owner)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    let payload_digest =
+        svc_workflow::domain::definition::digest::compute_json_digest(&context_payload)
+            .expect("drift payload digest");
+    sqlx::query(
+        "INSERT INTO workflow_context_revisions \
+         (context_revision_id, workflow_instance_id, revision_number, previous_revision_id, \
+          payload, payload_digest, created_by_principal_id) \
+         VALUES ($1, $2, 1, NULL, $3, $4, $5)",
+    )
+    .bind(ctx)
+    .bind(instance)
+    .bind(&context_payload)
+    .bind(&payload_digest)
+    .bind(owner)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO workflow_node_visits \
+         (node_visit_id, workflow_instance_id, node_id, visit_number, \
+          assignee_principal_id, entered_by_transition_id) \
+         VALUES ($1, $2, $3, 1, $4, NULL)",
+    )
+    .bind(visit)
+    .bind(instance)
+    .bind(work_node_id)
+    .bind(agent)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "UPDATE workflow_instances SET current_context_revision_id = $1, \
+         current_node_visit_id = $2 WHERE workflow_instance_id = $3",
+    )
+    .bind(ctx)
+    .bind(visit)
+    .bind(instance)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    (instance, ctx, advance_work_done)
+}
+
+#[tokio::test]
+async fn f1_existing_linked_context_with_missing_catalog_is_deterministic_422() {
+    let pool = common::create_pool().await;
+    let (_domain, fx, owner, agent, _a, _b) = two_instance_rig(&pool).await;
+    let (instance, ctx, t2) = seed_drift_instance_with_context(
+        &pool,
+        _domain,
+        agent,
+        owner,
+        fx.version_id,
+        json!({"title": "catalog lost"}),
+    )
+    .await;
+
+    let mut cmd = transition_command(
+        agent,
+        instance,
+        2,
+        t2,
+        Some(acceptance_report(ctx, pass_entries(&["C1", "C2"]))),
+    );
+    cmd.idempotency_key = format!("f1-missing-catalog-{}", Uuid::new_v4());
+    let before = binding_fact_counts(&pool).await;
+    let err =
+        svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
+            &pool, AdmissionGate::disabled(), cmd.clone(),
+        )
+        .await
+        .err()
+        .expect("missing catalog on a linked Context must fail");
+    assert!(
+        matches!(err, ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)),
+        "expected deterministic submission_validation_failed, got {err:?}"
+    );
+    let after = binding_fact_counts(&pool).await;
+    assert_eq!(
+        (before.0, before.1, before.2, before.3, before.4, before.6),
+        (after.0, after.1, after.2, after.3, after.4, after.6),
+        "zero business/activation delta"
+    );
+    assert_eq!(after.5, before.5 + 1, "deterministic failure receipt persists");
+    let receipt: (i32, Value) = sqlx::query_as(
+        "SELECT response_status, response_body FROM workflow_command_receipts \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(receipt.0, 422);
+    assert_eq!(receipt.1["error"], "submission_validation_failed");
+
+    // Same-key same-payload replay returns the original deterministic failure.
+    let replay_err =
+        svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
+            &pool, AdmissionGate::disabled(), cmd,
+        )
+        .await
+        .err()
+        .expect("replayed failure");
+    assert!(matches!(replay_err, ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)));
+    let after_replay = binding_fact_counts(&pool).await;
+    assert_eq!(after, after_replay, "replay creates no facts");
+}
+
+#[tokio::test]
+async fn f1_existing_linked_context_with_malformed_catalog_rejected() {
+    for (name, catalog) in [
+        ("empty array", json!({"title": "t", "acceptanceCriteria": []})),
+        (
+            "duplicate ids",
+            json!({"title": "t", "acceptanceCriteria": [
+                {"id": "C1", "description": "a"},
+                {"id": "C1", "description": "b"}
+            ]}),
+        ),
+    ] {
+        let pool = common::create_pool().await;
+        let (_domain, fx, owner, agent, _a, _b) = two_instance_rig(&pool).await;
+        let (instance, ctx, t2) = seed_drift_instance_with_context(
+            &pool,
+            _domain,
+            agent,
+            owner,
+            fx.version_id,
+            catalog,
+        )
+        .await;
+
+        let before = binding_fact_counts(&pool).await;
+        let err =
+            svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
+                &pool,
+                AdmissionGate::disabled(),
+                transition_command(
+                    agent,
+                    instance,
+                    2,
+                    t2,
+                    Some(acceptance_report(ctx, pass_entries(&["C1", "C2"]))),
+                ),
+            )
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{name} must be rejected"));
+        assert!(
+            matches!(err, ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)),
+            "{name}: expected deterministic submission_validation_failed, got {err:?}"
+        );
+        let after = binding_fact_counts(&pool).await;
+        assert_eq!(
+            (before.0, before.1, before.2, before.3, before.4, before.6),
+            (after.0, after.1, after.2, after.3, after.4, after.6),
+            "{name}: zero business/activation delta"
+        );
+        assert_eq!(after.5, before.5 + 1, "{name}: failure receipt persists");
+    }
+}
+
+#[tokio::test]
+async fn f1_wrong_instance_context_linkage_is_structurally_fenced() {
+    let pool = common::create_pool().await;
+    let (_domain, fx, owner, agent, a, b) = two_instance_rig(&pool).await;
+    let _ver = advance_to_work(&pool, owner, &a, fx.advance_start_work).await;
+
+    // The composite FK fk_instance_current_ctx (current_context_revision_id,
+    // workflow_instance_id) makes a wrong-instance authoritative linkage
+    // unrepresentable: pointing this Instance at another Instance's Context
+    // revision violates the FK. The InternalConsistency branch in the
+    // transition binding gate is therefore defense-in-depth for corrupt
+    // linkage that no SQL-legal state can produce; this test pins the fence.
+    let result = sqlx::query(
+        "UPDATE workflow_instances SET current_context_revision_id = $1 \
+         WHERE workflow_instance_id = $2",
+    )
+    .bind(b.1)
+    .bind(a.0)
+    .execute(&pool)
+    .await;
+    assert!(
+        result.is_err(),
+        "composite FK must fence wrong-instance Context linkage"
+    );
+    let err_text = result.err().unwrap().to_string();
+    assert!(err_text.contains("fk_instance_current_ctx"), "{err_text}");
+}

@@ -172,3 +172,113 @@ WORKFLOW_PROVISIONING_PRINCIPAL_IDS=<admin-uuid> \
   never a validator).
 - Error details are shape/count-only; catalog descriptions (Context text)
   are never echoed.
+
+## 9. Fix round after the A1 independent review (2026-10-27)
+
+Review bound: `ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW`
+(`/Users/yanfenma/workspace/artifacts/workflow-acceptance-binding-20261027/
+source-snapshot-a1-review.json`, sha256 `a6b1a8de3f8612a793b33b4a273eae258dd24290b115d253cae9e6b4f5b0398c`),
+3 P2 findings, all closed by bounded fixes on the same branch.
+
+### Report corrections (supersede §3/§4 phrasing where they differ)
+
+- The original RED run's **24 failures included test-fixture defects**, not
+  all product regressions; the product-signal subset is the publish/create/
+  transition/combined gate assertions. The first RED log is preserved as
+  history, not as a per-case product claim.
+- Draft graphs are seeded as DRAFT rows via SQL fixtures **before** invoking
+  the real publish service; publication assertions themselves go through the
+  real `publish_version`/HTTP router. Post-publish drift fixtures are limited
+  to the Spec-sanctioned ACC-ACB-004 combined definition and the F1 drifted
+  instances, which the review's counterexamples prescribe.
+- Earlier pipeline summaries establish test **results** but did not record
+  individual cargo exit statuses (piped `tail`/`grep` retained shell exits).
+  This section's runs record the real cargo return codes.
+- Historical `regression-run.log` predates the fix commit; the pre-fix
+  broad regression (451 runtime / 237 lib) is not re-claimed for the fix
+  delta — no evidence requires it (F1/F2 are confined to annotated paths;
+  targeted suites cover them).
+- `fact_counts` covers five business row counts plus Receipts; activation
+  rows are included only in the F1 counters. Count equality is not complete
+  zero-delta proof; the independent validator owns full before/after
+  snapshots.
+
+### F1 — deterministic 422 for catalog-content failures on a linked Context
+
+`transition_transaction.rs`: with the authoritative Context row present and
+correctly linked, a missing/malformed `acceptanceCriteria` catalog now fails
+through `deterministic_failure!` → public 422 `submission_validation_failed`
+with the failure Receipt and same-key replay; details are sanitized (no
+Context text). The missing/wrong-instance authoritative-linkage branch stays
+`InternalConsistency`. The composite FK `fk_instance_current_ctx`
+(`current_context_revision_id, workflow_instance_id`) makes a wrong-instance
+linkage unrepresentable at the SQL layer (the context-revisions table also
+rejects UPDATE), so that branch is defense-in-depth; a new test pins the FK
+fence itself. Evidence: `f1_existing_linked_context_with_missing_catalog_is_
+deterministic_422` (422 + Receipt + replay + zero business/activation delta),
+`f1_existing_linked_context_with_malformed_catalog_rejected` (empty array,
+duplicate ids), `f1_wrong_instance_context_linkage_is_structurally_fenced`.
+RED first: both classification tests failed on the pre-fix code
+(`/tmp/acb_f1f2_red2.log`, cargo exit 101), then passed after the fix.
+
+### F2 — reserved annotation rejected anywhere in contextSchema
+
+`acceptance_binding.rs::validate_graph_annotation_placement` now rejects
+`contains_annotation_at_any_depth(graph.context_schema)` — root, nested
+object, or array, including null values — with the existing
+`ACCEPTANCE_BINDING_MISPLACED` diagnostic; the sole legal location remains
+the root of a model3 TASK primary ADVANCE submission schema; no business
+data keys are reserved. Coverage: new unit test
+`context_schema_annotation_rejected_at_any_depth` (4 shapes + silent
+absence) and integration `f2_publish_rejects_annotation_in_context_schema`
+(publish fails, version stays DRAFT) + `f2_validate_draft_flags_context_
+schema_annotation`. RED first: both integration tests failed on pre-fix code
+(published cleanly / no binding code), then passed after the fix.
+
+### F3 — old-binary harness isolation and guaranteed cleanup
+
+`tests/42` reworked: explicit isolated `TEST_DATABASE_URL` required (shared
+default name and any default-port PostgreSQL refused; `isolated_db_guard_
+rejects_shared_defaults`); child spawned via `env_clear` + a closed minimal
+env with Forum sync and admission explicitly disabled (`old_binary_command_
+isolation_is_closed` asserts the exact env set, pinned-off values, absence
+of every integration key, and the owned cwd); owned temp cwd with an empty
+`.env` and a copied `migrations/` (the server loads both relative to cwd);
+`ChildGuard` RAII kills and reaps the child on every path; the instance is
+`NON_BUSINESS_TEST` so no Forum binding/outbox facts are seeded at all.
+
+### Old-binary identity (this round)
+
+Archived pre-implementation binary used, read-only:
+`/Users/yanfenma/.local/services/svc-workflow/releases/b2e4736f4f7e6350bcf1
+db44e016d583b20e2b21/svc-workflow`, sha256 verified in-run and externally:
+`d97aa01913b9324675af45b2384075bd542c4c0d91d8fedc0e463c6857ec20d5`, source
+`b2e4736f4f7e6350bcf1db44e016d583b20e2b21` (pre-implementation deployment
+line). The earlier session-local binary (`/tmp/acb-old-svc-workflow`, sha256
+`4d56717e6a71af0ae50f02912b00c375a09a9555bde77ede30f80a28acd782bb`, built
+from base `371ea815`) produced the §4 downgrade evidence and remains
+historically valid; this round's leg uses the archived binary.
+
+### Fix-round execution record (real cargo exit codes)
+
+```
+41_acceptance_context_binding_v1   40 passed  cargo_exit=0
+42_acceptance_binding_downgrade_gate 3 passed cargo_exit=0
+29_model3_authoring_conformance     1 passed  cargo_exit=0
+32_definition_publish_admission     4 passed  cargo_exit=0
+13_definition_service_tests         9 passed  cargo_exit=0
+14_definition_lifecycle_tests       6 passed  cargo_exit=0
+19_domain_owner_definition_governance 25 passed cargo_exit=0
+lib (incl. new unit tests)        238 passed  cargo_exit=0
+```
+Full raw outputs: `/tmp/acb-final-logs/` (outside the source tree); RED
+logs: `/tmp/acb_f1f2_red2.log` (cargo exit 101), first RED
+`/tmp/acb_f1f2_red.log` (fixture defects included, superseded by the
+corrected-fixture RED).
+
+### Still open (unchanged scope)
+
+Independent full HTTP/fault/UNKNOWN canary, per-command fault injection,
+concurrency evidence and the serving-fleet activation gate remain PENDING
+with the root independent validator; no production deployment or enablement
+is authorized or performed here.

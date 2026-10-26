@@ -543,20 +543,32 @@ pub(crate) async fn execute_workflow_transition_atomically(
                             .to_string(),
                     ));
                 };
-                let catalog = context_payload
-                    .get(acceptance_binding::CATALOG_MEMBER)
-                    .ok_or_else(|| {
-                        ExecuteWorkflowTransitionError::InternalConsistency(
-                            "acceptance binding: current context has no acceptanceCriteria catalog"
+                // F1 (ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW): the
+                // authoritative Context row exists and is correctly linked to
+                // this Instance (the composite FK fences wrong-instance
+                // linkage), so a missing or malformed catalog is rejected
+                // through the existing deterministic failure path — public
+                // 422 `submission_validation_failed` with the failure
+                // Receipt and same-key replay — not as an internal error.
+                // Details are sanitized and never echo Context text.
+                let catalog = match context_payload.get(acceptance_binding::CATALOG_MEMBER) {
+                    Some(catalog) => catalog,
+                    None => deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "the instance's formal Context has no acceptanceCriteria catalog at \"/acceptanceCriteria\""
                                 .to_string(),
                         )
-                    })?;
-                let catalog_ids = acceptance_binding::validate_catalog(catalog).map_err(|_| {
-                    ExecuteWorkflowTransitionError::InternalConsistency(
-                        "acceptance binding: current context acceptanceCriteria catalog is malformed"
-                            .to_string(),
-                    )
-                })?;
+                    ),
+                };
+                let catalog_ids = match acceptance_binding::validate_catalog(catalog) {
+                    Ok(catalog_ids) => catalog_ids,
+                    Err(_) => deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "the instance's formal Context acceptanceCriteria catalog is missing, empty, or malformed"
+                                .to_string(),
+                        )
+                    ),
+                };
                 let Some(payload) = cmd.submission_payload.as_ref() else {
                     // Unreachable in practice: a schema present with no payload
                     // failed `submission_required` at Step 12. Fail closed anyway.

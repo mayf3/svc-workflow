@@ -316,6 +316,23 @@ pub fn validate_graph_annotation_placement(
     graph: &WorkflowGraph,
 ) -> Vec<GraphValidationError> {
     let mut errors = Vec::new();
+
+    // F2 (ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW): the reserved key is
+    // rejected anywhere in the version's context schema — root, nested
+    // object, or array, including null/invalid values. The sole legal
+    // location is the root of a model3 TASK primary ADVANCE transition
+    // submission schema; ordinary business data keys are not reserved.
+    if let Some(context_schema) = graph.context_schema.as_ref() {
+        if contains_annotation_at_any_depth(context_schema) {
+            errors.push(GraphValidationError::new(
+                "ACCEPTANCE_BINDING_MISPLACED",
+                "context_schema: the acceptance binding annotation is allowed \
+                 only at the root of a model3 TASK primary ADVANCE transition \
+                 submission schema",
+            ));
+        }
+    }
+
     for transition in &graph.transitions {
         let Some(schema) = transition.submission_schema.as_ref() else {
             continue;
@@ -816,6 +833,67 @@ mod tests {
         let errors =
             validate_graph_annotation_placement(SemanticModelVersion::VisitActivation, &graph);
         assert_eq!(errors[0].code, "ACCEPTANCE_BINDING_MALFORMED");
+    }
+
+    #[test]
+    fn context_schema_annotation_rejected_at_any_depth() {
+        let (source, target, tid) = ids();
+        for context_schema in [
+            // root occurrence with a valid annotation value
+            json!({"type": "object", ANNOTATION_KEY: valid_annotation()}),
+            // root occurrence with a null value
+            json!({"type": "object", ANNOTATION_KEY: null}),
+            // nested object occurrence
+            json!({"type": "object", "$defs": {"payload": {ANNOTATION_KEY: null}}}),
+            // nested inside an array
+            json!({"anyOf": [true, {ANNOTATION_KEY: valid_annotation()}]}),
+        ] {
+            let graph = WorkflowGraph {
+                nodes: vec![
+                    node(source, NodeType::TASK, Some(tid)),
+                    node(target, NodeType::TERMINAL, None),
+                ],
+                transitions: vec![transition(
+                    tid,
+                    source,
+                    target,
+                    TransitionEffect::Advance,
+                    Some(schema_with(None)),
+                )],
+                context_schema: Some(context_schema.clone()),
+            };
+            let errors =
+                validate_graph_annotation_placement(SemanticModelVersion::VisitActivation, &graph);
+            assert_eq!(
+                errors.len(),
+                1,
+                "{context_schema} must produce exactly one finding"
+            );
+            assert_eq!(errors[0].code, "ACCEPTANCE_BINDING_MISPLACED", "{context_schema}");
+        }
+
+        // An annotation-free context schema stays silent.
+        let graph = WorkflowGraph {
+            nodes: vec![
+                node(source, NodeType::TASK, Some(tid)),
+                node(target, NodeType::TERMINAL, None),
+            ],
+            transitions: vec![transition(
+                tid,
+                source,
+                target,
+                TransitionEffect::Advance,
+                Some(schema_with(None)),
+            )],
+            context_schema: Some(json!({"type": "object", "properties": {
+                "acceptanceCriteria": {"type": "array"}
+            }})),
+        };
+        assert!(validate_graph_annotation_placement(
+            SemanticModelVersion::VisitActivation,
+            &graph
+        )
+        .is_empty());
     }
 
     #[test]
