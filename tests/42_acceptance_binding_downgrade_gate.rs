@@ -77,10 +77,26 @@ const OLD_BINARY_SOURCE_HEAD: &str = "b2e4736f4f7e6350bcf1db44e016d583b20e2b21";
 // Isolation primitives (pure; covered by the tests below)
 // ============================================================================
 
-/// Require an explicitly configured, non-default, non-default-port test
-/// database. The shared default (`localhost:5432/svc_workflow`) and any
-/// default-port PostgreSQL are refused; this suite may only run against the
-/// dedicated isolated instance.
+/// The only database destination this suite may touch.
+const ISOLATED_DB_HOST: &str = "127.0.0.1";
+const ISOLATED_DB_PORT: u16 = 55432;
+const ISOLATED_DB_NAME: &str = "svc_workflow_acb_impl_27oct";
+
+/// Require an explicitly configured, structurally exact, isolated test
+/// database destination (F3-DB-GUARD review). Substring blacklists are not
+/// enough: sqlx applies URL query parameters (and PG* environment defaults
+/// for omitted fields) AFTER the base URL, so a seemingly isolated URL can
+/// effectively dial the shared/default PostgreSQL. This guard therefore
+///
+/// 1. parses the URL structurally (`reqwest::Url`) and requires the
+///    postgres/postgresql scheme, an explicit `127.0.0.1` host, an explicit
+///    `55432` port, exactly `/{ISOLATED_DB_NAME}`, and NO query or fragment
+///    (no override surface at all);
+/// 2. parses the same URL through `sqlx::postgres::PgConnectOptions::from_str`
+///    and asserts the EFFECTIVE host/port/database that a pool would dial,
+///    with no Unix-socket direction.
+///
+/// Assertion messages never embed the URL (it carries credentials).
 fn ensure_explicit_isolated_db(url: Option<String>) -> String {
     let url = url.unwrap_or_default();
     assert!(
@@ -88,16 +104,59 @@ fn ensure_explicit_isolated_db(url: Option<String>) -> String {
         "TEST_DATABASE_URL must be set explicitly; refusing to fall back to the \
          shared default database"
     );
-    let lower = url.to_lowercase();
+
+    let parsed = reqwest::Url::parse(&url)
+        .unwrap_or_else(|_| panic!("TEST_DATABASE_URL must be a valid URL"));
     assert!(
-        !lower.contains("@localhost:5432/") && !lower.contains("@127.0.0.1:5432/"),
-        "TEST_DATABASE_URL must not point at a default-port PostgreSQL \
-         (localhost:5432 / 127.0.0.1:5432); use the dedicated isolated instance"
+        matches!(parsed.scheme(), "postgres" | "postgresql"),
+        "TEST_DATABASE_URL scheme must be postgres or postgresql"
     );
     assert!(
-        !lower.ends_with("/svc_workflow"),
-        "TEST_DATABASE_URL must not use the shared default database name \
-         'svc_workflow'"
+        parsed.query().is_none(),
+        "TEST_DATABASE_URL must not carry query parameters: sqlx applies them \
+         after the base URL and they can override the effective destination"
+    );
+    assert!(
+        parsed.fragment().is_none(),
+        "TEST_DATABASE_URL must not carry a fragment"
+    );
+    assert_eq!(
+        parsed.host_str(),
+        Some(ISOLATED_DB_HOST),
+        "TEST_DATABASE_URL host must be exactly 127.0.0.1"
+    );
+    assert_eq!(
+        parsed.port(),
+        Some(ISOLATED_DB_PORT),
+        "TEST_DATABASE_URL port must be explicitly 55432 (no PG* env fallback)"
+    );
+    assert_eq!(
+        parsed.path(),
+        format!("/{ISOLATED_DB_NAME}"),
+        "TEST_DATABASE_URL database must be exactly the task-isolated database"
+    );
+
+    // Effective destination as sqlx will dial it (URL merged over PG* env).
+    let options: sqlx::postgres::PgConnectOptions =
+        std::str::FromStr::from_str(&url).expect("TEST_DATABASE_URL must parse as PostgreSQL connect options");
+    assert_eq!(
+        options.get_host(),
+        ISOLATED_DB_HOST,
+        "effective sqlx host must be exactly 127.0.0.1"
+    );
+    assert_eq!(
+        options.get_port(),
+        ISOLATED_DB_PORT,
+        "effective sqlx port must be exactly 55432"
+    );
+    assert_eq!(
+        options.get_database(),
+        Some(ISOLATED_DB_NAME),
+        "effective sqlx database must be exactly the task-isolated database"
+    );
+    assert!(
+        options.get_socket().is_none(),
+        "TEST_DATABASE_URL must not resolve to a Unix-socket direction"
     );
     url
 }
@@ -195,15 +254,47 @@ fn minimal_env_keys() -> &'static [&'static str] {
 
 #[test]
 fn isolated_db_guard_rejects_shared_defaults() {
+    // Only the exact task-isolated destination is accepted.
     ensure_explicit_isolated_db(Some(
         "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct".to_string(),
+    ));
+    ensure_explicit_isolated_db(Some(
+        "postgresql://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct".to_string(),
     ));
     for hostile in [
         None,
         Some("".to_string()),
+        // Plain defaults
         Some("postgres://postgres:postgres@localhost:5432/svc_workflow".to_string()),
         Some("postgres://postgres:postgres@127.0.0.1:5432/svc_workflow".to_string()),
         Some("postgres://postgres:postgres@127.0.0.1:55432/svc_workflow".to_string()),
+        // F3-DB-GUARD counterexample 1: omitted port + shared DB name; sqlx
+        // resolves the omitted port from PG* env (or 5432 default).
+        Some("postgres://postgres:postgres@localhost/svc_workflow?sslmode=disable".to_string()),
+        // F3-DB-GUARD counterexample 2: sqlx query overrides redirect the
+        // seemingly isolated URL to the shared default endpoint.
+        Some(
+            "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct?port=5432&dbname=svc_workflow"
+                .to_string(),
+        ),
+        // Any query/fragment at all is rejected (override surface).
+        Some(
+            "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct?application_name=x"
+                .to_string(),
+        ),
+        Some(
+            "postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct#frag"
+                .to_string(),
+        ),
+        // Host is not the exact loopback IP.
+        Some(
+            "postgres://postgres:postgres@localhost:55432/svc_workflow_acb_impl_27oct".to_string(),
+        ),
+        // Unix-socket direction instead of TCP.
+        Some("postgres://?host=/tmp/acb-not-a-socket".to_string()),
+        Some(
+            "postgresql:///svc_workflow_acb_impl_27oct?host=/var/run/postgresql".to_string(),
+        ),
     ] {
         let result = std::panic::catch_unwind(|| ensure_explicit_isolated_db(hostile.clone()));
         assert!(result.is_err(), "hostile URL must be refused: {hostile:?}");
