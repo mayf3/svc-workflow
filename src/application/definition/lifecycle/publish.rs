@@ -94,6 +94,13 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // Validate JSON schemas
         let schema_errors = self.validate_json_schemas(&graph).await;
         validation_result.errors.extend(schema_errors);
+
+        // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-001): only a
+        // model3 TASK primary ADVANCE may opt in; malformed, nested, and
+        // misplaced annotations fail publication. The annotation rides inside
+        // the canonical digest (computed below from the same schemas).
+        validation_result.errors.extend(crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(version.semantic_model_version, &graph));
+
         validation_result.valid = validation_result.errors.is_empty();
 
         if !validation_result.valid {

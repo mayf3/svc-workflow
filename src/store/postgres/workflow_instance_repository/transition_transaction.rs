@@ -498,6 +498,86 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .await
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
+    // ---------------------------------------------------------------
+    // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-003): the
+    // successful-ADVANCE binding predicate. Runs under the Instance lock,
+    // after every ordinary gate above, and before any workflow-fact write
+    // below. A present annotation is validated strictly; a malformed one
+    // never means absence (CTR-ACB-001). The catalog is re-checked from the
+    // Context row fetched by this locked Instance's exact
+    // `current_context_revision_id` (CTR-ACB-003.2); the client-supplied
+    // catalog is never authority. Report failures are deterministic
+    // `submission_validation_failed` 422s with the existing failure-receipt
+    // semantics; a missing or corrupt authoritative Context linkage is an
+    // internal consistency failure and never an unchecked success
+    // (CTR-ACB-004). The validator compares the canonical UUID, literal ID
+    // coverage and literal PASS verdicts only — it does not interpret
+    // evidence meaning (CTR-ACB-003).
+    // ---------------------------------------------------------------
+    if let Some(schema) = transition.submission_schema.as_ref() {
+        use crate::domain::definition::acceptance_binding;
+
+        match acceptance_binding::inspect_submission_schema(schema) {
+            Err(detail) => {
+                deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                    format!("acceptance binding annotation invalid: {detail}")
+                ));
+            }
+            Ok(Some(_binding)) => {
+                // Placement re-check: the annotation is publishable only on a
+                // model3 primary ADVANCE from a TASK; Steps 10/11b above
+                // already enforce primary/TASK for model3 — the effect and
+                // model conditions are restated here so an annotation that
+                // drifted into any other transition fails closed.
+                if effect != "ADVANCE" || !is_visit_activation {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "acceptance binding annotation is not allowed on this transition"
+                                .to_string(),
+                        )
+                    );
+                }
+                let Some(context_payload) = current_context_payload.as_ref() else {
+                    return Err(ExecuteWorkflowTransitionError::InternalConsistency(
+                        "acceptance binding: current context revision payload is missing"
+                            .to_string(),
+                    ));
+                };
+                let catalog = context_payload
+                    .get(acceptance_binding::CATALOG_MEMBER)
+                    .ok_or_else(|| {
+                        ExecuteWorkflowTransitionError::InternalConsistency(
+                            "acceptance binding: current context has no acceptanceCriteria catalog"
+                                .to_string(),
+                        )
+                    })?;
+                let catalog_ids = acceptance_binding::validate_catalog(catalog).map_err(|_| {
+                    ExecuteWorkflowTransitionError::InternalConsistency(
+                        "acceptance binding: current context acceptanceCriteria catalog is malformed"
+                            .to_string(),
+                    )
+                })?;
+                let Some(payload) = cmd.submission_payload.as_ref() else {
+                    // Unreachable in practice: a schema present with no payload
+                    // failed `submission_required` at Step 12. Fail closed anyway.
+                    deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                        "acceptance binding requires the submission payload".to_string(),
+                    ));
+                };
+                if let Err(detail) = acceptance_binding::validate_acceptance_report(
+                    payload,
+                    instance.current_context_revision_id,
+                    &catalog_ids,
+                ) {
+                    deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                        format!("acceptance report validation failed: {detail}")
+                    ));
+                }
+            }
+            Ok(None) => {}
+        }
+    }
+
     if is_minimal
         && target_node.assignee_ref_type_enum()
             == Some(crate::domain::enums::AssigneeRefType::DomainOwner)

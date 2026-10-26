@@ -1,0 +1,62 @@
+test acc1_annotation_is_bound_into_canonical_digest ... ok
+test acc1_publish_rejects_annotation_on_legacy_draft_entry ... FAILED
+test acc1_publish_rejects_annotation_on_minimal_model ... FAILED
+test acc1_publish_rejects_annotation_on_return_and_terminate ... FAILED
+test acc1_publish_rejects_changed_pointer_value ... FAILED
+test acc1_publish_rejects_extra_annotation_member ... FAILED
+test acc1_publish_rejects_malformed_annotation_values ... FAILED
+test acc1_publish_rejects_missing_annotation_member ... FAILED
+test acc1_publish_rejects_nested_annotation_occurrence ... FAILED
+test acc1_publish_rejects_nested_only_annotation ... FAILED
+test acc1_valid_root_annotation_on_model3_primary_advance_publishes ... ok
+test acc1_validate_draft_reports_binding_errors_like_publish ... FAILED
+test acc2_create_rejects_malformed_catalog_shapes ... FAILED
+test acc2_metadata_cannot_substitute_for_formal_catalog ... FAILED
+test acc2_missing_catalog_rejected_zero_delta_with_failure_receipt ... FAILED
+test acc2_unannotated_definition_has_no_catalog_gate ... ok
+test acc2_valid_catalog_creates_instance_with_immutable_context ... ok
+test acc3_annotated_advance_without_payload_still_submission_required ... FAILED
+test acc3_exact_current_uuid_and_full_pass_set_advances_once ... ok
+test acc3_missing_unknown_substituted_and_duplicate_ids_rejected ... FAILED
+test acc3_non_pass_verdicts_rejected ... FAILED
+test acc3_same_ids_other_instance_context_uuid_cannot_exchange_reports ... FAILED
+test acc3_structurally_valid_but_semantically_wrong_evidence_passes_gate ... ok
+test acc3_third_instance_with_different_catalog_rejects_foreign_id_sets ... FAILED
+test acc3_unannotated_advance_does_not_require_report ... ok
+test acc3_wrong_uuid_shapes_rejected ... FAILED
+test acc4_combined_with_annotated_schema_fails_closed_zero_delta ... FAILED
+test acc4_model3_combined_still_rejected_as_legacy_command ... ok
+test acc4_return_executes_without_all_pass_after_rejected_report ... FAILED
+test acc4_terminate_executes_without_all_pass ... ok
+test acc5_failure_then_replay_returns_original_failure_zero_extra_facts ... FAILED
+test acc5_stale_cas_conflicts_with_zero_delta_and_receipt ... ok
+test acc5_success_replay_returns_original_without_gate_or_new_facts ... ok
+test http_roundtrip::http_publish_create_transition_roundtrip_with_binding ... FAILED
+test http_roundtrip::http_publish_rejects_annotation_on_return_transition ... FAILED
+failures:
+failures:
+    acc1_publish_rejects_annotation_on_legacy_draft_entry
+    acc1_publish_rejects_annotation_on_minimal_model
+    acc1_publish_rejects_annotation_on_return_and_terminate
+    acc1_publish_rejects_changed_pointer_value
+    acc1_publish_rejects_extra_annotation_member
+    acc1_publish_rejects_malformed_annotation_values
+    acc1_publish_rejects_missing_annotation_member
+    acc1_publish_rejects_nested_annotation_occurrence
+    acc1_publish_rejects_nested_only_annotation
+    acc1_validate_draft_reports_binding_errors_like_publish
+    acc2_create_rejects_malformed_catalog_shapes
+    acc2_metadata_cannot_substitute_for_formal_catalog
+    acc2_missing_catalog_rejected_zero_delta_with_failure_receipt
+    acc3_annotated_advance_without_payload_still_submission_required
+    acc3_missing_unknown_substituted_and_duplicate_ids_rejected
+    acc3_non_pass_verdicts_rejected
+    acc3_same_ids_other_instance_context_uuid_cannot_exchange_reports
+    acc3_third_instance_with_different_catalog_rejects_foreign_id_sets
+    acc3_wrong_uuid_shapes_rejected
+    acc4_combined_with_annotated_schema_fails_closed_zero_delta
+    acc4_return_executes_without_all_pass_after_rejected_report
+    acc5_failure_then_replay_returns_original_failure_zero_extra_facts
+    http_roundtrip::http_publish_create_transition_roundtrip_with_binding
+    http_roundtrip::http_publish_rejects_annotation_on_return_transition
+test result: FAILED. 11 passed; 24 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.80s
