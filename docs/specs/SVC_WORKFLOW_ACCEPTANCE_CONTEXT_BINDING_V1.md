@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -14,6 +14,10 @@ superseded_by: null
 owners:
   - mayf3
 production_apply_authority: none
+accepted_by: mayf3
+accepted_proposal_head: b4827ebf186114e992af9f8dd7e80402e47b4098
+accepted_proposal_spec_sha256: 83bfb674dd8c11c422f4cdb3700ad044a1f166ae3bce15cf1287a7fc067fdf7d
+acceptance_record: docs/reports/ACCEPTANCE_CONTEXT_BINDING_V1_ACCEPTANCE.md
 ---
 
 # SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
@@ -24,8 +28,10 @@ One reusable Definition Version serves different Instances' acceptance catalogs.
 A designated successful review ADVANCE must refer to the exact current Context
 and every acceptance ID in that Instance, rather than an Agent-selected list.
 This checks reference integrity and declared results; it does not decide whether
-evidence proves those results. This document is **proposed**, not implementation
-or production permission until independently reviewed and lawfully accepted.
+evidence proves those results. The Owner accepted the exact independently
+reviewed proposal; see the [acceptance record](../reports/ACCEPTANCE_CONTEXT_BINDING_V1_ACCEPTANCE.md).
+This is accepted on the branch; implementation still requires accepted authority
+in its base, and production permission remains absent.
 
 ## 2. Scope and non-goals
 
@@ -111,13 +117,13 @@ runtime/rollback gate necessary (EVD-ACB-002). No live inventory is asserted.
 
 ## 8. Decisions
 
-**DEC-ACB-001 — Proposed Owner choice:** use one shared model3 Definition with
+**DEC-ACB-001 — Owner choice:** use one shared model3 Definition with
 per-Instance immutable `acceptanceCriteria`, versioned by the server's actual
 Context UUID. Reserve one closed annotation; require complete all-PASS reports
 only on explicitly configured successful ADVANCE. RETURN/TERMINATE remain
 available under their own contracts. No new endpoint or database migration.
-These are concrete proposed choices for one exact-head acceptance decision;
-the author does not accept them.
+These choices were accepted by Owner mayf3 at the exact proposal head identified
+in the acceptance record; the author records that decision without changing it.
 
 ## 9. Contracts
 
@@ -297,12 +303,14 @@ is authorized here. Superseded binaries must not reopen this guard accidentally.
 ## 13. Open questions
 
 ```text
-OPEN_OWNER_DECISIONS = accept or reject DEC-ACB-001 and this exact proposed contract
+OPEN_OWNER_DECISIONS = NONE (exact-head Owner acceptance recorded)
 NORMATIVE_TBD = NONE
-UNRESOLVED_AUTHORITY_CONFLICT = NONE identified; independent review pending
+UNRESOLVED_AUTHORITY_CONFLICT = NONE identified by the exact-proposal independent review
 PARTIAL_SUPERSESSION = NONE
 IMPLEMENTATION_STATE = NOT_IMPLEMENTED
 VERIFICATION_STATE = NOT_RUN
-READY_TO_MARK_ACCEPTED = NO (independent review and attributable Owner decision pending)
+ACCEPTANCE_STATE = ACCEPTED_ON_BRANCH
+FINAL_ACCEPTED_HEAD_RECHECK = PENDING
+ACTIVE_ON_MAIN = NO at this lifecycle transaction; activation requires merge
 PRODUCTION_APPLY_AUTHORITY = NONE
 ```
