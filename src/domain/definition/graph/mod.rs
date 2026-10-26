@@ -74,6 +74,13 @@ pub fn validate_graph(graph: &WorkflowGraph) -> ValidationResult {
     validation::validate_directed_reachability(graph, &draft_nodes, &nodes_by_id, &mut errors);
 
     // ---
+    // READY_CONTRACT: every execution node must define a failure path
+    // (2026-10-26 owner decision; mayf3/svc-workflow#84 D1 companion — see
+    // validation::validate_failure_path_coverage)
+    // ---
+    validation::validate_failure_path_coverage(graph, &mut errors);
+
+    // ---
     // 14.3 RETURN rules
     // ---
     transition_validation::validate_return_rules(graph, &nodes_by_id, &mut errors);
