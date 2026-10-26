@@ -358,6 +358,19 @@ pub(crate) async fn create_workflow_instance_atomically(
     );
 
     // ---------------------------------------------------------------
+    // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-002): for a
+    // definition with an opt-in transition, the formal Context must carry a
+    // valid acceptanceCriteria catalog. Checked after the ordinary Context
+    // schema validation above, before any workflow-fact write below.
+    // ---------------------------------------------------------------
+    validation_result!(validation_helpers::validate_acceptance_catalog_gate(
+        &mut tx,
+        definition_version_uuid,
+        &cmd.context_payload
+    )
+    .await);
+
+    // ---------------------------------------------------------------
     // CTR-CIR-003: canonical identity admission, inside the committing
     // transaction and before the first runtime-fact write. The command's
     // Agent Principal set is the resolved entry-visit assignee (including a

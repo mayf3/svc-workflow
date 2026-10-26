@@ -2,6 +2,8 @@
 pub(super) fn correction(code: &str) -> Option<&'static str> {
     Some(match code {
         "ASSIGNEE_REQUIRED" => "Supply a canonical owner reference for each work node.",
+        "ACCEPTANCE_BINDING_MALFORMED" => "Remove the acceptance binding annotation or restore its exact root-only fixed value.",
+        "ACCEPTANCE_BINDING_MISPLACED" => "Carry the acceptance binding annotation only on a model 3 TASK primary ADVANCE transition.",
         "CONTEXT_SCHEMA_REQUIRED_FOR_INSTANCE_INPUT" => "Provide a context schema for the instance input owner reference.",
         "CONTEXT_SCHEMA_REQUIRED_MISSING_ASSIGNEE_KEY" => "Require the owner input key in the context schema.",
         "DECLARED_CONTEXT_INPUTS_MALFORMED" => "Declare requiredContextInputs as an array of context key name strings.",

@@ -4,6 +4,7 @@
 //! digest computation, and error types for workflow definitions
 //! and their version lifecycle.
 
+pub mod acceptance_binding;
 pub mod digest;
 pub mod error;
 pub mod graph;
