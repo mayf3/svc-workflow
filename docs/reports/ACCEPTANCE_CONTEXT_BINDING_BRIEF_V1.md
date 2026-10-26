@@ -28,9 +28,15 @@ declared PASS only on the configured primary ADVANCE. RETURN/TERMINATE preserve
 their own contracts. Evidence sufficiency remains independently reviewed.
 
 There is no schema migration, new Context-edit API, new role, or separate ledger.
-Existing Instances are not rebound. Choosing model3 preserves the current
-no-new-Legacy boundary; it does not upgrade the active governance Instance or
-silently publish an 8121-specific catalog into a shared Definition.
+Existing Instances are not rebound. Model3-only is this V1 proposal's deliberate
+scope, not evidence that the production cutover barrier has occurred. Pre-barrier
+Legacy operations retain their existing authority; this Spec neither expands
+nor narrows it. It does not upgrade the active governance Instance or silently
+publish an 8121-specific catalog into a shared Definition. Opt-in belongs at a
+complete-catalog acceptance boundary, not early QA/merge ahead of deployment
+obligations. Correct UUID/IDs/PASS still cannot establish evidence meaning or
+prevent 8121's original same-ID semantic substitution; independent QA remains
+responsible for substantive acceptance.
 
 ## Scope and execution controls
 

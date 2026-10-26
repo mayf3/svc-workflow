@@ -53,9 +53,12 @@ The annotation is proposed new contract data, not an already effective JSON
 Schema keyword. Standard JSON Schema and old binaries ignore it. Publication,
 runtime support, and downgrade containment are therefore load-bearing Contracts.
 Any decision to introduce business truth adjudication, ordinary model3 Context
-edits, new Legacy intake, or a different accepted failure/lifecycle meaning
+edits, or a different accepted failure/lifecycle meaning
 requires RE_PREFLIGHT and the appropriate whole-authority successor; calling it
 NEW cannot override the parent.
+Model3-only is this V1's chosen scope; the production barrier is not established
+by this audit. Expanding this proposal to Legacy requires a separate scope and
+authority check, without narrowing existing pre-barrier Legacy authority.
 
 Legacy contracts are `docs/contracts/DEFINITION_SERVICE_CONTRACT_V0_1.md`
 and `docs/contracts/WORKFLOW_TRANSITION_CONTRACT_V0_1.md`, both declared

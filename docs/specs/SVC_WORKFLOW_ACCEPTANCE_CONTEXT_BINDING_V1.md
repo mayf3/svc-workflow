@@ -32,6 +32,10 @@ or production permission until independently reviewed and lawfully accepted.
 In scope: a closed opt-in annotation, catalog shape, transaction-local reference
 validation, existing failure Receipts, focused compatibility and downgrade gates.
 The first slice supports model3 TASK primary ADVANCE only, using existing APIs.
+This is this V1 proposal's deliberate scope choice, not a claim that the
+production cutover barrier has occurred. Architecture §5.13/§10.2 makes the
+no-new-Legacy rule post-barrier; pre-barrier Legacy operations retain their
+existing accepted authority, which this Spec neither expands nor narrows.
 
 Out of scope: new Context mutation, business truth/evidence authenticity,
 artifact fetching, new roles or grants, new ledgers/tables, arbitrary guards,
@@ -139,6 +143,13 @@ published immutability and existing publish CAS/Owner authorization apply.
 Absence means existing behavior. A malformed present annotation never means
 absence. This Spec authorizes no in-place editing of published schemas.
 
+Definition authors MUST place the opt-in only at a complete-acceptance boundary
+where the entire Context catalog is due to be satisfied. An early QA or merge
+step MUST NOT require all-PASS for catalog obligations that belong to future
+deployment or later work. Configuration review establishes this placement; the
+kernel does not infer stages from node names. V1 has no phased/subset-catalog
+engine and does not waive future obligations to make an early gate pass.
+
 ### CTR-ACB-002 — Catalog identity and lifecycle
 
 For a Definition with an opt-in transition, formal Context at
@@ -182,6 +193,12 @@ Two Instances with identical catalogs still cannot exchange reports. Successful
 Submission MUST retain the existing server-set Context FK, author, transition,
 source Visit, payload/digest, Event and Receipt; no second acceptance ledger is
 created. A true `PASS` remains the reviewer's evidence-backed responsibility.
+For example, a correct Context UUID, complete IDs and declared PASS can still
+carry only canary evidence for a C2 that requires regression testing. This may
+pass the structural gate; independent QA MUST NOT infer substantive business
+PASS from it. UUID/ID binding refers to immutable descriptions but does not
+validate evidence meaning and does not claim to prevent 8121's original same-ID
+semantic/evidence substitution.
 
 ### CTR-ACB-004 — Failure and bypass closure
 
@@ -244,9 +261,9 @@ any accepted wrong reference, or a claimed result without executed evidence.
 
 | Acceptance / Contracts | Method and inputs | Expected result / distinguishing failure |
 |---|---|---|
-| ACC-ACB-001 / CTR-001 | Publish annotation matrix: valid root value; changed/extra/missing pointer; nested key; DRAFT, model1/2, nonprimary, RETURN, TERMINATE; digest comparison. | Only valid model3 primary ADVANCE publishes; digest binds exact annotation; malformed or ignored annotation fails the contract. |
+| ACC-ACB-001 / CTR-001 | Review catalog obligations against the chosen complete-acceptance boundary; publish annotation matrix: valid root value; changed/extra/missing pointer; nested key; DRAFT, model1/2, nonprimary, RETURN, TERMINATE; digest comparison. | Configuration review rejects a gate that demands future deployment obligations at early QA/merge; only valid model3 primary ADVANCE publishes; digest binds exact annotation; malformed or ignored annotation fails the contract. |
 | ACC-ACB-002 / CTR-002 | Actual Create with valid catalog, missing/empty array, empty/invalid ID, duplicate ID, empty/oversize description, extra catalog member; verify metadata cannot substitute. | Valid input creates one immutable Context; every malformed catalog rejects with zero workflow-fact delta and retained failure Receipt as applicable. |
-| ACC-ACB-003 / CTR-003 | Two Instances, same Definition and same IDs, different Context UUIDs; then a third different catalog. Submit correct report, other Instance UUID, arbitrary cached/incorrect UUID, omitted UUID, missing/replaced/unknown/duplicate ID, and non-PASS verdict. | Only exact current UUID plus exact ID coverage/all-PASS advances. Incorrect/foreign UUID tests are not claims that model3 can revise Context. No real Context-change test is invented. |
+| ACC-ACB-003 / CTR-003 | Two Instances, same Definition and same IDs, different Context UUIDs; then a third different catalog. Submit correct report, other Instance UUID, arbitrary cached/incorrect UUID, omitted UUID, missing/replaced/unknown/duplicate ID, and non-PASS verdict. Include correct UUID/IDs/PASS with schema-valid but semantically wrong evidence, as in the C2 example. | Only exact current UUID plus exact ID coverage/all-PASS advances. The wrong-evidence example may pass this structural gate; independent QA must not infer business PASS or claim the original 8121 same-ID substitution is prevented. Incorrect/foreign UUID tests do not imply model3 can revise Context; no real Context-change test is invented. |
 | ACC-ACB-004 / CTR-004 | Call combined with annotation using an isolated malformed/drift fixture, and the legal model3 command; after a rejected report, execute valid RETURN with its required reference fields; exercise configured TERMINATE separately. | Combined never commits; ordinary RETURN/TERMINATE remain usable without all-PASS; normal authorization/reference checks still hold. A fixture is not new production Legacy authority. |
 | ACC-ACB-005 / CTR-005 | Stale/future CAS; concurrent same-state requests; success and deterministic-failure same-key replay; changed payload same key; injected storage/commit interruption and Receipt reconciliation. | At most one state command commits, version/Event increments once; replay creates no facts; changed payload conflicts; UNKNOWN never triggers blind new-key execution. |
 | ACC-ACB-006 / CTR-006 | Existing unannotated regression; pinned old binary in isolated environment; support/mixed-runtime activation gate; then block every annotated test version and attempt old-binary ordinary execution. | Unannotated behavior retained; old-runtime exposure blocks activation; after durable containment old binary rejects all annotated versions. Health/readback alone is insufficient. |
