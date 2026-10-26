@@ -16,8 +16,11 @@ environment: isolated PostgreSQL 16.15 at `127.0.0.1:55432`, database
 ```text
 SPEC = SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1@accepted (base 371ea815)
 IMPLEMENTATION_STATE = IMPLEMENTED (this branch; not merged)
-VERIFICATION_STATE = EXECUTED for ACC-ACB-001..005 structural scope and
-                     ACC-ACB-006 new-binary + old-binary downgrade leg
+VERIFICATION_STATE = PARTIAL: structural/replay legs of ACC-ACB-001..004
+                     executed; ACC-ACB-005 fault/UNKNOWN legs NOT_RUN;
+                     ACC-ACB-006 both REVOKED binary legs executed but
+                     fleet inspection and independent serving-runtime
+                     canary remain PENDING with the root validator
 ACCEPTANCE_STATE = unchanged (Spec-level acceptance already recorded; this
                    record only binds implementation evidence)
 PRODUCTION_APPLY_AUTHORITY = NONE (no deploy, no enablement, no business Workflow writes)
@@ -51,10 +54,16 @@ mutation path added; model3 combined rejection (CTR-VAI-012) untouched.
 ## 3. TDD — RED then GREEN
 
 - RED (tests compiled against the unmodified base code, black-box):
-  **11 passed / 24 failed** — every publish/create/transition/combined gate
-  test failed exactly where the contract requires a gate that base lacks.
-  Original: `evidence/20261027-acb-v1/red-run-tests-vs-base.log`
-  (full run captured at execution time; command below).
+  **11 passed / 24 failed**. The 24 failures MIX the intended product-signal
+  gate assertions with test-fixture defects of my own harness (graph
+  immutability trigger on a mis-ordered fixture, principal/actor mistakes,
+  and an HTTP 201-vs-200 assertion). What this evidence PROVES is that the
+  gate assertions failed on base where the contract requires a gate; it does
+  NOT prove each of the 24 was a product regression. The file
+  `evidence/20261027-acb-v1/red-run-tests-vs-base.log` is a FILTERED EXCERPT
+  (test names/summaries only); the fuller raw output is preserved by the
+  root at `source-first-red-run-observed.log`
+  (sha256 `67df787df4f1c0f408b6d2ea8f9f911b7da4296bcd625f80fcb33e4bf87b1985`).
 - GREEN (after implementation): **35/35 passed**
   (`evidence/20261027-acb-v1/green-run-tests-after-impl.log`).
 - Domain unit tests: **25/25 passed** (`cargo test --lib acceptance_binding`;
@@ -76,8 +85,8 @@ cargo test --test 41_acceptance_context_binding_v1 -- --test-threads=1
 | ACC-ACB-002 (Create catalog gate, zero delta, no metadata substitution) | CTR-ACB-002 | **PASS (structural)** | `tests/41`: acc2_valid_catalog_creates_instance_with_immutable_context; acc2_missing_catalog_rejected_zero_delta_with_failure_receipt (422 `context_validation_failed` receipt persisted; instance/visit/submission/event/context counts unchanged); acc2_create_rejects_malformed_catalog_shapes (empty, duplicate, case-sensitive-distinct legal, bad charset, 65-char id, blank/missing/4097-byte description, extra member, non-object entry, non-array, 129 entries; 64-char id + 4096-byte description boundary legal); acc2_metadata_cannot_substitute_for_formal_catalog; acc2_unannotated_definition_has_no_catalog_gate. |
 | ACC-ACB-003 (binding predicate, cross-Instance isolation) | CTR-ACB-003 | **PASS (structural)** | `tests/41`: acc3_exact_current_uuid_and_full_pass_set_advances_once (exactly one visit/submission/event, no context delta); acc3_same_ids_other_instance_context_uuid_cannot_exchange_reports (both directions); acc3_wrong_uuid_shapes_rejected (arbitrary UUID, omitted, non-string, uppercase re-encoding); acc3_missing_unknown_substituted_and_duplicate_ids_rejected; acc3_non_pass_verdicts_rejected (FAIL/lowercase/numeric/missing verdict/missing id/non-array); acc3_third_instance_with_different_catalog_rejects_foreign_id_sets; acc3_structurally_valid_but_semantically_wrong_evidence_passes_gate (Spec's canary-evidence example — passes structurally, QA truth boundary pinned); acc3_annotated_advance_without_payload_still_submission_required; acc3_unannotated_advance_does_not_require_report. |
 | ACC-ACB-004 (combined fail-closed; RETURN/TERMINATE unblocked) | CTR-ACB-004 | **PASS (structural)** | `tests/41`: acc4_combined_with_annotated_schema_fails_closed_zero_delta (Spec-sanctioned isolated drift fixture; resolvable transition; zero workflow-fact delta); acc4_model3_combined_still_rejected_as_legacy_command; acc4_return_executes_without_all_pass_after_rejected_report; acc4_terminate_executes_without_all_pass. |
-| ACC-ACB-005 (CAS/replay/conflict, receipt discipline) | CTR-ACB-005 | **PASS (structural; injected storage-failure leg NOT_RUN)** | `tests/41`: acc5_stale_cas_conflicts_with_zero_delta_and_receipt; acc5_success_replay_returns_original_without_gate_or_new_facts; acc5_failure_then_replay_returns_original_failure_zero_extra_facts (+ changed-payload same-key IdempotencyConflict). Existing UNKNOWN/commit-interruption semantics are unchanged code (T69 budget machinery untouched) and are covered by `tests/17_workflow_runtime` (451 passed, incl. receipt_stability); the injected storage/commit interruption canary was **NOT_RUN** here. |
-| ACC-ACB-006 (compat + downgrade) | CTR-ACB-006 | **PASS (new binary + old binary leg); fleet-activation inspection NOT_RUN (operator obligation)** | Unannotated compatibility: acc2_unannotated_definition_has_no_catalog_gate, acc3_unannotated_advance_does_not_require_report, plus full regression set below. Old-binary leg: `tests/42` with `ACB_OLD_BINARY=/tmp/acb-old-svc-workflow` (built from base `371ea815`, sha256 `4d56717e6a71af0ae50f02912b00c375a09a9555bde77ede30f80a28acd782bb`): real publish → real `DefinitionService::revoke_version` by enabled DOMAIN_OWNER → REVOKED readback → new binary refuses (`DefinitionVersionRevoked`) → old binary spawned as real HTTP server on the same isolated DB also refuses with `definition_version_revoked` (log: `evidence/20261027-acb-v1/old-binary-downgrade-gate.log`). New binary sha256 at commit: see §6. |
+| ACC-ACB-005 (CAS/replay/conflict, receipt discipline) | CTR-ACB-005 | **PARTIAL (structural/replay legs executed; injected storage/commit-fault and UNKNOWN-reconciliation legs NOT_RUN)** | `tests/41`: acc5_stale_cas_conflicts_with_zero_delta_and_receipt; acc5_success_replay_returns_original_without_gate_or_new_facts; acc5_failure_then_replay_returns_original_failure_zero_extra_facts (+ changed-payload same-key IdempotencyConflict). Existing UNKNOWN/commit-interruption semantics are unchanged code (T69 budget machinery untouched) and are covered by `tests/17_workflow_runtime` (451 passed, incl. receipt_stability); the injected storage/commit interruption canary was **NOT_RUN** here. |
+| ACC-ACB-006 (compat + downgrade) | CTR-ACB-006 | **PARTIAL (unannotated compatibility + new-binary and old-binary REVOKED legs executed; pre-activation fleet inspection and independent serving-runtime canary NOT_RUN — root validator owns them)** | Unannotated compatibility: acc2_unannotated_definition_has_no_catalog_gate, acc3_unannotated_advance_does_not_require_report, plus full regression set below. Old-binary leg: `tests/42` with `ACB_OLD_BINARY=/tmp/acb-old-svc-workflow` (built from base `371ea815`, sha256 `4d56717e6a71af0ae50f02912b00c375a09a9555bde77ede30f80a28acd782bb`): real publish → real `DefinitionService::revoke_version` by enabled DOMAIN_OWNER → REVOKED readback → new binary refuses (`DefinitionVersionRevoked`) → old binary spawned as real HTTP server on the same isolated DB also refuses with `definition_version_revoked` (log: `evidence/20261027-acb-v1/old-binary-downgrade-gate.log`). New binary sha256 at commit: see §6. |
 
 Not done by design (out of this task's mandate): live canaries with real
 HTTP serving require a separate operation mandate; no production deployment
@@ -85,7 +94,14 @@ or enablement; no business Workflow writes. ACC-ACB-006's pre-activation
 operator obligation (inspect existing versions for the reserved key before
 any opt-in version is served) remains an operator duty and was NOT executed.
 
-## 5. Regression (same environment, same branch)
+## 5. Regression (same environment, same branch — PRE-COMMIT qualification)
+
+All rows below were executed on the working tree BEFORE commit `47947a5`
+existed; the content matched what became `47947a5`, but these are not
+exact-commit runs. The only exact-commit executions so far are the
+post-`44b60fe` runs of tests 41/42 and lib (see §9 and the fix-round
+record). Full-suite re-execution at the final head is the independent
+validator's call, not re-claimed here.
 
 `evidence/20261027-acb-v1/regression-run.log`:
 
@@ -218,8 +234,19 @@ fence itself. Evidence: `f1_existing_linked_context_with_missing_catalog_is_
 deterministic_422` (422 + Receipt + replay + zero business/activation delta),
 `f1_existing_linked_context_with_malformed_catalog_rejected` (empty array,
 duplicate ids), `f1_wrong_instance_context_linkage_is_structurally_fenced`.
-RED first: both classification tests failed on the pre-fix code
-(`/tmp/acb_f1f2_red2.log`, cargo exit 101), then passed after the fix.
+
+F1 RED honesty (corrected; supersedes any earlier claim of a product RED):
+in the pre-fix RED runs both F1 tests failed at a FIXTURE defect — the
+drift-instance INSERT hit the `payload_digest` CHECK (23514) before the
+product path was ever reached (frozen raw log:
+`source-review-fixes-red-observed.log`, sha256
+`418ce4643a06b7c12fdcf395e5deb3344107759ffe3b4a0c4e0ed6e2490f2cb9`).
+Only the two F2 tests are executed product RED from that round; the FK-fence
+test passed as a preservation check. F1 therefore rests on the independent
+static review finding PLUS the corrected-fixture GREEN (which does assert
+the deterministic 422/Receipt/replay classification through the real
+transition path). The old pre-fix product code was NOT re-run to manufacture
+a historical F1 RED.
 
 ### F2 — reserved annotation rejected anywhere in contextSchema
 
@@ -271,10 +298,12 @@ historically valid; this round's leg uses the archived binary.
 19_domain_owner_definition_governance 25 passed cargo_exit=0
 lib (incl. new unit tests)        238 passed  cargo_exit=0
 ```
-Full raw outputs: `/tmp/acb-final-logs/` (outside the source tree); RED
-logs: `/tmp/acb_f1f2_red2.log` (cargo exit 101), first RED
-`/tmp/acb_f1f2_red.log` (fixture defects included, superseded by the
-corrected-fixture RED).
+Full raw outputs: `/tmp/acb-final-logs/` (outside the source tree). RED
+logs of that round: `/tmp/acb_f1f2_red.log` (first attempt: 5 failures incl.
+fixture defects) and `/tmp/acb_f1f2_red2.log` (cargo exit 101; the two F2
+failures are the executed product RED — the two F1 failures were the
+payload_digest CHECK fixture defect described above; corrected frozen copy:
+`source-review-fixes-red-observed.log`).
 
 ### Still open (unchanged scope)
 
