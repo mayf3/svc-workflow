@@ -66,7 +66,8 @@ Checked every `updated_at`/`updatedAt` mention in `docs/` at bfc28c1. Results:
 
 ## 3. Implementation-state facts on main (bfc28c1, observation not authority)
 
-Instance-row UPDATE sites in `src/store/postgres/workflow_instance_repository/` at bfc28c1:
+Instance-row UPDATE path families at bfc28c1 (admin recovery is in the adjacent
+`admin_recovery_repository/`; its rebuild and override are separate statements):
 
 | Path | Maintains `updated_at = now()` | Evidence (file:line at bfc28c1) |
 |---|---|---|
@@ -81,7 +82,10 @@ Instance-row UPDATE sites in `src/store/postgres/workflow_instance_repository/` 
 | revise-only | **NO** | revise_transaction.rs:481–483 |
 | context repair | **NO** | repair_transaction.rs:531–533 (4th gap; present identically on candidate head e068dd0 — the 2c135ef fix did not touch it) |
 
-The current convention in executable code is already "maintain on real state change" (6 of 10 sites), but no active accepted authority states it; the four gaps are the 7cd02846 defect surface plus the repair path.
+Six of ten inspected path families contain timestamp assignments. That static
+observation does not prove all proposed success/negative-control obligations.
+No active accepted authority covers the ordinary paths; the four missing
+families are the 7cd02846 defect surface plus the repair path.
 
 ## 4. Determination
 
@@ -94,3 +98,42 @@ NOT_AUTHORITY = user goals, investigations, PR descriptions, the historical 2c13
 ```
 
 Per the local authority precedence and the forward-only existing-authority bridge, the superseded V2–V5 sentences and the two scope-bounded precedents are cited as the convention's provenance and consistency anchors, not as implementing authority.
+
+## 5. Independent review corrections (2026-10-27)
+
+The external writer completed #1304 at 2026-10-26T16:57:48.654118Z with docs-only
+commit `d14c8d7c3703d4bb8aa05f8c78d4faea2d901fd4` and draft PR #86. After that
+writer stopped, the coordinating author made the following bounded docs-only
+corrections. The original commit and review remain retained.
+
+```text
+DEVELOPMENT_PREFLIGHT = bounded proposed-authority correction
+PARENT_HEAD = d14c8d7c3703d4bb8aa05f8c78d4faea2d901fd4
+BASE_HEAD = bfc28c15320acab8cf7d7a36128cd5c9db9a1b1a
+AUTHORITY_ACTION = AMEND (named proposed target; no accepted Contract changed)
+PLAN_LEVEL = BRIEF
+ASSURANCE_LEVEL = DURABLE
+EXECUTION_MANDATE = user's authorized workflow implementation/closure task;
+                    correct this reviewable proposal before acceptance
+ISOLATED_WRITE_SURFACE = same docs branch after prior writer completed
+SCOPE = these three docs only; seven proposed Contract IDs retained
+DONE_WHEN = three findings resolved and exact final docs head independently reviewed
+IMPLEMENTATION_ALLOWED = NO
+OPERATION_ALLOWED = NO
+ACCEPTANCE = NOT_PERFORMED
+```
+
+1. Freeze transaction-start `now()` semantics; do not promise commit wall-clock
+   time or strict monotonicity. This is a proposed clarification, not a claim
+   that superseded wording already authorized the new Spec.
+2. Keep repair in the normative minimum and recommend the four-path main-bound
+   fix. A staged delivery cannot erase repair or claim whole-Spec PASS early.
+3. Map all seven Contracts to evidence and negative controls, mark new main
+   results NOT_RUN, and distinguish functional suites, source revert and
+   production rollback from timestamp and runtime evidence.
+
+Independent review original: `7cd-updated-at-spec-review-d14c8d7-20261027.json`
+in the dsh-agent-core closure evidence directory, SHA256
+`471103a3c766afcf720911f21c77517e0eb2e5fc4144d4ac7590cd8c13bca0ed`.
+Review recommendation is not acceptance; the repository's acceptance actor
+still owns the proposed Spec and integration sequencing decision.

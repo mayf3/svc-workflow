@@ -24,8 +24,12 @@ A  tests/34_updated_at_write_paths.rs                                     new fi
 ```
 
 Hunk texts are exactly the `git diff bfc28c1..e068dd06 -- <three files>` output
-recorded in the #1301 evidence directory; applying them to bfc28c1 is the
-entire production-code delta.
+recorded in the #1301 evidence directory. This is the original three-path
+candidate's net delta, not full conformance to the proposed Spec. The proposal
+also includes `repair_transaction.rs:531`, which needs the same transactional
+timestamp maintenance and its own evidence. The recommended future main-bound
+product delta is therefore these three SQL sites plus that fourth repair site;
+additional test assertions are required by §4. None is implemented here.
 
 ## 2. Fixture dependency verification for tests/34 on main (read-only checks done 2026-10-27)
 
@@ -43,14 +47,14 @@ RETURN-projection/READY_CONTRACT/input-contract-removal/SDK changes.
 Conclusion: the e068 version of tests/34 is field- and API-compatible with
 main bfc28c1 as a new test file.
 
-## 3. Expected failure modes on the main baseline (for the future RED run)
+## 3. Expected failure modes on the main baseline (unexecuted hypotheses)
 
-On unpatched main there is **no SQL syntax error** (the broken clause does not
-exist there — revise succeeds):
+Static inspection finds no candidate-line missing-comma SQL syntax defect on
+main. The expected tests/34 results below remain hypotheses until actually run:
 
-- `revise_only_maintains_updated_at`: FAILS on the `updated_at > created_at`
+- `revise_only_maintains_updated_at`: expected to fail on the `updated_at > created_at`
   assertion (silent stale timestamp — the actual 7cd defect on main);
-- `advance_and_return_maintain_updated_at`: FAILS on the ADVANCE bump assertion.
+- `advance_and_return_maintain_updated_at`: expected to fail on the ADVANCE bump assertion.
 
 This differs from the candidate-line RED (`syntax error at or near
 "updated_at"`), which is historical fact from the #1301 evidence run on
@@ -58,13 +62,25 @@ c819124c and MUST NOT be presented as a main-baseline observation.
 
 ## 4. Future execution plan (after Spec acceptance; NOT executed in this round)
 
-1. New isolated branch off fresh main; dedicated worktree; user root untouched.
-2. Apply §1's exact 4-file delta as one commit referencing the accepted Spec ID.
-3. RED: run tests/34 on the pre-fix tree — expect §3's two assertion failures.
-4. GREEN: apply the delta; run tests/34 (expect 2/2), plus on-surface suites:
-   tests/17 context_revision + combined filters, tests/03, tests/21
-   (cancel/archive), tests/22 (repair — expected to stay RED only if the
-   repair gap is in scope per Spec §5.3; otherwise out of scope by declaration).
+1. After an authorized actor accepts the exact reviewed Spec and it is present
+   in the implementation base, create an isolated branch off fresh main. The
+   recommended sequencing is this minimal main-bound repair, without merging
+   PR #85's unrelated base commits; retain #85 as historical candidate evidence.
+2. Author behavior tests mapped to all seven Contracts. Reuse tests/34's two
+   cases, then add actual timestamp assertions for TERMINATE, combined and
+   repair plus failed/conflict/aborted/read/replay controls and created_at
+   preservation. Existing tests/21 and tests/22 are functional coverage only:
+   neither has updated_at assertions at bfc28c1. They cannot prove this repair
+   and are not predicted timestamp-defect RED tests.
+3. RED: execute the targeted new assertions on the pre-fix main tree and record
+   observed failures, including any failure unlike §3's predictions. A harness
+   failure is not evidence of the intended defect.
+4. GREEN: apply only the four named SQL maintenance changes, rerun affected
+   assertions and directly dependent functional regressions (tests/17 relevant
+   context_revision/combined cases, tests/03, tests/21 and tests/22). Inspect
+   the other six path families against the Spec matrix. Report missing evidence
+   as NOT_VERIFIED; no whole-Spec PASS from two tests/34 cases. If delivery is
+   split, repair remains an explicit outstanding CTR-UAM-002 obligation.
 5. Environment: `TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/<new-dedicated-db>`
    (fresh dedicated database per run; production `svc_workflow` /
    `svc_workflow_auditor` never connected; same isolation pattern as #1301).
@@ -72,8 +88,15 @@ c819124c and MUST NOT be presented as a main-baseline observation.
    gate); record command/output/exit/HEAD/artifact sha256 — a NEW run; the
    historical e068 artifact (c73e2415…) and its test logs are #1301 facts and
    are never backfilled onto a main candidate.
-7. Independent review PR (normal, non-draft only after acceptance of the Spec;
-   draft acceptable for early review), diff vs main = exactly §1.
+7. Independent implementation review binds the fresh main base, four named SQL
+   sites and matrix-mapped tests, excluding unrelated branch changes. Runtime
+   adoption and rollback require a separately bound deployment profile; source
+   revert, build and isolated test success cannot substitute for those steps.
+
+All seven Contract rows currently have `MAIN_BOUND_EVIDENCE = NOT_RUN`.
+Historical e068/a1 evidence remains useful for its original candidate and
+environment only. Source/main readiness, full-Spec conformance and production
+acceptance are separate claims.
 
 ## 5. Explicit non-claims
 

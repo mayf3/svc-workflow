@@ -26,11 +26,12 @@ owners:
 ## 1. Goal
 
 ```text
-GOAL = workflow_instances.updated_at reliably means the time of the instance's
-       latest committed state change, maintained transactionally at every write
-       that changes the authoritative instance projection
-SUCCESS_OUTCOME = no committed instance state change leaves updated_at stale;
-                  no failed or side-effect-free request changes updated_at
+GOAL = workflow_instances.updated_at records the database transaction-start
+       timestamp assigned by the most recent committed transaction that changes
+       the authoritative instance projection
+SUCCESS_OUTCOME = each committed instance state change assigns that transaction's
+                  database timestamp; no failed or side-effect-free request
+                  changes the persisted timestamp
 ```
 
 Provenance of the convention (historical, cited as consistency anchors, not as
@@ -40,8 +41,18 @@ active authority): superseded SVC_WORKFLOW_PRODUCT_BOUNDARY_V2 §(l.208) / V3
 cache, scheduler, audit, Assistance, or external-system time", with "uses another
 clock" as a failure condition. Accepted scope-bounded precedents already write it
 this way: SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1 step 5 and
-ADMIN_RECOVERY_CONTRACT_V0_1 rebuild rule; six of ten instance UPDATE sites on
-main already conform (see docs/reports/UPDATED_AT_AUTHORITY_LOCALIZATION_V1.md §3).
+ADMIN_RECOVERY_CONTRACT_V0_1 rebuild rule. Static inspection found timestamp
+assignments in six of ten path families on main; this is an implementation
+observation, not verified conformance to all Contracts below (see
+docs/reports/UPDATED_AT_AUTHORITY_LOCALIZATION_V1.md §3).
+
+Decision D-UAM-001: preserve PostgreSQL `now()` / `transaction_timestamp()`
+semantics. This is **not** commit wall-clock time, a duration, a unique event
+identifier, or a strictly increasing sequence. Two changes in one transaction
+may have equal timestamps; transaction start order need not equal commit order.
+Use the existing `workflow_state_version` for the ordering semantics it already
+owns. A commit-time or globally monotonic clock would require a separate decision.
+See [PostgreSQL 16 §9.9.5](https://www.postgresql.org/docs/16/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT).
 
 ## 2. Scope and non-goals
 
@@ -85,7 +96,10 @@ The rule applies at least to: ADVANCE, RETURN and TERMINATE (transition
 projection update), combined revise+transition, revise-only context revise,
 context repair, cancel, archive, admin recovery rebuild/override, assistance
 activation, execution escalation, and wake/push-kick state bumps. New instance
-write paths inherit the rule.
+write paths inherit the rule. Context repair is included in this proposed
+Contract. An implementation covering only transition/combined/revise is partial
+conformance; sequencing repair later cannot remove that remaining obligation or
+produce a full-Spec PASS.
 
 ### CTR-UAM-003 — No-bump events
 
@@ -102,26 +116,46 @@ served from an existing receipt without a new write.
 
 ### CTR-UAM-005 — Historical data and migration
 
-No schema migration and no backfill. Existing rows with
-`updated_at = created_at` remain historical observations and MUST NOT be
-rewritten by this Spec's implementation. Any consumer-side correction of
-historical summaries is a separate decision outside this Spec.
+No schema migration and no backfill. Installing this change MUST NOT rewrite
+existing rows solely to repair historical timestamps. A later legitimate
+INSTANCE_STATE_CHANGE on an existing row follows CTR-UAM-001; this is not a
+backfill. Untouched historical rows remain unchanged. Any consumer-side
+correction of historical summaries is a separate decision outside this Spec.
 
 ### CTR-UAM-006 — Compatibility and rollback
 
 No wire, SDK, OpenAPI, or schema change; the column already exists since the
-initial schema. Rollback of an implementation under this Spec is a git revert of
-that implementation commit; no data rollback path exists.
+initial schema. Source rollback is a git revert of the implementation commit;
+this does not install or load an old artifact. Runtime adoption and rollback
+require their separately authorized deployment profile and verified artifact
+binding. Reverting source or deploying an old binary MUST NOT rewrite stored
+timestamps or other business data. This Spec grants no production operation
+authority and does not claim the old binary satisfies these Contracts.
 
 ### CTR-UAM-007 — Verification
 
-Implementation under this Spec MUST be verified per path family (transition,
-combined, revise, and any other path it changes) with integration tests on an
-isolated database selected by explicit `TEST_DATABASE_URL` (dedicated throwaway
-database; the production `svc_workflow` database and other tenant data are never
-connected). Tests MUST assert both the bump on success and the no-bump on
-version conflict. PASS claims require executed runs at the exact candidate head;
-unexecuted coverage stays unknown.
+Implementation under this Spec MUST bind each applicable Contract to executed
+evidence at the exact candidate head, isolated database identity, command,
+result and limitations. Use explicit `TEST_DATABASE_URL` for a dedicated
+throwaway database; never connect production `svc_workflow` or other tenant
+data. A functional suite without timestamp assertions cannot prove timestamp
+maintenance. The matrix below defines minimum evidence; it is not a claim that
+these tests exist or have run.
+
+| Contract | Required evidence and negative control |
+|---|---|
+| CTR-UAM-001 | For each changed path, a committed projection change and the assigned DB transaction timestamp; use separately started transactions with controlled separation for `after > before` checks. That fixture assertion is not a general monotonicity guarantee. Roll back a transaction after its candidate write and verify persisted projection and timestamp are unchanged. |
+| CTR-UAM-002 | Explicit cases for ADVANCE, RETURN, TERMINATE, combined, revise, repair; audit and test existing cancel, archive, admin rebuild/override, assistance, escalation and wake families for a full-Spec claim. Shared helpers can justify code coverage but do not silently substitute for named behavior cases. Missing cases remain NOT_VERIFIED. |
+| CTR-UAM-003 | Before/after projection and timestamp for rejected version conflict, invalid/failed command, aborted transaction, reads and an actual idempotent replay. Exercise the replay-capable surfaces affected by the change; distinguish a replay receipt from a new successful write. |
+| CTR-UAM-004 | Creation records equal timestamps; subsequent success and negative-control cases retain original `created_at`. |
+| CTR-UAM-005 | Diff contains no schema/backfill changes; an untouched seeded historical row remains byte-equivalent through the test run while a separate row changes legitimately. |
+| CTR-UAM-006 | Review public/schema diff and source revert scope. Any claimed runtime rollback additionally identifies the authorized profile, exact old/new artifacts and before/after database readback; source revert alone cannot satisfy that claim. |
+| CTR-UAM-007 | A conformance record joins Contract IDs, exact Spec revision, candidate HEAD, environment and actual results; cross-head historical runs and unexecuted plans cannot be reported as current PASS. |
+
+Acceptance of this proposed normative contract is distinct from implementation
+conformance. Currently every new main-bound test in this matrix is NOT_RUN.
+Partial implementations may record passed named cases while retaining all
+unverified obligations; they MUST NOT claim complete conformance.
 
 ## 5. External owner items (explicit; not decidable by the writer)
 
@@ -135,8 +169,10 @@ unexecuted coverage stays unknown.
    (docs/reports/UPDATED_AT_MAIN_INTEGRATION_PREP_V1.md) supersedes or follows
    #85. This Spec neither retro-authorizes nor alters #85, whose stated basis
    (CTR-CIR-004/005 revise operability on that line) remains as recorded.
-3. Whether the context-repair path (4th non-conforming site, untouched by
-   2c135ef and by PR #85) is fixed together with the three 2c-parity sites or in
-   a separate step.
+3. This proposal recommends fixing context repair with the three 2c-parity
+   paths on the main-bound line. An authorized sequencing decision may split
+   delivery, but repair remains required by CTR-UAM-002 and full conformance
+   remains open until its evidence exists. Excluding repair from the Contract
+   requires changing and reviewing this proposal before acceptance.
 4. Any consumer that relied on stale `updated_at` values in global summaries
    (informational; no platform action proposed here).
