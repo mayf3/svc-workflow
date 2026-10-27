@@ -137,6 +137,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::dispatch_intents::list_due),
         )
         .route(
+            "/internal/v1/dispatch-intents/{dispatchIntentId}/owner-assistance-resume-evidence",
+            get(handlers::dispatch_intents::owner_assistance_resume_evidence),
+        )
+        .route(
             "/internal/v1/worklists/assigned-to-me",
             get(handlers::worklists::assigned_to_me),
         )
