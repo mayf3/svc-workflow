@@ -45,7 +45,7 @@ The proposed additive `CTR-SWEC-009` defines a dedicated owner-wake credential p
 ## Proposed same-Spec AMEND delta
 
 The exact additive diff is stored in sibling `2026-10-28-owner-wake-token-lifecycle.patch`.
-It appends `ACC-SWEC-009-001..004` and `CTR-SWEC-009` only; it leaves existing
+It appends `ACC-SWEC-009-001..005` and `CTR-SWEC-009` only; it leaves existing
 CTR-SWEC-001..008, frontmatter, accepted `SVC_WORKFLOW_EXECUTION_CONTROL_V1`
 status, parent authorities, and external-authority revisions untouched. This
 patch is a review artifact only and MUST NOT be applied until the Owner accepts
@@ -54,9 +54,14 @@ the exact amendment; it is not itself Product Authority.
 The proposed Contract requires dedicated `WORKFLOW_OWNER_ASSISTANCE_WAKE_*`
 configuration (exact endpoint URL, Auth base URL, client ID/secret, and exact
 product-api audience), Auth `client_credentials` with only `workflow.execute`,
-an in-memory `(client_id, audience, scope)` expiry-aware cache, 5-second
-Auth/product-api request bounds, 401 cache invalidation without same-pass
-replay, and existing durable outbox retry/backoff with no drop/dead-letter.
+an in-memory `(client_id, audience, scope)` cache with renewal margin exactly
+`min(60 seconds, 10% of expires_in)`. Expiry is measured from the monotonic
+instant immediately before each Auth request begins; a delayed response that
+arrives at or beyond the renewal point is neither cached nor used, and the row
+remains pending under existing backoff. Acceptance adds a controlled delayed
+Auth/short-TTL negative case. The Contract also specifies 5-second Auth/product-api
+request bounds, 401 cache invalidation without same-pass replay, and existing
+durable outbox retry/backoff with no drop/dead-letter.
 The existing `WORKFLOW_EXECUTION_KICK_TOKEN` cannot be used as owner-wake
 fallback; CTR-SWEC-007 execution-kick authentication remains unchanged.
 
