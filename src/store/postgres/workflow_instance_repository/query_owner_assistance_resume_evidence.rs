@@ -154,6 +154,7 @@ pub(crate) async fn get_owner_assistance_resume_evidence(
                        request_receipt.response_body->>'source' IS NULL
                        AND request_receipt.response_body->>'assistanceCaseId' = c.assistance_case_id::text
                        AND c.requested_by_principal_id = ai.assignee_principal_id
+                       AND c.request_payload->'supportingPayload'->>'source' IS DISTINCT FROM 'execution_policy'
                    )
                    OR
                    (
