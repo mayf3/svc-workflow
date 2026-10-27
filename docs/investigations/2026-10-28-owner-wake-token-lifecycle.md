@@ -72,3 +72,15 @@ in this authoring branch. The proposal is carried as an unapplied patch rather
 than falsely retaining `status: accepted` for unaccepted new text or weakening
 the old accepted-head binding. Owner acceptance can apply the exact patch and
 record the accepted final revision in the usual docs-only transaction.
+
+## Patch integrity correction
+
+The amendment patch is generated as a complete unified diff against the exact
+`origin/main` accepted Spec body, rather than editing hunk counts by hand. The
+hunk is `@@ -277,3 +277,120 @@`. A temporary checkout-shaped copy was patched
+with `git apply`; the complete resulting Spec body matched the generated
+candidate byte-for-byte, including the final production-authority boundary.
+Applied candidate body SHA-256: `6774a1481563f5059bf774e8dae05365e80bb1f4327b55ce4fec83096a3b01c0`.
+The contradictory one-request use rule for tokens without a safe window was
+removed: those responses fail closed without caching or POST, leaving the row
+pending under existing backoff.
