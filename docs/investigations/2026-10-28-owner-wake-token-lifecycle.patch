@@ -14,14 +14,19 @@
 +  before the next owner-wake POST. Simulated short expiry against the actual
 +  product-api verifier proves the old bearer is rejected and a newly issued
 +  bearer is accepted without waiting ten minutes.
-+- ACC-SWEC-009-003: Auth timeout, malformed token response, `invalid_client`,
++- ACC-SWEC-009-003: a delayed Auth response whose returned TTL leaves no safe
++  window when measured from the monotonic instant before the Auth request starts
++  MUST NOT be cached or used for a downstream POST; the owner-wake row remains
++  pending under existing backoff. A short-TTL fixture with controlled Auth
++  response delay verifies the boundary without waiting for real expiry.
++- ACC-SWEC-009-004: Auth timeout, malformed token response, `invalid_client`,
 +  `invalid_scope`, product-api 401/403/5xx, or transport failure performs at
 +  most one Auth request and one owner-wake POST per reconciler attempt, records
 +  only sanitized error metadata, and leaves the durable outbox row pending
 +  under existing backoff (delay capped at 600 seconds). Each due-row attempt is
 +  bounded to one Auth request and one downstream POST; a 401 invalidates the
 +  cached bearer without an immediate same-pass replay. Rows are not dead-lettered.
-+- ACC-SWEC-009-004: missing/partial new owner-wake configuration never falls
++- ACC-SWEC-009-005: missing/partial new owner-wake configuration never falls
 +  back to `WORKFLOW_EXECUTION_KICK_TOKEN`; that legacy token remains exclusive
 +  to CTR-SWEC-007 `/workflow-execution/kicks`. Forum tokens, wrong audience,
 +  wrong scope, or a token cache entry from another `(client, audience, scope)`
@@ -80,9 +85,14 @@
 +caller-visible responses. Cache expiry MUST use a monotonic clock.
 +The cache MUST be keyed by the exact `(client_id, audience, scope)` tuple,
 +MUST be in process memory only, and MUST reacquire a token before its expiry
-+renewal point (at most 60 seconds or 10% of the token lifetime before expiry,
-+whichever is smaller). Tokens too short to provide a safe cache window MUST
-+be used for that one request only and not cached. Concurrent misses for the
++renewal point, where the renewal margin is exactly min(60 seconds, 10%
++of expires_in). The expiry origin is the monotonic instant immediately before
++the Auth request begins, so Auth response latency cannot extend local validity.
++If the response arrives at or after request_started + expires_in - renewal_margin,
++the token MUST NOT be cached or used for an owner-wake POST; the outbox row stays
++pending under existing backoff. Otherwise, expiry MUST be calculated from that
++request-start instant. Tokens too short to provide a safe cache window MUST be
++used for that one request only and not cached. Concurrent misses for the
 +same key MUST be serialized or coalesced; entries from Forum auth or another
 +resource/scope MUST never be reused.
 +
