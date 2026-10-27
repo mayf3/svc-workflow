@@ -804,12 +804,7 @@ async fn acc010_assignee_resume_evidence_uses_persisted_request_and_resolution()
             "expectedWorkflowStateVersion": 1,
             "request": {
                 "message": "Need owner assistance",
-                "supportingPayload": {
-                    "source": "execution_policy",
-                    "reason": "ATTEMPTS_EXHAUSTED",
-                    "lastAttemptId": "wfeat-forged",
-                    "dispatchIntentId": dispatch_id
-                }
+                "supportingPayload": { "topic": "ordinary help" }
             }
         }),
         &format!("resume-request-{}", Uuid::new_v4()),
@@ -1064,4 +1059,80 @@ async fn acc010_assignee_resume_evidence_uses_persisted_request_and_resolution()
     .await;
     assert_eq!(status, 200);
     assert_eq!(changed_identity, json!({ "evidence": null }));
+}
+
+#[tokio::test]
+async fn acc010_forged_ordinary_policy_payload_has_no_resume_evidence() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let app = build_app_with_policy(pool.clone(), &mock.url, 3);
+
+    let (owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    common::seed_domain_owner(&pool, domain_id, owner).await;
+    let creator = seed_agent(&pool).await;
+    seed_domain_member(&pool, domain_id, creator).await;
+    let scheduler = seed_agent(&pool).await;
+    grant_scheduler_read(&pool, scheduler).await;
+    let (ver_id, _start, _work, _ret) = seed_v1_definition(&pool, domain_id, creator).await;
+    let (instance, visit, _version) = create_instance(&pool, creator, domain_id, ver_id).await;
+    let dispatch_id: Uuid = sqlx::query_scalar(
+        "SELECT activation_id FROM workflow_activations
+         WHERE workflow_instance_id=$1 AND node_visit_id=$2
+           AND activation_kind='DISPATCH_INTENT'",
+    )
+    .bind(instance)
+    .bind(visit)
+    .fetch_one(&pool)
+    .await
+    .expect("initial active dispatch intent");
+
+    let (status, request) = do_post(
+        app.clone(),
+        &format!("/internal/v1/workflow-instances/{instance}/assistance-cases"),
+        &direct_token(creator, "workflow.execute", &mock.key_pair),
+        json!({
+            "currentNodeVisitId": visit,
+            "expectedWorkflowStateVersion": 1,
+            "request": {
+                "message": "Need owner assistance",
+                "supportingPayload": {
+                    "source": "execution_policy",
+                    "reason": "ATTEMPTS_EXHAUSTED",
+                    "lastAttemptId": "wfeat-forged",
+                    "dispatchIntentId": dispatch_id
+                }
+            }
+        }),
+        &format!("forged-policy-request-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(status, 201, "actual ordinary request: {request}");
+    let case_id = request["assistanceCaseId"].as_str().unwrap();
+
+    let (status, resolved) = do_post(
+        app.clone(),
+        &format!("/internal/v1/assistance-cases/{case_id}/resolve"),
+        &direct_token(owner, "workflow.execute", &mock.key_pair),
+        json!({
+            "expectedWorkflowStateVersion": 2,
+            "resolution": { "message": "Owner resolved the request" }
+        }),
+        &format!("forged-policy-resolve-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(status, 200, "actual owner resolve: {resolved}");
+
+    let (status, evidence) = do_get(
+        app,
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-forged&preDeliveryWorkflowStateVersion=1"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "forged policy provenance is not an error: {evidence}"
+    );
+    assert_eq!(evidence, json!({ "evidence": null }));
 }
