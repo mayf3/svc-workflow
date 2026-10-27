@@ -665,8 +665,7 @@ async fn acc05b_escalation_last_attempt_id_is_opaque_string() {
         "dispatchIntentId": dispatch_intent_id,
     });
     let idem_key = format!("esc-opaque-{}", Uuid::new_v4());
-    let (status, resp) =
-        do_post(app.clone(), &path, &poller_token, body.clone(), &idem_key).await;
+    let (status, resp) = do_post(app.clone(), &path, &poller_token, body.clone(), &idem_key).await;
     assert_eq!(status, 200, "opaque lastAttemptId accepted: {resp}");
     assert_eq!(resp["escalated"], json!(true));
     assert_eq!(resp["ownerPrincipalId"], json!(owner));
@@ -704,9 +703,11 @@ async fn acc05b_escalation_last_attempt_id_is_opaque_string() {
         "lastAttemptId": "wfeat-test-opaque-mutated",
         "dispatchIntentId": dispatch_intent_id,
     });
-    let (status, conflict) =
-        do_post(app.clone(), &path, &poller_token, mutated, &idem_key).await;
-    assert_eq!(status, 409, "mutated lastAttemptId must conflict: {conflict}");
+    let (status, conflict) = do_post(app.clone(), &path, &poller_token, mutated, &idem_key).await;
+    assert_eq!(
+        status, 409,
+        "mutated lastAttemptId must conflict: {conflict}"
+    );
     assert_eq!(conflict["error"]["code"], json!("idempotency_conflict"));
 
     // Unrelated fields stay strictly typed: a non-UUID nodeVisitId is a
@@ -765,4 +766,302 @@ async fn acc06_outbox_event_key_is_unique() {
     let rows = outbox_rows(&pool, instance, "FORUM_EVENT").await;
     let matches: Vec<_> = rows.iter().filter(|(k, _)| *k == key).collect();
     assert_eq!(matches.len(), 1, "exactly one canonical row per event_key");
+}
+
+#[tokio::test]
+async fn acc010_assignee_resume_evidence_uses_persisted_request_and_resolution() {
+    let pool = common::create_pool().await;
+    let mock = common::MockJwksServer::start().await;
+    let app = build_app_with_policy(pool.clone(), &mock.url, 3);
+
+    let (owner, domain_id) = common::seed_principal_and_domain(&pool).await;
+    common::seed_domain_owner(&pool, domain_id, owner).await;
+    let creator = seed_agent(&pool).await;
+    seed_domain_member(&pool, domain_id, creator).await;
+    let other_agent = seed_agent(&pool).await;
+    let scheduler = seed_agent(&pool).await;
+    grant_scheduler_read(&pool, scheduler).await;
+    let (ver_id, _start, _work, _ret) = seed_v1_definition(&pool, domain_id, other_agent).await;
+    let (instance, visit, _version) = create_instance(&pool, creator, domain_id, ver_id).await;
+    let dispatch_id: Uuid = sqlx::query_scalar(
+        "SELECT activation_id FROM workflow_activations
+         WHERE workflow_instance_id=$1 AND node_visit_id=$2
+           AND activation_kind='DISPATCH_INTENT'",
+    )
+    .bind(instance)
+    .bind(visit)
+    .fetch_one(&pool)
+    .await
+    .expect("initial active dispatch intent");
+
+    let request_path = format!("/internal/v1/workflow-instances/{instance}/assistance-cases");
+    let (status, request) = do_post(
+        app.clone(),
+        &request_path,
+        &direct_token(creator, "workflow.execute", &mock.key_pair),
+        json!({
+            "currentNodeVisitId": visit,
+            "expectedWorkflowStateVersion": 1,
+            "request": {
+                "message": "Need owner assistance",
+                "supportingPayload": {
+                    "source": "execution_policy",
+                    "reason": "ATTEMPTS_EXHAUSTED",
+                    "lastAttemptId": "wfeat-forged",
+                    "dispatchIntentId": dispatch_id
+                }
+            }
+        }),
+        &format!("resume-request-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(status, 201, "actual assignee request: {request}");
+    let case_id = request["assistanceCaseId"].as_str().unwrap();
+
+    let (status, resolved) = do_post(
+        app.clone(),
+        &format!("/internal/v1/assistance-cases/{case_id}/resolve"),
+        &direct_token(owner, "workflow.execute", &mock.key_pair),
+        json!({
+            "expectedWorkflowStateVersion": 2,
+            "resolution": { "message": "Owner resolved the request" }
+        }),
+        &format!("resume-resolve-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(status, 200, "actual owner resolve: {resolved}");
+
+    let (status, evidence_body) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-before&preDeliveryWorkflowStateVersion=1"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200, "resume evidence: {evidence_body}");
+    let evidence = &evidence_body["evidence"];
+    assert_eq!(evidence["dispatchIntentId"], json!(dispatch_id));
+    assert_eq!(evidence["workflowInstanceId"], json!(instance));
+    assert_eq!(evidence["nodeVisitId"], json!(visit));
+    assert_eq!(evidence["ownerPrincipalId"], json!(creator));
+    assert_eq!(evidence["activationState"], json!("ACTIVE"));
+    assert_eq!(evidence["workflowStateVersion"], json!(3));
+    assert_eq!(evidence["assistanceCaseId"], json!(case_id));
+    assert_eq!(evidence["requestEventSequence"], json!(2));
+    assert_eq!(evidence["resolutionEventSequence"], json!(3));
+    assert_eq!(evidence["requesterPrincipalId"], json!(creator));
+    assert_eq!(evidence["resolverPrincipalId"], json!(owner));
+    assert_eq!(evidence["ingress"], json!("assignee"));
+    assert_eq!(evidence["reason"], Value::Null);
+    assert_eq!(evidence["lastAttemptId"], Value::Null);
+    let mut keys: Vec<_> = evidence
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        vec![
+            "activationState",
+            "assistanceCaseId",
+            "dispatchIntentId",
+            "ingress",
+            "lastAttemptId",
+            "nodeVisitId",
+            "ownerPrincipalId",
+            "reason",
+            "requestEventSequence",
+            "requesterPrincipalId",
+            "resolutionEventSequence",
+            "resolverPrincipalId",
+            "workflowInstanceId",
+            "workflowStateVersion",
+        ]
+    );
+
+    let (status, scheduler_denied) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-before&preDeliveryWorkflowStateVersion=1"
+        ),
+        &direct_token(other_agent, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "scheduler role is required: {scheduler_denied}"
+    );
+    assert_eq!(
+        scheduler_denied["error"]["code"],
+        json!("scheduler_read_role_required")
+    );
+    let (status, scope_denied) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-before&preDeliveryWorkflowStateVersion=1"
+        ),
+        &direct_token(scheduler, "workflow.execute", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 403, "workflow.read is required: {scope_denied}");
+
+    let policy_attempt = "wfeat-policy-last-attempt";
+    let policy_path = format!("/internal/v1/workflow-instances/{instance}/execution-escalations");
+    let (status, policy_case) = do_post(
+        app.clone(),
+        &policy_path,
+        &direct_token(scheduler, "workflow.execute", &mock.key_pair),
+        json!({
+            "nodeVisitId": visit,
+            "reason": "STALE_LOOP_EXHAUSTED",
+            "attemptCount": 5,
+            "lastAttemptId": policy_attempt,
+            "dispatchIntentId": dispatch_id
+        }),
+        &format!("policy-resume-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "actual execution-policy request: {policy_case}"
+    );
+    let policy_case_id = policy_case["assistanceCaseId"].as_str().unwrap();
+    let (status, policy_resolved) = do_post(
+        app.clone(),
+        &format!("/internal/v1/assistance-cases/{policy_case_id}/resolve"),
+        &direct_token(owner, "workflow.execute", &mock.key_pair),
+        json!({
+            "expectedWorkflowStateVersion": 4,
+            "resolution": { "message": "Owner resolved the policy request" }
+        }),
+        &format!("policy-resolve-{}", Uuid::new_v4()),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "actual policy owner resolve: {policy_resolved}"
+    );
+
+    let before_read: (i64, i64, i32) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM workflow_command_receipts WHERE principal_id IN ($1,$2,$3)),
+                (SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$4),
+                (SELECT workflow_state_version FROM workflow_instances WHERE workflow_instance_id=$4)",
+    )
+    .bind(creator)
+    .bind(owner)
+    .bind(scheduler)
+    .bind(instance)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let (status, earliest_body) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-before&preDeliveryWorkflowStateVersion=1"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200, "earliest evidence: {earliest_body}");
+    assert_eq!(
+        earliest_body["evidence"]["assistanceCaseId"],
+        json!(case_id)
+    );
+    assert_eq!(earliest_body["evidence"]["ingress"], json!("assignee"));
+
+    let (status, policy_body) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId={policy_attempt}&preDeliveryWorkflowStateVersion=3"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200, "policy evidence: {policy_body}");
+    assert_eq!(
+        policy_body["evidence"]["assistanceCaseId"],
+        json!(policy_case_id)
+    );
+    assert_eq!(
+        policy_body["evidence"]["ingress"],
+        json!("execution_policy")
+    );
+    assert_eq!(
+        policy_body["evidence"]["reason"],
+        json!("STALE_LOOP_EXHAUSTED")
+    );
+    assert_eq!(
+        policy_body["evidence"]["lastAttemptId"],
+        json!(policy_attempt)
+    );
+    assert_eq!(
+        policy_body["evidence"]["requesterPrincipalId"],
+        json!(scheduler)
+    );
+    assert_eq!(policy_body["evidence"]["resolverPrincipalId"], json!(owner));
+
+    let (status, old_marker_excluded) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId={policy_attempt}&preDeliveryWorkflowStateVersion=5"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(old_marker_excluded, json!({ "evidence": null }));
+
+    let (status, wrong_attempt) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId=wfeat-other&preDeliveryWorkflowStateVersion=3"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(wrong_attempt, json!({ "evidence": null }));
+
+    let after_read: (i64, i64, i32) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM workflow_command_receipts WHERE principal_id IN ($1,$2,$3)),
+                (SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$4),
+                (SELECT workflow_state_version FROM workflow_instances WHERE workflow_instance_id=$4)",
+    )
+    .bind(creator)
+    .bind(owner)
+    .bind(scheduler)
+    .bind(instance)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        after_read, before_read,
+        "evidence GET must not mutate state"
+    );
+
+    let advance_id: Uuid = sqlx::query_scalar(
+        "SELECT transition_id FROM workflow_transition_definitions
+         WHERE definition_version_id=$1 AND transition_key='advance-1'",
+    )
+    .bind(ver_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    transition(&pool, creator, instance, 5, advance_id, 3)
+        .await
+        .expect("move instance away from the old dispatch identity");
+    let (status, changed_identity) = do_get(
+        app.clone(),
+        &format!(
+            "/internal/v1/dispatch-intents/{dispatch_id}/owner-assistance-resume-evidence?previousAttemptId={policy_attempt}&preDeliveryWorkflowStateVersion=3"
+        ),
+        &direct_token(scheduler, "workflow.read", &mock.key_pair),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(changed_identity, json!({ "evidence": null }));
 }
