@@ -4,7 +4,8 @@ use sqlx::PgPool;
 
 use super::query_types::*;
 use crate::store::postgres::workflow_instance_repository::{
-    query_detail, query_domain_instances, query_global_instances, query_worklists,
+    query_detail, query_domain_instances, query_global_instances,
+    query_owner_assistance_resume_evidence, query_worklists,
 };
 
 #[derive(Clone)]
@@ -141,6 +142,26 @@ impl WorkflowQueryService {
             actor_principal_id,
             limit,
             cursor,
+        )
+        .await
+    }
+
+    pub async fn get_owner_assistance_resume_evidence(
+        &self,
+        actor_principal_id: uuid::Uuid,
+        dispatch_intent_id: uuid::Uuid,
+        previous_attempt_id: &str,
+        pre_delivery_workflow_state_version: i32,
+    ) -> Result<
+        Option<query_owner_assistance_resume_evidence::OwnerAssistanceResumeEvidence>,
+        WorkflowQueryError,
+    > {
+        query_owner_assistance_resume_evidence::get_owner_assistance_resume_evidence(
+            &self.pool,
+            actor_principal_id,
+            dispatch_intent_id,
+            previous_attempt_id,
+            pre_delivery_workflow_state_version,
         )
         .await
     }
