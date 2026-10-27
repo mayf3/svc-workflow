@@ -268,6 +268,29 @@ pub(crate) async fn revise_context_and_transition_atomically(
         ));
     }
 
+    // ---------------------------------------------------------------
+    // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-004): no ordinary
+    // command may evade the successful-ADVANCE gate by calling combined
+    // revise-and-transition. The selected persisted schema is resolved under
+    // this Instance's exact Definition Version; ANY occurrence of the
+    // reserved key at any depth — including malformed or null values — fails
+    // the command closed before any write. Model3 instances are already
+    // refused above (LegacyCommandNotSupported); publication likewise forbids
+    // the annotation outside a model3 primary ADVANCE, so a combined-visible
+    // annotated schema is drift or an old-binary artifact and must never
+    // commit.
+    // ---------------------------------------------------------------
+    if let Some(schema) = transition.submission_schema.as_ref() {
+        if crate::domain::definition::acceptance_binding::contains_annotation_at_any_depth(schema)
+        {
+            deterministic_failure!(ReviseContextAndTransitionError::SubmissionValidationFailed(
+                "combined revise-and-transition is not permitted while the bound \
+                 transition schema carries the acceptance binding annotation"
+                    .to_string(),
+            ));
+        }
+    }
+
     let target_node = domain_result!(transition_validation::read_target_node(
         &mut tx,
         transition.target_node_id,

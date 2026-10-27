@@ -54,6 +54,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // Also validate JSON schemas
         let schema_errors = self.validate_json_schemas(&graph).await;
         result.errors.extend(schema_errors);
+
+        // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-001): the
+        // reserved opt-in annotation must pass the closed placement matrix.
+        result.errors.extend(crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(version.semantic_model_version, &graph));
+
         result.valid = result.errors.is_empty();
 
         Ok(result)

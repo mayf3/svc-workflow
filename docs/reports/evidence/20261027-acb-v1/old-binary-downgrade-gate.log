@@ -1,0 +1,9 @@
+   Compiling svc-workflow v0.1.0 (/Users/yanfenma/workspace/worktrees/codex-workflow-acceptance-impl-20261027)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.24s
+     Running tests/42_acceptance_binding_downgrade_gate.rs (target/debug/deps/42_acceptance_binding_downgrade_gate-c14e342ba7a63c54)
+
+running 1 test
+test ctr6_revoked_optin_version_rejected_by_new_and_old_binary ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s
+
