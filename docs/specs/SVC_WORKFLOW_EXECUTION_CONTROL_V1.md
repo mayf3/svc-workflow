@@ -410,3 +410,124 @@ correctness role of Agent Core's due poll.
 This Contract does not authorize credential provisioning, Auth grant changes,
 production configuration, or service restart. Those require their own
 Domain Owner/deployment authority and receipts.
+
+## 13. CTR-SWEC-010 — Owner-resolved workflow execution evidence
+
+This read-only companion preserves CTR-VAI-009's exact seven-field due DTO.
+Agent Core consumes it under CTR-WEC1-008; no Core product-api endpoint is
+created by this Contract.
+
+```text
+GET /internal/v1/dispatch-intents/{dispatchIntentId}/owner-assistance-resume-evidence
+query: previousAttemptId=<opaque attempt ID string>&preDeliveryWorkflowStateVersion=<integer>
+scope: workflow.read + direct token + enabled GLOBAL_SCHEDULER_READ binding
+200 {"evidence": null | {
+  "dispatchIntentId": UUID, "workflowInstanceId": UUID, "nodeVisitId": UUID,
+  "ownerPrincipalId": UUID, "activationState": "ACTIVE", "workflowStateVersion": integer,
+  "assistanceCaseId": UUID, "requestEventSequence": integer,
+  "resolutionEventSequence": integer, "requesterPrincipalId": UUID,
+  "resolverPrincipalId": UUID, "ingress": "assignee" | "execution_policy",
+  "reason": null | "ATTEMPTS_EXHAUSTED" | "STALE_LOOP_EXHAUSTED",
+  "lastAttemptId": null | opaque attempt ID string
+}}
+```
+
+The request and response are closed shapes. `dispatchIntentId` is the exact
+path UUID; `previousAttemptId` is the non-empty opaque Core attempt ID
+(currently `wfeat-*`), not a UUID. Versions and sequences are integers on the
+svc workflow-state-version scale. `reason` and `lastAttemptId` are present
+and null for `ingress: assignee`; for `execution_policy` both are non-null,
+the reason is one of the two enumerated policy reasons, and `lastAttemptId`
+is the persisted policy value, never an echo of the query parameter.
+
+Only the enabled scheduler caller above may query one exact current active
+dispatch intent. Svc derives all identities and provenance from persisted
+rows in a consistent read; callers supply no requester/resolver identity.
+It returns at most the earliest qualifying case by
+`(resolutionEventSequence, assistanceCaseId)`, or `{"evidence":null}` when no
+case qualifies. Existing authentication/validation/storage error semantics
+remain errors, not permission-bearing evidence. No Assistance message,
+supporting payload, credential or audit body is returned.
+
+The activation MUST still be ACTIVE for the current nonterminal instance,
+current visit and current assignee; the returned `ownerPrincipalId` is that
+assignee, not the resolving Domain Owner. The case belongs to that exact
+instance/visit and remains `RESOLVED`. An open OWNER_PENDING or HUMAN_REQUIRED
+case still excludes the visit under CTR-SWEC-006. Changed activation, visit or
+assignee cannot be authorized by an old case.
+
+The request/resolution joins MUST use the case's persisted
+`request_command_id` / `resolution_command_id`, completed successful command
+receipts of types `REQUEST_WORKFLOW_ASSISTANCE` /
+`RESOLVE_WORKFLOW_ASSISTANCE`, and exact workflow event types
+`ASSISTANCE_REQUESTED` / `ASSISTANCE_RESOLVED`. Each event must match the
+command ID, workflow instance, source/target visit and exact
+`event_data.assistanceCaseId`; its actor must match both the receipt Principal
+and the case's requested/resolved Principal. Request new status is
+OWNER_PENDING and resolution new status is RESOLVED. Missing, conflicting or
+ambiguous provenance fails closed. The successful resolution command is the
+existing explicit action checked by svc against the exact Domain's Owner
+authority at resolution; a timestamp or a claimed role is not a substitute.
+No rule requires resolver and executor to be different Principals.
+
+Both ingress paths use those exact joins; classify them from persisted
+server-generated provenance, never solely from free supporting JSON:
+
+- `assignee`: the ordinary request command and event attest the authenticated
+  requester equals the current activation/visit assignee. `reason` and
+  `lastAttemptId` MUST be null; the ordinary API persists no authoritative
+  attempt binding, and neither caller payload nor the query's
+  `previousAttemptId` may be echoed as one.
+- `execution_policy`: the existing system ingress has a completed
+  `SYSTEM_EXECUTION_ESCALATION` receipt. Its same-actor synthetic request
+  receipt is linked by the exact existing
+  `policy-req:<system-command-id>` idempotency key, has the server-generated
+  `{"source":"execution_policy"}` receipt body, and both receipts resolve
+  to the exact case (the system receipt's `assistanceCaseId` matches).
+  The case's persisted `supportingPayload.source` is `execution_policy`,
+  its reason is `ATTEMPTS_EXHAUSTED` or `STALE_LOOP_EXHAUSTED`, its non-null
+  `lastAttemptId` exactly equals query `previousAttemptId`, and its
+  `dispatchIntentId` exactly equals the path ID. Missing legacy policy
+  bindings do not qualify. The system requester need not equal the assignee;
+  it is not relabeled as executor. Free ordinary payload fields cannot
+  manufacture this policy provenance.
+
+Each joined event MUST satisfy
+`event_sequence == new_workflow_state_version`, preserving the existing
+event writer's shared monotonic scale. Both sequences are strictly after
+the supplied preceding attempt baseline, with
+`baseline < requestEventSequence < resolutionEventSequence <= workflowStateVersion`.
+The route does not invent or verify Core's baseline: Core supplies its
+durably recorded pre-delivery fact and remains responsible for the exact
+preceding attempt and assignee match. Wall-clock order alone never qualifies.
+After Core records the returned current version as its new pre-delivery
+baseline, all already-resolved old markers are at or below that baseline;
+neither replay nor selecting another old case can authorize another run.
+Core's one-append single-case consumption fence remains authoritative for
+generation admission; this read creates no consumption record or second
+ledger.
+
+This Contract adds no assistance write action, role grant, repair permission,
+or automatic resolve. Only the existing explicit authorized Owner resolve
+is the authorization fact; underlying repair scope is unchanged.
+
+### Acceptance for CTR-SWEC-010
+
+- ACC-SWEC-010-001: isolated service-route/store tests using actual persisted
+  ordinary request/resolve transactions and system-policy request/resolve
+  transactions return the exact envelope and one marker with the defined
+  nullable fields. Required evidence: request/command/case/event coordinates,
+  actual response and exact Core-compatible DTO; fixture-only assertions do
+  not establish live production behavior.
+- ACC-SWEC-010-002: wrong/missing scheduler binding or scope cannot read;
+  wrong command/type/case/instance/visit/actor joins, pending/voided case,
+  forged ordinary policy payload, absent or wrong policy attempt/activation
+  binding, pre-baseline/reversed sequences and unequal event/version scale
+  yield no permission-bearing evidence. Owner and assignee may be the same
+  Principal when the existing roles authorize both actions. Tests prove
+  no payload/free text leaks and the seven-field due DTO remains unchanged.
+- ACC-SWEC-010-003: several eligible resolved cases select the earliest pair;
+  repeating the query is read-only, and the next attempt's newer baseline
+  excludes every previously resolved marker. Changed active identity rejects
+  old evidence. Required evidence: actual store queries and response bodies;
+  any unsupported marker, shape mismatch or state mutation fails acceptance.
