@@ -1,6 +1,6 @@
 --- a/docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V1.md
 +++ b/docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V1.md
-@@ -277,3 +277,111 @@
+@@ -277,3 +277,120 @@
    later drains the backlog in order.
  - Case 10: two ensure-thread passes ⇒ exactly one thread (mock forum 409
    race); binding UNIQUE holds.
@@ -91,8 +91,7 @@
 +If the response arrives at or after request_started + expires_in - renewal_margin,
 +the token MUST NOT be cached or used for an owner-wake POST; the outbox row stays
 +pending under existing backoff. Otherwise, expiry MUST be calculated from that
-+request-start instant. Tokens too short to provide a safe cache window MUST be
-+used for that one request only and not cached. Concurrent misses for the
++request-start instant. Concurrent misses for the
 +same key MUST be serialized or coalesced; entries from Forum auth or another
 +resource/scope MUST never be reused.
 +
