@@ -4,10 +4,10 @@ title: Workflow Execution Control — canonical forum binding, durable outbox wi
 status: accepted
 accepted_date: 2026-10-28
 accepted_by: Codex root (delegated under user authorization)
-accepted_reviewed_head: 083c52a79efbdb0efc83d6dfaa113a7aa75a0b0d
+accepted_reviewed_head: 2c7e59a14d5d84ecc0688c47c30c5f04d0f05900
 acceptance_delta_class: additive_contracts_and_acceptance
-semantic_delta_from_reviewed_head: none; exact accepted patch applied, body SHA-256 6774a1481563f5059bf774e8dae05365e80bb1f4327b55ce4fec83096a3b01c0
-accepted_proposal_patch_sha256: 6deb11e3873a734eb4aa4ffb21317c12e5da36b20ae620e9af57e84b7780b47f
+semantic_delta_from_reviewed_head: none; body SHA-256 c5b34b713f1c5045ddcf9c23d1d663e572f4c10be4e2a15e001ed7b8e2030194
+accepted_proposal_patch_sha256: fd49ca3913ad22695df51cf18b95e94679b1e71fc51c5b677149e29803e33e04
 acceptance_authority_basis: >-
   Original acceptance lineage: Owner ACCEPT via GOAL =
   WORKFLOW_EXECUTION_CONTROL_V1_CLOSURE_AND_DEPLOYMENT_READINESS
@@ -31,6 +31,20 @@ acceptance_authority_basis: >-
   Delegated under user's explicit authorization recorded in that receipt.
   Scope is source and isolated validation only; production apply authority NONE;
   production credential/grant readiness UNKNOWN.
+
+  CTR-SWEC-010 additive amendment acceptance: Codex root, explicitly delegated
+  by mayf3, accepted reviewed head 2c7e59a14d5d84ecc0688c47c30c5f04d0f05900 after independent
+  /root/recovery_contract_review_luna PASS and complete scratch-apply byte checks.
+  The accepted body SHA-256 is c5b34b713f1c5045ddcf9c23d1d663e572f4c10be4e2a15e001ed7b8e2030194.
+  Existing CTR-SWEC-001..009 and preceding body bytes are unchanged; this
+  lifecycle-only commit records the exact accepted addition. Authority activates
+  on merge; source/isolated implementation is a later REUSE task. Production
+  apply authority remains NONE.
+accepted_at: 2026-10-27T17:37:27.570181+00:00
+acceptance_review_verdict: PASS
+independent_semantic_reviewer: /root/recovery_contract_review_luna
+acceptance_receipt: docs/reports/OWNER_ASSISTANCE_RESUME_CONTRACT_ACCEPTANCE_20261028.json
+acceptance_receipt_sha256: 38cad7f44a23d5c10b1af71a1680e9134718f446c1b0b0644d08e0c340b7048c
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
