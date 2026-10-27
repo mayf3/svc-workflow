@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_CURRENT_TASK_INPUT_V1
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -17,6 +17,11 @@ superseded_by: null
 owners:
   - mayf3
 base_head: 371ea8155d8fa3025ef26af75d128f3047736d6d
+accepted_by: mayf3-delegated-codex-maintainer
+accepted_at: 2026-10-27
+accepted_reviewed_head: 1a67319599f081f8141a703355f1461dadc48077
+acceptance_record: https://github.com/mayf3/svc-workflow/pull/89
+independent_review_result: PASS
 ---
 
 # SVC_WORKFLOW_CURRENT_TASK_INPUT_V1
@@ -74,9 +79,10 @@ accept or govern DSH code. A consumer may use a separately accepted companion
 Spec, but its exact revision must be recorded before integration conformance.
 
 Route: `NEW / BRIEF / CONTROLLED / AUTHORITY_AUTHORING`, docs first.
-This candidate is proposed. Independent review and an attributable acceptance
-act are separate; the author does not perform either by writing this file.
-Implementation is forbidden until acceptance is active in the owning base.
+The reviewed candidate is accepted by the explicitly delegated maintainer under
+the owner mandate recorded in PR #89. Independent review and the acceptance act
+are separately recorded there, including the final accepted head. Implementation
+is forbidden until this accepted content is merged into the owning base.
 
 ## 4. Current State
 
@@ -139,7 +145,7 @@ production adoption evidence. All acceptance cases below are future tests.
 
 ## 8. Decisions
 
-- `DEC-CTI-001` — Proposed by the author for delegated acceptance: use one new
+- `DEC-CTI-001` — Accepted through the delegated maintainer record: use one new
   target-specific query and one body view on the same path. Do not make a model
   traverse general history, and do not build a second state store.
 - `DEC-CTI-002` — Select entry facts and fixed recent windows on the server.
