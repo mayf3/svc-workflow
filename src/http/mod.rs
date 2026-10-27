@@ -113,6 +113,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::submissions::list),
         )
         .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/current-task-input",
+            get(handlers::current_task_input::read),
+        )
+        .route(
             "/internal/v1/workflow-instances/domain",
             get(handlers::instances::domain_list),
         )

@@ -1,6 +1,7 @@
 pub(crate) mod archive;
 pub(crate) mod assistance;
 pub(crate) mod cancel;
+pub(crate) mod current_task_input;
 pub(crate) mod coordinator_domains;
 pub(crate) mod definitions;
 pub(crate) mod dispatch_intents;

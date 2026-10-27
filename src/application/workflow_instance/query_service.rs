@@ -13,6 +13,18 @@ pub struct WorkflowQueryService {
 }
 
 impl WorkflowQueryService {
+    pub async fn current_task_input(
+        &self,
+        actor: uuid::Uuid,
+        instance: uuid::Uuid,
+        request: super::current_task_input::CurrentTaskInputRequest,
+    ) -> Result<serde_json::Value, super::current_task_input::CurrentTaskInputError> {
+        crate::store::postgres::workflow_instance_repository::current_task_input::read(
+            &self.pool, actor, instance, request,
+        )
+        .await
+    }
+
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
