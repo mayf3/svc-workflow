@@ -12,6 +12,7 @@ pub mod combined_receipt;
 pub mod combined_transaction;
 pub mod command_receipt;
 pub mod create_transaction;
+pub mod current_task_input;
 pub mod definition_lookup;
 pub mod execution_escalation;
 pub mod query_detail;
