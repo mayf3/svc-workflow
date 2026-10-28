@@ -1,7 +1,23 @@
 ---
 spec_id: SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
 title: Owner-bound governance child and verified return to the originating visit
-status: proposed
+status: accepted
+accepted_date: 2026-10-28
+accepted_at: 2026-10-28T06:04:48Z
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_reviewed_head: 1f191156a03d9397b2fb2fdb6c28d6a9621ace95
+accepted_candidate_file_sha256: 7169e46bf86a9c9ff024a8a198ac6cf9e63827d43a2da364b4f837ace3d711aa
+acceptance_review_verdict: PASS
+independent_semantic_reviewer: /root/assistance_resume_core_impl_luna
+acceptance_delta_class: new_standalone_contract
+semantic_delta_after_review: NONE
+acceptance_authority_basis: >-
+  Root accepted the exact independently reviewed contract under mayf3's explicit
+  delegation to complete source work and isolated validation only. The Core
+  reviewer returned PASS on accepted_reviewed_head. The provisioning scope entry
+  makes explicit the existing Owner-replacement hook required by §5 and does not
+  alter its contract. This lifecycle commit records acceptance only; authority
+  is effective after both companion Specs merge. Production apply authority is none.
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -12,6 +28,8 @@ revision: r1
 base_head: ed9344f4701b416e8cf6d7cd10cc4ae28969ff3f
 scope:
   - svc-workflow Assistance case binding and review outbox
+  - src/application/provisioning/mod.rs::replace_owner
+  - src/store/postgres/provisioning_repository/mod.rs::replace_domain_owner
   - exact governance child acceptance provenance
   - Owner-controlled resolution and existing same-visit resume evidence
 governed_by:
@@ -21,7 +39,7 @@ governed_by:
 external_authorities:
   - repository: mayf3/dsh-agent-core
     authority_id: AGENT_CORE_WORKFLOW_EXECUTION_CONTROL_V2
-    revision: 6daf5922a0817115b1a21a459d9643b6fbb6d2b6
+    revision: 599107b6909e5f3153afd29bc846a122e50ebfd7
     relation: interoperates_with
 supersedes: []
 superseded_by: null
@@ -32,14 +50,15 @@ architecture_authority: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
 
 # SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
 
-This proposed additive contract binds one already-existing, same-Domain
+This accepted additive contract binds one already-existing, same-Domain
 governance child WorkflowInstance to one open Owner Assistance case. A child
 terminal event creates a second, separately deduplicated Owner review wake.
 Only an explicit Owner resolve, carrying service-verifiable evidence from the
 child's exact acceptance submission, may use the existing CTR-SWEC-010 resume
 path. A child terminal or an Agent assertion never resolves the original
-problem by itself. This proposal is not accepted and authorizes no source or
-production change.
+problem by itself. This accepted candidate becomes active when it and the
+accepted Core companion merge to their authority branches. Implementation
+remains separately authorized; production apply authority is none.
 
 ## 0. Current state and evidence
 
@@ -47,8 +66,8 @@ production change.
 accepted `SVC_WORKFLOW_EXECUTION_CONTROL_V1` provides the initial durable
 Owner Assistance wake and exact explicit-resolve evidence for same-visit
 resume. No governance-child relation, second review phase, or linked-resolve
-proof is authorized by this proposal. No implementation or runtime
-acceptance is claimed.
+proof is authorized at this cited base; this accepted candidate is not active
+until merge. No implementation or runtime acceptance is claimed.
 
 `OBS-GCRS-001` — Read accepted `CTR-SWEC-009/010`, current task input, and
 the Svc assistance transaction, Owner-resume evidence query, and outbox
@@ -63,19 +82,19 @@ mechanism. Supported by `OBS-GCRS-001` and accepted `CTR-SWEC-009/010`.
 
 `EVD-GCRS-001` — `OBS-GCRS-001` supports `STATE-GCRS-001` and
 `CLM-GCRS-001` only at the cited source snapshot. It does not establish that
-the proposed relation or review wake exists in a deployed system.
+the accepted relation or review wake exists in a deployed system.
 
 ## 1. Authority and compatibility
 
 Svc remains the sole business-state authority. Existing case creation,
 `workflow_assistance_read`, `resolve`, `escalate_to_human`, and
-CTR-SWEC-010 evidence remain authoritative. The companion Core proposal adds a
+CTR-SWEC-010 evidence remain authoritative. The accepted Core companion adds a
 typed Broker operation and distinct review-wake delivery; it does not grant a
 new permission. The caller continues to require the existing `workflow.execute`
 authorization, and this service independently checks the current Domain Owner
 for the exact case.
 
-Existing unlinked cases retain byte-for-byte behavior. This proposal adds no
+Existing unlinked cases retain byte-for-byte behavior. This Spec adds no
 automatic transition, no historical migration, no general obligation engine,
 no arbitrary graph rewrite, no cross-case/global budget and no production
 authorization. The relationship is exactly one layer; a failed child uses
@@ -85,7 +104,7 @@ governance child.
 This binding operation accepts an already-created child instance. The existing
 Core `workflow_execute.create_instance` operation can create an instance from
 an exact published DefinitionVersion using its declared entry Context and
-server-resolved assignee, but this proposal does not define governance-graph
+server-resolved assignee, but this contract does not define governance-graph
 discovery, child Definition selection, or an unattended create-before-bind
 planner. Passing this bind contract does not prove that the originating error
 was automatically routed into a suitable governance Definition.
@@ -461,15 +480,17 @@ claim unattended business completion.
 
 ## 9. Compatibility, rollout and open decisions
 
-This is additive; no existing case or instance is migrated. Before
-implementation, both companion Specs must be accepted and merged. Core and
+This is additive; no existing case or instance is migrated. Both companion
+Specs are accepted in their candidate commits; this authority becomes active
+after both merge into their authority branches. Implementation remains
+separately authorized. Core and
 Svc must be deployed compatibly before the typed action is exposed. If either
 side is unavailable or the review phase is unknown, the original case stays
 open and existing human escalation remains available. Rollback disables only
 new binding/review operations; persisted relations and receipts remain
 readable and are never rewritten as unlinked history.
 
-No normative decisions are delegated to implementers. This proposal grants no
+No normative decisions are delegated to implementers. This Spec grants no
 production permission.
 
 ## 10. Decision and alternatives
@@ -477,8 +498,9 @@ production permission.
 `DEC-GCRS-001` — Keep the existing Assistance case and explicit resolve as
 the source workflow's authority; add only one immutable child relation, one
 distinct terminal-review outbox phase, and exact linked-resolve evidence.
-Decision owner: delegated contract author under explicit root mandate; this
-proposal still requires independent review and acceptance. Rejected:
+Decision owner: root accepted this contract under mayf3's explicit delegation
+after independent semantic review. Implementation remains separately
+authorized. Rejected:
 terminal-as-proof, automated resolve/transition, a new grant, arbitrary
 workflow migration, recursive governance, and a second resume engine.
 
