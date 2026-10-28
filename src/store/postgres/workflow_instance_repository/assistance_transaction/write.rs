@@ -116,6 +116,7 @@ pub(crate) async fn request_assistance(
         None,
         "OWNER_PENDING",
         &payload_digest,
+        None,
     )
     .await?;
     // CTR-SWEC-008: assistance lifecycle is projected to the canonical forum
@@ -291,6 +292,23 @@ async fn owner_action(
             .await;
     }
 
+    let governance_review = if matches!(action, OwnerAction::Resolve(_)) {
+        match super::governance_child::validate_resolve(&mut tx, case_id, &payload).await {
+            Ok(review) => review,
+            Err(error) => {
+                if matches!(
+                    error,
+                    AssistanceError::StorageError(_) | AssistanceError::InternalConsistency(_)
+                ) {
+                    return Err(error);
+                }
+                return deterministic_failure(tx, command_id, error).await;
+            }
+        }
+    } else {
+        None
+    };
+
     let affected = match action {
         OwnerAction::Escalate(_) => sqlx::query(
             "UPDATE workflow_assistance_cases
@@ -340,6 +358,7 @@ async fn owner_action(
         Some(&previous_status),
         target_status.as_str(),
         &payload_digest,
+        governance_review.as_ref(),
     )
     .await?;
     // CTR-SWEC-008: escalate/resolve projected to the canonical forum thread.

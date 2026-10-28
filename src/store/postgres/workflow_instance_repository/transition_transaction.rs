@@ -572,21 +572,48 @@ pub(crate) async fn execute_workflow_transition_atomically(
                 let Some(payload) = cmd.submission_payload.as_ref() else {
                     // Unreachable in practice: a schema present with no payload
                     // failed `submission_required` at Step 12. Fail closed anyway.
-                    deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
-                        "acceptance binding requires the submission payload".to_string(),
-                    ));
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "acceptance binding requires the submission payload".to_string(),
+                        )
+                    );
                 };
                 if let Err(detail) = acceptance_binding::validate_acceptance_report(
                     payload,
                     instance.current_context_revision_id,
                     &catalog_ids,
                 ) {
-                    deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
-                        format!("acceptance report validation failed: {detail}")
-                    ));
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(format!(
+                            "acceptance report validation failed: {detail}"
+                        ))
+                    );
                 }
             }
             Ok(None) => {}
+        }
+    }
+
+    if let Err(error) =
+        super::assistance_transaction::governance_child::validate_selected_submission(
+            &mut tx,
+            instance_uuid,
+            transition_uuid,
+            cmd.submission_payload.as_ref(),
+        )
+        .await
+    {
+        match error {
+            crate::domain::workflow_instance::assistance::AssistanceError::InvalidPayload(
+                detail,
+            ) => deterministic_failure!(
+                ExecuteWorkflowTransitionError::SubmissionValidationFailed(detail)
+            ),
+            _ => {
+                return Err(ExecuteWorkflowTransitionError::StorageError(
+                    error.to_string(),
+                ))
+            }
         }
     }
 
@@ -823,6 +850,13 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     if target_node.node_type_enum() == NodeType::TERMINAL {
+        super::assistance_transaction::governance_child::record_terminal(
+            &mut tx,
+            instance_uuid,
+            event_id,
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
         super::super::outbox::queue_forum_event(
             &mut tx,
             instance_uuid,
@@ -873,7 +907,10 @@ pub(crate) async fn execute_workflow_transition_atomically(
         super::super::outbox::queue_forum_event(
             &mut tx,
             instance_uuid,
-            &format!("return_policy_reached:{instance_uuid}:{}", transition.transition_id),
+            &format!(
+                "return_policy_reached:{instance_uuid}:{}",
+                transition.transition_id
+            ),
             serde_json::json!({
                 "eventType": "return_policy_reached",
                 "workflowInstanceId": instance_uuid,
