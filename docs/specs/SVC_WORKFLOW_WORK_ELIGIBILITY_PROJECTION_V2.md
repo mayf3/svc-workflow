@@ -1,7 +1,12 @@
 ---
 spec_id: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
 title: Canonical Work Eligibility Read Projection V2
-status: proposed
+status: accepted
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: 19593b4dc4d48b8341c8a759d07b9e575afeb08e
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_ORCHESTRATION_ACCEPTANCE_20261029.md
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -25,15 +30,15 @@ external_authorities: []
 
 # SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2 — Canonical Work Eligibility Read Projection
 
-This is a proposed whole-authority successor to accepted WEP V1. The complete
-V1 body is preserved below as historical baseline. The only semantic change is
-that its canonical classification remains a time projection, while normal
-dispatch for an explicitly opted-in Definition also requires the separate
-Svc-authoritative fixed prerequisite status `READY` under Product V9,
-Architecture V0_4_4, and Svc prerequisite orchestration V1. WEP does not add a
-`BLOCKED` value, wait writer, or prerequisite truth of its own. V1 remains
-active until the exact paired authorities are accepted and lifecycle records
-are updated.
+This accepted whole-authority successor to WEP V1 preserves the complete V1
+body below as historical baseline. The only semantic change is that its
+canonical classification remains a time projection, while normal dispatch for
+an explicitly opted-in Definition also requires the separate Svc-authoritative
+fixed prerequisite status `READY` under Product V9, Architecture V0_4_4, and
+Svc prerequisite orchestration V1. WEP does not add a `BLOCKED` value, wait
+writer, or prerequisite truth of its own. The reciprocal lifecycle transaction
+supersedes V1 in this candidate; this accepted candidate becomes active after
+merge to main.
 
 ## V2 selected exception — TIME PROJECTION IS NOT FULL ADMISSION
 

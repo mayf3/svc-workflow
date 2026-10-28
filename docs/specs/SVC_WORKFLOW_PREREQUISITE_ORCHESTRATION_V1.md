@@ -1,7 +1,23 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
 title: Atomic governance-child creation and typed workflow prerequisite readiness
-status: proposed
+status: accepted
+accepted_date: 2026-10-29
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_reviewed_head: 19593b4dc4d48b8341c8a759d07b9e575afeb08e
+acceptance_review_verdict: PASS
+independent_semantic_reviewer: /root/structure_v2_semantic_review
+acceptance_delta_class: new_standalone_contract
+semantic_delta_after_review: NONE
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_ORCHESTRATION_ACCEPTANCE_20261029.md
+acceptance_authority_basis: >-
+  Root accepted the exact independently reviewed semantic head under mayf3's
+  explicit delegation to complete source work and isolated validation only.
+  The final semantic review SHA-256 is
+  4baa1f24202e3d9f1544d0ebd95eb5dc42ce9febedb243c45819f751aa09204f. This is
+  the paired lifecycle acceptance; implementation still requires both
+  accepted authorities in the implementation base and a separate mandate.
+  Production apply authority is none.
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -34,7 +50,7 @@ external_authorities: []
 
 # SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
 
-This proposed Contract authorizes a later bounded Svc implementation of (1) an
+This accepted Contract authorizes a later bounded Svc implementation of (1) an
 atomic GCR child create-and-bind command, (2) one explicit immutable Context
 prerequisite referencing an already-existing same-Domain WorkflowInstance and
 its exact terminal Submission transition, and (3) typed readiness and a
@@ -63,14 +79,15 @@ business-truth validation, or production apply.
 ## 3. Authority and dependencies
 
 This is cross-repository `ASSURANCE_LEVEL=CONTROLLED`; route stage is
-`AUTHORITY_AUTHORING`, and all candidates remain proposed. The parent-authority
-route is `AUTHORITY_ACTION=SUPERSEDE` for whole successors Product V9,
+`AUTHORITY_AUTHORING`; the parent successors and paired implementation Specs
+are accepted in these candidate branches and become effective after merge. The
+parent-authority route is `AUTHORITY_ACTION=SUPERSEDE` for whole successors Product V9,
 Architecture V0_4_4, and WEP V2. The separate additive implementation-child
 route is `AUTHORITY_ACTION=NEW` for Svc prerequisite orchestration V1 and paired
 Core prerequisite orchestration V1. No child route partially supersedes a
 parent, and no route authorizes implementation before exact acceptance in the
-implementation base plus a separate mandate. Local parents are proposed Product V9, proposed Architecture v0.4.4, GCR V1,
-VAI V1, and proposed WEP V2. Paired Core
+implementation base plus a separate mandate. Local parents are accepted Product V9, Architecture V0_4_4, GCR V1, VAI V1,
+and WEP V2. Paired Core
 `AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1` is required; the paired
 acceptance record must bind both exact reviewed companion heads. Acceptance in
 a docs-only branch does not activate implementation authority; production apply
@@ -110,7 +127,7 @@ observations.
   Instance/Version/Transition/Event/Submission rows are sufficient inputs for
   read-time readiness without a new dependency ledger. Supported as a design
   inference by `OBS-SWPO-001/002` and VAI V1's canonical activation facts.
-- `CLM-SWPO-002` (SUPPORTED) — Existing `GLOBAL_SCHEDULER_READ` can guard only minimal due/readiness-status coordinates. The bounded receipt projection is an explicit proposed Product V9 same-Domain permission for authorized dependent assignee/Owner readers and is not currently granted by V1. It exposes no source payload. Supported by the existing scheduler and per-Instance read boundaries, with the narrow permission delta stated explicitly.
+- `CLM-SWPO-002` (SUPPORTED) — Existing `GLOBAL_SCHEDULER_READ` can guard only minimal due/readiness-status coordinates. The bounded receipt projection is explicitly authorized by accepted Product V9 as a same-Domain permission for authorized dependent assignee/Owner readers; Product V8 did not grant it. It exposes no source payload. Supported by the existing scheduler and per-Instance read boundaries, with the narrow permission delta stated explicitly.
 
 Assumptions to validate during implementation: the immutable published
 Context Schema can express the root opt-in annotation without reinterpreting
@@ -548,7 +565,7 @@ an externally visible unbound child, stop and return for authority review. If
 the readiness query cannot filter before page sizing without changing raw due
 semantics, stop rather than permit starvation or a bypass.
 
-This is a proposed new authority, not accepted implementation permission.
-Implementation requires this exact Spec and the paired Core Spec accepted in
-the relevant bases, then a separate exact-scope mandate. Production apply
-authority remains `none`.
+This Spec and the paired Core Spec are accepted in the paired candidate
+branches. Implementation requires both exact accepted authorities and their
+parent successors in the implementation base, then a separate exact-scope
+mandate. Production apply authority remains `none`.

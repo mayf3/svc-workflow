@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -8,6 +8,11 @@ production_apply_authority: none
 supersedes:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
 superseded_by: null
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: 19593b4dc4d48b8341c8a759d07b9e575afeb08e
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_ORCHESTRATION_ACCEPTANCE_20261029.md
 owners:
   - mayf3
 date: 2026-10-29
@@ -23,13 +28,13 @@ external_authorities:
 
 # SVC_WORKFLOW_PRODUCT_BOUNDARY_V9 — Workflow Prerequisite Admission
 
-This is a proposed whole-authority successor to accepted
-`SVC_WORKFLOW_PRODUCT_BOUNDARY_V8`. It preserves the complete V8 authority
-body below and makes only the explicit workflow-prerequisite admission and
-bounded receipt-visibility changes in the V9 decision section. V8 remains the
-active authority until a separate exact-head acceptance and atomic lifecycle
-transaction updates the reciprocal backlink and repository authority map.
-This proposal grants no implementation or production authority.
+This accepted whole-authority successor to `SVC_WORKFLOW_PRODUCT_BOUNDARY_V8`
+preserves the complete V8 authority body below and makes only the explicit
+workflow-prerequisite admission and bounded receipt-visibility changes in the
+V9 decision section. V8 is superseded in this candidate by the reciprocal
+lifecycle transaction; this accepted candidate becomes active after merge to
+main. Product implementation authority remains none; production apply authority
+remains none.
 
 Predecessor source is the exact Product Boundary V8 body in this file's
 candidate base. All other V8 semantics remain in force.

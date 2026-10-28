@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
 title: Canonical Work Eligibility Read Projection V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 accepted_date: 2026-09-06
@@ -21,6 +21,7 @@ external_authorities:
     authority_id: SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1 (accepted — the READER
       authorization under which the global list surface is consumed)
 supersedes: []
+superseded_by: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
 ---
 
 # SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1 — Canonical Work Eligibility Read Projection

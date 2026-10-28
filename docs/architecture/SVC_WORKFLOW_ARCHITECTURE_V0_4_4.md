@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_4
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -10,6 +10,11 @@ governed_by:
 supersedes:
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_3
 superseded_by: null
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: 19593b4dc4d48b8341c8a759d07b9e575afeb08e
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_ORCHESTRATION_ACCEPTANCE_20261029.md
 owners:
   - mayf3
 date: 2026-10-29
@@ -20,13 +25,13 @@ candidate_base: c8937e567a429160779ee7db0cb7b53efbe8ed3e
 
 # SVC_WORKFLOW_ARCHITECTURE_V0_4_4 — workflow prerequisite admission
 
-This is a proposed whole-authority successor to the accepted
-`SVC_WORKFLOW_ARCHITECTURE_V0_4_3`, governed by proposed Product Boundary V9.
-It preserves the complete V0_4_3 authority body below, with only the bounded
-workflow prerequisite admission and receipt visibility rules in this successor
-section. Product V9 and Architecture V0_4_4 remain proposed and inactive until
-their exact reviewed heads are accepted and their lifecycle records are
-completed. No implementation or production authority is granted here.
+This accepted whole-authority successor to `SVC_WORKFLOW_ARCHITECTURE_V0_4_3`,
+governed by accepted Product Boundary V9, preserves the complete V0_4_3
+authority body below, with only the bounded workflow prerequisite admission and
+receipt visibility rules in this successor section. The reciprocal lifecycle
+transaction supersedes V0_4_3 in this candidate; this accepted candidate
+becomes active after merge to main. Architecture implementation authority and
+production apply authority remain none.
 
 ## WPOA-V1 — Fixed prerequisite admission and bounded readiness receipt
 
