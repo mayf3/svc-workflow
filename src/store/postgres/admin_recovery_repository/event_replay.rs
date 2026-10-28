@@ -578,6 +578,7 @@ struct Replay<'a> {
     /// case, cross-visit case串线, post-resolution events, and transitions
     /// attempted while the source visit still has an open case.
     assistance_cases: HashMap<Uuid, (String, Uuid)>,
+    governance_bindings: HashMap<Uuid, serde_json::Value>,
 }
 
 impl<'a> Replay<'a> {
@@ -616,6 +617,7 @@ impl<'a> Replay<'a> {
             current_visit: None,
             version: 0,
             assistance_cases: HashMap::new(),
+            governance_bindings: HashMap::new(),
         }
     }
 
@@ -1004,6 +1006,10 @@ impl<'a> Replay<'a> {
                 previous_status == Some(Some("OWNER_PENDING"))
                     && new_status == Some("HUMAN_REQUIRED")
             }
+            "GOVERNANCE_CHILD_BOUND" => {
+                previous_status == Some(Some("OWNER_PENDING"))
+                    && new_status == Some("OWNER_PENDING")
+            }
             "ASSISTANCE_RESOLVED" => {
                 matches!(
                     previous_status,
@@ -1013,15 +1019,21 @@ impl<'a> Replay<'a> {
             _ => false,
         };
         let payload_digest = string_field(data, "payloadDigest");
-        if !exact_keys(
-            data,
-            &[
-                "assistanceCaseId",
-                "previousStatus",
-                "newStatus",
-                "payloadDigest",
-            ],
-        ) || !status_shape_valid
+        let mut keys = vec![
+            "assistanceCaseId",
+            "previousStatus",
+            "newStatus",
+            "payloadDigest",
+        ];
+        if event.event_type == "GOVERNANCE_CHILD_BOUND" {
+            keys.push("governanceBinding");
+        }
+        if event.event_type == "ASSISTANCE_RESOLVED" && data.get("governanceChildReview").is_some()
+        {
+            keys.push("governanceChildReview");
+        }
+        if !exact_keys(data, &keys)
+            || !status_shape_valid
             || payload_digest.is_none_or(|value| {
                 value.len() != 64
                     || !value
@@ -1054,6 +1066,33 @@ impl<'a> Replay<'a> {
                 }
                 self.assistance_cases
                     .insert(case_id, ("OWNER_PENDING".to_string(), current_visit));
+            }
+            "GOVERNANCE_CHILD_BOUND" => {
+                if self.assistance_cases.get(&case_id)
+                    != Some(&("OWNER_PENDING".to_string(), current_visit))
+                    || self.governance_bindings.contains_key(&case_id)
+                {
+                    return Err(invalid(
+                        "governance binding references a stale or already-bound case",
+                    ));
+                }
+                let b = data
+                    .get("governanceBinding")
+                    .ok_or_else(|| invalid("binding receipt missing"))?;
+                if b["assistanceCaseId"] != serde_json::json!(case_id)
+                    || b["source"]["workflowInstanceId"]
+                        != serde_json::json!(event.workflow_instance_id)
+                    || b["source"]["nodeVisitId"] != serde_json::json!(current_visit)
+                    || b["acceptanceContractDigest"].as_str() != payload_digest
+                    || b["status"] != "BOUND"
+                    || b["bindingId"]
+                        .as_str()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .is_none()
+                {
+                    return Err(invalid("governance binding receipt disagrees with event"));
+                }
+                self.governance_bindings.insert(case_id, b.clone());
             }
             "ASSISTANCE_ESCALATED_TO_HUMAN" => {
                 let (ref_status, ref_visit) = self
@@ -1094,6 +1133,18 @@ impl<'a> Replay<'a> {
                     return Err(invalid(
                         "assistance event previousStatus disagrees with replayed case status",
                     ));
+                }
+                if let Some(b) = self.governance_bindings.get(&case_id) {
+                    let r = data
+                        .get("governanceChildReview")
+                        .ok_or_else(|| invalid("linked resolution has no governance review"))?;
+                    let review:crate::domain::workflow_instance::governance_child::GovernanceChildReview=serde_json::from_value(r.clone()).map_err(|_|invalid("invalid governance review reference"))?;
+                    if serde_json::json!(review.binding_id) != b["bindingId"]
+                        || serde_json::json!(review.acceptance_contract_digest)
+                            != b["acceptanceContractDigest"]
+                    {
+                        return Err(invalid("linked resolution disagrees with binding"));
+                    }
                 }
                 self.assistance_cases
                     .insert(case_id, ("RESOLVED".to_string(), current_visit));
@@ -1239,9 +1290,10 @@ impl<'a> Replay<'a> {
             "PRINCIPAL_SUCCESSOR_MIGRATION_COMMITTED" => {
                 self.apply_trusted_fleet_successor(event)?
             }
-            "ASSISTANCE_REQUESTED" | "ASSISTANCE_ESCALATED_TO_HUMAN" | "ASSISTANCE_RESOLVED" => {
-                self.apply_assistance(event)?
-            }
+            "ASSISTANCE_REQUESTED"
+            | "ASSISTANCE_ESCALATED_TO_HUMAN"
+            | "ASSISTANCE_RESOLVED"
+            | "GOVERNANCE_CHILD_BOUND" => self.apply_assistance(event)?,
             _ => return Err(invalid("event type is not supported by recovery replay")),
         }
         self.version = expected_sequence;

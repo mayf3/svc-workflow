@@ -682,7 +682,17 @@ pub(crate) async fn run_once(pool: &PgPool, forum: &ForumClient) -> usize {
         let result = match row.outbox_kind.as_str() {
             "FORUM_EVENT" => deliver_forum_event(pool, forum, &row).await,
             "EXECUTION_KICK" => deliver_kick(forum, &row).await,
-            "OWNER_ASSISTANCE_WAKE" => deliver_owner_assistance_wake(forum, &row).await,
+            "OWNER_ASSISTANCE_WAKE" => {
+                if row.payload.get("phase").is_some() {
+                    match crate::store::postgres::workflow_instance_repository::assistance_transaction::governance_child::prepare_delivery(pool,row.outbox_id,&row.payload).await {
+                        Ok(true)=>deliver_owner_assistance_wake(forum,&row).await,
+                        Ok(false)=>continue,
+                        Err(e)=>Err(e.to_string()),
+                    }
+                } else {
+                    deliver_owner_assistance_wake(forum, &row).await
+                }
+            }
             other => {
                 tracing::warn!(
                     kind = other,

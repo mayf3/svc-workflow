@@ -521,6 +521,7 @@ pub(crate) async fn replace_domain_owner(
     tx: &mut Transaction<'_, Postgres>,
     domain_id: Uuid,
     new_owner_id: Uuid,
+    replacement_command_id: Uuid,
 ) -> Result<(), ProvisioningError> {
     // Lock in the same principal -> domain order used by role binding writes.
     let new_enabled: Option<bool> =
@@ -548,6 +549,11 @@ pub(crate) async fn replace_domain_owner(
         None => return Err(ProvisioningError::DomainNotFound),
         Some(false) => return Err(ProvisioningError::DomainDisabled),
         Some(true) => {}
+    }
+
+    let unchanged:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM domain_role_bindings WHERE domain_id=$1 AND principal_id=$2 AND role_key='DOMAIN_OWNER' AND enabled=TRUE)").bind(domain_id).bind(new_owner_id).fetch_one(&mut **tx).await.map_err(storage)?;
+    if unchanged {
+        return Ok(());
     }
 
     sqlx::query(
@@ -578,6 +584,8 @@ pub(crate) async fn replace_domain_owner(
     .execute(&mut **tx)
     .await
     .map_err(storage)?;
+
+    super::workflow_instance_repository::assistance_transaction::governance_child::queue_owner_replacement(tx,domain_id,replacement_command_id).await.map_err(|e|ProvisioningError::StorageError(e.to_string()))?;
 
     Ok(())
 }

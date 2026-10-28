@@ -43,7 +43,14 @@ pub(crate) struct EscalateAssistanceBody {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ResolveAssistanceBody {
     expected_workflow_state_version: i32,
-    resolution: AssistancePayload,
+    resolution: RawResolutionPayload,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawResolutionPayload {
+    message: String,
+    supporting_payload: Option<Box<serde_json::value::RawValue>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -171,6 +178,28 @@ pub(crate) async fn resolve(
     let idempotency_key = idempotency_key(&headers)?;
     let case_id = path_id(&case_id)?;
     let Json(payload) = payload.map_err(ApiError::from_json_rejection)?;
+    let linked:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_governance_child_bindings WHERE assistance_case_id=$1)")
+        .bind(case_id).fetch_one(&state.pool).await.map_err(|_|ApiError::from_assistance(AssistanceError::StorageError("linked review read failed".into())))?;
+    if linked {
+        if let Some(raw) = payload.resolution.supporting_payload.as_ref() {
+            crate::domain::workflow_instance::governance_child::validate_review_json(raw.get())
+                .map_err(|_| {
+                    ApiError::bad_request(
+                        "invalid_json",
+                        "governanceChildReview must be a closed unique reference",
+                    )
+                })?;
+        }
+    }
+    let resolution = AssistancePayload {
+        message: payload.resolution.message,
+        supporting_payload: payload
+            .resolution
+            .supporting_payload
+            .map(|raw| serde_json::from_str(raw.get()))
+            .transpose()
+            .map_err(|_| ApiError::bad_request("invalid_json", "invalid supportingPayload"))?,
+    };
     let result = resolve_assistance(
         &state.pool,
         ResolveAssistanceCommand {
@@ -179,7 +208,7 @@ pub(crate) async fn resolve(
             command_schema_version: "v1".to_string(),
             assistance_case_id: AssistanceCaseId::from_uuid(case_id),
             expected_workflow_state_version: payload.expected_workflow_state_version,
-            resolution: payload.resolution,
+            resolution,
         },
     )
     .await
@@ -274,4 +303,43 @@ pub(crate) async fn detail(
         }
         Err(error) => Err(ApiError::from_assistance(error)),
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct BindGovernanceChildBody {
+    governance_child_instance_id: Uuid,
+    acceptance_transition_id: Uuid,
+    expected_workflow_state_version: i32,
+}
+pub(crate) async fn bind_governance_child(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(case_id): Path<String>,
+    headers: HeaderMap,
+    payload: Result<Json<BindGovernanceChildBody>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
+    require_scope(&principal, "workflow.execute")?;
+    let key = idempotency_key(&headers)?;
+    let case_id = path_id(&case_id)?;
+    let Json(p) = payload.map_err(ApiError::from_json_rejection)?;
+    let value = crate::application::workflow_instance::assistance::bind_governance_child(
+        &state.pool,
+        crate::domain::workflow_instance::assistance::BindGovernanceChildCommand {
+            principal_id: principal.principal_id,
+            idempotency_key: key,
+            command_schema_version: "v1".into(),
+            assistance_case_id: AssistanceCaseId::from_uuid(case_id),
+            governance_child_instance_id: WorkflowInstanceId::from_uuid(
+                p.governance_child_instance_id,
+            ),
+            acceptance_transition_id: crate::domain::ids::TransitionId::from_uuid(
+                p.acceptance_transition_id,
+            ),
+            expected_workflow_state_version: p.expected_workflow_state_version,
+        },
+    )
+    .await
+    .map_err(ApiError::from_assistance)?;
+    Ok((StatusCode::OK, Json(value)))
 }
