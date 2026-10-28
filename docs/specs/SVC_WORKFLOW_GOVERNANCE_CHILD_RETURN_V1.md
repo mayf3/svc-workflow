@@ -205,9 +205,15 @@ all admission predicates; derive and persist the immutable relation; append a
 CAS. The child terminal writer and binder serialize on the same child
 instance/relation lock: if bind commits first, the later terminal transaction
 queues exactly one review wake; if terminal commits first, bind refuses.
-An unknown commit outcome is reconciled through the same idempotency key and
-immutable binding key, never by retrying with a new key or creating a second
-relation.
+At the HTTP boundary, a caller that retained its `Idempotency-Key` may
+reconcile or retry only the byte-equivalent command under that same key; it
+must never use a new key to create a second relation. In the existing Core
+Agent tool path, the trusted HTTP transport generates the key and does not
+expose it to the Agent or provide a receipt-query tool. After a lost/unknown
+bind response, the Agent must read case detail and match the exact child and
+contract digest. If this readback proves neither commit nor authoritative
+rejection, the outcome remains UNKNOWN and no new bind/create invocation is
+permitted.
 
 ## 4. Service-derived child task input — `CTR-GCRS-003`
 
@@ -399,8 +405,13 @@ This typed object is nested in `resolution.supportingPayload`, not a new
 top-level route or grant. Duplicate/missing keys and unknown members are
 rejected for this reserved object. A retry with the same idempotency key and
 byte-equivalent canonical command returns the original receipt; reusing the
-key with a different body conflicts. After an unknown outcome, the caller
-reconciles the exact idempotency key/receipt and never retries with a new key.
+key with a different body conflicts. The Agent-facing Core tool does not
+expose its transport-generated key or provide a receipt-query operation. After
+an unknown resolve outcome, the Owner reads case detail and existing WEC
+resume evidence. If those authoritative reads do not establish the result,
+retain UNKNOWN and do not invoke resolve again with a new key. A trusted HTTP
+caller that retained the original key may only reconcile/retry the same
+byte-equivalent command under it.
 
 Within the existing resolution transaction, Svc locks and rechecks the exact
 case, source visit/DefinitionVersion/request digest, current Domain Owner,
@@ -433,7 +444,8 @@ serialization; one review outbox event under duplicate terminal/worker retry;
 distinct initial/review dedupe identities; Owner changes before delivery, after
 successful delivery, and away-and-back to the same Principal; no-op Owner
 replacement; old-recipient suppression and current-recipient redelivery;
-detail recovery after an unknown bind response; same-visit source Context
+detail recovery after an unknown bind response; inconclusive bind/resolve
+readback remains UNKNOWN without a second mutation; same-visit source Context
 revision preserving request provenance; stale case/visit suppression; retry
 after transient failure; acceptance-envelope and resolve mismatch matrices;
 explicit linked resolve; unlinked resolve compatibility; and exact
