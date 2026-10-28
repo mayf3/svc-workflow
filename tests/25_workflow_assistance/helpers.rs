@@ -69,6 +69,17 @@ async fn bind_domain_role(pool: &PgPool, domain: Uuid, principal: Uuid, role: &s
 }
 
 pub(crate) async fn setup(pool: &PgPool) -> Fixture {
+    setup_with_schema(pool, serde_json::json!({"type":"object"})).await
+}
+
+pub(crate) async fn setup_with_schema(pool: &PgPool, schema: serde_json::Value) -> Fixture {
+    setup_with_schema_and_alternate(pool, schema, None).await
+}
+pub(crate) async fn setup_with_schema_and_alternate(
+    pool: &PgPool,
+    schema: serde_json::Value,
+    alternate: Option<Uuid>,
+) -> Fixture {
     let agent = seed_agent(pool, "requester").await;
     let owner = seed_agent(pool, "owner").await;
     let replacement_owner = seed_agent(pool, "replacement-owner").await;
@@ -152,12 +163,13 @@ pub(crate) async fn setup(pool: &PgPool) -> Fixture {
          (transition_id, definition_version_id, transition_key, display_name,
           source_node_id, target_node_id, transition_effect, submission_schema)
          VALUES ($1,$2,'advance','Advance',$3,$4,'ADVANCE',
-                 '{\"type\":\"object\"}'::jsonb)",
+                 $5)",
     )
     .bind(transition)
     .bind(definition_version)
     .bind(draft_node)
     .bind(terminal_node)
+    .bind(schema)
     .execute(pool)
     .await
     .unwrap();
@@ -170,6 +182,10 @@ pub(crate) async fn setup(pool: &PgPool) -> Fixture {
     .execute(pool)
     .await
     .unwrap();
+    if let Some(alt) = alternate {
+        sqlx::query("INSERT INTO workflow_transition_definitions (transition_id,definition_version_id,transition_key,display_name,source_node_id,target_node_id,transition_effect) VALUES($1,$2,'alternative','Other terminal',$3,$4,'TERMINATE')")
+            .bind(alt).bind(definition_version).bind(draft_node).bind(terminal_node).execute(pool).await.unwrap();
+    }
     sqlx::query(
         "UPDATE workflow_definition_versions SET version_status='PUBLISHED'
          WHERE definition_version_id=$1",
@@ -186,7 +202,7 @@ pub(crate) async fn setup(pool: &PgPool) -> Fixture {
             principal_id: PrincipalId::from_uuid(agent),
             idempotency_key: Uuid::new_v4().to_string(),
             command_schema_version: "v1".to_string(),
-        execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
             domain_id: DomainId::from_uuid(domain),
             definition_version_id: DefinitionVersionId::from_uuid(definition_version),
             external_reference: None,
@@ -252,11 +268,14 @@ pub(crate) fn transition_command(f: &Fixture, expected: i32) -> ExecuteWorkflowT
 }
 
 pub(crate) async fn transition(pool: &PgPool, f: &Fixture, expected: i32) -> i32 {
-    execute_workflow_transition(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition_command(f, expected))
-        .await
-        .unwrap()
-        .workflow_state_version
+    execute_workflow_transition(
+        pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        transition_command(f, expected),
+    )
+    .await
+    .unwrap()
+    .workflow_state_version
 }
 
 pub(crate) async fn escalate(

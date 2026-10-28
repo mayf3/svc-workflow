@@ -281,8 +281,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
     // commit.
     // ---------------------------------------------------------------
     if let Some(schema) = transition.submission_schema.as_ref() {
-        if crate::domain::definition::acceptance_binding::contains_annotation_at_any_depth(schema)
-        {
+        if crate::domain::definition::acceptance_binding::contains_annotation_at_any_depth(schema) {
             deterministic_failure!(ReviseContextAndTransitionError::SubmissionValidationFailed(
                 "combined revise-and-transition is not permitted while the bound \
                  transition schema carries the acceptance binding annotation"
@@ -367,16 +366,15 @@ pub(crate) async fn revise_context_and_transition_atomically(
     )
     .await
     .map_err(|error| ReviseContextAndTransitionError::StorageError(error.to_string()))?;
-    let input_principal_ids =
-        match admission_gate_module::extract_required_input_principal_ids(
-            &input_keys,
-            &command.context_payload,
-        ) {
-            Ok(ids) => ids,
-            Err(detail) => deterministic_failure!(
-                ReviseContextAndTransitionError::AssigneeResolutionFailed(detail)
-            ),
-        };
+    let input_principal_ids = match admission_gate_module::extract_required_input_principal_ids(
+        &input_keys,
+        &command.context_payload,
+    ) {
+        Ok(ids) => ids,
+        Err(detail) => deterministic_failure!(
+            ReviseContextAndTransitionError::AssigneeResolutionFailed(detail)
+        ),
+    };
     {
         let mut admission_principals = input_principal_ids;
         if let Some(assignee) = target_assignee {
@@ -388,6 +386,29 @@ pub(crate) async fn revise_context_and_transition_atomically(
             .map_err(ReviseContextAndTransitionError::AdmissionFailed)?;
     }
 
+    if let Err(error) =
+        super::assistance_transaction::governance_child::validate_selected_submission(
+            &mut tx,
+            instance_id,
+            transition_id,
+            Some(&command.submission_payload),
+        )
+        .await
+    {
+        match error {
+            crate::domain::workflow_instance::assistance::AssistanceError::InvalidPayload(
+                detail,
+            ) => deterministic_failure!(
+                ReviseContextAndTransitionError::SubmissionValidationFailed(detail)
+            ),
+            _ => {
+                return Err(ReviseContextAndTransitionError::StorageError(
+                    error.to_string(),
+                ))
+            }
+        }
+    }
+    let terminal_event_id = Uuid::new_v4();
     let new_context_revision_id = Uuid::new_v4();
     let submission_id = Uuid::new_v4();
     let target_visit_id = Uuid::new_v4();
@@ -444,7 +465,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
     .await?;
     combined_helpers::insert_event(
         &mut tx,
-        Uuid::new_v4(),
+        terminal_event_id,
         instance_id,
         actual_command_id,
         instance.current_node_visit_id,
@@ -464,6 +485,15 @@ pub(crate) async fn revise_context_and_transition_atomically(
     )
     .await?;
 
+    if target_node.node_type_enum() == NodeType::TERMINAL {
+        super::assistance_transaction::governance_child::record_terminal(
+            &mut tx,
+            instance_id,
+            terminal_event_id,
+        )
+        .await
+        .map_err(|e| ReviseContextAndTransitionError::StorageError(e.to_string()))?;
+    }
     let response_body = serde_json::json!({
         "workflowInstanceId": instance_id,
         "workflowStateVersion": new_state_version,

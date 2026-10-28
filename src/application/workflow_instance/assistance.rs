@@ -32,7 +32,7 @@ async fn principal_exists(pool: &PgPool, principal_id: Uuid) -> Result<(), Assis
     }
 }
 
-fn command_hash(
+pub(crate) fn command_hash(
     command_type: &str,
     schema_version: &str,
     principal_id: Uuid,
@@ -143,4 +143,21 @@ pub async fn get_human_required_assistance_case(
     case_id: Uuid,
 ) -> Result<HumanRequiredAssistanceCaseView, AssistanceError> {
     assistance_transaction::get_human_required_assistance_case(pool, actor, case_id).await
+}
+
+/// Bind one existing child under the current Domain Owner authority.
+pub async fn bind_governance_child(
+    pool: &PgPool,
+    command: crate::domain::workflow_instance::assistance::BindGovernanceChildCommand,
+) -> Result<serde_json::Value, AssistanceError> {
+    let actor = command.principal_id.into_uuid();
+    principal_exists(pool, actor).await?;
+    let hash = command_hash(
+        "BIND_GOVERNANCE_CHILD",
+        &command.command_schema_version,
+        actor,
+        serde_json::json!({"assistanceCaseId":command.assistance_case_id}),
+        serde_json::json!({"governanceChildInstanceId":command.governance_child_instance_id,"acceptanceTransitionId":command.acceptance_transition_id,"expectedWorkflowStateVersion":command.expected_workflow_state_version}),
+    )?;
+    assistance_transaction::governance_child::bind(pool, command, &hash).await
 }

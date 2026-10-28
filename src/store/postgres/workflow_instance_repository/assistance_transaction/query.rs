@@ -13,6 +13,10 @@ pub struct AssistanceNodeSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistanceCaseView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_binding: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_terminal_proof: Option<serde_json::Value>,
     pub assistance_case_id: Uuid,
     pub workflow_instance_id: Uuid,
     pub node_visit_id: Uuid,
@@ -63,6 +67,8 @@ impl TryFrom<AssistanceViewRow> for AssistanceCaseView {
     type Error = AssistanceError;
     fn try_from(row: AssistanceViewRow) -> Result<Self, Self::Error> {
         Ok(Self {
+            governance_binding: None,
+            governance_terminal_proof: None,
             assistance_case_id: row.assistance_case_id,
             workflow_instance_id: row.workflow_instance_id,
             node_visit_id: row.node_visit_id,
@@ -350,7 +356,12 @@ pub(crate) async fn get_assistance_case(
         .await
         .map_err(storage)?
         .ok_or(AssistanceError::AssistanceCaseNotFoundOrNotVisible)?;
-    AssistanceCaseView::try_from(row)
+    let mut view = AssistanceCaseView::try_from(row)?;
+    if let Some((binding, proof)) = super::governance_child::detail(pool, case_id).await? {
+        view.governance_binding = Some(binding);
+        view.governance_terminal_proof = proof;
+    }
+    Ok(view)
 }
 
 pub(crate) async fn get_human_required_assistance_case(
