@@ -190,3 +190,5 @@ impl std::fmt::Display for AssistanceError {
 }
 
 impl std::error::Error for AssistanceError {}
+
+pub use super::governance_child::BindGovernanceChildCommand;

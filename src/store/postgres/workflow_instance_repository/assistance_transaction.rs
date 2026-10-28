@@ -332,6 +332,7 @@ async fn increment_instance_and_event(
     previous_status: Option<&str>,
     new_status: &str,
     payload_digest: &str,
+    governance_review: Option<&serde_json::Value>,
 ) -> Result<i32, AssistanceError> {
     let old_version = instance.workflow_state_version;
     let new_version = old_version + 1;
@@ -355,13 +356,16 @@ async fn increment_instance_and_event(
     let current_visit = instance
         .current_node_visit_id
         .ok_or(AssistanceError::CurrentVisitNotFound)?;
-    let event_data = serde_json::to_value(AssistanceEventData {
+    let mut event_data = serde_json::to_value(AssistanceEventData {
         assistance_case_id: case_id.to_string(),
         previous_status: previous_status.map(ToOwned::to_owned),
         new_status: new_status.to_string(),
         payload_digest: payload_digest.to_string(),
     })
     .map_err(|error| AssistanceError::InternalConsistency(error.to_string()))?;
+    if let Some(review) = governance_review {
+        event_data["governanceChildReview"] = review.clone();
+    }
     let event_digest =
         digest::compute_json_digest(&event_data).map_err(AssistanceError::InternalConsistency)?;
     sqlx::query(
@@ -446,6 +450,7 @@ pub(crate) async fn void_open_cases(
     .map(|result| result.rows_affected())
 }
 
+pub(crate) mod governance_child;
 mod query;
 mod write;
 

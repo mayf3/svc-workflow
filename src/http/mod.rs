@@ -27,7 +27,7 @@ pub use state::{AppState, ExecutionControlConfig, HttpConfig};
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
 pub const SCHEMA_VERSION: &str = "0023";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 28;
+pub const EXPECTED_MIGRATION_VERSION: i64 = 29;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -66,6 +66,12 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
                 state.clone(),
                 canary_guard::canary_write_guard,
             )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/governance-child",
+            post(handlers::assistance::bind_governance_child).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
         )
         .route(
             "/internal/v1/assistance-cases/{assistanceCaseId}/resolve",

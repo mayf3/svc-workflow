@@ -93,6 +93,11 @@ pub async fn read(
             json!({"view":"body","binding":binding,"body":body.chunk(offset,8192)?})
         }
     };
+    let parent:Option<Value>=sqlx::query_scalar("SELECT receipt FROM workflow_governance_child_bindings WHERE governance_child_instance_id=$1")
+        .bind(instance).fetch_optional(&mut *snapshot.tx).await?;
+    if let Some(parent) = parent {
+        response["governanceParent"] = parent;
+    }
     if response["view"] == "input" {
         bodies::bound_input_wire(&mut response)?
     }
