@@ -17,20 +17,19 @@ scope:
   - src/store/postgres/workflow_instance_repository/assistance_transaction/governance_child/
   - src/store/postgres/workflow_instance_repository/query_dispatch_intents.rs
   - src/store/postgres/workflow_instance_repository/current_task_input/
+  - src/http/handlers/dispatch_intents.rs
+  - src/http/handlers/current_task_input.rs
+  - src/http/handlers/instances.rs
 governed_by:
-  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+  - SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
   - SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
   - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-  - SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
+  - SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
 supersedes: []
 superseded_by: null
 owners:
   - mayf3
-external_authorities:
-  - repository: mayf3/dsh-agent-core
-    authority_id: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
-    revision: 01c1cd0c4a980e1a37878ea5ad05f4d46fb3ba99
-    relation: interoperates_with
+external_authorities: []
 ---
 
 # SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
@@ -65,11 +64,11 @@ business-truth validation, or production apply.
 
 This is `AUTHORITY_ACTION=NEW`, `PLAN_LEVEL=EXEC_PLAN`,
 `ASSURANCE_LEVEL=CONTROLLED`; route stage is `AUTHORITY_AUTHORING` and the new
-authority is not accepted in this base. Local parents are Product V8,
-Architecture v0.4.3, GCR V1, VAI V1, and WEP V1. Paired Core
-`AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1` at candidate base
-`01c1cd0c4a980e1a37878ea5ad05f4d46fb3ba99` is required. Acceptance in a
-docs-only branch does not activate implementation authority; production apply
+authority is not accepted in this base. Local parents are proposed Product V9, proposed Architecture v0.4.4, GCR V1,
+VAI V1, and proposed WEP V2. Paired Core
+`AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1` is required; the paired
+acceptance record must bind both exact reviewed companion heads. Acceptance in
+a docs-only branch does not activate implementation authority; production apply
 stays none.
 
 ## 4. Current State
@@ -106,10 +105,7 @@ observations.
   Instance/Version/Transition/Event/Submission rows are sufficient inputs for
   read-time readiness without a new dependency ledger. Supported as a design
   inference by `OBS-SWPO-001/002` and VAI V1's canonical activation facts.
-- `CLM-SWPO-002` (SUPPORTED) — Existing `GLOBAL_SCHEDULER_READ` can guard a
-  separate scheduler projection while existing Instance/current-assignee
-  visibility can guard product readiness reads; no wider permission is
-  necessary. Supported by VAI V1 CTR-VAI-009/010 and GCR V1's read boundary.
+- `CLM-SWPO-002` (SUPPORTED) — Existing `GLOBAL_SCHEDULER_READ` can guard only minimal due/readiness-status coordinates. The bounded receipt projection is an explicit proposed Product V9 same-Domain permission for authorized dependent assignee/Owner readers and is not currently granted by V1. It exposes no source payload. Supported by the existing scheduler and per-Instance read boundaries, with the narrow permission delta stated explicitly.
 
 Assumptions to validate during implementation: the immutable published
 Context Schema can express the root opt-in annotation without reinterpreting
@@ -198,32 +194,44 @@ non-GCR/GCR dependency shape in this Contract, not a general dependency DSL.
 
 For either ordinary create or GCR create-and-bind, Svc MUST validate the
 request against the exact published Definition Version and its Context
-Schema. If opted in, the reference MUST identify a WorkflowInstance that
-already exists at transaction admission, belongs to the same enabled Domain,
-and has exactly the submitted immutable DefinitionVersion. That Version MUST
-contain the exact `transitionId`, declare it terminal, and define a
-Submission Schema. Only the VAI semantic model with canonical Instance,
-Visit, Event, and Submission facts is supported. Legacy instances, foreign or
-not-visible references, disabled Domains, unavailable/unpublished Versions,
-wrong-version/transition pairs, and malformed or missing Context references
-fail closed before workflow facts commit. Foreign/not-visible facts MUST NOT
-be distinguished in an error response.
+Schema. An opted-in create is authorized only when the authenticated actor is
+the current Owner of the dependent enabled Domain and has fresh existing
+visibility to the exact source Instance in the same Domain. This explicitly
+authorizes the bounded receipt projection in CTR-SWPO-004; it does not grant
+source payload access or any additional role, scope, or Grant. The Domain Owner
+check and source visibility check are revalidated within the create transaction.
+
+The prerequisite MUST identify an already-existing WorkflowInstance in that
+same enabled Domain, with exactly the submitted immutable Definition Version.
+That Version MUST contain the exact `transitionId`, declare it terminal, and
+define a Submission Schema. Only the VAI semantic model with canonical
+Instance, Visit, Event, and Submission facts is supported. Legacy instances,
+foreign or not-visible references, disabled Domains, unavailable/unpublished
+Versions, wrong-version/transition pairs, and malformed or missing Context
+references fail closed before workflow facts commit. Foreign/not-visible facts
+MUST NOT be distinguished in an error response. A UUID alone grants no
+visibility or authorization.
 
 The source Instance and Version MUST preexist; a not-yet-created ID cannot be
 referenced. The create transaction rechecks and locks the source Instance,
 Domain and exact Version/transition under the repository's serialization
-discipline. The upstream terminal writer and creation therefore observe one
-serializable order. Self-reference and mutual references between concurrently
-created instances are impossible because submitted references must already
-exist. At creation, the selected transition MUST be reachable from the
-upstream Instance's current active Visit in its immutable published graph;
-otherwise reject as an impossible prerequisite. The dependent Context remains
-immutable after creation.
+discipline. It checks exact terminal proof before active-Visit reachability:
+if the exact selected terminal Event and Submission already exist with valid
+lineage, the reference is accepted even if the source was later archived or
+otherwise terminalized. If that positive proof does not exist, the source must
+still be active and the selected transition must be reachable from its current
+active Visit in the immutable published graph; otherwise the create fails as
+an impossible prerequisite. Source terminal writer and create share one
+serializable order. If create commits first while the transition remains
+reachable, the dependent is WAITING; if the terminal proof commits first, the
+dependent is READY. Self-reference and concurrent mutual references are
+impossible because referenced instances must already exist. The dependent
+Context is immutable after creation.
 
-No future Submission ID is predicted or stored. When the source later commits
-the selected terminal transition, Svc derives the actual terminal Event,
-Submission ID and canonical Submission digest from their authoritative rows.
-The source Submission's business truth is not evaluated by this mechanism.
+No future Submission ID is predicted or stored. Svc derives actual terminal
+Event, Submission ID, and canonical Submission digest from authoritative rows
+once committed. The source Submission's business truth is not evaluated by
+this mechanism.
 
 ### CTR-SWPO-003 — Atomic governance-child create and bind
 
@@ -282,86 +290,126 @@ command under the same idempotency key. This command is not a second approval;
 it uses the existing `workflow.execute` caller path and revalidates the
 current Domain Owner for the case.
 
-Ordinary non-GCR creation continues through existing `create_instance`, with
-existing active-membership/Owner checks and existing receipt semantics. Its
-Context may carry the same explicitly opted-in prerequisite, validated in the
+Ordinary non-GCR creation continues through existing `create_instance` with
+its existing command and receipt semantics. If the Definition opts into this
+prerequisite shape, the same current Domain Owner and fresh source visibility
+checks above are required, and the immutable Context is validated in the
 ordinary create transaction. This Spec does not change ordinary command
 idempotency or create a case for it.
 
-### CTR-SWPO-004 — Typed readiness projection
+### CTR-SWPO-004 — Typed prerequisite readiness projection
 
 Readiness is a read-time projection of the stored immutable Context and
-authoritative Domain, Instance, Visit, terminal Event and Submission facts. It
-is recomputed on each ordinary scheduler poll and readiness read; there is no
-new readiness writer or durable wait state. The closed wire status is exactly
-`READY | WAITING | CLOSED | UNKNOWN`, with a closed reason enum:
+authoritative source Domain, Instance, Visit, terminal Event and Submission
+facts. It is recomputed on every readiness read and ready-page poll; there is
+no readiness writer or durable wait state. Readiness is independent of the
+dependent's time eligibility, which remains the distinct raw VAI/WEP time
+projection. The closed JSON object is:
 
-| Status | Meaning |
-|---|---|
-| `READY` | The dependent activation is time-due and, when opted in, the exact referenced Instance/Version/Transition has committed its terminal Event and Submission with consistent lineage. Include actual `submissionId`, `eventId`, `transitionId`, and canonical digest when there is a prerequisite. |
-| `WAITING` | Dispatch is not yet eligible because the dependent activation is not time-due or the exact upstream terminal Submission is pending. `reason` is exactly `NOT_YET_DUE` (checked before pending) or `PREREQUISITE_PENDING`. |
-| `CLOSED` | Authoritative source facts show the referenced transition cannot now produce the required receipt. `reason` is exactly `SOURCE_CANCELLED`, `SOURCE_ARCHIVED`, `SOURCE_TERMINATED`, `OTHER_TERMINAL_TRANSITION`, `TRANSITION_UNREACHABLE`, or `SOURCE_DOMAIN_DISABLED`. |
-| `UNKNOWN` | Required rows are unavailable, inconsistent, ambiguous, or their lineage cannot be proven. `reason` is exactly `STORAGE_UNAVAILABLE`, `LINEAGE_INCONSISTENT`, or `SOURCE_NOT_VISIBLE`. It is never dispatchable and cannot become `READY` by timeout or model assertion. |
+```json
+{
+  "status": "WAITING",
+  "reason": "PREREQUISITE_PENDING",
+  "sourceInstanceId": "<uuid>",
+  "sourceDefinitionVersionId": "<uuid>",
+  "transitionId": "<uuid>",
+  "eventId": "<uuid, READY only>",
+  "submissionId": "<uuid, READY only>",
+  "submissionSha256": "<lowercase hex digest, READY only>"
+}
+```
 
-Dependency-free active Instances are `READY` once ordinarily time-due; their
-existing time semantics do not change. Before their time eligibility they are
-`WAITING / NOT_YET_DUE`. For every dependent, authoritative source `CLOSED` or
-`UNKNOWN` takes precedence over time waiting so those stop states remain
-visible. Otherwise, if the dependent activation is not time-due, return
-`WAITING / NOT_YET_DUE`; once due, return `WAITING / PREREQUISITE_PENDING`
-until the exact source receipt exists. A malformed persisted opted-in Context
-or impossible/missing authoritative reference is `UNKNOWN`, never
-dependency-free `READY`. A reference rejected before creation is a
-deterministic create failure, not a persisted readiness status.
+This is a closed object (`additionalProperties: false`). All four status values
+are exact uppercase strings. `sourceInstanceId`, `sourceDefinitionVersionId`,
+and `transitionId` are always present. `reason` is omitted only for READY and
+required for WAITING/CLOSED/UNKNOWN. `eventId`, `submissionId`, and
+`submissionSha256` are present together only for READY; they are never
+predicted. No Submission body or caller-provided readiness value is returned.
 
-The typed projection is available on a new read-only
-`GET /internal/v1/workflow-instances/{instanceId}/readiness` view and is
-included in the existing authorized current-task input for an active
-dependent. It uses the existing Instance/current-assignee visibility rules;
-it adds no scope or visibility for foreign Instances. If the Instance has a
-linked GCR case, authorized case detail includes the same typed status and
-receipt projection. Ordinary workflows without a case still expose
-`CLOSED`/`UNKNOWN` to their existing authorized Instance/current-task readers.
-`READY` contains actual receipt references, not Submission body or a business
-PASS claim.
+For `READY`, `reason` is absent and the exact immutable terminal Event and
+Submission lineage must match the stored source Instance, Version and selected
+transition. A valid exact proof has positive precedence over later source
+archive/cancellation/terminalization; later lifecycle changes cannot erase an
+immutable receipt. For `WAITING`, `reason` is exactly
+`PREREQUISITE_PENDING`: no exact proof exists yet and the source remains active
+with the selected terminal transition reachable. `CLOSED` is returned only
+when no valid exact proof exists and authoritative facts establish that the
+selected proof can no longer be produced; reason is one of
+`SOURCE_CANCELLED`, `SOURCE_ARCHIVED`, `SOURCE_TERMINATED`,
+`OTHER_TERMINAL_TRANSITION`, `TRANSITION_UNREACHABLE`, or
+`SOURCE_DOMAIN_DISABLED`. `UNKNOWN` means
+missing, unavailable, inconsistent or not-visible required facts and uses
+`STORAGE_UNAVAILABLE`, `LINEAGE_INCONSISTENT`, or `SOURCE_NOT_VISIBLE`.
+Unknown/missing status never becomes READY by timeout or model assertion.
 
-`CLOSED` and `UNKNOWN` are readable stop states. This slice adds no automatic
-recovery, case creation, retry, Owner wake, timeout, or indefinite-wait
-escalation. Existing case resolve/escalate semantics remain available only
-where a case already exists. Missing Owner visibility is not silently treated
-as success.
+Dependency-free Instances have no prerequisite object. Time eligibility is
+never serialized as a prerequisite reason/status: not-yet-due work is absent
+from the ready scheduler projection, while a readiness read may still report
+`READY` for its satisfied prerequisite. A malformed persisted opted-in Context
+or impossible/missing reference is `UNKNOWN`, never dependency-free `READY`.
 
+The object is available on the read-only
+`GET /internal/v1/workflow-instances/{instanceId}/readiness` view and existing
+authorized current-task input. For a linked GCR case, authorized case detail
+may return the same object. It is also exposed for ordinary workflows without
+a case. The containing response field is exactly `prerequisiteReadiness` on
+current-task input and linked case detail; the readiness-view response is
+`{ "prerequisiteReadiness": <closed object> }`. Only a reader currently
+authorized for the dependent and who is its
+current assignee or current Domain Owner may receive it. The bounded object
+contains the receipt IDs/digest shown above but no Submission body, source
+Context, source task payload or history. No new role/scope/Grant is created;
+UUIDs alone grant no access. A global scheduler is not a reader of this object
+and receives only `readinessStatus: "READY"` with normal due coordinates in
+CTR-SWPO-005. Other workflow readers, including an unrelated same-Domain
+principal such as Bob, cannot obtain the receipt projection unless they
+independently meet the dependent reader predicate.
+
+`CLOSED` and `UNKNOWN` remain visible to authorized readers, whether or not a
+GCR case exists. This slice adds no automatic recovery, case creation, retry,
+Owner wake, timeout or indefinite-wait escalation. A closed ordinary workflow
+without a case remains a visible stop; it is not silently marked PASS or
+repaired.
 ### CTR-SWPO-005 — READY-only scheduler projection and pagination
 
-Add a separate read-only scheduler projection; do not change the bytes,
-filtering, or meaning of the VAI V1 raw due-intent endpoint or WEP time
+Add a separate read-only scheduler projection; do not change the route,
+bytes, filtering, or meaning of the VAI V1 raw due-intent endpoint or WEP time
 projection. Its route is:
 
 ```http
-GET /internal/v1/dispatchable-intents?limit=N[&cursor=<opaque>]
+GET /internal/v1/dispatch-intents/ready?limit=N[&afterNextEligibleAt=T&afterDispatchIntentId=ID]
 scope workflow.read + direct token + enabled GLOBAL_SCHEDULER_READ binding
-response { items: [{ ...existing due-intent coordinates, readiness: { status: "READY" } }], nextCursor: <opaque|null> }
+response { items: [{ ...existing due-intent coordinates, readinessStatus: "READY" }] }
 ```
 
-The page limit is 1..100, the response row contains no Context or Submission
-body, and `readiness.status` is the literal `READY`; any other status is
-excluded. The existing scheduler authorization and current service route
-authentication apply. The new projection returns only active, time-due intents whose
-derived readiness is `READY`, using the existing `GLOBAL_SCHEDULER_READ`
-authorization and deterministic due ordering. For dependency-free intents,
-`READY` means the ordinary due predicate holds. For opted-in Contexts, it also
-requires the exact prerequisite receipt in CTR-SWPO-004.
+The existing `GET /internal/v1/dispatch-intents` remains the raw time-only
+API for its supported consumers. Broker operation `workflow_dispatch_intents.list_ready`
+uses only the new `/ready` route; existing `workflow_dispatch_intents.list`
+continues to use the raw route. No transparent fallback is allowed.
+
+The page limit is 1..100. The optional keyset pair is both-or-neither and
+uses the exact returned `(nextEligibleAt, dispatchIntentId)` tuple; malformed
+or repeated tuples fail closed. The response row contains no Context or
+Submission body, and `readinessStatus` is the literal `READY`; any other status
+is excluded. The existing scheduler authorization and current service route
+authentication apply. The new projection returns only active, time-due intents
+whose derived prerequisite is `READY`, using the existing
+`GLOBAL_SCHEDULER_READ` authorization and deterministic due ordering. For
+dependency-free intents, no prerequisite blocks the ordinary time-due
+predicate. For opted-in Contexts, time due and the exact prerequisite receipt
+in CTR-SWPO-004 are both required.
 
 The database query MUST derive/filter readiness before applying `LIMIT`; it
 MUST NOT fetch the first N raw due rows and then filter in Core. Stable ordering
 uses the existing due tuple plus activation ID as a unique tie-breaker. The
-opaque continuation token is bound to that tuple and one poll scan. Core
-starts every new normal poll from the first page; it drains all pages for that
-scan. Rows that are WAITING/CLOSED/UNKNOWN do not consume page capacity, so a
-blocked prefix cannot starve later READY work. A later ordinary poll starts
-over and reevaluates all candidates, so a formerly waiting row can become
-READY without an outbox or persisted cursor. Invalid, repeated, or expired
-tokens fail closed; the caller MUST NOT fall back to raw due rows.
+both-or-neither `afterNextEligibleAt` and `afterDispatchIntentId` pair is bound
+to the last returned tuple for one poll scan. Core starts every normal poll at
+the first page and drains pages by passing the exact last tuple returned. Rows
+that are WAITING/CLOSED/UNKNOWN do not consume page capacity, so a blocked
+prefix cannot starve later READY work. A later normal poll starts over and
+reevaluates all candidates, so a formerly waiting row can become READY without
+an outbox or persisted cursor. Invalid or repeated cursors fail closed; the
+caller MUST NOT fall back to raw due rows.
 
 The new Core consumer uses only this READY projection. Endpoint/storage error,
 unknown readiness or malformed pagination produces no intent for that item
@@ -394,10 +442,10 @@ integration acceptance covering:
 |---|---|---|---|---|
 | CTR-SWPO-000 | Exact-base authority and compatibility review | Diff, endpoint/request identities, permission checks | New authority adds bounded behavior without changing GCR/VAI/WEP/ACB meanings | Any changed raw due, eligibility, GCR, or existing permission semantics |
 | CTR-SWPO-001 | Definition publication/schema tests | Exact published Schema digest and accepted/rejected schema examples | Only root marker plus required closed property opts in; unmarked fields stay business data | Nested/malformed/ambiguous marker is accepted or old Definition reinterpreted |
-| CTR-SWPO-002 | Isolated create transaction tests | Source IDs/version/transition, Domain visibility, rollback receipts | Only preexisting reachable same-Domain VAI source is admitted | Foreign/stale/unreachable/malformed reference commits any workflow fact |
+| CTR-SWPO-002 | Isolated create transaction tests | Owner/source visibility checks, source IDs/version/transition, transaction order and rollback receipts | Existing exact proof is admitted before reachability; otherwise only active reachable source is admitted | Foreign/not-visible source, invalid transition, or unauthorized actor commits facts |
 | CTR-SWPO-003 | Isolated Postgres transaction and HTTP idempotency tests | One command receipt, DB rows, event/activation visibility, same-key replay and race outcomes | Child, activation, binding, event and receipt commit atomically exactly once | Partial child visibility, duplicate, fresh-key replay, or unknown treated as success |
-| CTR-SWPO-004 | Query/read-model tests plus restart | Typed state/reason and exact terminal Event/Submission/digest lineage | READY includes actual receipt; other statuses never dispatch; authorized readers can see status with or without case | Predicted ID, hidden status, unauthorized visibility, or arbitrary/model-derived readiness |
-| CTR-SWPO-005 | Scheduler DB query/pagination tests | SQL rows, role check, page tokens and blocked-prefix fixture | READY filter precedes page limit; raw VAI endpoint unchanged | WAITING prefix starves READY or any raw-due fallback is possible |
+| CTR-SWPO-004 | Query/read-model tests plus restart | Typed wire fields, terminal lineage, archive precedence, Owner/Alice/Bob visibility matrix | READY includes actual receipt; exact proof survives later archive; status/receipt limited to authorized dependent readers | Predicted ID, unrelated Bob receipt access, scheduler receipt leakage, or model-derived readiness |
+| CTR-SWPO-005 | Scheduler DB query/pagination tests | SQL rows, closed route and Broker op, role check, tokens and blocked-prefix fixture | Time due AND prerequisite READY before limit; raw VAI route unchanged | WAITING prefix starves READY, receipt leaks to Scheduler, or raw fallback is possible |
 | CTR-SWPO-006 | Restart and compatibility suite | Same source rows before/after restart; existing GCR/VAI/WEC receipts | Poll recomputes status; old flows retain behavior; no new wait writer/outbox | Restart loses readiness, duplicate event, changed existing lifecycle, or recovery claim |
 
 1. publication accepts only the explicit root marker plus exact closed schema;
@@ -413,8 +461,14 @@ integration acceptance covering:
 4. same-key/same-body replay, same-key/different-body conflict, concurrent
    duplicate, deterministic rollback, lost-response readback and unresolved
    `UNKNOWN` cause no duplicate child or fresh-key retry;
-5. each readiness status is derived correctly, including actual future
-   Submission/Event/digest only after upstream terminal commit, and restart
+4a. source terminal proof before create is admitted even after archive; create
+   before terminal writer is WAITING then READY; run both transaction race
+   orderings and prove exact one durable receipt;
+4b. current Domain Owner and authorized dependent Alice receive only the
+   closed receipt object; unrelated Bob and cross-Domain readers are denied;
+   global Scheduler receives only `readinessStatus` and no receipt IDs/digest;
+5. each readiness status is derived correctly, exact proof remains READY after
+   later source archive, CLOSED only appears without valid proof, and restart
    reproduces status without a wait table;
 6. a distinct non-GCR dependent ordinary workflow created through ordinary
    `create_instance` accepts the same immutable prerequisite, stays WAITING
@@ -423,7 +477,9 @@ integration acceptance covering:
    commits the exact terminal Submission;
 7. more WAITING rows than one page cannot starve a later READY row; new poll
    starts from page one and sees a newly READY row; raw VAI due and WEP
-   time-only compatibility remain intact;
+   time-only compatibility remain intact; Core uses `list_ready` with no
+   fallback and performs fresh dependent tuple/config/Domain/authorization
+   validation before WEC planning;
 8. existing GCR terminal review/resolve, VAI wake/time due, WEC retry/unknown
    fence and dependency-free dispatch regression checks pass.
 

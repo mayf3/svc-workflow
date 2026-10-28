@@ -21,16 +21,16 @@ Direct authority evidence: `SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1` §1
 excludes create-and-bind; VAI V1 CTR-VAI-009 preserves a time-only raw due
 read; WEP V1's eligibility contract has no dependency status. This candidate
 does not amend those meanings. It reuses published immutable Context Schema,
-Instance/Visit/Event/Submission rows, current Owner and membership validation,
-and the normal poll. The paired Core Spec is required. Proposed
+Instance/Visit/Event/Submission rows, current Owner and source visibility validation, and the normal poll. The
+receipt projection is an explicit, narrowly bounded Product V9 permission
+delta; no source payload or general read is added. The paired Core Spec is required. Proposed
 `implementation_authority: contracts` takes effect only after acceptance in
 the implementation base plus a separate mandate; production authority remains
 none.
 
 ## Bounded outcome
 
-Add one proposed Svc Spec, one proposed index row, and this preflight plus a
-bounded implementation plan. No wait ledger, prerequisite table, outbox,
+Add proposed Svc Spec plus whole-authority Product V9, Architecture V0_4_4, and WEP V2 successors, proposed index/readme entries, and this preflight plus a bounded implementation plan. No wait ledger, prerequisite table, outbox,
 arbitrary predicate DSL, new role/scope/Grant, or raw-due semantic change.
 
 ```text
@@ -38,14 +38,14 @@ SPEC_GOVERNANCE_MODE = AUTHOR
 SPEC_ID = SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
 STATUS = proposed
 IMPLEMENTATION_AUTHORITY = contracts
-PRIMARY_PARENT_AUTHORITY = SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
-EXTERNAL_AUTHORITIES = mayf3/dsh-agent-core AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1 @ 01c1cd0c4a980e1a37878ea5ad05f4d46fb3ba99
+PRIMARY_PARENT_AUTHORITIES = Product V9; Architecture V0_4_4; GCR V1; VAI V1; WEP V2
+PAIRED_ACCEPTANCE_PIN = exact reviewed Core/Svc companion heads recorded after independent review (no stale predecessor-base pin)
 DOCS_FIRST_REQUIRED = YES
-OPEN_OWNER_DECISIONS = NONE
+OPEN_OWNER_DECISIONS = NONE; parent decisions are explicit in proposed successor Contracts; exact authority acceptance remains later
 NORMATIVE_TBD = NONE
 PARTIAL_SUPERSESSION = NONE
 CONTRACT_COUNT = 7
 CONTRACTS_WITH_ACCEPTANCE = 7
-AUTHORING_READY_FOR_REVIEW = YES
+AUTHORING_READY_FOR_REVIEW = YES (after paired docs commits; no implementation or acceptance)
 NEXT_ACTION = REVIEW
 ```
