@@ -18,15 +18,48 @@ A proposed or accepted-looking lock on an unmerged branch is not active reposito
 The repository uses the following precedence for the domain each authority actually owns:
 
 ```text
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md
+  kind: product_direction
+  status: accepted
+  supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+
 SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
   path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V8.md
   kind: product_direction
+  status: superseded
+  superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
+
+SVC_WORKFLOW_ARCHITECTURE_V0_4_4
+  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md
+  kind: architecture
   status: accepted
+  supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
 
 SVC_WORKFLOW_ARCHITECTURE_V0_4_3
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_3.md
   kind: architecture
+  status: superseded
+  superseded_by: SVC_WORKFLOW_ARCHITECTURE_V0_4_4
+
+SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
+  path: docs/specs/SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2.md
+  kind: implementation_spec
   status: accepted
+  supersedes: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
+
+SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
+  path: docs/specs/SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1.md
+  kind: implementation_spec
+  status: superseded
+  superseded_by: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
+
+SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
+  path: docs/specs/SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1.md
+  kind: implementation_spec
+  status: accepted
+  paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
+  effective_after: both accepted authority branches merge
 
 superseded history:
 SVC_WORKFLOW_ARCHITECTURE_V0_4_1
@@ -140,8 +173,10 @@ Authoring, independent semantic review, and acceptance are distinct acts. A revi
 ## Governing and persistence locations
 
 ```text
-PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V8.md
-PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_3.md
+PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md
+PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md
+ACCEPTED_PRODUCT_SUCCESSOR = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md (effective after merge to main)
+ACCEPTED_ARCHITECTURE_SUCCESSOR = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md (effective after merge to main)
 ARCHITECTURE_REFINEMENTS = docs/architecture/
 LEGACY_IMPLEMENTATION_CONTRACTS = docs/contracts/
 EXTERNAL_HTTP_CONTRACT_BUNDLE = contracts/workflow-http/
