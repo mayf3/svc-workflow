@@ -62,9 +62,14 @@ business-truth validation, or production apply.
 
 ## 3. Authority and dependencies
 
-This is `AUTHORITY_ACTION=NEW`, `PLAN_LEVEL=EXEC_PLAN`,
-`ASSURANCE_LEVEL=CONTROLLED`; route stage is `AUTHORITY_AUTHORING` and the new
-authority is not accepted in this base. Local parents are proposed Product V9, proposed Architecture v0.4.4, GCR V1,
+This is cross-repository `ASSURANCE_LEVEL=CONTROLLED`; route stage is
+`AUTHORITY_AUTHORING`, and all candidates remain proposed. The parent-authority
+route is `AUTHORITY_ACTION=SUPERSEDE` for whole successors Product V9,
+Architecture V0_4_4, and WEP V2. The separate additive implementation-child
+route is `AUTHORITY_ACTION=NEW` for Svc prerequisite orchestration V1 and paired
+Core prerequisite orchestration V1. No child route partially supersedes a
+parent, and no route authorizes implementation before exact acceptance in the
+implementation base plus a separate mandate. Local parents are proposed Product V9, proposed Architecture v0.4.4, GCR V1,
 VAI V1, and proposed WEP V2. Paired Core
 `AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1` is required; the paired
 acceptance record must bind both exact reviewed companion heads. Acceptance in
@@ -138,6 +143,12 @@ not weaken the Contract.
 ## 9. Contracts
 
 ### CTR-SWPO-000 — Existing-authority boundary
+
+The paired parent-authority acceptance mapping for this Contract is Product
+V9 `DEC-V9-001/002`, Architecture V0_4_4 `CTR-ARCH-041/042/043`, and WEP V2's
+selected time-projection exception. The `CTR-SWPO-000` row of `ACC-SWPO-001` must review these exact identities as one bounded parent delta; it must not cite the retained
+Architecture `CTR-ARCH-019/020/021` IDs, whose predecessor meanings remain
+unchanged.
 
 GCR V1 accepts only an existing child and explicitly leaves atomic
 create-and-bind outside its scope. Its current same-Domain/current-Owner,
@@ -440,7 +451,7 @@ integration acceptance covering:
 
 | Contract | Method / environment | Required evidence | Expected result | Failure condition |
 |---|---|---|---|---|
-| CTR-SWPO-000 | Exact-base authority and compatibility review | Diff, endpoint/request identities, permission checks | New authority adds bounded behavior without changing GCR/VAI/WEP/ACB meanings | Any changed raw due, eligibility, GCR, or existing permission semantics |
+| CTR-SWPO-000 | Exact-base authority and compatibility review | Diff, endpoint/request identities, permission checks, Product V9 DEC-V9-001/002, Architecture CTR-ARCH-041/042/043, WEP V2 mapping | New authority adds bounded behavior without changing GCR/VAI/WEP/ACB meanings | Any changed raw due, eligibility, GCR, or existing permission semantics |
 | CTR-SWPO-001 | Definition publication/schema tests | Exact published Schema digest and accepted/rejected schema examples | Only root marker plus required closed property opts in; unmarked fields stay business data | Nested/malformed/ambiguous marker is accepted or old Definition reinterpreted |
 | CTR-SWPO-002 | Isolated create transaction tests | Owner/source visibility checks, source IDs/version/transition, transaction order and rollback receipts | Existing exact proof is admitted before reachability; otherwise only active reachable source is admitted | Foreign/not-visible source, invalid transition, or unauthorized actor commits facts |
 | CTR-SWPO-003 | Isolated Postgres transaction and HTTP idempotency tests | One command receipt, DB rows, event/activation visibility, same-key replay and race outcomes | Child, activation, binding, event and receipt commit atomically exactly once | Partial child visibility, duplicate, fresh-key replay, or unknown treated as success |

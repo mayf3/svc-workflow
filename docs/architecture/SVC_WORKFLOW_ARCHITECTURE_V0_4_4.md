@@ -30,13 +30,12 @@ completed. No implementation or production authority is granted here.
 
 ## WPOA-V1 — Fixed prerequisite admission and bounded readiness receipt
 
-### CTR-ARCH-019 — Admission conjunction
+### CTR-ARCH-041 — Admission conjunction
 
 This is the narrow exception to inherited CTR-ARCH-013's exclusive admission
 predicate; CTR-ARCH-013 continues to govern raw time due and its raw projection.
 The canonical Dispatch Intent and `nextEligibleAt` retain their existing work
-identity and time-eligibility meanings. This is the narrow exception to the
-exclusive admission wording in inherited CTR-ARCH-013 and §5.8: for an
+identity and time-eligibility meanings. For an
 explicitly opted-in immutable Context, the Svc scheduler projection additionally
 admits an item only when its fixed `TERMINAL_SUBMISSION` prerequisite evaluates
 `READY`. The combined normal dispatch predicate is active Visit + time due + prerequisite READY;
@@ -53,19 +52,20 @@ proof, an irreversible source end before the selected transition is
 `CLOSED`; unavailable or inconsistent evidence is `UNKNOWN`. These states
 remain readable and cause no attempt. No automatic recovery is promised.
 
-### CTR-ARCH-020 — Exact bounded receipt projection
+### CTR-ARCH-042 — Exact bounded receipt projection
 
 At opted-in ordinary or GCR creation, the current dependent-Domain Owner must
 have fresh existing visibility to the exact same-Domain source Instance.
-Readiness may expose only typed status/reason and actual Submission, Event,
-transition IDs and digest to a currently authorized dependent reader who is
-the current assignee or current Domain Owner. This is a bounded explicit
+Readiness may expose only its closed typed status/reason, `sourceInstanceId`,
+`sourceDefinitionVersionId`, and actual Submission, Event, transition IDs and
+digest to a currently authorized dependent reader who is the current assignee
+or current Domain Owner. This is a bounded explicit
 same-Domain permission; it does not grant source payload/history/Context,
 general source read, UUID-based authority, a role, scope, or Grant. The global
 scheduler receives only readiness status and existing due-work coordinates.
 Current cross-Domain restrictions remain unchanged.
 
-### CTR-ARCH-021 — Single evaluation and pre-plan checks
+### CTR-ARCH-043 — Single evaluation and pre-plan checks
 
 Svc is authoritative for readiness and time admission in each ready-page
 query. Core performs its existing fresh pre-plan check of the exact dependent

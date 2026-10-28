@@ -73,7 +73,8 @@ For an opted-in ordinary create or atomic governance-child create, the
 requesting actor must be the current Owner of the dependent Domain and must
 have fresh existing visibility to the exact source Instance. Svc validates
 this at the create transaction. Thereafter the prerequisite projection may
-expose only closed readiness status/reason and the actual source Submission,
+expose only closed readiness status/reason, the already-Context-visible
+`sourceInstanceId` and `sourceDefinitionVersionId`, and actual Submission,
 Event, transition IDs, and canonical digest to a reader who is currently
 authorized to read the dependent workflow and is either its current assignee
 or current Domain Owner. This does not grant source Instance payload, history,

@@ -51,9 +51,11 @@ ledger, outbox, timer, or recovery guarantee.
 ---
 
 
-# SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2 — Canonical Work Eligibility Read Projection
+# SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1 — Canonical Work Eligibility Read Projection
 
-> **ACCEPTED (2026-09-06, Owner exact-head acceptance).** Owner decision
+> Historical predecessor V1 acceptance evidence (2026-09-06), reproduced as
+> part of this proposed V2 whole-successor body; it does not accept V2. **ACCEPTED
+> (2026-09-06, Owner exact-head acceptance).** Owner decision
 > ACCEPT EXACT HEAD = YES at `78490a99178c86d648a5aa333f25ddd41dc37888`
 > (remote exact-head stability verified); FINAL_IMPLEMENTATION_HEAD =
 > `7c270c768ea37a5f8f20b2a2c56ede93737e79e3`. Review lifecycle: ROUND_1 FAIL
