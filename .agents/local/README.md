@@ -23,10 +23,31 @@ SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
   kind: product_direction
   status: accepted
 
+proposed whole-authority successor candidate (inactive):
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md
+  kind: product_direction
+  status: proposed
+  supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+
 SVC_WORKFLOW_ARCHITECTURE_V0_4_3
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_3.md
   kind: architecture
   status: accepted
+
+proposed whole-authority successor candidate (inactive):
+SVC_WORKFLOW_ARCHITECTURE_V0_4_4
+  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md
+  kind: architecture
+  status: proposed
+  supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
+
+proposed whole-authority implementation Spec successor (inactive):
+SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
+  path: docs/specs/SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2.md
+  kind: implementation_spec
+  status: proposed
+  supersedes: SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
 
 superseded history:
 SVC_WORKFLOW_ARCHITECTURE_V0_4_1
@@ -142,6 +163,8 @@ Authoring, independent semantic review, and acceptance are distinct acts. A revi
 ```text
 PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V8.md
 PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_3.md
+PROPOSED_PRODUCT_SUCCESSOR = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md (inactive until acceptance lifecycle)
+PROPOSED_ARCHITECTURE_SUCCESSOR = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md (inactive until acceptance lifecycle)
 ARCHITECTURE_REFINEMENTS = docs/architecture/
 LEGACY_IMPLEMENTATION_CONTRACTS = docs/contracts/
 EXTERNAL_HTTP_CONTRACT_BUNDLE = contracts/workflow-http/
