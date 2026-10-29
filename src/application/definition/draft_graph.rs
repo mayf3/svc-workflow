@@ -52,6 +52,19 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             return Err(DefinitionError::DefinitionArchived);
         }
 
+        // CTR-ONR-002: reject ambiguous authoring before any key map can
+        // select a target (including transition/primary references).
+        if cmd.nodes.iter().any(|n| {
+            crate::domain::definition::owner_authoring::metadata_affected(n.metadata.as_ref())
+        }) {
+            let mut keys = std::collections::HashSet::new();
+            if cmd.nodes.iter().any(|n| !keys.insert(&n.node_key)) {
+                return Err(DefinitionError::GraphValidationFailed(vec![
+                    GraphValidationError::new("DUPLICATE_NODE_KEY", "duplicate node key"),
+                ]));
+            }
+        }
+
         // Resolve node keys -> IDs
         let mut node_id_by_key: HashMap<String, NodeId> = HashMap::new();
         let mut node_defs: Vec<NodeDefinition> = Vec::new();
