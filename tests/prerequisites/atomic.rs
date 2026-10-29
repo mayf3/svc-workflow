@@ -93,26 +93,54 @@ async fn create_bind_http_atomic_replay_and_rollback() {
     );
 }
 #[tokio::test]
-async fn feasibility_conflict_rolls_back_all_new_facts() {
+async fn deterministic_rejection_preserves_receipt_and_zero_business_facts() {
     let p = pool().await;
     let f = setup(&p).await;
     let case = request_case(&p, &f).await;
-    let (v, t) = version(&p, &f, false, true).await;
-    let cmd=svc_workflow::domain::workflow_instance::governance_child::CreateAndBindGovernanceChildCommand {principal_id:PrincipalId::from_uuid(f.owner),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),assistance_case_id:AssistanceCaseId::from_uuid(case.assistance_case_id),definition_version_id:DefinitionVersionId::from_uuid(v),context_payload:json!({}),acceptance_transition_id:TransitionId::from_uuid(t),expected_workflow_state_version:2};
+    let (v, _) = version(&p, &f, false, true).await;
+    let cmd=svc_workflow::domain::workflow_instance::governance_child::CreateAndBindGovernanceChildCommand{principal_id:PrincipalId::from_uuid(f.owner),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),assistance_case_id:AssistanceCaseId::from_uuid(case.assistance_case_id),definition_version_id:DefinitionVersionId::from_uuid(v),context_payload:json!({}),acceptance_transition_id:TransitionId::from_uuid(Uuid::new_v4()),expected_workflow_state_version:2};
     let before: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_outbox")
         .fetch_one(&p)
         .await
         .unwrap();
-    let result =
+    let first =
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
             AdmissionGate::disabled(),
             cmd.clone(),
         )
-        .await;
-    assert!(
-        matches!(result,Err(svc_workflow::domain::workflow_instance::assistance::AssistanceError::StorageError(ref e)) if e.contains("idx_wf_event_unique_command")),
-        "{result:?}"
+        .await
+        .unwrap_err();
+    let second =
+        svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
+            &p,
+            AdmissionGate::disabled(),
+            cmd.clone(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(first, second, "exact failure replay");
+    let rows:Vec<(Uuid,String,i32)>=sqlx::query_as("SELECT command_id,receipt_status::text,response_status FROM workflow_command_receipts WHERE principal_id=$1 AND idempotency_key=$2").bind(f.owner).bind(&cmd.idempotency_key).fetch_all(&p).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1, "COMPLETED");
+    assert!(rows[0].2 >= 400);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM workflow_events WHERE command_id=$1")
+            .bind(rows[0].0)
+            .fetch_one(&p)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM workflow_activations WHERE command_id=$1"
+        )
+        .bind(rows[0].0)
+        .fetch_one(&p)
+        .await
+        .unwrap(),
+        0
     );
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
@@ -134,7 +162,6 @@ async fn feasibility_conflict_rolls_back_all_new_facts() {
         .unwrap(),
         0
     );
-    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM workflow_command_receipts WHERE principal_id=$1 AND idempotency_key=$2").bind(f.owner).bind(cmd.idempotency_key).fetch_one(&p).await.unwrap(),0);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM workflow_outbox")
             .fetch_one(&p)

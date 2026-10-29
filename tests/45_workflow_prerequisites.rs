@@ -30,6 +30,14 @@ use support::*;
 mod admission;
 #[path = "prerequisites/atomic.rs"]
 mod atomic;
+#[path = "prerequisites/concurrency.rs"]
+mod concurrency;
+#[path = "prerequisites/disabled_scheduler.rs"]
+mod disabled_scheduler;
+#[path = "prerequisites/integrity.rs"]
+mod integrity;
+#[path = "prerequisites/integrity_support.rs"]
+mod integrity_support;
 #[path = "prerequisites/lineage.rs"]
 mod lineage;
 #[path = "prerequisites/poll.rs"]
@@ -38,5 +46,11 @@ mod poll;
 mod publication;
 #[path = "prerequisites/race.rs"]
 mod race;
+#[path = "prerequisites/readback.rs"]
+mod readback;
 #[path = "prerequisites/readiness.rs"]
 mod readiness;
+#[path = "prerequisites/unidentified.rs"]
+mod unidentified;
+#[path = "prerequisites/upgrade.rs"]
+mod upgrade;
