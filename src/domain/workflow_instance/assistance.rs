@@ -108,6 +108,7 @@ pub enum AssistanceError {
     AssistanceAlreadyOpen,
     AssistanceCaseNotFoundOrNotVisible,
     AssistanceStatusConflict,
+    GovernedOperationRequired,
     GlobalCoordinatorRequired,
     InvalidPayload(String),
     SizeLimitExceeded,
@@ -134,6 +135,7 @@ impl AssistanceError {
             | Self::DomainOwnerMissing
             | Self::AssistanceAlreadyOpen
             | Self::AssistanceStatusConflict
+            | Self::GovernedOperationRequired
             | Self::IdempotencyConflict => 409,
             Self::AssistanceCaseNotFoundOrNotVisible => 404,
             Self::InvalidPayload(_) | Self::InvalidPagination(_) => 422,
@@ -161,6 +163,7 @@ impl AssistanceError {
             Self::AssistanceAlreadyOpen => "assistance_already_open",
             Self::AssistanceCaseNotFoundOrNotVisible => "assistance_case_not_found_or_not_visible",
             Self::AssistanceStatusConflict => "assistance_status_conflict",
+            Self::GovernedOperationRequired => "governed_operation_required",
             Self::GlobalCoordinatorRequired => "global_coordinator_required",
             Self::InvalidPayload(_) => "invalid_assistance_payload",
             Self::SizeLimitExceeded => "size_limit_exceeded",

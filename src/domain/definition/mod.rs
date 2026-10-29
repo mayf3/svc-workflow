@@ -17,3 +17,5 @@ mod digest_tests;
 
 #[cfg(test)]
 mod graph_tests;
+
+pub mod owner_obligation;

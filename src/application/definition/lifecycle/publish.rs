@@ -10,9 +10,7 @@ use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::graph;
 use crate::domain::definition::model::WorkflowGraph;
 use crate::domain::enums::DefinitionVersionStatus;
-use crate::store::postgres::admission_gate::{
-    self as admission_gate_module, AdmissionGate,
-};
+use crate::store::postgres::admission_gate::{self as admission_gate_module, AdmissionGate};
 
 use super::super::commands::PublishVersion;
 use super::super::repository::DefinitionRepository;
@@ -37,11 +35,11 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     /// (CTR-CIR-003: "corrected-source publish"). Dormant mode
     /// (`AdmissionGate::disabled()`) preserves the pre-admission behavior
     /// exactly.
-    pub async fn publish_version(
+    pub(crate) async fn prepare_publish(
         &self,
-        cmd: PublishVersion,
+        cmd: &PublishVersion,
         admission: AdmissionGate<'_>,
-    ) -> Result<crate::domain::definition::model::WorkflowDefinitionVersion, DefinitionError> {
+    ) -> Result<String, DefinitionError> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
 
@@ -99,8 +97,19 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // model3 TASK primary ADVANCE may opt in; malformed, nested, and
         // misplaced annotations fail publication. The annotation rides inside
         // the canonical digest (computed below from the same schemas).
-        validation_result.errors.extend(crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(version.semantic_model_version, &graph));
+        validation_result.errors.extend(
+            crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(
+                version.semantic_model_version,
+                &graph,
+            ),
+        );
 
+        validation_result
+            .errors
+            .extend(crate::domain::definition::owner_obligation::validate(
+                version.semantic_model_version.as_i16(),
+                &graph,
+            ));
         validation_result.valid = validation_result.errors.is_empty();
 
         if !validation_result.valid {
@@ -126,11 +135,12 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // publishing transaction; any admission failure fails the whole
         // publish closed (zero business delta — the version stays DRAFT).
         // -------------------------------------------------------------------
-        let identity_literals = admission_gate_module::collect_definition_publish_identity_literals(
-            &nodes,
-            version.context_schema.as_ref(),
-        )
-        .map_err(DefinitionError::GraphValidationFailed)?;
+        let identity_literals =
+            admission_gate_module::collect_definition_publish_identity_literals(
+                &nodes,
+                version.context_schema.as_ref(),
+            )
+            .map_err(DefinitionError::GraphValidationFailed)?;
         admission
             .admit(identity_literals)
             .await
@@ -161,24 +171,22 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             &transition_key_map,
         )?;
 
-        // B-1: Atomic publish inside a single transaction.
-        // expected_revision is verified inside the transaction alongside
-        // the digest consistency check, eliminating any race window.
-        // The gate rides along to bind the transaction's statement deadline
-        // to the remaining admission budget and to re-check the budget before
-        // commit (CTR-CIR-003); a graph drift after admission fails the
-        // digest consistency check, so no un-admitted literal can commit.
-        let published = self
-            .repo
+        Ok(computed_digest)
+    }
+    pub async fn publish_version(
+        &self,
+        cmd: PublishVersion,
+        admission: AdmissionGate<'_>,
+    ) -> Result<crate::domain::definition::model::WorkflowDefinitionVersion, DefinitionError> {
+        let digest = self.prepare_publish(&cmd, admission).await?;
+        self.repo
             .atomic_publish(
                 cmd.definition_version_id,
                 cmd.actor_principal_id,
-                &computed_digest,
+                &digest,
                 cmd.expected_revision.as_deref(),
                 admission,
             )
-            .await?;
-
-        Ok(published)
+            .await
     }
 }

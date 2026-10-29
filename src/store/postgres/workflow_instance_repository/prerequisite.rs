@@ -69,3 +69,11 @@ pub(crate) async fn admit(
         Err(invalid())
     }
 }
+
+pub(crate) async fn evaluate_reference(
+    tx: &mut Transaction<'_, Postgres>,
+    domain: Uuid,
+    r: &Reference,
+) -> Result<Value, WorkflowQueryError> {
+    source::evaluate(tx, domain, r).await
+}

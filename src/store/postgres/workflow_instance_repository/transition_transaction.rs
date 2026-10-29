@@ -149,6 +149,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 2: Lock WorkflowInstance FOR UPDATE
     // ---------------------------------------------------------------
+    super::owner_obligation::intents::fence(&mut tx, instance_uuid)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
     let instance = validation_result!(lock_instance(&mut tx, instance_uuid).await);
 
     // Read domain_id for assignee resolution
@@ -392,6 +395,12 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // OWNER_PENDING assistance was opened when the limit-reaching RETURN
     // committed (below, after the transition event).
     // ---------------------------------------------------------------
+    let managed_scope:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_managed_instances WHERE workflow_instance_id=$1)").bind(instance_uuid).fetch_one(&mut *tx).await.map_err(|e|ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    let max_returns_per_edge = if managed_scope {
+        3
+    } else {
+        max_returns_per_edge
+    };
     let prior_return_count: i64 = if effect == "RETURN" {
         let row: (i64,) = sqlx::query_as(
             // TransitionCommittedEventData serializes snake_case (no camelCase
@@ -446,6 +455,24 @@ pub(crate) async fn execute_workflow_transition_atomically(
         }
     }
 
+    if let Err(e) = super::owner_obligation::guards::before_transition(
+        &mut tx,
+        principal_uuid,
+        instance_uuid,
+        transition.target_node_id,
+        &effect,
+        None,
+        cmd.submission_payload.as_ref(),
+    )
+    .await
+    {
+        if e.status >= 500 {
+            return Err(ExecuteWorkflowTransitionError::StorageError(e.code));
+        }
+        deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+            e.code
+        ));
+    }
     // ---------------------------------------------------------------
     // Step 12: Handle Submission
     // ---------------------------------------------------------------
