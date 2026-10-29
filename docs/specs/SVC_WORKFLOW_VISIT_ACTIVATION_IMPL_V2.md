@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
 title: Accepted whole-authority successor to SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -18,11 +18,13 @@ paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
 external_authorities: []
 supersedes:
   - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-superseded_by: null
+superseded_by: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3
 owners:
   - mayf3
 acceptance_authority_basis: >-
   Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
+supersession_record: ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+supersession_record_sha256: b09a9ffe268691bee7f2d9b68107b17dfc3f46bbb4d2f1977227790e97d2656b
 ---
 
 # SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2 — accepted whole-authority successor
