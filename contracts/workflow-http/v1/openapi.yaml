@@ -1232,6 +1232,8 @@ components:
       type: object
       additionalProperties: false
       properties:
+        admissionObservation:
+          $ref: "#/components/schemas/CreateAdmissionObservation"
         workflowInstanceId:
           type: string
           format: uuid
@@ -1251,6 +1253,137 @@ components:
         - currentContextRevisionId
         - currentNodeVisitId
         - eventSequence
+
+    CreateAdmissionObservation:
+      description: Immutable create-time admission, never a live readiness or dispatch
+        source. Absent for prerequisite-free creates and legacy receipt replay.
+      oneOf:
+      - $ref: '#/components/schemas/CreateAdmissionWaitingObservation'
+      - $ref: '#/components/schemas/CreateAdmissionReadyObservation'
+    CreateAdmissionWaitingObservation:
+      type: object
+      additionalProperties: false
+      required:
+      - version
+      - kind
+      - status
+      - dependentInstanceId
+      - dependentDefinitionVersionId
+      - initialContextRevisionId
+      - initialContextSha256
+      - initialVisitId
+      - birthEventId
+      - sourceInstanceId
+      - sourceDefinitionVersionId
+      - transitionId
+      properties:
+        version:
+          type: integer
+          enum:
+          - 1
+        kind:
+          type: string
+          enum:
+          - TERMINAL_SUBMISSION
+        status:
+          type: string
+          enum:
+          - WAITING
+        dependentInstanceId:
+          type: string
+          format: uuid
+        dependentDefinitionVersionId:
+          type: string
+          format: uuid
+        initialContextRevisionId:
+          type: string
+          format: uuid
+        initialContextSha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        initialVisitId:
+          type: string
+          format: uuid
+        birthEventId:
+          type: string
+          format: uuid
+        sourceInstanceId:
+          type: string
+          format: uuid
+        sourceDefinitionVersionId:
+          type: string
+          format: uuid
+        transitionId:
+          type: string
+          format: uuid
+    CreateAdmissionReadyObservation:
+      type: object
+      additionalProperties: false
+      required:
+      - version
+      - kind
+      - status
+      - dependentInstanceId
+      - dependentDefinitionVersionId
+      - initialContextRevisionId
+      - initialContextSha256
+      - initialVisitId
+      - birthEventId
+      - sourceInstanceId
+      - sourceDefinitionVersionId
+      - transitionId
+      - eventId
+      - submissionId
+      - submissionSha256
+      properties:
+        version:
+          type: integer
+          enum:
+          - 1
+        kind:
+          type: string
+          enum:
+          - TERMINAL_SUBMISSION
+        status:
+          type: string
+          enum:
+          - READY
+        dependentInstanceId:
+          type: string
+          format: uuid
+        dependentDefinitionVersionId:
+          type: string
+          format: uuid
+        initialContextRevisionId:
+          type: string
+          format: uuid
+        initialContextSha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        initialVisitId:
+          type: string
+          format: uuid
+        birthEventId:
+          type: string
+          format: uuid
+        sourceInstanceId:
+          type: string
+          format: uuid
+        sourceDefinitionVersionId:
+          type: string
+          format: uuid
+        transitionId:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+        submissionSha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
 
     ExecuteWorkflowTransitionResponse:
       type: object

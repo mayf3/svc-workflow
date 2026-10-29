@@ -24,6 +24,8 @@ pub struct CreateWorkflowInstanceRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkflowInstanceResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admission_observation: Option<serde_json::Value>,
     pub workflow_instance_id: Uuid,
     pub workflow_state_version: i32,
     pub current_context_revision_id: Uuid,
@@ -34,6 +36,7 @@ pub struct CreateWorkflowInstanceResponse {
 impl From<CreateWorkflowInstanceResult> for CreateWorkflowInstanceResponse {
     fn from(value: CreateWorkflowInstanceResult) -> Self {
         Self {
+            admission_observation: value.admission_observation,
             workflow_instance_id: value.workflow_instance_id,
             workflow_state_version: value.workflow_state_version,
             current_context_revision_id: value.current_context_revision_id,

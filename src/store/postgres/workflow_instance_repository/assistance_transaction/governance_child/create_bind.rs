@@ -180,10 +180,7 @@ async fn admit_create(
     };
     let mut receipt =
         super::binding::admit(tx, &bind, command, actor, case, child.workflow_instance_id).await?;
-    if let Some(v) = super::super::super::prerequisite::project(tx, child.workflow_instance_id)
-        .await
-        .map_err(|e| AssistanceError::StorageError(e.to_string()))?
-    {
+    if let Some(v) = child.prerequisite_readiness {
         receipt["prerequisiteReadiness"] = v;
     }
     Ok(receipt)

@@ -18,6 +18,8 @@ use super::idempotency::compute_request_hash;
 /// Result of a successful CreateWorkflowInstance command.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CreateWorkflowInstanceResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admission_observation: Option<serde_json::Value>,
     pub workflow_instance_id: uuid::Uuid,
     pub workflow_state_version: i32,
     pub current_context_revision_id: uuid::Uuid,
@@ -28,6 +30,7 @@ pub struct CreateWorkflowInstanceResult {
 impl From<create_transaction::CreateResult> for CreateWorkflowInstanceResult {
     fn from(r: create_transaction::CreateResult) -> Self {
         Self {
+            admission_observation: r.admission_observation,
             workflow_instance_id: r.workflow_instance_id,
             workflow_state_version: r.workflow_state_version,
             current_context_revision_id: r.current_context_revision_id,
