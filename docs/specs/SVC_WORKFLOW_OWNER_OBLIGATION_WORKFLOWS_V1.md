@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
 title: Svc-owned bootstrap, semantic effects, and durable Owner review Workflows
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -22,7 +22,7 @@ governed_by:
   - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
 paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
 owners:
   - mayf3
 external_authorities:
