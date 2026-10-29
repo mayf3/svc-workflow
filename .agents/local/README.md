@@ -140,7 +140,7 @@ POSTGRES_STORAGE_CONTRACT_V0_3
   status: accepted under ROOT_OWNER_ACCEPTANCE.json; effective after paired lifecycle commit pair is merged to main
   supersedes: POSTGRES_STORAGE_CONTRACT_V0_2
 
-SVC_WORKFLOW_EXECUTION_CONTROL_V2 / GOVERNANCE_CHILD_RETURN_V2 / VISIT_ACTIVATION_IMPL_V2 / PREREQUISITE_ORCHESTRATION_V4
+SVC_WORKFLOW_EXECUTION_CONTROL_V2 / GOVERNANCE_CHILD_RETURN_V2 / PREREQUISITE_ORCHESTRATION_V4
   path: docs/specs/ (exact filenames above)
   kind: implementation_spec
   status: accepted; implementation_authority: contracts; production_apply_authority: none
@@ -160,12 +160,38 @@ SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
   status: superseded
   superseded_by: SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V2
 
+SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3
+  path: docs/specs/SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3.md
+  kind: implementation_spec
+  status: accepted; implementation_authority: contracts after this lifecycle merges into main; production_apply_authority: none
+  paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2 (unchanged canonical runtime consumer)
+  supersedes: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
+  acceptance_record: ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+  accepted_semantic_head: c02916db775fb7e7d1e74cb77dd3df7079a7e54c
+
+SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3
+  path: docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3.md
+  kind: implementation_spec
+  status: accepted; implementation_authority: contracts after this lifecycle merges into main; production_apply_authority: none
+  paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2 (unchanged canonical runtime consumer)
+  supersedes: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
+  acceptance_record: ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+  accepted_semantic_head: c02916db775fb7e7d1e74cb77dd3df7079a7e54c
+
+SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
+  path: docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2.md
+  kind: implementation_spec
+  status: superseded; historical acceptance retained
+  supersedes: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+  superseded_by: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3
+
 SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
   path: docs/specs/SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2.md
   kind: implementation_spec
-  status: accepted; implementation_authority: contracts; production_apply_authority: none
+  status: superseded; historical acceptance retained
   paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
   supersedes: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
+  superseded_by: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3
 
 SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
   path: docs/specs/SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1.md
