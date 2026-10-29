@@ -1,8 +1,8 @@
 pub(crate) mod archive;
 pub(crate) mod assistance;
 pub(crate) mod cancel;
-pub(crate) mod current_task_input;
 pub(crate) mod coordinator_domains;
+pub(crate) mod current_task_input;
 pub(crate) mod definitions;
 pub(crate) mod dispatch_intents;
 pub(crate) mod domain_members;
@@ -92,3 +92,5 @@ mod tests {
         assert_eq!(idempotency_key(&headers).unwrap(), "command-123");
     }
 }
+
+pub(crate) mod owner_obligation;

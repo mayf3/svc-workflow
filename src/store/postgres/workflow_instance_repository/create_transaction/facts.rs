@@ -39,10 +39,33 @@ pub(crate) async fn create_on_tx(
     {
         deterministic_failure!(err);
     }
-    if let Some(err) = validation_result!(
-        validation_helpers::validate_domain_membership(tx, domain_uuid, principal_uuid).await
-    ) {
-        deterministic_failure!(err);
+    let managed_role =
+        crate::domain::definition::owner_obligation::role(version_info.context_schema.as_ref())
+            .map_err(CreateWorkflowInstanceError::ContextValidationFailed)?;
+    let policy_authorized = if managed_role.is_some() {
+        super::super::owner_obligation::intents::policy_actor_authorized(
+            tx,
+            actual_command_id,
+            domain_uuid,
+            definition_version_uuid,
+            principal_uuid,
+        )
+        .await
+        .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?
+    } else {
+        false
+    };
+    if managed_role.is_some() && !policy_authorized {
+        return Err(CreateWorkflowInstanceError::ContextValidationFailed(
+            "MANAGED_WORKFLOW_POLICY_REQUIRED".into(),
+        ));
+    }
+    if !policy_authorized {
+        if let Some(err) =
+            validation_helpers::validate_domain_membership(tx, domain_uuid, principal_uuid).await?
+        {
+            return Err(err);
+        }
     }
     // Work execution class marking (SVC_WORKFLOW_WORK_EXECUTION_CLASS_V1,
     // CTR-WEC-002): NON_BUSINESS_TEST is a governance decision reserved to

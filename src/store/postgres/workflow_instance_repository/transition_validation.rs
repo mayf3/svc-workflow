@@ -520,6 +520,10 @@ pub(crate) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde
                 "actual": actual,
             })
         }
+        ExecuteWorkflowTransitionError::InvalidInput(detail)
+        | ExecuteWorkflowTransitionError::ContextValidationFailed(detail) => {
+            serde_json::json!({"error":crate::domain::workflow_instance::errors::transition_error_label(err),"detail":detail})
+        }
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(detail) => {
             serde_json::json!({
                 "error": "submission_validation_failed",
@@ -567,6 +571,8 @@ pub(super) fn is_deterministic_error(err: &ExecuteWorkflowTransitionError) -> bo
             | ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
             | ExecuteWorkflowTransitionError::SubmissionRequired
             | ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
+            | ExecuteWorkflowTransitionError::InvalidInput(_)
+            | ExecuteWorkflowTransitionError::ContextValidationFailed(_)
             | ExecuteWorkflowTransitionError::SizeLimitExceeded(_)
             | ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
             | ExecuteWorkflowTransitionError::ReturnPolicyExhausted { .. }
