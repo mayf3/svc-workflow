@@ -48,6 +48,8 @@ pub(crate) enum CreateOutcome {
 
 /// Result of a successful atomic creation.
 pub(crate) struct CreateResult {
+    pub admission_observation: Option<serde_json::Value>,
+    pub prerequisite_readiness: Option<serde_json::Value>,
     pub workflow_instance_id: Uuid,
     pub workflow_state_version: i32,
     pub current_context_revision_id: Uuid,
@@ -182,6 +184,8 @@ async fn create_once(
                         .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
 
                     return Ok(CreateOutcome::Replayed(CreateResult {
+                        admission_observation: response_body.get("admissionObservation").cloned(),
+                        prerequisite_readiness: None,
                         workflow_instance_id: wf_id,
                         workflow_state_version: state_ver,
                         current_context_revision_id: ctx_rev_id,
@@ -240,6 +244,8 @@ async fn create_once(
         Err(err) => return Err(err),
     };
     let CreateResult {
+        admission_observation,
+        prerequisite_readiness,
         workflow_instance_id,
         workflow_state_version,
         current_context_revision_id: context_revision_id,
@@ -250,13 +256,17 @@ async fn create_once(
     // ---------------------------------------------------------------
     // Step 13: Complete the command receipt
     // ---------------------------------------------------------------
-    let response_body = serde_json::json!({
+    let mut response_body = serde_json::json!({
         "workflowInstanceId": workflow_instance_id,
         "workflowStateVersion": workflow_state_version,
         "currentContextRevisionId": context_revision_id,
         "currentNodeVisitId": node_visit_id,
         "eventSequence": event_sequence,
     });
+
+    if let Some(value) = &admission_observation {
+        response_body["admissionObservation"] = value.clone();
+    }
 
     let response_digest = digest::compute_json_digest(&response_body)
         .map_err(CreateWorkflowInstanceError::StorageError)?;
@@ -315,6 +325,8 @@ async fn create_once(
     let _ = commit_started;
 
     Ok(CreateOutcome::Created(CreateResult {
+        admission_observation,
+        prerequisite_readiness,
         workflow_instance_id,
         workflow_state_version,
         current_context_revision_id: context_revision_id,

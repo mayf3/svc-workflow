@@ -178,7 +178,7 @@ pub(crate) async fn create_on_tx(
             "prerequisites require VISIT_ACTIVATION_V1".into(),
         ));
     }
-    super::super::prerequisite::admit(
+    let prerequisite_readiness = super::super::prerequisite::admit(
         tx,
         principal_uuid,
         domain_uuid,
@@ -407,7 +407,30 @@ pub(crate) async fn create_on_tx(
         .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
     }
 
+    // CTR-SWPO-009: retain the single locked admission result, bound to the
+    // actual initial facts inserted above. No post-create readiness read.
+    let admission_observation = prerequisite_readiness.as_ref().map(|readiness| {
+        let mut observation = serde_json::json!({
+            "version": 1, "kind": "TERMINAL_SUBMISSION", "status": readiness["status"],
+            "dependentInstanceId": workflow_instance_id,
+            "dependentDefinitionVersionId": definition_version_uuid,
+            "initialContextRevisionId": context_revision_id,
+            "initialContextSha256": payload_digest,
+            "initialVisitId": node_visit_id, "birthEventId": event_id,
+            "sourceInstanceId": readiness["sourceInstanceId"],
+            "sourceDefinitionVersionId": readiness["sourceDefinitionVersionId"],
+            "transitionId": readiness["transitionId"],
+        });
+        if readiness["status"] == "READY" {
+            for key in ["eventId", "submissionId", "submissionSha256"] {
+                observation[key] = readiness[key].clone();
+            }
+        }
+        observation
+    });
     Ok(CreateResult {
+        admission_observation,
+        prerequisite_readiness,
         workflow_instance_id,
         workflow_state_version,
         current_context_revision_id: context_revision_id,

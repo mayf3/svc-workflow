@@ -35,10 +35,10 @@ pub(crate) async fn admit(
     domain: Uuid,
     schema: Option<&Value>,
     context: &Value,
-) -> Result<(), CreateError> {
+) -> Result<Option<Value>, CreateError> {
     let reference =
         contract::parse(schema, context).map_err(CreateError::ContextValidationFailed)?;
-    let Some(r) = reference else { return Ok(()) };
+    let Some(r) = reference else { return Ok(None) };
     // Same domain guard as Owner replacement. A foreign/missing source is never distinguished.
     let enabled: Option<bool> =
         sqlx::query_scalar("SELECT enabled FROM domains WHERE domain_id=$1 FOR SHARE")
@@ -64,7 +64,7 @@ pub(crate) async fn admit(
         .await
         .map_err(|e| CreateError::StorageError(e.to_string()))?;
     if matches!(v["status"].as_str(), Some("READY" | "WAITING")) {
-        Ok(())
+        Ok(Some(v))
     } else {
         Err(invalid())
     }
