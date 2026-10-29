@@ -2406,6 +2406,18 @@ components:
           format: date-time
 
     ReplaceDraftGraphRequest:
+      description: >-
+        Complete DRAFT replacement allocates fresh server node UUIDs. Only
+        nodes[].metadata.workflowPrerequisiteGate.producer and
+        nodes[].metadata.workflowOperation.prerequisiteProducer accept the closed
+        authoring reference {nodeKey,slotKey}, where nodeKey is this request's
+        node_key, or {nodeId,slotKey} from this same Version's current DRAFT.
+        The locked replacement resolves both to canonical {nodeId,slotKey} before
+        graph validation and persistence. Foreign/stale IDs, unknown/duplicate
+        keys, extra reference fields and invalid producer semantics fail with
+        existing graph_validation_failed diagnostics. Reads and runtime remain
+        UUID-only; all other metadata is preserved. Existing receipt replay and
+        contextSchema patch semantics are unchanged.
       type: object
       additionalProperties: false
       required:
