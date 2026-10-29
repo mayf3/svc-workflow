@@ -1,9 +1,10 @@
-# PostgreSQL Storage Contract v0.1
+# PostgreSQL Storage Contract v0.1 — superseded by v0.2
 
 ```text
-Status: STORAGE_CONTRACT
+Status: SUPERSEDED_STORAGE_CONTRACT
 Version: v0.1
 Architecture: SVC_WORKFLOW_ARCHITECTURE_V0_3_1 (ARCHITECTURE_FROZEN)
+Superseded by: POSTGRES_STORAGE_CONTRACT_V0_2
 ```
 
 > 本文档记录 `svc-workflow` PostgreSQL 存储骨架的表设计、约束体系和不可变规则。
