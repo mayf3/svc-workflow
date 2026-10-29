@@ -11,3 +11,5 @@ mod service;
 pub use lifecycle::SOURCE_IDENTITY_UNRESOLVED;
 pub use repository::DefinitionRepository;
 pub use service::DefinitionService;
+
+pub(crate) use lifecycle::validate_graph_schemas;

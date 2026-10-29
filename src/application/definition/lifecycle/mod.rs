@@ -12,3 +12,5 @@ mod status_changes;
 mod validation;
 
 pub use status_changes::SOURCE_IDENTITY_UNRESOLVED;
+
+pub(crate) use validation::validate_graph_schemas;

@@ -109,48 +109,53 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         &self,
         graph: &WorkflowGraph,
     ) -> Vec<GraphValidationError> {
-        let mut errors: Vec<GraphValidationError> = Vec::new();
+        validate_graph_schemas(graph)
+    }
+}
 
-        // Validate context_schema
-        if let Some(schema) = &graph.context_schema {
+/// Shared pure schema checks, also used under the draft replacement lock.
+pub(crate) fn validate_graph_schemas(graph: &WorkflowGraph) -> Vec<GraphValidationError> {
+    let mut errors: Vec<GraphValidationError> = Vec::new();
+
+    // Validate context_schema
+    if let Some(schema) = &graph.context_schema {
+        if let Err(e) = validate_json_schema(schema) {
+            errors.push(GraphValidationError::new(
+                "INVALID_CONTEXT_SCHEMA",
+                format!("context_schema: {}", e),
+            ));
+        }
+    }
+
+    // Validate each transition's submission_schema
+    for trans in &graph.transitions {
+        if let Some(schema) = &trans.submission_schema {
+            if crate::domain::definition::prerequisite::contains_marker(schema) {
+                errors.push(GraphValidationError::new(
+                    "INVALID_SUBMISSION_SCHEMA",
+                    "prerequisite annotation is permitted only at Context root",
+                ));
+            }
             if let Err(e) = validate_json_schema(schema) {
                 errors.push(GraphValidationError::new(
-                    "INVALID_CONTEXT_SCHEMA",
-                    format!("context_schema: {}", e),
+                    "INVALID_SUBMISSION_SCHEMA",
+                    format!(
+                        "transition '{}' submission_schema: {}",
+                        trans.transition_key, e
+                    ),
                 ));
             }
         }
-
-        // Validate each transition's submission_schema
-        for trans in &graph.transitions {
-            if let Some(schema) = &trans.submission_schema {
-                if crate::domain::definition::prerequisite::contains_marker(schema) {
-                    errors.push(GraphValidationError::new(
-                        "INVALID_SUBMISSION_SCHEMA",
-                        "prerequisite annotation is permitted only at Context root",
-                    ));
-                }
-                if let Err(e) = validate_json_schema(schema) {
-                    errors.push(GraphValidationError::new(
-                        "INVALID_SUBMISSION_SCHEMA",
-                        format!(
-                            "transition '{}' submission_schema: {}",
-                            trans.transition_key, e
-                        ),
-                    ));
-                }
-            }
-        }
-
-        // Node-declared context inputs must be covered by the context schema
-        // (Product #449): after publish, the only enforcement left is the
-        // context-schema gate at instance creation, so a half-declared
-        // contract would create instances that can never satisfy the
-        // declaring node.
-        validate_declared_context_inputs(graph, &mut errors);
-
-        errors
     }
+
+    // Node-declared context inputs must be covered by the context schema
+    // (Product #449): after publish, the only enforcement left is the
+    // context-schema gate at instance creation, so a half-declared
+    // contract would create instances that can never satisfy the
+    // declaring node.
+    validate_declared_context_inputs(graph, &mut errors);
+
+    errors
 }
 
 /// Validate node-declared required context inputs against the context schema.

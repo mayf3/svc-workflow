@@ -18,4 +18,5 @@ mod digest_tests;
 #[cfg(test)]
 mod graph_tests;
 
+pub(crate) mod owner_authoring;
 pub mod owner_obligation;
