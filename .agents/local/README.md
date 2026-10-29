@@ -61,6 +61,29 @@ SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
   paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
   effective_after: both accepted authority branches merge
 
+proposed whole-authority successor bundle (inactive):
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V10.md
+  kind: product_direction
+  status: proposed
+  supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
+SVC_WORKFLOW_ARCHITECTURE_V0_4_5
+  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_5.md
+  kind: architecture
+  status: proposed
+  supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_4
+POSTGRES_STORAGE_CONTRACT_V0_2
+  path: docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_2.md
+  kind: storage_contract
+  status: proposed
+  supersedes: POSTGRES_STORAGE_CONTRACT_V0_1
+SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
+  path: docs/specs/SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2.md
+  kind: implementation_spec
+  status: proposed
+  supersedes: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
+  paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
+
 superseded history:
 SVC_WORKFLOW_ARCHITECTURE_V0_4_1
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_1.md
