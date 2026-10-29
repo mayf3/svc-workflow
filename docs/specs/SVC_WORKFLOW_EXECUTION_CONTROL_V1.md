@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_EXECUTION_CONTROL_V1
 title: Workflow Execution Control — canonical forum binding, durable outbox with reconciler, RETURN policy projection with owner-attention assistance, system execution-escalation ingress, push-first kick, open-assistance due-set narrowing
-status: accepted
+status: superseded
 accepted_date: 2026-10-28
 accepted_by: Codex root (delegated under user authorization)
 accepted_reviewed_head: 2c7e59a14d5d84ecc0688c47c30c5f04d0f05900
@@ -62,7 +62,7 @@ external_authorities:
     revision: 71882c48593599c550259892e255ec9c3d73b7f2
     relation: interoperates_with
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_EXECUTION_CONTROL_V2
 owners:
   - mayf3
 architecture_authority: SVC_WORKFLOW_ARCHITECTURE_V0_4_3

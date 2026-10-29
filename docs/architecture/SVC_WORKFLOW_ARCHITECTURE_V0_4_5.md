@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_5
-status: accepted
+status: superseded
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -9,7 +9,7 @@ governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
 supersedes:
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_4
-superseded_by: null
+superseded_by: SVC_WORKFLOW_ARCHITECTURE_V0_4_6
 accepted_by: Codex root (explicitly delegated by mayf3)
 accepted_date: 2026-10-29
 accepted_reviewed_spec_commit: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
