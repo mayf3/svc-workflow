@@ -161,3 +161,20 @@ pub async fn bind_governance_child(
     )?;
     assistance_transaction::governance_child::bind(pool, command, &hash).await
 }
+
+pub async fn create_and_bind_governance_child(
+    pool: &PgPool,
+    admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
+    command:crate::domain::workflow_instance::governance_child::CreateAndBindGovernanceChildCommand,
+) -> Result<serde_json::Value, AssistanceError> {
+    let actor = command.principal_id.into_uuid();
+    principal_exists(pool, actor).await?;
+    let hash = command_hash(
+        "CREATE_AND_BIND_GOVERNANCE_CHILD",
+        &command.command_schema_version,
+        actor,
+        serde_json::json!({"assistanceCaseId":command.assistance_case_id}),
+        serde_json::json!({"definitionVersionId":command.definition_version_id,"contextPayload":command.context_payload,"acceptanceTransitionId":command.acceptance_transition_id,"expectedWorkflowStateVersion":command.expected_workflow_state_version}),
+    )?;
+    assistance_transaction::governance_child::create_and_bind(pool, admission, command, &hash).await
+}

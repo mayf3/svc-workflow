@@ -7,6 +7,8 @@ use crate::domain::workflow_instance::governance_child::{
 use serde_json::{json, Value};
 
 mod binding;
+mod create_bind;
+pub(crate) use create_bind::create_and_bind;
 mod review;
 mod terminal;
 pub(crate) use binding::bind;

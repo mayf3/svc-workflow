@@ -93,6 +93,11 @@ pub async fn read(
             json!({"view":"body","binding":binding,"body":body.chunk(offset,8192)?})
         }
     };
+    if super::prerequisite::reader_allowed(&mut snapshot.tx, actor, instance).await? {
+        if let Some(value) = super::prerequisite::project(&mut snapshot.tx, instance).await? {
+            response["prerequisiteReadiness"] = value;
+        }
+    }
     let parent:Option<Value>=sqlx::query_scalar("SELECT receipt FROM workflow_governance_child_bindings WHERE governance_child_instance_id=$1")
         .bind(instance).fetch_optional(&mut *snapshot.tx).await?;
     if let Some(parent) = parent {
