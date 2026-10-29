@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3
 title: Immutable create admission observation with live prerequisite readiness
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -32,6 +32,12 @@ governed_by:
 supersedes:
   - SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 superseded_by: null
+accepted_date: 2026-10-29
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_reviewed_head: ea8ec3f4fdb8d9e7b4b24c1136074dfb26f3e5e7
+acceptance_review_verdict: PASS
+independent_semantic_reviewer: /root/v11_lifecycle_review
+acceptance_record: external artifact admission-observation-contract-20261029/root-owner-acceptance.json
 paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3
 owners:
   - mayf3
@@ -40,7 +46,7 @@ external_authorities: []
 
 # SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3 — creation-time admission observation
 
-This PROPOSED whole-Spec successor preserves the complete accepted V2 and V1
+This accepted whole-Spec successor preserves the complete accepted V2 and V1
 Contracts below. It adds only a bounded, immutable observation of the real
 prerequisite admission already performed by successful creation. It does not
 change live readiness, GCR selection or its exact atomic two-Event pair,
@@ -202,6 +208,24 @@ merge, migration, deployment, current-run intervention, or production apply is
 authorized by this proposal.
 
 ---
+
+## Lifecycle acceptance record
+
+```text
+ACCEPTANCE_STATUS = accepted
+ACCEPTED_BY = Codex root acting under explicit mayf3 delegation; not the Spec author
+ACCEPTANCE_RECEIPT = ART/admission-observation-contract-20261029/root-owner-acceptance.json
+ACCEPTANCE_RECEIPT_SHA256 = 575ac95a8f7a2a45acfea216a438c2fd72f5b81cd023c8dd81f38f510f95105d
+REVIEWED_SEMANTIC_HEAD = ea8ec3f4fdb8d9e7b4b24c1136074dfb26f3e5e7
+INDEPENDENT_REVIEW = ART/admission-observation-contract-20261029/INDEPENDENT_FINAL_REVIEW.md
+INDEPENDENT_REVIEW_SHA256 = 02e1da3af30f8ecad827d9e2a53ee7c4f12d08ff0d86b12dcf40607042bb1183
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+FINAL_ACCEPTED_HEAD = REPORTED_IN_PAIRED_PR_RECORD_AFTER_LIFECYCLE_COMMIT
+FINAL_HEAD_RECHECK = REQUIRED_BEFORE_MERGE
+EFFECTIVE_AFTER = BOTH_PAIRED_AUTHORITY_PRS_MERGE_TO_MAIN
+IMPLEMENTATION_AUTHORITY = contracts
+PRODUCTION_APPLY_AUTHORITY = none
+```
 
 # SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2 — preserved accepted predecessor body
 

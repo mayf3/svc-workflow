@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V11
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -8,6 +8,11 @@ production_apply_authority: none
 supersedes:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
 superseded_by: null
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: ea8ec3f4fdb8d9e7b4b24c1136074dfb26f3e5e7
+acceptance_review_verdict: PASS
+acceptance_record: external artifact admission-observation-contract-20261029/root-owner-acceptance.json
 owners:
   - mayf3
 date: 2026-10-29
@@ -19,14 +24,14 @@ external_authorities: []
 
 # SVC_WORKFLOW_PRODUCT_BOUNDARY_V11 — immutable create admission observation
 
-This PROPOSED whole-authority successor preserves the complete accepted V10
+This accepted whole-authority successor preserves the complete accepted V10
 Product Direction below and adds one narrow exception to the carried V9
 `DEC-V9-001` statement that no persisted wait status is created. The exception
 is an immutable observation of the prerequisite admission that actually ran
 inside successful creation. It records a historical command fact; it is not a
 current workflow status, wait state, second readiness truth, or dispatch
-input. The V10 body remains current until an explicit acceptance transaction
-updates its lifecycle backlink.
+input. The V10 body remains current in the authority bases until both accepted
+paired authority branches merge.
 
 ## V11 selected decision — creation-time prerequisite observation
 
@@ -94,6 +99,24 @@ separate implementation mandate is issued. This proposal grants no merge,
 implementation, migration, or production-apply authority.
 
 ---
+
+## Lifecycle acceptance record
+
+```text
+ACCEPTANCE_STATUS = accepted
+ACCEPTED_BY = Codex root acting under explicit mayf3 delegation; not the Spec author
+ACCEPTANCE_RECEIPT = ART/admission-observation-contract-20261029/root-owner-acceptance.json
+ACCEPTANCE_RECEIPT_SHA256 = 575ac95a8f7a2a45acfea216a438c2fd72f5b81cd023c8dd81f38f510f95105d
+REVIEWED_SEMANTIC_HEAD = ea8ec3f4fdb8d9e7b4b24c1136074dfb26f3e5e7
+INDEPENDENT_REVIEW = ART/admission-observation-contract-20261029/INDEPENDENT_FINAL_REVIEW.md
+INDEPENDENT_REVIEW_SHA256 = 02e1da3af30f8ecad827d9e2a53ee7c4f12d08ff0d86b12dcf40607042bb1183
+SEMANTIC_DELTA_AFTER_REVIEW = NONE
+FINAL_ACCEPTED_HEAD = REPORTED_IN_PAIRED_PR_RECORD_AFTER_LIFECYCLE_COMMIT
+FINAL_HEAD_RECHECK = REQUIRED_BEFORE_MERGE
+EFFECTIVE_AFTER = BOTH_PAIRED_AUTHORITY_PRS_MERGE_TO_MAIN
+IMPLEMENTATION_AUTHORITY = none
+PRODUCTION_APPLY_AUTHORITY = none
+```
 
 # SVC_WORKFLOW_PRODUCT_BOUNDARY_V10 — preserved accepted predecessor body
 
