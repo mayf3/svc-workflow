@@ -45,6 +45,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     cmd: ExecuteWorkflowTransitionCommand,
     request_hash: &str,
     max_returns_per_edge: u32,
+    context_payload: Option<&serde_json::Value>,
 ) -> Result<TransitionOutcome, ExecuteWorkflowTransitionError> {
     let mut tx = pool
         .begin()
@@ -455,19 +456,47 @@ pub(crate) async fn execute_workflow_transition_atomically(
         }
     }
 
+    let changed_context = match super::owner_obligation::transition_context::validate(
+        &mut tx,
+        instance_uuid,
+        instance.definition_version_id,
+        instance.current_context_revision_id,
+        transition.target_node_id,
+        &effect,
+        context_payload,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) if e.status >= 500 => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(e.code))
+        }
+        Err(e) if e.code == "invalid_input" => {
+            deterministic_failure!(ExecuteWorkflowTransitionError::InvalidInput(e.code))
+        }
+        Err(e) => deterministic_failure!(ExecuteWorkflowTransitionError::ContextValidationFailed(
+            e.code
+        )),
+    };
+
     if let Err(e) = super::owner_obligation::guards::before_transition(
         &mut tx,
         principal_uuid,
         instance_uuid,
         transition.target_node_id,
         &effect,
-        None,
+        context_payload,
         cmd.submission_payload.as_ref(),
     )
     .await
     {
         if e.status >= 500 {
             return Err(ExecuteWorkflowTransitionError::StorageError(e.code));
+        }
+        if e.code.starts_with("owner_node_gate_") {
+            deterministic_failure!(ExecuteWorkflowTransitionError::ContextValidationFailed(
+                e.code
+            ));
         }
         deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
             e.code
@@ -734,6 +763,20 @@ pub(crate) async fn execute_workflow_transition_atomically(
         }
     }
 
+    let effective_context_revision_id = if let Some(payload) = changed_context.as_ref() {
+        super::owner_obligation::transition_context::append(
+            &mut tx,
+            instance_uuid,
+            instance.current_context_revision_id,
+            principal_uuid,
+            payload,
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.code))?
+    } else {
+        instance.current_context_revision_id
+    };
+
     if let Some(payload) = &cmd.submission_payload {
         transition_helpers::insert_submission(
             &mut tx,
@@ -848,6 +891,8 @@ pub(crate) async fn execute_workflow_transition_atomically(
         new_state_version,
         &transition,
         submission_payload_digest,
+        (effective_context_revision_id != instance.current_context_revision_id)
+            .then_some(effective_context_revision_id),
     )
     .await?;
 
@@ -970,7 +1015,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     let response_body = serde_json::json!({
         "workflowInstanceId": instance_uuid,
         "workflowStateVersion": final_state_version,
-        "currentContextRevisionId": instance.current_context_revision_id,
+        "currentContextRevisionId": effective_context_revision_id,
         "sourceNodeVisitId": instance.current_node_visit_id,
         "currentNodeVisitId": new_node_visit_id,
         "submissionId": final_submission_id,
@@ -1042,7 +1087,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     Ok(TransitionOutcome::Executed(TransitionResult {
         workflow_instance_id: instance_uuid,
         workflow_state_version: final_state_version,
-        current_context_revision_id: instance.current_context_revision_id,
+        current_context_revision_id: effective_context_revision_id,
         source_node_visit_id: instance.current_node_visit_id,
         current_node_visit_id: new_node_visit_id,
         submission_id: final_submission_id,

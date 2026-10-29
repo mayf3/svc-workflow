@@ -7,6 +7,7 @@ use crate::domain::definition::{
 use serde_json::{json, Value};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+type PolicyTargetRow = (Uuid, String, i16, Option<String>, Option<Value>);
 fn invalid(code: &str) -> DefinitionError {
     DefinitionError::GraphValidationFailed(vec![GraphValidationError::new(code, code)])
 }
@@ -57,7 +58,7 @@ pub(crate) async fn validate_and_approve(
             "REVIEW",
         ),
     ] {
-        let row:Option<(Uuid,String,i16,Option<String>,Option<Value>)>=sqlx::query_as("SELECT d.domain_id,v.version_status::text,v.semantic_model_version,v.definition_digest,v.context_schema FROM workflow_definition_versions v JOIN workflow_definitions d USING(workflow_definition_id) WHERE v.definition_version_id=$1 AND NOT d.archived FOR SHARE OF v").bind(target).fetch_optional(&mut **tx).await.map_err(map)?;
+        let row:Option<PolicyTargetRow>=sqlx::query_as("SELECT d.domain_id,v.version_status::text,v.semantic_model_version,v.definition_digest,v.context_schema FROM workflow_definition_versions v JOIN workflow_definitions d USING(workflow_definition_id) WHERE v.definition_version_id=$1 AND NOT d.archived FOR SHARE OF v").bind(target).fetch_optional(&mut **tx).await.map_err(map)?;
         let Some((d, status, model, h, cs)) = row else {
             return Err(invalid("owner_policy_target_not_published"));
         };

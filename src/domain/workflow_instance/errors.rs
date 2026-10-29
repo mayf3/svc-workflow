@@ -413,13 +413,18 @@ pub enum ExecuteWorkflowTransitionError {
     /// Definition version is DEPRECATED (allowed for existing instances).
     DefinitionVersionDeprecated,
     /// Expected workflow state version does not match current.
-    WorkflowStateVersionConflict { expected: i32, actual: i32 },
+    WorkflowStateVersionConflict {
+        expected: i32,
+        actual: i32,
+    },
     /// The requested transition definition was not found or is not applicable.
     TransitionNotApplicable(String),
     /// Submission is required but none was provided.
     SubmissionRequired,
     /// Submission payload failed schema validation.
     SubmissionValidationFailed(String),
+    InvalidInput(String),
+    ContextValidationFailed(String),
     /// Submission payload exceeds size limits.
     SizeLimitExceeded(String),
     /// RETURN submission references are invalid (cross-instance or not found).
@@ -427,7 +432,9 @@ pub enum ExecuteWorkflowTransitionError {
     /// WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-005): the RETURN edge has hit
     /// the configured maxReturnsPerEdge. REQUIRE_HUMAN semantics: the loop is
     /// blocked; the escalation case was created when the limit was reached.
-    ReturnPolicyExhausted { limit: i32 },
+    ReturnPolicyExhausted {
+        limit: i32,
+    },
     /// Assignee could not be resolved for target node.
     AssigneeResolutionFailed(String),
     /// Canonical identity admission rejected the command (CTR-CIR-003).
@@ -474,6 +481,10 @@ impl fmt::Display for ExecuteWorkflowTransitionError {
             }
             Self::TransitionNotApplicable(detail) => {
                 write!(f, "transition not applicable: {}", detail)
+            }
+            Self::InvalidInput(detail) => write!(f, "invalid input: {detail}"),
+            Self::ContextValidationFailed(detail) => {
+                write!(f, "context validation failed: {detail}")
             }
             Self::SubmissionRequired => write!(f, "submission is required for this transition"),
             Self::SubmissionValidationFailed(detail) => {
@@ -527,6 +538,8 @@ pub fn transition_error_code(err: &ExecuteWorkflowTransitionError) -> i32 {
         ExecuteWorkflowTransitionError::DefinitionVersionDeprecated => 200, // allowed
         ExecuteWorkflowTransitionError::WorkflowStateVersionConflict { .. } => 409,
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_) => 409,
+        ExecuteWorkflowTransitionError::InvalidInput(_)
+        | ExecuteWorkflowTransitionError::ContextValidationFailed(_) => 422,
         ExecuteWorkflowTransitionError::SubmissionRequired => 422,
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(_) => 422,
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_) => 413,
@@ -560,6 +573,8 @@ pub fn transition_error_label(err: &ExecuteWorkflowTransitionError) -> &'static 
             "workflow_state_version_conflict"
         }
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_) => "transition_not_applicable",
+        ExecuteWorkflowTransitionError::InvalidInput(_) => "invalid_input",
+        ExecuteWorkflowTransitionError::ContextValidationFailed(_) => "context_validation_failed",
         ExecuteWorkflowTransitionError::SubmissionRequired => "submission_required",
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(_) => {
             "submission_validation_failed"

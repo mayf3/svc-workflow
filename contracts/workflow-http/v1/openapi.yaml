@@ -1385,6 +1385,9 @@ components:
       additionalProperties: false
       required: [transitionDefinitionId, expectedWorkflowStateVersion]
       properties:
+        contextPayload:
+          type: object
+          description: Full resulting Context; only managed INTAKE ADVANCE/RETURN entering a declared gate. Omission preserves the original command path; explicit null is invalid_input.
         transitionDefinitionId:
           type: string
           format: uuid
@@ -2595,6 +2598,10 @@ components:
          workflowStateVersion, currentNodeVisitId, createdAt, escalatedAt,
          resolvedAt, voidedAt]
       properties:
+        ownerObligation: { $ref: "#/components/schemas/OwnerCaseObligation" }
+        governanceBinding: { type: object }
+        governanceTerminalProof: { type: object }
+        prerequisiteReadiness: { type: object }
         assistanceCaseId: { type: string, format: uuid }
         workflowInstanceId: { type: string, format: uuid }
         nodeVisitId: { type: string, format: uuid }
@@ -2806,6 +2813,27 @@ components:
             pattern: ^[0-9a-f]{64}$
           failure:
             type: object
+    OwnerCaseObligation:
+      type: object
+      additionalProperties: false
+      required: [version, responsibilities]
+      properties:
+        version: { type: integer, enum: [1] }
+        responsibilities:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/OwnerCaseResponsibility" }
+    OwnerCaseResponsibility:
+      type: object
+      additionalProperties: false
+      required: [responsibilityId, kind, state]
+      properties:
+        responsibilityId: { type: string, format: uuid }
+        kind: { type: string, enum: [INTAKE, REVIEW] }
+        state: { type: string, enum: [PENDING, MATERIALIZED, BLOCKED_KNOWN, STOPPED, RETIRED, COMPLETED, UNKNOWN] }
+        managedWorkflowInstanceId: { type: string, format: uuid }
+        outcomeCode: { type: string }
+        stop: { $ref: "#/components/schemas/OwnerObligationStop" }
     OwnerObligationStop:
       type: object
       additionalProperties: false
