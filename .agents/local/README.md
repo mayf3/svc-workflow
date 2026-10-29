@@ -21,8 +21,15 @@ The repository uses the following precedence for the domain each authority actua
 SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
   path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md
   kind: product_direction
-  status: accepted
+  status: superseded
   supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
+  superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
+
+SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
+  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V10.md
+  kind: product_direction
+  status: accepted in this candidate; effective after merge to main
+  supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
 
 SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
   path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V8.md
@@ -33,8 +40,15 @@ SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
 SVC_WORKFLOW_ARCHITECTURE_V0_4_4
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md
   kind: architecture
-  status: accepted
+  status: superseded
   supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_3
+  superseded_by: SVC_WORKFLOW_ARCHITECTURE_V0_4_5
+
+SVC_WORKFLOW_ARCHITECTURE_V0_4_5
+  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_5.md
+  kind: architecture
+  status: accepted in this candidate; effective after merge to main
+  supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_4
 
 SVC_WORKFLOW_ARCHITECTURE_V0_4_3
   path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_3.md
@@ -57,30 +71,21 @@ SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1
 SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
   path: docs/specs/SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1.md
   kind: implementation_spec
-  status: accepted
+  status: superseded
   paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
   effective_after: both accepted authority branches merge
+  superseded_by: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 
-proposed whole-authority successor bundle (inactive):
-SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
-  path: docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V10.md
-  kind: product_direction
-  status: proposed
-  supersedes: SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
-SVC_WORKFLOW_ARCHITECTURE_V0_4_5
-  path: docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_5.md
-  kind: architecture
-  status: proposed
-  supersedes: SVC_WORKFLOW_ARCHITECTURE_V0_4_4
+accepted whole-authority successor bundle (effective after both authority branches merge):
 POSTGRES_STORAGE_CONTRACT_V0_2
   path: docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_2.md
   kind: storage_contract
-  status: proposed
+  status: accepted in this candidate; effective after merge to main
   supersedes: POSTGRES_STORAGE_CONTRACT_V0_1
 SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
   path: docs/specs/SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2.md
   kind: implementation_spec
-  status: proposed
+  status: accepted in this candidate; effective after merge to main and paired Core branch
   supersedes: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
   paired_authority: AGENT_CORE_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 
@@ -196,10 +201,10 @@ Authoring, independent semantic review, and acceptance are distinct acts. A revi
 ## Governing and persistence locations
 
 ```text
-PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md
-PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md
-ACCEPTED_PRODUCT_SUCCESSOR = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V9.md (effective after merge to main)
-ACCEPTED_ARCHITECTURE_SUCCESSOR = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_4.md (effective after merge to main)
+PRODUCT_DIRECTION = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V10.md (accepted in this candidate; effective after merge to main)
+PRIMARY_ARCHITECTURE = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_5.md (accepted in this candidate; effective after merge to main)
+ACCEPTED_PRODUCT_SUCCESSOR = docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V10.md (effective after merge to main)
+ACCEPTED_ARCHITECTURE_SUCCESSOR = docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_5.md (effective after merge to main)
 ARCHITECTURE_REFINEMENTS = docs/architecture/
 LEGACY_IMPLEMENTATION_CONTRACTS = docs/contracts/
 EXTERNAL_HTTP_CONTRACT_BUNDLE = contracts/workflow-http/

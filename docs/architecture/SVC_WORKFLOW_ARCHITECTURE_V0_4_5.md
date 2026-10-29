@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_5
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -10,6 +10,11 @@ governed_by:
 supersedes:
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_4
 superseded_by: null
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_COMPOSITE_ACCEPTANCE_20261029.md
 owners:
   - mayf3
 date: 2026-10-29
@@ -20,13 +25,13 @@ candidate_base: afb73d83c4804c894582a81af6907f48c13fa0bb
 
 # SVC_WORKFLOW_ARCHITECTURE_V0_4_5 — Exact create-bind event pair
 
-This proposed whole-authority successor preserves the complete accepted
+This accepted whole-authority successor preserves the complete accepted
 Architecture V0_4_4 body below. It adds the only bounded exception to the
 single-command Event rule: the already-authorized atomic governance-child
 create-and-bind operation commits the exact two-Instance Event pair under one
 real command receipt. All other command, activation, readiness, and delivery
-semantics remain unchanged. V0_4_4 remains current until acceptance records its
-reciprocal successor backlink.
+semantics remain unchanged. V0_4_4 remained current until acceptance recorded
+its reciprocal successor backlink below.
 
 ## WPOA-V2 — Atomic create-bind facts and malformed-reference UNKNOWN
 
@@ -79,7 +84,7 @@ and Scheduler's literal READY-only row are unchanged.
 
 Implementation requires accepted Product V10, Architecture V0_4_5, Storage
 Contract V0.2 and Svc prerequisite orchestration V2 in their implementation
-bases, then a separate exact-scope mandate. This proposed authority grants no
+bases, then a separate exact-scope mandate. This accepted authority grants no
 production apply, merge, migration, or runtime permission.
 
 ---

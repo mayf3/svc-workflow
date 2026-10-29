@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -8,25 +8,34 @@ production_apply_authority: none
 supersedes:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
 superseded_by: null
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_date: 2026-10-29
+accepted_reviewed_spec_commit: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
+acceptance_review_verdict: PASS
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_COMPOSITE_ACCEPTANCE_20261029.md
 owners:
   - mayf3
 date: 2026-10-29
 revision: r1
 change_name: CREATE_AND_BIND_GOVERNANCE_CHILD_COMPOSITE_EVENT_EXCEPTION_V1
 candidate_base: afb73d83c4804c894582a81af6907f48c13fa0bb
-external_authorities: []
+external_authorities:
+  - repository: mayf3/dsh-agent-core
+    authority_id: AGENT_CORE_WORKFLOW_GLOBAL_INSTANCES_CAPABILITY_V2
+    revision: 4c514bb0c8d3df8668f3058387676d97b17d45c2
+    relation: requires_later_local_successor_for_broker_passthrough
 ---
 
 # SVC_WORKFLOW_PRODUCT_BOUNDARY_V10 — Atomic governance-child event pair
 
-This proposed whole-authority successor preserves the complete accepted V9
+This accepted whole-authority successor preserves the complete accepted V9
 Product Direction below. It adds only the named atomic GCR create-bind command
 exception to the existing command/Event cardinality. A completed successful
 2xx operation has the exact two-event pair under one real command receipt; a
 completed deterministic non-2xx result has no business Events or facts and
 keeps existing replay semantics. All other existing command and permission
-boundaries remain. V9 remains current until this successor is accepted with
-its reciprocal backlink.
+boundaries remain. V9 remained current until this successor was accepted with
+its reciprocal backlink, recorded below.
 
 ## V10 selected decision — CREATE_AND_BIND_GOVERNANCE_CHILD event pair
 
