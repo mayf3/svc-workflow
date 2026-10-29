@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V4
-title: Proposed whole-authority successor to SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3
-status: proposed
+title: Accepted whole-authority successor to SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -21,18 +21,20 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V4 — proposed whole-authority successor
+# SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V4 — accepted whole-authority successor
 
-This proposal preserves the complete `SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. It carries forward the predecessor contracts with the explicitly stated bounded additions below; the predecessor source remains unchanged.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 Preserve ordinary-create `admissionObservation` and GCR `prerequisiteReadiness` exactly, including status, response binding, read privacy and current READY query. The intake Definition entry remains prerequisite-free; the old root marker and create-time schema are not weakened. Add the separate typed node gate. Before ADVANCE or RETURN enters a gated TASK, the same atomic effective-Context-plus-transition transaction requires and verifies the exact four-field real supplier binding and earlier successful create slot; absence/mismatch fails before source closure or target-visit creation. A valid actual supplier may be WAITING at entry, but then the gated visit is absent from dispatch until live READY. The due query includes the gated node only when the actual producer receipt/result supplies a real source UUID and exact terminal Event/Submission/digest; runtime absence is UNKNOWN/CLOSED and WAITING remains excluded from dispatch. Evaluate all candidates under the existing snapshot before ORDER/LIMIT. The existing due-feed remains the only dispatch projection; no new wait status, timer, Core coordinate, or read endpoint is introduced. Paired Spec §6 defines gate, entry guard and proof authority.
 
 Paired authority reference: `SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 §§2–6,9,13–15; carries all WPO V3 contracts unchanged`.
-The complete predecessor body is carried forward unchanged below. Its previously accepted clauses remain in force until an exact complete successor is independently reviewed, accepted by the authorized Owner, and merged with reciprocal lifecycle links. The exact contract delta and acceptance evidence are specified by the paired Spec; no tests are claimed here.
+The predecessor contracts are carried forward below with only the bounded successor changes stated above; the predecessor source remains unchanged. This successor is accepted in the same paired lifecycle transaction that records the reciprocal predecessor backlink. Acceptance is not implementation or conformance evidence.
 
 Predecessor source: `docs/specs/SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3.md` at `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; original file SHA-256 `afc9b3c455252f7171db5b4f06c8a765d07ad77cf5c6e331718241a47d92f7ec`.
 
@@ -153,7 +155,7 @@ observation.
 ### ACC-SWPO-003 — Creation observation and response passthrough
 
 The following are required in addition to preserved ACC-SWPO-001 and ACC-SWPO-002 gates.
-No implementation or runtime evidence is supplied by this proposal.
+This accepted Spec supplies no implementation or runtime evidence.
 
 | Contract | Method / environment | Required evidence | Expected result | Failure condition |
 |---|---|---|---|---|
@@ -195,11 +197,11 @@ path returns the HTTP result through existing transport/mapping. These facts
 motivate the contract but do not constitute implementation evidence or grant
 implementation permission.
 
-This Spec remains PROPOSED until independent paired semantic review and an
-explicit acceptance transaction. After acceptance in both repositories, a
-separate exact-scope implementation mandate is required. No implementation,
-merge, migration, deployment, current-run intervention, or production apply is
-authorized by this proposal.
+This Spec is accepted at the paired semantic heads identified in the Owner
+acceptance record. Its Contracts authorize source implementation only after
+the accepted paired set is present in the implementation base. Acceptance does
+not authorize merge, migration apply, deployment, current-run intervention, or
+production apply.
 
 ---
 
@@ -415,7 +417,7 @@ not weaken the Contract.
   same-Instance report carrier for this cross-Instance Contract.
 - `EVD-SWPO-003` — `OBS-SWPO-002` and VAI V1 support reuse of the existing
   scheduler authorization and time eligibility as separate gates; no new
-  permission is proposed.
+  permission is specified by this accepted Contract.
 
 ## 8. Decisions
 
@@ -820,7 +822,7 @@ separate authority; rollback must not route dependent intents through raw due.
 
 ## 13. Open questions
 
-No normative choice remains open in this proposal. Implementation preflight
+No normative choice remains open in this accepted Contract. Implementation preflight
 must demonstrate schema-marker compatibility, serializable transaction
 composition, source graph reachability, and READY filtering before pagination.
 Failure of any check stops for authority review; there is no silent fallback.

@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2
-title: Proposed whole-authority successor to SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
-status: proposed
+title: Accepted whole-authority successor to SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -21,18 +21,20 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2 — proposed whole-authority successor
+# SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2 — accepted whole-authority successor
 
-This proposal preserves the complete `SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. It carries forward the predecessor contracts with the explicitly stated bounded additions below; the predecessor source remains unchanged.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 Add CLOSED `node.metadata.workflowOperation` with version 1, immutable per-node `slotKey`, closed operation descriptors, `requiredForAdvance=true`, and optional earlier producer reference `{nodeId,slotKey}`. Ordinary-create descriptors pin exact target Version and digest; managed INTAKE/REVIEW roles are not ordinary create targets. Add CLOSED `node.metadata.workflowPrerequisiteGate={version:1,kind:TERMINAL_SUBMISSION,producer:{nodeId,slotKey}}` for managed intake TASKs only. Svc derives effect identity; all required actions join the actual business command receipt/result before ADVANCE or terminal acceptance. Before ADVANCE or RETURN enters a declared gated TASK, the same atomic effective-Context-plus-transition transaction requires and verifies the exact real supplier binding and the earlier successful producer slot; missing/mismatched binding fails before closing the prior visit or committing target visit/Context success facts. A valid real supplier may be WAITING at entry, in which case the new visit has zero dispatch until its live prerequisite is READY. Preserve the existing create-time root prerequisite schema. Owner replacement does not move a visit; it stops/fences and records the actual unsupported disposition, including the existing lifetime-unique INTAKE intent when its managed ID is still absent. The existing WAE attempt limit is three per Visit and the existing Svc RETURN edge limit is three; full managed ADVANCE graph is acyclic. Paired Spec §§4–6,8–9 supplies exact graph, receipt and bounded STOP behavior.
 
 Paired authority reference: `SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 §§4–6,8–9,13–15; carries all VAI V1 contracts`.
-The complete predecessor body is carried forward unchanged below. Its previously accepted clauses remain in force until an exact complete successor is independently reviewed, accepted by the authorized Owner, and merged with reciprocal lifecycle links. The exact contract delta and acceptance evidence are specified by the paired Spec; no tests are claimed here.
+The predecessor contracts are carried forward below with only the bounded successor changes stated above; the predecessor source remains unchanged. This successor is accepted in the same paired lifecycle transaction that records the reciprocal predecessor backlink. Acceptance is not implementation or conformance evidence.
 
 Predecessor source: `docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1.md` at `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; original file SHA-256 `6ecd3fe458b09096a40501290a29c216015b2073ade61911384ebe27eb1c9af5`.
 

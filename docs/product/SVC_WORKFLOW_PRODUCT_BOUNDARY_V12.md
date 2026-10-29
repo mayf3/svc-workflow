@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V12
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -13,13 +13,15 @@ owners:
 date: 2026-10-29
 revision: draft-2
 candidate_base: f5e7f328ccba5f6e0d752abf74e68558ef38ca0f
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# SVC_WORKFLOW_PRODUCT_BOUNDARY_V12 — proposed whole-authority successor
+# SVC_WORKFLOW_PRODUCT_BOUNDARY_V12 — accepted whole-authority successor
 
-This proposal preserves the complete `SVC_WORKFLOW_PRODUCT_BOUNDARY_V11` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. It carries forward the predecessor contracts with the explicitly stated bounded additions below; the predecessor source remains unchanged.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 Carry forward every V11 decision and add one exact opt-in root route `x-workflow-owner-obligation-v1` with version 1 and UUID fields `intakeDefinitionVersionId`, `intakeAcceptanceTransitionId`, `reviewDefinitionVersionId`, and `reviewCompletionTransitionId`. The only approval is the actual successful existing Definition publish command `POST /internal/v1/domains/{domainId}/definitions/{definitionId}/publish`, using its closed `{versionId,expectedRevision?}` body and authenticated current Domain Owner actor after transactionally validating the enabled Domain Owner; there is no separate activation/revocation endpoint or approval Event. The actual completed `DEFINITION_PUBLISH` receipt, published actor/Version, and policy digest bind one immutable approval relation in the same transaction as opted-in Version publication and receipt completion; success creates zero runtime Events. The approval snapshots `configuredPolicyActorPrincipalId`; a changed loaded actor is a durable `POLICY_ACTOR_MISMATCH` stop with zero business writes. Existing publish authorization and opaque not-found/error mappings remain unchanged; direct non-owner denial remains the current 403, malformed structural policy uses the named 422 graph-validation rules. The request-time policy digest and original request lineage bind the selected intake/review Version and fixed `ownerIntakeContext` / `ownerReviewContext`. Its request intent precedes new `AUTO_CREATE_AND_BIND_OWNER_INTAKE` with exactly the existing GCR two-Event pair; child terminal intent precedes new `AUTO_CREATE_OWNER_REVIEW` with exactly one `INSTANCE_CREATED` Event and no GCR binding. These are the only new business command types; effect/create/resolve/escalate reuse their existing receipt and Event, with no wrapper receipt/Event. Completed deterministic non-2xx receipts remain valid and contain zero business facts. The design adds durable responsibilities/effects for reconciliation and receipt truth, but does not persist prerequisite WAITING as a workflow state or use historical observation for scheduling. Current WAITING remains recomputed from live source facts; no wait writer, timer, generic scheduler, or automatic policy retarget is created.
 
@@ -28,7 +30,7 @@ Add a closed `x-workflow-owner-obligation-role-v1` annotation (`INTAKE|REVIEW`) 
 For the opted-in review, only the trusted managed REVIEW branch may use the closed service-owned review admission projection; the legacy delivery gate remains in force for non-opted-in review. Ordinary-create source CAS comes from one existing same-caller Assistance detail read, then Svc rechecks source and managed versions in the effect transaction. A gated TASK's effective Context must carry its real producer binding atomically with the transition that enters it; a real WAITING supplier may be bound at entry but is not dispatched until READY. Owner replacement stops the original INTAKE responsibility even if its managed instance has not yet been born. These are narrow workflow execution safeguards and do not create a persisted prerequisite wait state or alter Product V11's accepted `admissionObservation` decision.
 
 Paired authority reference: `SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 §§1–13; preserves Product V11 admissionObservation semantics`.
-The complete predecessor body is carried forward unchanged below. Its previously accepted clauses remain in force until an exact complete successor is independently reviewed, accepted by the authorized Owner, and merged with reciprocal lifecycle links. The exact contract delta and acceptance evidence are specified by the paired Spec; no tests are claimed here.
+The predecessor contracts are carried forward below with only the bounded successor changes stated above; the predecessor source remains unchanged. This successor is accepted in the same paired lifecycle transaction that records the reciprocal predecessor backlink. Acceptance is not implementation or conformance evidence.
 
 Predecessor source: `docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V11.md` at `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; original file SHA-256 `14d6977a342ee3348472bf3c9a193ca715cf1f7dad419ee6a6c7508d04fddeda`.
 

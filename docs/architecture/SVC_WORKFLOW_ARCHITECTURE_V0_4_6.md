@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_ARCHITECTURE_V0_4_6
-status: proposed
+status: accepted
 authority_kind: architecture
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -15,13 +15,15 @@ owners:
 date: 2026-10-29
 revision: draft-2
 candidate_base: f5e7f328ccba5f6e0d752abf74e68558ef38ca0f
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# SVC_WORKFLOW_ARCHITECTURE_V0_4_6 — proposed whole-authority successor
+# SVC_WORKFLOW_ARCHITECTURE_V0_4_6 — accepted whole-authority successor
 
-This proposal preserves the complete `SVC_WORKFLOW_ARCHITECTURE_V0_4_5` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. It carries forward the predecessor contracts with the explicitly stated bounded additions below; the predecessor source remains unchanged.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 Retain CTR-ARCH-041's no wait writer/ledger/timer/outbox/work identity, CTR-ARCH-042's existing authorized current-read visibility, and CTR-ARCH-043's live readiness recomputation. The five proposed Owner-obligation relations record immutable approval, responsibility, effect, and causal lineage facts; they are not prerequisite WAIT state or Scheduler projection. The narrow managed relation/effect GET is limited to the existing authorized current Owner/assignee read audience. It does not expand timeline/history, generic instance detail, or global Scheduler visibility.
 

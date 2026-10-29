@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2
-title: Proposed whole-authority successor to SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
-status: proposed
+title: Accepted whole-authority successor to SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -21,18 +21,20 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2 — proposed whole-authority successor
+# SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2 — accepted whole-authority successor
 
-This proposal preserves the complete `SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. It carries forward the predecessor contracts with the explicitly stated bounded additions below; the predecessor source remains unchanged.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 Amend the V1 manual bind/no-bootstrap route only for a source Version with the exact Owner-published closed policy: its request transaction records one durable INTAKE responsibility; a separate `AUTO_CREATE_AND_BIND_OWNER_INTAKE` command creates exactly one GCR child with exactly two Events under the same command receipt, using the narrowly approved internal policy actor. Preserve manual bind for non-opted-in sources. At the exact child terminal transaction, record one REVIEW responsibility; a separate `AUTO_CREATE_OWNER_REVIEW` command creates its real, non-GCR review Workflow with exactly one Event. These commands reuse existing transaction machinery and guards without reusing the old command identity. The review activation suppresses naked-chat dual execution only for opted-in policy cases. Existing explicit current Owner resolve/escalate and exact accepted-submission proof remain. The review's own successful resolve receipt/Event can finish its own Review node; unrelated resolution cannot. Stable service effect results survive RETURN and Owner change. Owner replacement is a durable unsupported stop; no visit handoff/second child. Managed target roles are pinned and cannot recursively opt in; effect-created dependencies are finite leaves and nested Assistance produces a durable stop. Exact durable identities and APIs in paired Spec §§2–9.
 
 Paired authority reference: `SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 §§2–5,7–9,13–15; carries GCR V1 all clauses`.
-The complete predecessor body is carried forward unchanged below. Its previously accepted clauses remain in force until an exact complete successor is independently reviewed, accepted by the authorized Owner, and merged with reciprocal lifecycle links. The exact contract delta and acceptance evidence are specified by the paired Spec; no tests are claimed here.
+The predecessor contracts are carried forward below with only the bounded successor changes stated above; the predecessor source remains unchanged. This successor is accepted in the same paired lifecycle transaction that records the reciprocal predecessor backlink. Acceptance is not implementation or conformance evidence.
 
 Predecessor source: `docs/specs/SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1.md` at `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; original file SHA-256 `a460cf5a34b2226c3b8bba9319bcfbe3905cd2b29e8c4b17836c0467cfdf6a7f`.
 
@@ -56,8 +58,8 @@ remains separately authorized; production apply authority is none.
 accepted `SVC_WORKFLOW_EXECUTION_CONTROL_V1` provides the initial durable
 Owner Assistance wake and exact explicit-resolve evidence for same-visit
 resume. No governance-child relation, second review phase, or linked-resolve
-proof is authorized at this cited base; this accepted candidate is not active
-until merge. No implementation or runtime acceptance is claimed.
+proof is authorized at this cited base; this accepted candidate is not active until
+the paired lifecycle commit pair is merged. No implementation or runtime acceptance is claimed.
 
 `OBS-GCRS-001` — Read accepted `CTR-SWEC-009/010`, current task input, and
 the Svc assistance transaction, Owner-resume evidence query, and outbox
