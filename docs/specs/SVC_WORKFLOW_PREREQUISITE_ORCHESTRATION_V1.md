@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
 title: Atomic governance-child creation and typed workflow prerequisite readiness
-status: accepted
+status: superseded
 accepted_date: 2026-10-29
 accepted_by: Codex root (explicitly delegated by mayf3)
 accepted_reviewed_head: 19593b4dc4d48b8341c8a759d07b9e575afeb08e
@@ -42,7 +42,7 @@ governed_by:
   - SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V1
   - SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 owners:
   - mayf3
 external_authorities: []

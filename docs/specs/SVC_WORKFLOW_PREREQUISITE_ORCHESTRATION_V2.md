@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 title: Atomic GCR create-bind event pair and complete typed readiness projection
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -29,6 +29,20 @@ governed_by:
 supersedes:
   - SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
 superseded_by: null
+accepted_date: 2026-10-29
+accepted_by: Codex root (explicitly delegated by mayf3)
+accepted_reviewed_head: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
+acceptance_review_verdict: PASS
+independent_semantic_reviewer: /root/structure_v2_semantic_review
+acceptance_record: docs/reports/WORKFLOW_PREREQUISITE_COMPOSITE_ACCEPTANCE_20261029.md
+acceptance_authority_basis: >-
+  Root accepted the exact independently reviewed semantic head under mayf3's
+  explicit delegated authority recorded in the paired acceptance record. The
+  repair review SHA-256 is
+  6b987dce26ba823bf91953e4c9db669dec4a9e60c344022a04b9c656d49b37ce. This is
+  lifecycle acceptance only; source implementation and isolated validation
+  require the accepted authorities in their target bases and a separate
+  implementation mandate. Production apply authority is none.
 owners:
   - mayf3
 external_authorities: []
@@ -36,7 +50,7 @@ external_authorities: []
 
 # SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 
-This proposed whole-Spec successor preserves the complete accepted V1
+This accepted whole-Spec successor preserves the complete accepted V1
 prerequisite and READY-only scheduler Contract below. It makes only two bounded
 corrections required by the measured feasibility gap: (1) the exact
 `CREATE_AND_BIND_GOVERNANCE_CHILD` operation's one-receipt/two-Event cross-
@@ -44,8 +58,8 @@ Instance atomic commit, including its required forward integrity migration;
 and (2) one closed `UNKNOWN / LINEAGE_INCONSISTENT` variant that omits the
 entire source coordinate triple only when the complete real triple cannot be
 recovered. All wait, GCR selection, idempotency, permission, time eligibility,
-pagination and READY-row semantics remain unchanged. V1 remains active until
-this V2 is accepted with its reciprocal successor backlink.
+pagination and READY-row semantics remain unchanged. V1 remained active until
+this V2 was accepted with its reciprocal successor backlink, recorded below.
 
 ## V2 selected closure — two Contracts
 
@@ -119,12 +133,12 @@ coordinates.
 | CTR-SWPO-007 | Isolated PostgreSQL, migration upgrade/rollback, HTTP transaction/replay and concurrency tests | Completed successful 2xx with exact pair; completed deterministic non-2xx zero facts/events plus replay; zero/one/three/wrong pair negatives; receipt-completion and Event-mutation checks; command-row lock under races; concurrent ordinary commands; `ONE_TIME_MIGRATE`; pre/post migration rows; direct command-event reader results; rollback and unknown-readback receipts | Successful 2xx has exactly two same-command Events on distinct same-Domain Instances; deterministic non-2xx has zero business facts/events and replays unchanged; ordinary commands remain globally at-most-one Event under concurrency; `ONE_TIME_MIGRATE` remains exact; immutable history survives upgrade and rollback | Completed success with zero/one/three/wrong Events; non-2xx with any fact/Event; deferred COUNT-only write skew; concurrent ordinary duplicate Events; blind index drop/composite-only index; second/null/fabricated receipt ID; orphan child; reader ambiguity; history delete/rewrite; rollback appears successful while old index cannot be restored |
 | CTR-SWPO-008 | Readiness DTO/read-model tests and authorization matrix | Missing Context; missing, invalid, partially recoverable and complete UUID triples; identified lineage mismatch/not-visible; READY positive/negative; exact wire fields | Missing/unparseable triple emits only closed `UNKNOWN / LINEAGE_INCONSISTENT` with all 3 coordinates omitted; every identified variant has all 3 actual UUIDs; READY proof and Scheduler READY-only row are unchanged | Partial/null/invented IDs; omission despite full triple; storage outage fabricated as UNKNOWN success; Scheduler receives extra coordinates; non-READY row admitted |
 
-This proposal grants no code, migration execution, database write, service
-operation, merge or production apply. Implementation requires acceptance of
-Product V10, Architecture V0_4_5, Storage Contract V0.2, this V2 and the paired
-Core WPO V2 in the relevant implementation bases, followed by a separate
-exact-scope mandate. Existing V1 remains the only accepted authority until the
-later paired acceptance transaction.
+This accepted Contract authorizes only the bounded source implementation
+defined above after Product V10, Architecture V0_4_5, Storage Contract V0.2,
+this V2 and paired Core WPO V2 are present in the relevant implementation
+bases and a separate exact-scope mandate is issued. It authorizes no database
+or service operation, migration execution, merge, or production apply. V1 is
+retained only as the historical predecessor.
 
 ---
 

@@ -1,18 +1,22 @@
-# PostgreSQL Storage Contract v0.2 — proposed exact GCR command/Event pair
+# PostgreSQL Storage Contract v0.2 — accepted exact GCR command/Event pair
 
 ```text
-Status: PROPOSED_STORAGE_CONTRACT_SUCCESSOR
+Status: ACCEPTED_STORAGE_CONTRACT_SUCCESSOR
 Version: v0.2
 Predecessor: POSTGRES_STORAGE_CONTRACT_V0_1.md
-Supersedes: complete V0.1 storage authority on acceptance only
+Supersedes: complete V0.1 storage authority
 Candidate base: afb73d83c4804c894582a81af6907f48c13fa0bb
+Accepted by: Codex root (explicitly delegated by mayf3)
+Accepted date: 2026-10-29
+Accepted reviewed head: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
+Acceptance review verdict: PASS
+Acceptance record: docs/reports/WORKFLOW_PREREQUISITE_COMPOSITE_ACCEPTANCE_20261029.md
 ```
 
-This is a proposed whole successor. The complete V0.1 storage contract is
+This is the accepted whole successor. The complete V0.1 storage contract is
 preserved below as the historical baseline. The V0.1 Event uniqueness row and
 its Section 8 DDL guarantee are superseded only by the bounded current rules
-below after acceptance; the still-accepted V0.1 contract remains controlling
-until the later atomic lifecycle transaction.
+below. V0.1 is retained intact as historical contract text.
 
 ## V0.2 current rules — exact CREATE_AND_BIND_GOVERNANCE_CHILD pair
 
