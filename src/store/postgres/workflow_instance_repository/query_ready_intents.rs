@@ -24,7 +24,8 @@ pub async fn list(
     cursor: Option<(chrono::DateTime<chrono::Utc>, Uuid)>,
 ) -> Result<Vec<ReadyDispatchIntent>, WorkflowQueryError> {
     parse_due_limit(Some(limit))?;
-    let mut tx = query_visibility::begin_snapshot(pool).await?;
+    let mut tx =
+        query_visibility::actor_snapshot(pool, actor, None, "ReadyDispatchIntents").await?;
     if !query_visibility::check_global_scheduler_read(&mut tx, actor).await? {
         return Err(WorkflowQueryError::SchedulerReadRoleRequired);
     }
