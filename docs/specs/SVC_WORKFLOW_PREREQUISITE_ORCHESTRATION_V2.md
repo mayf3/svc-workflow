@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V2
 title: Atomic GCR create-bind event pair and complete typed readiness projection
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -28,7 +28,7 @@ governed_by:
   - SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V2
 supersedes:
   - SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V1
-superseded_by: null
+superseded_by: SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V3
 accepted_date: 2026-10-29
 accepted_by: Codex root (explicitly delegated by mayf3)
 accepted_reviewed_head: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
