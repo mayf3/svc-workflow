@@ -145,7 +145,7 @@ async fn complete_receipt(
     Ok(())
 }
 
-fn error_body(error: &AssistanceError) -> serde_json::Value {
+pub(crate) fn error_body(error: &AssistanceError) -> serde_json::Value {
     match error {
         AssistanceError::WorkflowStateVersionConflict { expected, actual } => serde_json::json!({
             "error": error.code(), "expected": expected, "actual": actual
@@ -190,6 +190,7 @@ fn replay_error(status: i32, body: &serde_json::Value) -> AssistanceError {
             AssistanceError::AssistanceCaseNotFoundOrNotVisible
         }
         "assistance_status_conflict" => AssistanceError::AssistanceStatusConflict,
+        "governed_operation_required" => AssistanceError::GovernedOperationRequired,
         "invalid_assistance_payload" => AssistanceError::InvalidPayload(
             body.get("detail")
                 .and_then(|v| v.as_str())
@@ -434,6 +435,7 @@ pub(crate) async fn void_open_cases(
     command_id: Uuid,
     reason: &str,
 ) -> Result<u64, AssistanceError> {
+    super::owner_obligation::intents::retire(tx, instance_id, command_id, reason).await?;
     sqlx::query(
         "UPDATE workflow_assistance_cases
          SET status='VOIDED', voided_by_principal_id=$2, void_reason_code=$4,
@@ -463,3 +465,5 @@ pub use query::{
     AssistancePage, HumanRequiredAssistanceCaseView, HumanRequiredAssistancePage,
 };
 pub(crate) use write::{escalate_assistance, request_assistance, resolve_assistance};
+
+pub(crate) use write::{owner_action_on_tx, OwnerAction};

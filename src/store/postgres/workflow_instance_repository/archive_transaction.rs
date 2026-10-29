@@ -211,6 +211,9 @@ pub(crate) async fn archive_workflow_instance_atomically(
     // Step 2: Validate reason
     validate_reason(&cmd.reason)?;
 
+    super::owner_obligation::intents::fence(&mut tx, instance_uuid)
+        .await
+        .map_err(storage)?;
     // Step 3: Load and lock instance FOR UPDATE
     let instance_row: Option<(
         Uuid,

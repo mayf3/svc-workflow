@@ -103,6 +103,7 @@ pub(crate) async fn record_terminal(
     child: Uuid,
     event: Uuid,
 ) -> Result<(), AssistanceError> {
+    super::super::super::owner_obligation::intents::completed(tx, child, event).await?;
     let Some(b) = lock_child_binding(tx, child).await? else {
         return Ok(());
     };

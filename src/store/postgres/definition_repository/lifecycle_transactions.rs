@@ -160,11 +160,51 @@ impl PgDefinitionRepository {
         admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
     ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
         let mut tx = self.pool.begin().await.map_err(map_db_error)?;
-
+        let result = self
+            .publish_on_tx(
+                &mut tx,
+                version_id,
+                actor_principal_id,
+                precomputed_digest,
+                expected_revision,
+                admission,
+                None,
+                None,
+            )
+            .await?;
+        admission
+            .check_commit_budget()
+            .map_err(DefinitionError::AdmissionFailed)?;
+        tx.commit().await.map_err(map_db_error)?;
+        Ok(result)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn publish_on_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        version_id: uuid::Uuid,
+        actor_principal_id: uuid::Uuid,
+        precomputed_digest: &str,
+        expected_revision: Option<&str>,
+        admission: crate::store::postgres::admission_gate::AdmissionGate<'_>,
+        policy_command: Option<uuid::Uuid>,
+        policy_actor: Option<uuid::Uuid>,
+    ) -> Result<WorkflowDefinitionVersion, DefinitionError> {
+        sqlx::query("SELECT d.domain_id FROM workflow_definitions f JOIN workflow_definition_versions v USING(workflow_definition_id) JOIN domains d USING(domain_id) WHERE v.definition_version_id=$1 FOR UPDATE OF d").bind(version_id).fetch_optional(&mut **tx).await.map_err(map_db_error)?;
+        let actor_enabled: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM principals WHERE principal_id=$1 AND enabled)",
+        )
+        .bind(actor_principal_id)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(map_db_error)?;
+        if !actor_enabled {
+            return Err(DefinitionError::PrincipalDisabled);
+        }
         // CTR-CIR-003: the database statement deadline must be no later than
         // the 5-second admission-through-commit bound. No-op in dormant mode.
         admission
-            .bind_statement_deadline(&mut tx)
+            .bind_statement_deadline(tx)
             .await
             .map_err(map_db_error)?;
 
@@ -174,7 +214,7 @@ impl PgDefinitionRepository {
                 "SELECT definition_version_id, workflow_definition_id, version_number, version_status::TEXT AS version_status, semantic_model_version, definition_digest, json_schema_dialect, validator_version, context_schema, submission_schema, metadata, created_at, updated_at, published_at, deprecated_at, revoked_at, published_by_principal_id, deprecated_by_principal_id, revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
             )
             .bind(version_id)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut **tx)
             .await
             .map_err(map_db_error)?
             .map(|r| r.into_domain());
@@ -192,7 +232,7 @@ impl PgDefinitionRepository {
             "SELECT * FROM workflow_definitions WHERE workflow_definition_id = $1",
         )
         .bind(version.workflow_definition_id.into_uuid())
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(map_db_error)?
         .map(|r| r.into_domain());
@@ -204,7 +244,7 @@ impl PgDefinitionRepository {
         let domain: Option<(bool,)> =
             sqlx::query_as("SELECT enabled FROM domains WHERE domain_id = $1")
                 .bind(domain_id)
-                .fetch_optional(&mut *tx)
+                .fetch_optional(&mut **tx)
                 .await
                 .map_err(map_db_error)?;
 
@@ -220,7 +260,7 @@ impl PgDefinitionRepository {
         )
         .bind(domain_id)
         .bind(actor_principal_id)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(map_db_error)?;
 
@@ -235,7 +275,7 @@ impl PgDefinitionRepository {
             "SELECT node_id, definition_version_id, node_key, display_name, order_index, node_type::TEXT AS node_type, assignee_ref_type::TEXT AS assignee_ref_type, fixed_principal_id, assignee_input_key, instructions, primary_advance_transition_id, metadata, created_at FROM workflow_node_definitions WHERE definition_version_id = $1 ORDER BY order_index",
         )
         .bind(version_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut **tx)
         .await
         .map_err(map_db_error)?
         .into_iter()
@@ -246,7 +286,7 @@ impl PgDefinitionRepository {
             "SELECT transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect::TEXT AS transition_effect, submission_schema, metadata, created_at FROM workflow_transition_definitions WHERE definition_version_id = $1 ORDER BY transition_key",
         )
         .bind(version_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut **tx)
         .await
         .map_err(map_db_error)?
         .into_iter()
@@ -291,6 +331,19 @@ impl PgDefinitionRepository {
             }
         }
 
+        super::super::workflow_instance_repository::owner_obligation::policy::validate_and_approve(
+            tx,
+            version_id,
+            domain_id,
+            actor_principal_id,
+            &actual_digest,
+            version.context_schema.as_ref(),
+            &nodes,
+            &transitions,
+            policy_command,
+            policy_actor,
+        )
+        .await?;
         // 7. Write publish status inside tx
         sqlx::query(
             r#"
@@ -303,20 +356,12 @@ impl PgDefinitionRepository {
         .bind(precomputed_digest)
         .bind(actor_principal_id)
         .bind(version_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(map_db_error)?;
 
-        // 8. Commit
-        // CTR-CIR-003: total admission-through-commit is bounded to 5 seconds
-        // — an exhausted budget must not commit (fail closed, zero writes).
-        admission
-            .check_commit_budget()
-            .map_err(DefinitionError::AdmissionFailed)?;
-        tx.commit().await.map_err(map_db_error)?;
-
-        // Re-read and return
-        self.get_version_inner(version_id).await
+        let row=sqlx::query_as::<_,WorkflowDefinitionVersionRow>("SELECT definition_version_id,workflow_definition_id,version_number,version_status::text AS version_status,semantic_model_version,definition_digest,json_schema_dialect,validator_version,context_schema,submission_schema,metadata,created_at,updated_at,published_at,deprecated_at,revoked_at,published_by_principal_id,deprecated_by_principal_id,revoked_by_principal_id FROM workflow_definition_versions WHERE definition_version_id=$1").bind(version_id).fetch_one(&mut **tx).await.map_err(map_db_error)?;
+        Ok(row.into_domain())
     }
 
     /// Execute a complete deprecation inside a single transaction.

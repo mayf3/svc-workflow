@@ -104,6 +104,7 @@ where
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) pool: PgPool,
+    pub workflow_policy_actor_principal_id: Option<uuid::Uuid>,
     pub(crate) query_service: WorkflowQueryService,
     pub auth_verifier: JwksVerifier,
     pub provisioning_config: ProvisioningConfig,
@@ -131,6 +132,12 @@ impl AppState {
         };
 
         Self {
+            workflow_policy_actor_principal_id: std::env::var("WORKFLOW_POLICY_ACTOR_PRINCIPAL_ID")
+                .ok()
+                .map(|s| {
+                    s.parse()
+                        .expect("WORKFLOW_POLICY_ACTOR_PRINCIPAL_ID must be UUID")
+                }),
             query_service: WorkflowQueryService::new(pool.clone()),
             auth_verifier,
             provisioning_config: config.provisioning_config.clone(),

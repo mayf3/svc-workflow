@@ -223,6 +223,9 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     // Step 2: Validate reason
     validate_reason(&cmd.reason)?;
 
+    super::owner_obligation::intents::fence(&mut tx, instance_uuid)
+        .await
+        .map_err(storage)?;
     // Step 3: Load and lock instance FOR UPDATE
     let instance_row: Option<(
         Uuid,
@@ -300,7 +303,15 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     .await
     .map_err(storage)?;
 
-    if !is_owner {
+    if !is_owner
+        && !super::owner_obligation::intents::cleanup_authorized(
+            &mut tx,
+            instance_uuid,
+            principal_uuid,
+        )
+        .await
+        .map_err(storage)?
+    {
         return Err(CancelWorkflowInstanceError::NotDomainOwner);
     }
 

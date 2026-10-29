@@ -37,3 +37,5 @@ pub mod wake_transaction;
 
 pub mod prerequisite;
 pub mod query_ready_intents;
+
+pub mod owner_obligation;

@@ -29,6 +29,9 @@ pub(super) async fn queue_current(
     let Some(event) = b.terminal_event_id else {
         return Ok(());
     };
+    if super::super::super::owner_obligation::intents::terminal(tx, b.binding_id, event).await? {
+        return Ok(());
+    }
     let (domain,class):(Uuid,String)=sqlx::query_as("SELECT domain_id,execution_class::text FROM workflow_instances WHERE workflow_instance_id=$1").bind(b.source_instance_id).fetch_one(&mut **tx).await.map_err(storage)?;
     if class != "BUSINESS" || !source_valid(tx, b).await? {
         return Ok(());
@@ -60,6 +63,7 @@ pub(crate) async fn queue_owner_replacement(
     domain: Uuid,
     command: Uuid,
 ) -> Result<(), AssistanceError> {
+    super::super::super::owner_obligation::intents::owner_changed(tx, domain, command).await?;
     let bindings:Vec<Binding>=sqlx::query_as("SELECT b.* FROM workflow_governance_child_bindings b JOIN workflow_instances wi ON wi.workflow_instance_id=b.source_instance_id JOIN workflow_assistance_cases c ON c.assistance_case_id=b.assistance_case_id WHERE wi.domain_id=$1 AND b.terminal_event_id IS NOT NULL AND c.status IN ('OWNER_PENDING','HUMAN_REQUIRED') ORDER BY b.binding_id FOR UPDATE OF b").bind(domain).fetch_all(&mut **tx).await.map_err(storage)?;
     for b in bindings {
         queue_current(tx, &b, Some(command)).await?;

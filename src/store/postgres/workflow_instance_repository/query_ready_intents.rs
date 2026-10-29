@@ -35,6 +35,12 @@ pub async fn list(
     let candidates:Vec<(Uuid,Uuid)>=sqlx::query_as("SELECT a.activation_id,a.workflow_instance_id FROM workflow_activations a JOIN workflow_instances wi USING(workflow_instance_id) JOIN domains d USING(domain_id) WHERE a.activation_kind='DISPATCH_INTENT' AND wi.execution_class='BUSINESS' AND NOT wi.cancelled AND wi.archived_at IS NULL AND d.enabled AND NOT EXISTS(SELECT 1 FROM workflow_activation_closures c WHERE c.activation_id=a.activation_id)").fetch_all(&mut *tx).await.map_err(storage)?;
     let mut eligible = Vec::new();
     for (id, instance) in candidates {
+        let node_ready = super::owner_obligation::guards::readiness(&mut tx, instance)
+            .await
+            .map_err(|e| WorkflowQueryError::StorageError(e.code))?;
+        if node_ready.is_some_and(|v| v["status"] != "READY") {
+            continue;
+        }
         if prerequisite::project(&mut tx, instance)
             .await?
             .is_none_or(|v| v["status"] == "READY")

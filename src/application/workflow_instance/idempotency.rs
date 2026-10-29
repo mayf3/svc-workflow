@@ -328,7 +328,6 @@ pub fn compute_archive_request_hash(
     })
 }
 
-
 /// The canonical request envelope for WakeDispatchIntent.
 #[derive(Debug, Clone, Serialize)]
 struct WakeRequestEnvelope {
@@ -374,4 +373,28 @@ pub fn compute_wake_request_hash(
 
     jcs_canonicalize::sha256_jcs_hex(&envelope)
         .map_err(|e| format!("request hash computation failed: {}", e))
+}
+
+/// Add only a present Context field to the exact original transition envelope.
+pub fn compute_transition_context_request_hash(
+    command: &crate::domain::workflow_instance::commands::ExecuteWorkflowTransitionCommand,
+    context: &serde_json::Value,
+) -> Result<String, ExecuteWorkflowTransitionError> {
+    let envelope = TransitionRequestEnvelope {
+        command_schema_version: command.command_schema_version.clone(),
+        command_type: COMMAND_TYPE_EXECUTE_TRANSITION.into(),
+        route_parameters: serde_json::json!({}),
+        request_body: TransitionRequestBody {
+            principal_id: command.principal_id.to_string(),
+            workflow_instance_id: command.workflow_instance_id.to_string(),
+            expected_workflow_state_version: command.expected_workflow_state_version,
+            transition_definition_id: command.transition_definition_id.to_string(),
+            submission_payload: command.submission_payload.clone(),
+        },
+    };
+    let mut value = serde_json::to_value(envelope)
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    value["request_body"]["context_payload"] = context.clone();
+    jcs_canonicalize::sha256_jcs_hex(&value)
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))
 }

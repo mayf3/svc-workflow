@@ -81,8 +81,21 @@ pub async fn execute_workflow_transition_with_policy(
     command: ExecuteWorkflowTransitionCommand,
     max_returns_per_edge: u32,
 ) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
+    execute_workflow_transition_with_context(pool, admission, command, max_returns_per_edge, None)
+        .await
+}
+
+/// Existing transition command with the bounded managed gated-entry Context field.
+/// None retains the original request hash and transaction path exactly.
+pub async fn execute_workflow_transition_with_context(
+    pool: &PgPool,
+    admission: AdmissionGate<'_>,
+    command: ExecuteWorkflowTransitionCommand,
+    max_returns_per_edge: u32,
+    context_payload: Option<serde_json::Value>,
+) -> Result<ExecuteWorkflowTransitionResult, ExecuteWorkflowTransitionError> {
     // 1. Compute the identity-independent request hash before business validation.
-    let request_hash = compute_transition_request_hash(
+    let mut request_hash = compute_transition_request_hash(
         &command.command_schema_version,
         &command.idempotency_key,
         &command.principal_id,
@@ -91,6 +104,11 @@ pub async fn execute_workflow_transition_with_policy(
         &command.transition_definition_id,
         &command.submission_payload,
     )?;
+
+    if let Some(context) = context_payload.as_ref() {
+        request_hash =
+            super::idempotency::compute_transition_context_request_hash(&command, context)?;
+    }
 
     // 2. A missing principal cannot own a receipt because receipts have a principal FK.
     // Disabled principals are checked after receipt ownership for stable replay.
@@ -106,6 +124,7 @@ pub async fn execute_workflow_transition_with_policy(
         command,
         &request_hash,
         max_returns_per_edge,
+        context_payload.as_ref(),
     )
     .await?;
 
@@ -125,6 +144,20 @@ pub(crate) fn replayed_failure_error(
 ) -> ExecuteWorkflowTransitionError {
     let error_code = body["error"].as_str().unwrap_or("unknown");
     match (status, error_code) {
+        (422, "invalid_input") => ExecuteWorkflowTransitionError::InvalidInput(
+            body["detail"]
+                .as_str()
+                .unwrap_or("invalid context input")
+                .into(),
+        ),
+        (422, "context_validation_failed") => {
+            ExecuteWorkflowTransitionError::ContextValidationFailed(
+                body["detail"]
+                    .as_str()
+                    .unwrap_or("invalid Context binding")
+                    .into(),
+            )
+        }
         (409, "return_policy_exhausted") => ExecuteWorkflowTransitionError::ReturnPolicyExhausted {
             limit: body["limit"].as_i64().unwrap_or(0) as i32,
         },

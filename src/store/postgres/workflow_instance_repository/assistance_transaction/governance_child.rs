@@ -11,6 +11,7 @@ mod create_bind;
 pub(crate) use create_bind::create_and_bind;
 mod review;
 mod terminal;
+pub(crate) use binding::admit as bind_on_tx;
 pub(crate) use binding::bind;
 pub(crate) use review::{prepare_delivery, queue_owner_replacement};
 pub(crate) use terminal::{record_terminal, validate_resolve, validate_selected_submission};
@@ -75,8 +76,8 @@ async fn source_valid(
     Ok(valid)
 }
 /// Project the immutable receipt plus the current recipient's delivery state.
-pub(crate) async fn detail(
-    pool: &PgPool,
+pub(crate) async fn detail<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     case: Uuid,
 ) -> Result<Option<(Value, Option<Value>)>, AssistanceError> {
     let row:Option<(Value,Option<Value>,Option<Value>)>=sqlx::query_as("SELECT b.receipt,b.terminal_proof,
@@ -86,11 +87,40 @@ pub(crate) async fn detail(
  FROM workflow_governance_child_reviews r JOIN workflow_outbox o USING(outbox_id)
  JOIN workflow_assistance_cases c ON c.assistance_case_id=b.assistance_case_id
  WHERE r.binding_id=b.binding_id ORDER BY (r.retired_reason IS NULL) DESC,r.created_at DESC,r.review_wake_id DESC LIMIT 1)
- FROM workflow_governance_child_bindings b WHERE b.assistance_case_id=$1").bind(case).fetch_optional(pool).await.map_err(storage)?;
+ FROM workflow_governance_child_bindings b WHERE b.assistance_case_id=$1").bind(case).fetch_optional(executor).await.map_err(storage)?;
     Ok(row.map(|(mut receipt, proof, review)| {
         if let Some(r) = review {
             receipt["currentReview"] = r;
         }
         (receipt, proof)
     }))
+}
+/// Read-only managed REVIEW proof producer; no invented wake/delivery fact.
+pub(crate) async fn managed_review_proof(
+    tx: &mut Transaction<'_, Postgres>,
+    case: Uuid,
+    binding: Uuid,
+    terminal: Option<Uuid>,
+) -> Result<Option<Value>, AssistanceError> {
+    let b:Binding=sqlx::query_as("SELECT * FROM workflow_governance_child_bindings WHERE binding_id=$1 AND assistance_case_id=$2").bind(binding).bind(case).fetch_optional(&mut **tx).await.map_err(storage)?.ok_or_else(conflict)?;
+    if b.terminal_event_id != terminal || !source_valid(tx, &b).await? {
+        return Err(conflict());
+    }
+    let p = terminal::verified_proof(tx, &b).await?;
+    if b.terminal_proof.as_ref() != Some(&p) {
+        return Err(conflict());
+    }
+    let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_instances WHERE workflow_instance_id=$1 AND current_node_visit_id=$2 AND NOT cancelled AND archived_at IS NULL)").bind(b.governance_child_instance_id).bind(p["terminalNodeVisitId"].as_str().and_then(|s|s.parse::<Uuid>().ok())).fetch_one(&mut **tx).await.map_err(storage)?;
+    if !current {
+        return Err(conflict());
+    }
+    if p["verdict"] == "NOT_ACCEPTED" {
+        return Ok(None);
+    }
+    if p["verdict"] != "ACCEPTED" {
+        return Err(conflict());
+    }
+    Ok(Some(
+        json!({"bindingId":b.binding_id,"terminalEventId":p["terminalEventId"],"submissionId":p["submissionId"],"submissionDigest":p["submissionDigest"],"acceptanceContractDigest":b.acceptance_contract_digest}),
+    ))
 }

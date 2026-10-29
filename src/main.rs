@@ -47,6 +47,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = config.expect("server configuration loaded above");
     let state = AppState::new(pool.clone(), &config);
+    {
+        let actor = state.workflow_policy_actor_principal_id;
+        let producer_pool = pool.clone();
+        let admission_client = state.admission_client.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tick.tick().await;
+                let gate =
+                    AdmissionGate::new(admission_client.as_ref()).with_pool(Some(&producer_pool));
+                if let Err(error)=svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_configured(&producer_pool,actor,gate).await {
+                    tracing::warn!(code=%error.code,"owner obligation producer deferred");
+                }
+            }
+        });
+    }
     let app = http::router(state, &config);
 
     // WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-002): the outbox reconciler
