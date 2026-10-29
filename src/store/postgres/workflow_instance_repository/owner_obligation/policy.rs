@@ -45,6 +45,7 @@ pub(crate) async fn validate_and_approve(
     let Some(p) = contract::policy(schema).map_err(|e| invalid(&e))? else {
         return Ok(());
     };
+    let actor = actor.ok_or(DefinitionError::PermissionDenied)?;
     let mut target_digests = Vec::new();
     for (target, transition, role) in [
         (
@@ -95,7 +96,34 @@ pub(crate) async fn validate_and_approve(
         {
             return Err(invalid("owner_policy_target_role_mismatch"));
         }
-        let qa:bool=sqlx::query_scalar("SELECT count(*)>=2 AND count(DISTINCT (coalesce(fixed_principal_id::text,assignee_ref_type::text)))>=2 FROM workflow_node_definitions WHERE definition_version_id=$1 AND node_type='TASK'").bind(target).fetch_one(&mut **tx).await.map_err(map)?;
+        // Resolve references exactly as the internal AUTO birth will: its
+        // creator is the approved policy actor, not the approving Owner.
+        // Independence belongs to the selected terminal QA versus its actual
+        // ADVANCE ancestors, never to an unrelated third TASK/ref spelling.
+        let qa:bool=sqlx::query_scalar(r#"
+          WITH RECURSIVE ancestors(node_id) AS (
+            SELECT t.source_node_id FROM workflow_transition_definitions t
+            WHERE t.definition_version_id=$1 AND t.transition_effect='ADVANCE'
+              AND t.target_node_id=(SELECT source_node_id FROM workflow_transition_definitions WHERE transition_id=$4 AND definition_version_id=$1)
+            UNION
+            SELECT t.source_node_id FROM workflow_transition_definitions t
+            JOIN ancestors a ON a.node_id=t.target_node_id
+            WHERE t.definition_version_id=$1 AND t.transition_effect='ADVANCE'
+          ), resolved AS (
+            SELECT node_id,CASE assignee_ref_type::text
+              WHEN 'FIXED_PRINCIPAL' THEN fixed_principal_id
+              WHEN 'DOMAIN_OWNER' THEN $2::uuid
+              WHEN 'WORKFLOW_CREATOR' THEN $3::uuid END AS actor
+            FROM workflow_node_definitions WHERE definition_version_id=$1 AND node_type='TASK'
+          ), qa AS (
+            SELECT r.actor FROM resolved r JOIN workflow_transition_definitions t
+              ON t.source_node_id=r.node_id AND t.transition_id=$4 AND t.definition_version_id=$1
+          )
+          SELECT EXISTS(SELECT 1 FROM qa WHERE actor IS NOT NULL)
+            AND EXISTS(SELECT 1 FROM ancestors a JOIN resolved r USING(node_id))
+            AND NOT EXISTS(SELECT 1 FROM ancestors a JOIN resolved r USING(node_id)
+              CROSS JOIN qa WHERE r.actor IS NULL OR r.actor=qa.actor)
+        "#).bind(target).bind(owner).bind(actor).bind(transition).fetch_one(&mut **tx).await.map_err(map)?;
         if !qa {
             return Err(invalid("owner_policy_target_role_mismatch"));
         }
@@ -109,7 +137,6 @@ pub(crate) async fn validate_and_approve(
         ));
     }
     let command = command.ok_or(DefinitionError::PermissionDenied)?;
-    let actor = actor.ok_or(DefinitionError::PermissionDenied)?;
     let enabled:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM principals WHERE principal_id=$1 AND enabled AND principal_type='AGENT')").bind(actor).fetch_one(&mut **tx).await.map_err(map)?;
     if !enabled {
         return Err(DefinitionError::PrincipalDisabled);
