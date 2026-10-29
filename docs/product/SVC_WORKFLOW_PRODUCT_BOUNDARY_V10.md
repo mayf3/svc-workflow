@@ -1,13 +1,13 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V10
-status: accepted
+status: superseded
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
 production_apply_authority: none
 supersedes:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V9
-superseded_by: null
+superseded_by: SVC_WORKFLOW_PRODUCT_BOUNDARY_V11
 accepted_by: Codex root (explicitly delegated by mayf3)
 accepted_date: 2026-10-29
 accepted_reviewed_spec_commit: 1ac73756e22c58fd6ca3c43d1ff4c4292881da26
