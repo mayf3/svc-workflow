@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3
-title: Proposed whole-authority successor to SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
-status: proposed
+title: Accepted whole-authority successor to SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -36,11 +36,19 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+accepted_proposal_head: c02916db775fb7e7d1e74cb77dd3df7079a7e54c
+accepted_proposal_spec_sha256: 686e4c64c07edc432ca2734094c17038b7581277c00cc908aaf7a5ee8ee85a15
+acceptance_record: ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+acceptance_record_sha256: b09a9ffe268691bee7f2d9b68107b17dfc3f46bbb4d2f1977227790e97d2656b
+independent_review_record: ART/node-reference-authoring-spec-20261029/ROOT_INDEPENDENT_SPEC_REVIEW.json
+independent_review_record_sha256: 6772ba5bd2a130c968b2298bc19b4ec6a987c38f0222651c1f570b13a75b641a
+acceptance_delta_class: lifecycle_provenance_only
+semantic_delta_from_reviewed_head: none
 ---
 
-# SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3 — proposed whole-authority successor
+# SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3 — accepted whole-authority successor
 
-**Proposed; implementation forbidden until accepted and merged.** This is a docs-first whole successor at Svc base `6c5a46433b8ec98b2fe708f44e270fd663cec7af`. `implementation_authority: contracts` becomes effective only after independent review, attributable Owner acceptance, and the lifecycle transaction merging into the authority branch. `production_apply_authority: none`. This proposal changes no source, database, service, deployment, run or credentials, and claims no implementation or runtime conformance.
+**Accepted whole-authority successor; implementation effective after merge.** Root acceptance under the user's delegated authority is recorded in `ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `b09a9ffe268691bee7f2d9b68107b17dfc3f46bbb4d2f1977227790e97d2656b`), following the independent review (SHA-256 `6772ba5bd2a130c968b2298bc19b4ec6a987c38f0222651c1f570b13a75b641a`) of exact semantic head `c02916db775fb7e7d1e74cb77dd3df7079a7e54c`. This lifecycle-only transaction accepts both Svc V3 successors and records the direct V2 reciprocal supersession links and discovery indexes without changing reviewed semantics. `implementation_authority: contracts` authorizes only a later scoped implementation after this accepted lifecycle is merged into the authority branch and present in its implementation base. `production_apply_authority: none`. No source, database, service, deployment, run or credentials changed; no implementation or runtime conformance is claimed. The carried predecessor bodies and historical acceptance statements remain unchanged.
 
 ## V3 bounded decision and authority
 

@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
 title: Accepted whole-authority successor to SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -27,13 +27,15 @@ paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2
 external_authorities: []
 supersedes:
   - SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
-superseded_by: null
+superseded_by: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3
 owners:
   - mayf3
 accepted_proposal_head: 39587c33c8bcf26ad5689127f5c92a6abc8b562e
 accepted_proposal_spec_sha256: dbaa6dfbdf0a1a190384f1d2ee3f54d001d825f94ce524edfcd215bc5648b667
 acceptance_record: ART/node-context-producer-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
 acceptance_record_sha256: f9fd9a3e8d5578dc9a1a309c0290f975fff8bb68861c3644eb02166616d572a4
+supersession_record: ART/node-reference-authoring-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+supersession_record_sha256: b09a9ffe268691bee7f2d9b68107b17dfc3f46bbb4d2f1977227790e97d2656b
 ---
 
 # SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V2 — accepted whole-authority successor
