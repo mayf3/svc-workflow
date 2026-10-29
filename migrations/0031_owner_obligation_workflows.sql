@@ -253,6 +253,19 @@ BEGIN
  IF r.command_type IS DISTINCT FROM (CASE NEW.descriptor_key WHEN 'workflow.create_instance' THEN 'CREATE_WORKFLOW_INSTANCE' WHEN 'workflow.assistance.resolve_current_review' THEN 'RESOLVE_WORKFLOW_ASSISTANCE' WHEN 'workflow.assistance.escalate_to_human' THEN 'ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN' END) OR r.principal_id<>NEW.actor_principal_id OR r.receipt_status<>'COMPLETED' OR ((to_jsonb(NEW)->>'state')='SUCCEEDED') IS DISTINCT FROM (r.response_status BETWEEN 200 AND 299)
  OR ((to_jsonb(NEW)->>'state')='REJECTED_ZERO_FACTS' AND EXISTS(SELECT 1 FROM workflow_events x WHERE x.command_id=r.command_id))
  OR ((to_jsonb(NEW)->>'state')='SUCCEEDED' AND (r.response_body IS DISTINCT FROM NEW.result OR r.response_digest IS DISTINCT FROM NEW.result_digest)) THEN RAISE EXCEPTION 'effect actual receipt mismatch' USING ERRCODE='23514'; END IF;
+ IF NEW.state='SUCCEEDED' AND NEW.descriptor_key='workflow.create_instance' AND NOT EXISTS(
+ SELECT 1 FROM workflow_owner_dependency_origins o JOIN workflow_events x ON x.command_id=NEW.command_id AND x.workflow_instance_id=o.created_instance_id AND x.event_type='INSTANCE_CREATED' AND x.actor_principal_id=NEW.actor_principal_id AND x.old_workflow_state_version=0 AND x.new_workflow_state_version=1
+ WHERE o.parent_effect_id=NEW.effect_id AND o.create_command_id=NEW.command_id AND o.parent_managed_instance_id=NEW.managed_instance_id AND o.case_id=NEW.case_id AND r.response_body->>'workflowInstanceId'=o.created_instance_id::text
+ ) THEN RAISE EXCEPTION 'succeeded create effect requires actual birth and causal origin' USING ERRCODE='23514'; END IF;
+ IF NEW.state='SUCCEEDED' AND NEW.descriptor_key IN ('workflow.assistance.resolve_current_review','workflow.assistance.escalate_to_human') AND NOT EXISTS(
+ SELECT 1 FROM workflow_assistance_cases c JOIN workflow_events x ON x.command_id=NEW.command_id AND x.workflow_instance_id=c.workflow_instance_id AND x.source_node_visit_id=c.node_visit_id AND x.target_node_visit_id=c.node_visit_id AND x.actor_principal_id=NEW.actor_principal_id
+ WHERE c.assistance_case_id=NEW.case_id AND x.new_workflow_state_version=x.old_workflow_state_version+1
+ AND x.event_data->>'assistanceCaseId'=c.assistance_case_id::text
+ AND r.response_body->>'assistanceCaseId'=c.assistance_case_id::text AND r.response_body->>'workflowInstanceId'=c.workflow_instance_id::text AND r.response_body->>'nodeVisitId'=c.node_visit_id::text
+ AND r.response_body->>'workflowStateVersion'=x.new_workflow_state_version::text AND r.response_body->>'eventSequence'=x.event_sequence::text
+ AND ((NEW.descriptor_key='workflow.assistance.resolve_current_review' AND c.resolution_command_id=NEW.command_id AND c.resolved_by_principal_id=NEW.actor_principal_id AND x.event_type='ASSISTANCE_RESOLVED' AND x.event_data->>'previousStatus' IN ('OWNER_PENDING','HUMAN_REQUIRED') AND x.event_data->>'newStatus'='RESOLVED' AND r.response_body->>'status'='RESOLVED' AND x.event_data->>'payloadDigest'=c.resolution_payload_digest)
+ OR (NEW.descriptor_key='workflow.assistance.escalate_to_human' AND c.escalation_command_id=NEW.command_id AND c.escalated_by_principal_id=NEW.actor_principal_id AND x.event_type='ASSISTANCE_ESCALATED_TO_HUMAN' AND x.event_data->>'previousStatus'='OWNER_PENDING' AND x.event_data->>'newStatus'='HUMAN_REQUIRED' AND r.response_body->>'status'='HUMAN_REQUIRED' AND x.event_data->>'payloadDigest'=c.escalation_payload_digest))
+ ) THEN RAISE EXCEPTION 'succeeded assistance effect requires actual case command and Event' USING ERRCODE='23514'; END IF;
  ELSIF TG_TABLE_NAME='workflow_owner_dependency_origins' THEN
  SELECT * INTO e FROM workflow_operation_effects WHERE effect_id=NEW.parent_effect_id;
  SELECT * INTO wi FROM workflow_instances WHERE workflow_instance_id=NEW.created_instance_id;
@@ -261,7 +274,7 @@ BEGIN
  OR wi.definition_version_id<>NEW.target_definition_version_id OR (r.response_body->>'workflowInstanceId') IS DISTINCT FROM NEW.created_instance_id::text
  OR r.receipt_status<>'COMPLETED' OR r.response_status NOT BETWEEN 200 AND 299 OR r.principal_id<>e.actor_principal_id
  OR NOT EXISTS(SELECT 1 FROM workflow_events x WHERE x.command_id=r.command_id AND x.workflow_instance_id=wi.workflow_instance_id AND x.event_type='INSTANCE_CREATED' AND x.actor_principal_id=r.principal_id AND x.old_workflow_state_version=0 AND x.new_workflow_state_version=1)
- OR NOT EXISTS(SELECT 1 FROM workflow_instances parent JOIN workflow_definition_versions v ON v.definition_version_id=wi.definition_version_id WHERE parent.workflow_instance_id=NEW.parent_managed_instance_id AND parent.domain_id=wi.domain_id AND v.version_status='PUBLISHED' AND NOT (v.context_schema ? 'x-workflow-owner-obligation-role-v1') AND NOT (v.context_schema ? 'x-workflow-owner-obligation-v1'))
+ OR NOT EXISTS(SELECT 1 FROM workflow_instances parent JOIN workflow_definition_versions v ON v.definition_version_id=wi.definition_version_id JOIN workflow_node_definitions n ON n.node_id=e.node_definition_id AND n.definition_version_id=e.definition_version_id WHERE parent.workflow_instance_id=NEW.parent_managed_instance_id AND parent.domain_id=wi.domain_id AND v.version_status='PUBLISHED' AND n.metadata->'workflowOperation'->>'targetDefinitionVersionId'=v.definition_version_id::text AND n.metadata->'workflowOperation'->>'targetDefinitionDigest'=v.definition_digest AND NOT (v.context_schema ? 'x-workflow-owner-obligation-role-v1') AND NOT (v.context_schema ? 'x-workflow-owner-obligation-v1'))
  THEN RAISE EXCEPTION 'dependency birth/effect mismatch' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NULL; END $$;
