@@ -1,6 +1,6 @@
 ---
 spec_id: SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -10,7 +10,7 @@ governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
 external_authorities: []
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V2
 owners:
   - mayf3
 production_apply_authority: none
