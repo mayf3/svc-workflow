@@ -46,9 +46,17 @@ impl From<CreateWorkflowInstanceResult> for CreateWorkflowInstanceResponse {
     }
 }
 
+fn present_context_payload<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<serde_json::Value>, D::Error> {
+    serde::Deserialize::deserialize(d).map(Some)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecuteWorkflowTransitionRequest {
+    #[serde(default, deserialize_with = "present_context_payload")]
+    pub context_payload: Option<serde_json::Value>,
     pub transition_definition_id: Uuid,
     pub expected_workflow_state_version: i32,
     pub submission_payload: Option<serde_json::Value>,

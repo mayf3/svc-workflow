@@ -151,6 +151,19 @@ async fn review_roundtrip(verdict: &str) {
         assert_eq!(detail["workflowInstanceId"], json!(source));
         assert_eq!(detail["assistanceCaseId"], m["caseId"]);
         assert_eq!(detail["resolution"], b.arguments["resolution"]);
+        let responsibilities = detail["ownerObligation"]["responsibilities"]
+            .as_array()
+            .unwrap();
+        assert_eq!(responsibilities.len(), 2);
+        assert_eq!(responsibilities[0]["kind"], "INTAKE");
+        assert_eq!(responsibilities[0]["state"], "COMPLETED");
+        assert_eq!(responsibilities[1]["kind"], "REVIEW");
+        assert_eq!(responsibilities[1]["state"], "MATERIALIZED");
+        assert_eq!(
+            responsibilities[1]["managedWorkflowInstanceId"],
+            json!(review)
+        );
+
         assert_ne!(detail["workflowStateVersion"], json!(sv));
         let stored_proof = detail
             .pointer("/resolution/supportingPayload/governanceChildReview")

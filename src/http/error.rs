@@ -222,6 +222,8 @@ impl ApiError {
             E::TransitionNotApplicable(_) => {
                 conflict("transition_not_applicable", "transition is not applicable")
             }
+            E::InvalidInput(_) => unprocessable("invalid_input", "invalid request input"),
+            E::ContextValidationFailed(rule) => unprocessable("context_validation_failed", "Context failed validation").with_details(serde_json::json!({"workflowPrerequisiteGate":rule})),
             E::SubmissionRequired => {
                 unprocessable("submission_required", "submission payload is required")
             }

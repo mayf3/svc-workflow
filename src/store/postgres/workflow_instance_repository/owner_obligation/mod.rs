@@ -37,3 +37,6 @@ impl From<crate::domain::workflow_instance::assistance::AssistanceError> for Own
 pub mod effects;
 pub(crate) mod guards;
 pub mod reads;
+
+pub(crate) mod case_projection;
+pub(crate) mod transition_context;

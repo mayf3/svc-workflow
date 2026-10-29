@@ -76,8 +76,8 @@ async fn source_valid(
     Ok(valid)
 }
 /// Project the immutable receipt plus the current recipient's delivery state.
-pub(crate) async fn detail(
-    pool: &PgPool,
+pub(crate) async fn detail<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
     case: Uuid,
 ) -> Result<Option<(Value, Option<Value>)>, AssistanceError> {
     let row:Option<(Value,Option<Value>,Option<Value>)>=sqlx::query_as("SELECT b.receipt,b.terminal_proof,
@@ -87,7 +87,7 @@ pub(crate) async fn detail(
  FROM workflow_governance_child_reviews r JOIN workflow_outbox o USING(outbox_id)
  JOIN workflow_assistance_cases c ON c.assistance_case_id=b.assistance_case_id
  WHERE r.binding_id=b.binding_id ORDER BY (r.retired_reason IS NULL) DESC,r.created_at DESC,r.review_wake_id DESC LIMIT 1)
- FROM workflow_governance_child_bindings b WHERE b.assistance_case_id=$1").bind(case).fetch_optional(pool).await.map_err(storage)?;
+ FROM workflow_governance_child_bindings b WHERE b.assistance_case_id=$1").bind(case).fetch_optional(executor).await.map_err(storage)?;
     Ok(row.map(|(mut receipt, proof, review)| {
         if let Some(r) = review {
             receipt["currentReview"] = r;
