@@ -66,6 +66,16 @@ pub(crate) async fn list_due_dispatch_intents(
         return Err(WorkflowQueryError::SchedulerReadRoleRequired);
     }
 
+    let intents = due_rows(&mut tx, limit, cursor, None).await?;
+    tx.commit().await.map_err(storage)?;
+    Ok(intents)
+}
+pub(super) async fn due_rows(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    limit: i64,
+    cursor: Option<(chrono::DateTime<chrono::Utc>, Uuid)>,
+    eligible: Option<&[Uuid]>,
+) -> Result<Vec<DueDispatchIntent>, WorkflowQueryError> {
     // The keyset filter repeats the exact COALESCE expression aliased as
     // "nextEligibleAt" (row-value comparisons cannot reference the alias),
     // keeping cursor semantics identical to the sort semantics.
@@ -188,15 +198,26 @@ pub(crate) async fn list_due_dispatch_intents(
         ),
     };
 
+    let sql = if eligible.is_some() {
+        sql.replace(
+            "ORDER BY \"nextEligibleAt\", a.activation_id",
+            &format!(
+                "AND a.activation_id = ANY(${}) ORDER BY \"nextEligibleAt\", a.activation_id",
+                if has_cursor { 4 } else { 2 }
+            ),
+        )
+    } else {
+        sql
+    };
     let mut query = sqlx::query_as::<_, DueDispatchIntent>(&sql).bind(limit);
     if has_cursor {
         let (after_ts, after_id) = cursor.expect("cursor presence checked");
         query = query.bind(after_ts).bind(after_id);
     }
-    let intents: Vec<DueDispatchIntent> = query.fetch_all(&mut *tx).await.map_err(storage)?;
-
-    tx.commit().await.map_err(storage)?;
-    Ok(intents)
+    if let Some(ids) = eligible {
+        query = query.bind(ids);
+    }
+    query.fetch_all(&mut **tx).await.map_err(storage)
 }
 
 /// Validate the limit parameter for the due poll (1..=100).

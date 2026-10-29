@@ -17,6 +17,8 @@ pub struct AssistanceCaseView {
     pub governance_binding: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub governance_terminal_proof: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prerequisite_readiness: Option<serde_json::Value>,
     pub assistance_case_id: Uuid,
     pub workflow_instance_id: Uuid,
     pub node_visit_id: Uuid,
@@ -69,6 +71,7 @@ impl TryFrom<AssistanceViewRow> for AssistanceCaseView {
         Ok(Self {
             governance_binding: None,
             governance_terminal_proof: None,
+            prerequisite_readiness: None,
             assistance_case_id: row.assistance_case_id,
             workflow_instance_id: row.workflow_instance_id,
             node_visit_id: row.node_visit_id,
@@ -360,6 +363,26 @@ pub(crate) async fn get_assistance_case(
     if let Some((binding, proof)) = super::governance_child::detail(pool, case_id).await? {
         view.governance_binding = Some(binding);
         view.governance_terminal_proof = proof;
+    }
+    if let Some(binding) = view.governance_binding.as_ref() {
+        if let Some(child) = binding
+            .pointer("/child/workflowInstanceId")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|s| s.parse::<Uuid>().ok())
+        {
+            let mut tx = super::super::query_visibility::begin_snapshot(pool)
+                .await
+                .map_err(|e| AssistanceError::StorageError(e.to_string()))?;
+            if super::super::prerequisite::reader_allowed(&mut tx, actor, child)
+                .await
+                .map_err(|e| AssistanceError::StorageError(e.to_string()))?
+            {
+                view.prerequisite_readiness = super::super::prerequisite::project(&mut tx, child)
+                    .await
+                    .map_err(|e| AssistanceError::StorageError(e.to_string()))?;
+            }
+            tx.commit().await.map_err(storage)?;
+        }
     }
     Ok(view)
 }

@@ -10,6 +10,7 @@ pub mod error;
 pub mod graph;
 pub mod graph_helpers;
 pub mod model;
+pub mod prerequisite;
 
 #[cfg(test)]
 mod digest_tests;
