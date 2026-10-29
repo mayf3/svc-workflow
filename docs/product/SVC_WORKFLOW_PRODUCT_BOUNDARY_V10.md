@@ -21,10 +21,12 @@ external_authorities: []
 
 This proposed whole-authority successor preserves the complete accepted V9
 Product Direction below. It adds only the named atomic GCR create-bind command
-exception to the existing command/Event cardinality, while retaining the one
-real command receipt, exact two-event pair, same-transaction visibility, and
-all other existing command and permission boundaries. V9 remains current
-until this successor is accepted with its reciprocal backlink.
+exception to the existing command/Event cardinality. A completed successful
+2xx operation has the exact two-event pair under one real command receipt; a
+completed deterministic non-2xx result has no business Events or facts and
+keeps existing replay semantics. All other existing command and permission
+boundaries remain. V9 remains current until this successor is accepted with
+its reciprocal backlink.
 
 ## V10 selected decision — CREATE_AND_BIND_GOVERNANCE_CHILD event pair
 
@@ -40,11 +42,14 @@ external command receipt and one transaction, and commits exactly:
 2. the source Instance's `GOVERNANCE_CHILD_BOUND` Event and exactly one source
    state-version increment.
 
-Both Events carry the same real command ID from the one completed receipt,
-reference distinct same-Domain affected Instances, and become visible together
-with the GCR binding. Neither Event may be omitted, assigned NULL or an invented
-command ID, or represented by a hidden component receipt. Every other
-successful single-Instance command retains its existing one-Event behavior.
+For a completed successful 2xx result, both Events carry the same real command
+ID from the one completed receipt, reference distinct same-Domain affected
+Instances, and become visible together with the GCR binding. Neither Event may
+be omitted, assigned NULL or an invented command ID, or represented by a
+hidden component receipt. A completed deterministic non-2xx result has zero
+business Events, child/source/activation/binding facts, and preserves the
+existing failure receipt and same-key replay. Every other successful
+single-Instance command retains its existing one-Event behavior.
 `ONE_TIME_MIGRATE` retains its separately accepted exact source/successor pair
 and is not generalized or reinterpreted. This decision adds no authority for
 other cross-Instance commands, new permission, selector, wait state, or source

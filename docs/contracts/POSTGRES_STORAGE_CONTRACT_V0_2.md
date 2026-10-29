@@ -18,21 +18,35 @@ until the later atomic lifecycle transaction.
 
 1. Keep the immutable `workflow_events` primary identity and per-Instance
    `(workflow_instance_id, event_sequence)` uniqueness unchanged.
-2. For the exact command type `CREATE_AND_BIND_GOVERNANCE_CHILD`, require one
-   actual completed `workflow_command_receipts` row and exactly two Events with
-   its non-null `command_id`: one `INSTANCE_CREATED` for the new child and one
-   `GOVERNANCE_CHILD_BOUND` for its same-Domain source. Their Instance IDs must
-   be distinct; each Instance contributes exactly one Event for this command.
-   Child initial state is version 1; source advances exactly one version.
-   Child, source projection, binding, both Events and the one completed
-   receipt commit in the same transaction. Any missing, extra, wrong-type,
-   wrong-Instance, duplicate-per-Instance, or receipt-mismatched Event fails
-   closed at commit.
+2. For the exact command type `CREATE_AND_BIND_GOVERNANCE_CHILD`, enforce this
+   completed-receipt matrix at commit: a completed successful 2xx receipt has
+   exactly two Events with its actual non-null `command_id`—one
+   `INSTANCE_CREATED` for the new child and one `GOVERNANCE_CHILD_BOUND` for
+   its same-Domain source—and all child, source, activation, binding, response,
+   and Event facts commit atomically; a completed deterministic non-2xx receipt
+   has zero business Events and zero child, source, activation, or binding
+   facts. A failed command retains the existing deterministic failure-receipt
+   and same-key replay semantics. For success, the two Event Instance IDs are
+   distinct, each contributes exactly one Event for this command, the child
+   starts at version 1, and the source advances exactly one version. Any
+   missing, extra, wrong-type, wrong-Instance, duplicate-per-Instance, or
+   receipt-mismatched Event, or any completed success without the exact pair,
+   fails closed. Inflight/PROCESSING and transaction abort behavior otherwise
+   retain existing receipt semantics; no partial pair or business facts may
+   commit as a successful outcome.
 3. Replace the former global partial unique index on non-null `command_id` with
    database-enforced per-Instance uniqueness plus a command-type-aware,
-   commit-time integrity rule. That rule MUST preserve the old global at-most-
-   one Event behavior for every other command type and MUST preserve the exact
-   existing `ONE_TIME_MIGRATE` source/successor pair. Merely dropping the global
+   commit-time integrity rule. The guard MUST serialize by locking the actual
+   `workflow_command_receipts` row identified by the Event/receipt's real
+   `command_id` before reading or validating that command's Event cardinality;
+   a deferred COUNT check without this command-identity lock is insufficient
+   because concurrent transactions could both pass on stale snapshots. The
+   receipt-completion transition and Event mutations MUST both invoke the
+   invariant, so a completed 2xx receipt cannot commit with zero Events and a
+   completed deterministic non-2xx receipt cannot commit with business facts.
+   The rule MUST preserve the old global at-most-one Event behavior for every
+   other command type under concurrency and MUST preserve the exact existing
+   `ONE_TIME_MIGRATE` source/successor pair. Merely dropping the global
    index or adding only `(command_id, workflow_instance_id)` uniqueness is
    insufficient: the exact two-event type/instance/receipt shape is mandatory.
    No component receipt, NULL command ID, fabricated provenance, omitted child

@@ -33,17 +33,23 @@ reciprocal successor backlink.
 ### CTR-ARCH-044 — One exact cross-Instance command pair
 
 The named `CREATE_AND_BIND_GOVERNANCE_CHILD` command is the sole additional
-cross-Instance Event exception. Under one serializable transaction and one
-actual external command receipt, it MUST commit exactly one child
-`INSTANCE_CREATED` Event at child version 1 and exactly one source
-`GOVERNANCE_CHILD_BOUND` Event at source version +1. Both carry the receipt's
-actual command ID, belong to distinct same-Domain Instances, and are committed
-with the child, GCR binding and receipt atomically. The database-enforced integrity rule in proposed PostgreSQL Storage Contract
-V0.2 MUST preserve one Event per affected Instance and permit this exact pair
-only for this command type. All non-exception commands retain their
-existing at-most-one-Event-per-command rule; `ONE_TIME_MIGRATE` retains its
-existing independently specified pair unchanged. This does not authorize
-additional cross-Instance writes, receipts, or component commands.
+cross-Instance Event exception. A completed successful 2xx receipt MUST commit
+exactly one child `INSTANCE_CREATED` Event at child version 1 and exactly one
+source `GOVERNANCE_CHILD_BOUND` Event at source version +1. Both carry the
+receipt's actual command ID, belong to distinct same-Domain Instances, and are
+committed with the child, activation, GCR binding, response and receipt
+atomically. A completed deterministic non-2xx receipt MUST commit zero
+business Events or child/source/activation/binding facts and retain existing
+failure-receipt replay. Inflight/PROCESSING and abort behavior otherwise
+retain existing receipt semantics; no partial pair or business facts may
+commit as a successful result. Proposed PostgreSQL Storage Contract V0.2
+defines this receipt-state matrix and MUST validate it both on receipt
+completion and Event mutation, serializing on the actual command receipt row
+before cardinality reads. A deferred count check alone is insufficient. The
+rule MUST preserve the former global at-most-one Event behavior for every
+other command under concurrency and preserve the independently specified
+`ONE_TIME_MIGRATE` pair unchanged. This authorizes no additional
+cross-Instance writes, receipts, or component commands.
 
 The required forward integrity migration MUST validate existing Events before
 changing enforcement, preserve all immutable rows and stable IDs, and fail

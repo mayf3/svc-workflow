@@ -53,25 +53,34 @@ this V2 is accepted with its reciprocal successor backlink.
 
 Only the existing atomic GCR create-bind command type
 `CREATE_AND_BIND_GOVERNANCE_CHILD` may share one real external receipt and its
-actual non-null command ID across two Events. In the same serializable
-transaction it commits exactly: (a) the child `INSTANCE_CREATED` Event at
-child version 1, and (b) the source `GOVERNANCE_CHILD_BOUND` Event at source
-version +1. They belong to distinct same-Domain Instances, match exactly one
-completed receipt, and commit with the child, activation, GCR binding and
-response. There are exactly two Events for this command and exactly one per
-affected Instance. No component receipt/command, NULL or invented command ID,
-omitted child-birth Event, intermediate unbound child, or additional
-cross-Instance command is allowed.
+actual non-null command ID across two Events. Its completed-receipt invariant
+is: a successful 2xx receipt commits exactly (a) the child
+`INSTANCE_CREATED` Event at child version 1 and (b) the source
+`GOVERNANCE_CHILD_BOUND` Event at source version +1; a deterministic non-2xx
+receipt commits zero business Events and zero child, source, activation or
+binding facts, preserving existing failure-receipt and same-key replay
+semantics. The success pair belongs to distinct same-Domain Instances and is
+committed with the child, activation, GCR binding, response and receipt in the
+same transaction. Inflight/PROCESSING and abort behavior otherwise retain
+existing semantics. No partial pair or business facts may commit as success;
+no component receipt/command, NULL or invented command ID, omitted child-birth
+Event, intermediate unbound child, or additional cross-Instance command is
+allowed.
 
 This V2 Contract explicitly replaces V1 CTR-SWPO-003’s no-migration limit
 only for the single forward integrity migration, and replaces the Event
 cardinality clause in Architecture CTR-ARCH-020 only for this exact command.
 The accepted Storage Contract V0.2 is the database-enforcement authority for
 this exact pair: per-Instance Event uniqueness plus command-type-aware
-commit-time validation MUST preserve the former global at-most-one Event rule
-for every other command while retaining the existing exact `ONE_TIME_MIGRATE`
-pair. A forward migration MUST validate old data and preserve immutable
-history. If a valid pair exists, rollback cannot restore the old global index
+commit-time validation MUST check the receipt-state matrix both on receipt
+completion and Event mutation: reject completed 2xx without the exact pair and
+completed deterministic non-2xx with any business Event/fact. It MUST lock
+the real `workflow_command_receipts` row for the command ID before validating
+cardinality; a deferred count alone is vulnerable to concurrent stale-count
+write skew. Preserve the former global at-most-one Event rule for every other
+command under concurrency while retaining the existing exact
+`ONE_TIME_MIGRATE` pair. A forward migration MUST validate old data and
+preserve immutable history. If a valid pair exists, rollback cannot restore the old global index
 by deleting/changing history; the rollback fails closed. Every direct command-
 to-Event reader MUST retain existing behavior for other commands and explicitly
 handle this exact pair. Same-key/body replay, changed-body conflict,
@@ -107,7 +116,7 @@ coordinates.
 
 | Contract | Method / environment | Required evidence | Expected result | Failure condition |
 |---|---|---|---|---|
-| CTR-SWPO-007 | Isolated PostgreSQL, migration upgrade/rollback, HTTP transaction/replay tests | One command receipt and command type; exact source/child IDs, Event types and per-Instance versions; pre/post migration rows; direct command-event reader results; race, rollback and unknown-readback receipts | Exactly two same-command Events on distinct same-Domain Instances for the named command; ordinary commands remain at-most-one Event; `ONE_TIME_MIGRATE` remains exact; immutable history survives upgrade and rollback | Blind index drop/composite-only index; extra/missing/wrong Event; second/null/fabricated receipt ID; orphan child; reader ambiguity; history delete/rewrite; rollback appears successful while old index cannot be restored |
+| CTR-SWPO-007 | Isolated PostgreSQL, migration upgrade/rollback, HTTP transaction/replay and concurrency tests | Completed successful 2xx with exact pair; completed deterministic non-2xx zero facts/events plus replay; zero/one/three/wrong pair negatives; receipt-completion and Event-mutation checks; command-row lock under races; concurrent ordinary commands; `ONE_TIME_MIGRATE`; pre/post migration rows; direct command-event reader results; rollback and unknown-readback receipts | Successful 2xx has exactly two same-command Events on distinct same-Domain Instances; deterministic non-2xx has zero business facts/events and replays unchanged; ordinary commands remain globally at-most-one Event under concurrency; `ONE_TIME_MIGRATE` remains exact; immutable history survives upgrade and rollback | Completed success with zero/one/three/wrong Events; non-2xx with any fact/Event; deferred COUNT-only write skew; concurrent ordinary duplicate Events; blind index drop/composite-only index; second/null/fabricated receipt ID; orphan child; reader ambiguity; history delete/rewrite; rollback appears successful while old index cannot be restored |
 | CTR-SWPO-008 | Readiness DTO/read-model tests and authorization matrix | Missing Context; missing, invalid, partially recoverable and complete UUID triples; identified lineage mismatch/not-visible; READY positive/negative; exact wire fields | Missing/unparseable triple emits only closed `UNKNOWN / LINEAGE_INCONSISTENT` with all 3 coordinates omitted; every identified variant has all 3 actual UUIDs; READY proof and Scheduler READY-only row are unchanged | Partial/null/invented IDs; omission despite full triple; storage outage fabricated as UNKNOWN success; Scheduler receives extra coordinates; non-READY row admitted |
 
 This proposal grants no code, migration execution, database write, service

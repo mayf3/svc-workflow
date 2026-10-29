@@ -58,13 +58,19 @@ present. Database unavailability remains the existing transport/storage error.
    is a later explicit Root lifecycle action; this task does not accept, merge,
    implement, create a migration, or operate PostgreSQL.
 
-The later implementation test plan must cover exact two-Event receipt lineage,
-ordinary-command cardinality, the unchanged `ONE_TIME_MIGRATE` pair, migration
+The later implementation test plan must prove the completed-receipt matrix:
+successful 2xx requires the exact two-Event/fact pair; completed deterministic
+non-2xx requires zero business Events/facts and preserves same-key replay;
+zero/one/three/wrong Events and non-2xx with any fact fail closed. It must
+exercise the invariant on receipt completion and Event mutation, demonstrate
+real receipt-row locking under command-identity races (not deferred COUNT-only
+validation), and preserve concurrent ordinary-command at-most-one cardinality
+and the unchanged `ONE_TIME_MIGRATE` pair. It must also cover migration
 preservation and fail-closed rollback, command-to-Event reader compatibility,
-unknown-commit/replay/race/rollback paths, and all-or-none malformed-reference
-coordinates plus the unchanged READY-only Scheduler row. No hidden receipt,
-NULL or invented command ID, omitted initial Event, new table/wait ledger, or
-production database write is permitted.
+unknown-commit/replay/whole-transaction rollback, and all-or-none
+malformed-reference coordinates plus the unchanged READY-only Scheduler row.
+No hidden receipt, NULL or invented command ID, omitted initial Event, new
+table/wait ledger, or production database write is permitted.
 
 ```text
 SPEC_GOVERNANCE_MODE = AUTHOR
