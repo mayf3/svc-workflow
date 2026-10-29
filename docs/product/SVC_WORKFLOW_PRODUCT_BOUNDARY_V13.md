@@ -1,6 +1,6 @@
 ---
 authority_id: SVC_WORKFLOW_PRODUCT_BOUNDARY_V13
-status: proposed
+status: accepted
 authority_kind: product_direction
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -13,11 +13,15 @@ owners:
 date: 2026-10-29
 revision: proposal-1
 candidate_base: e8cc025341abb338e1a636c5a6d7e92aab77af69
+accepted_proposal_head: 39587c33c8bcf26ad5689127f5c92a6abc8b562e
+accepted_proposal_spec_sha256: 9851e5a89aef16764ca6ec3e07bb29aec21440ac848d31e112114c41d121c67d
+acceptance_record: ART/node-context-producer-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+acceptance_record_sha256: f9fd9a3e8d5578dc9a1a309c0290f975fff8bb68861c3644eb02166616d572a4
 ---
 
-# SVC_WORKFLOW_PRODUCT_BOUNDARY_V13 — proposed whole-authority successor
+# SVC_WORKFLOW_PRODUCT_BOUNDARY_V13 — accepted whole-authority successor
 
-**Status: PROPOSED.** This is a docs-first whole-authority successor candidate. It is not accepted, does not authorize implementation until accepted and present in the relevant implementation base, and grants no production, migration-apply, deployment, or runtime authority. The carried predecessor text below records that predecessor's historical accepted state; it does not accept this candidate.
+**Accepted whole-authority successor.** Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `f9fd9a3e8d5578dc9a1a309c0290f975fff8bb68861c3644eb02166616d572a4`), binds reviewed semantic heads Svc `39587c33c8bcf26ad5689127f5c92a6abc8b562e` and Core `ac83fe5cea3701eb9436f74d1b5f6ed0013256a9`. This lifecycle-only transaction records accepted status and reciprocal direct-predecessor links; the reviewed semantics are unchanged. This Product/Architecture authority retains `implementation_authority: none` and `production_apply_authority: none`; it does not authorize production apply, migration execution, deployment, runtime changes, or A75 mutation. The carried predecessor text below is preserved as historical authority and rationale.
 
 ## Product V13 bounded successor delta
 

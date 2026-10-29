@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V2
-title: Proposed whole-authority successor to SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
-status: proposed
+title: Accepted whole-authority successor to SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -23,11 +23,15 @@ supersedes:
 superseded_by: null
 owners:
   - mayf3
+accepted_proposal_head: 39587c33c8bcf26ad5689127f5c92a6abc8b562e
+accepted_proposal_spec_sha256: 15c17ae6c3720edc4f76bfc6e7d6bca736a4ee9b6ce67f8caec060df185ded0d
+acceptance_record: ART/node-context-producer-spec-20261029/ROOT_OWNER_ACCEPTANCE.json
+acceptance_record_sha256: f9fd9a3e8d5578dc9a1a309c0290f975fff8bb68861c3644eb02166616d572a4
 ---
 
-# SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V2 — proposed whole-authority successor
+# SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V2 — accepted whole-authority successor
 
-**Status: PROPOSED.** This is a docs-first whole-authority successor candidate. It is not accepted, does not authorize implementation until accepted and present in the relevant implementation base, and grants no production, migration-apply, deployment, or runtime authority. The carried predecessor text below records that predecessor's historical accepted state; it does not accept this candidate.
+**Accepted whole-authority successor.** Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `f9fd9a3e8d5578dc9a1a309c0290f975fff8bb68861c3644eb02166616d572a4`), binds reviewed semantic heads Svc `39587c33c8bcf26ad5689127f5c92a6abc8b562e` and Core `ac83fe5cea3701eb9436f74d1b5f6ed0013256a9`. This lifecycle-only transaction records accepted status and reciprocal direct-predecessor links; the reviewed semantics are unchanged. `implementation_authority: contracts` authorizes source implementation only within these Contracts after this paired lifecycle commit pair is merged to the relevant authority main and the accepted revisions are present in the implementation base. `production_apply_authority: none`; no production apply, migration execution, deployment, runtime changes, or A75 mutation is authorized. No implementation or runtime conformance is claimed. The carried predecessor body remains historical.
 
 ## ACB V2 bounded successor delta
 
