@@ -21,7 +21,7 @@ use crate::application::definition::queries::{
 use crate::application::definition::DefinitionService;
 use crate::application::definition_governance::{
     governance_archive_definition, governance_create_definition, governance_create_draft_version,
-    governance_publish_version, governance_replace_draft_graph,
+    governance_publish_version_with_actor, governance_replace_draft_graph,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::definition::error::DefinitionError;
@@ -445,12 +445,11 @@ pub(crate) async fn publish_version(
     // Canonical identity admission gate (CTR-CIR-003): `Some` only when the
     // deployment enabled admission; dormant mode keeps existing behavior.
     // The monotonic admission start is captured here, before any transaction.
-    let admission = crate::store::postgres::admission_gate::AdmissionGate::new(
-        state.admission_client.as_ref(),
-    )
-    .with_pool(Some(&state.pool));
+    let admission =
+        crate::store::postgres::admission_gate::AdmissionGate::new(state.admission_client.as_ref())
+            .with_pool(Some(&state.pool));
 
-    let result = governance_publish_version(
+    let result = governance_publish_version_with_actor(
         &state.pool,
         principal.principal_id.into_uuid(),
         &key,
@@ -458,6 +457,7 @@ pub(crate) async fn publish_version(
         payload.version_id,
         payload.expected_revision,
         admission,
+        state.workflow_policy_actor_principal_id,
     )
     .await
     .map_err(ApiError::from_definition_governance)?;
@@ -588,7 +588,11 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             // internal endpoint/body details.
             let status = axum::http::StatusCode::from_u16(error.sanitized_status() as u16)
                 .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-            ApiError::new(status, error.sanitized_code(), "definition publish was not admitted")
+            ApiError::new(
+                status,
+                error.sanitized_code(),
+                "definition publish was not admitted",
+            )
         }
         E::StorageError(detail) => {
             tracing::error!(error = %detail, "definition storage error");

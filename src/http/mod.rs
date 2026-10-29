@@ -27,7 +27,7 @@ pub use state::{AppState, ExecutionControlConfig, HttpConfig};
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
 pub const SCHEMA_VERSION: &str = "0023";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 30;
+pub const EXPECTED_MIGRATION_VERSION: i64 = 31;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -50,6 +50,9 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             "/internal/v1/workflow-instances/{workflowInstanceId}/readiness",
             get(handlers::instances::readiness),
         )
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/owner-obligation",get(handlers::owner_obligation::read))
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/operation-effects/{effectId}",get(handlers::owner_obligation::read_effect))
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/node-visits/{nodeVisitId}/operation-effects/{slotAction}",post(handlers::owner_obligation::execute).layer(middleware::from_fn_with_state(state.clone(),canary_guard::canary_write_guard)))
         .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
             post(handlers::transitions::execute).layer(middleware::from_fn_with_state(

@@ -50,7 +50,7 @@ pub(crate) async fn bind(
         }
     }
 }
-pub(super) async fn admit(
+pub(crate) async fn admit(
     tx: &mut Transaction<'_, Postgres>,
     c: &BindGovernanceChildCommand,
     command: Uuid,
@@ -87,8 +87,16 @@ pub(super) async fn admit(
         });
     }
     if effective_owner(tx, src.domain_id).await? != actor {
-        return Err(AssistanceError::NotDomainOwner);
+        let target: Uuid = sqlx::query_scalar(
+            "SELECT definition_version_id FROM workflow_instances WHERE workflow_instance_id=$1",
+        )
+        .bind(child)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(storage)?;
+        if !crate::store::postgres::workflow_instance_repository::owner_obligation::intents::policy_actor_authorized(tx,command,src.domain_id,target,actor).await.map_err(storage)?{return Err(AssistanceError::NotDomainOwner)}
     }
+    super::super::super::owner_obligation::intents::require_auto_bind(tx, case, command).await?;
     if src.domain_id != ch.domain_id
         || src.current_context_revision_id.is_none()
         || ch.current_node_visit_id.is_none()

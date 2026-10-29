@@ -12,8 +12,10 @@
 //! All authorization originates here or in [`DefinitionService`].
 
 mod diagnostics;
+mod owner_publish;
 mod receipt;
 pub use diagnostics::GraphDiagnostics;
+pub use owner_publish::governance_publish_version_with_actor;
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -85,7 +87,7 @@ impl DefinitionGovernanceError {
             Self::GraphValidationFailed(_) => "graph_validation_failed",
             Self::InvalidGraphDiagnosticReceipt | Self::InternalConsistency(_) => {
                 "internal_consistency_error"
-            },
+            }
             Self::AdmissionFailed(error) => error.sanitized_code(),
             Self::StorageError(_) => "service_unavailable",
         }
@@ -142,9 +144,8 @@ impl From<DefinitionError> for DefinitionGovernanceError {
             DefinitionError::InvalidLifecycleTransition => Self::DefinitionNotEditable,
             DefinitionError::GraphValidationFailed(errors) => {
                 Self::GraphValidationFailed(GraphDiagnostics::project(errors))
-            },
-            DefinitionError::SchemaValidationFailed(_)
-            | DefinitionError::DigestFailure(_) => {
+            }
+            DefinitionError::SchemaValidationFailed(_) | DefinitionError::DigestFailure(_) => {
                 Self::InternalConsistency(format!("validation error: {}", e))
             }
             DefinitionError::AdmissionFailed(error) => Self::AdmissionFailed(error),
@@ -303,25 +304,14 @@ pub async fn governance_publish_version(
     expected_revision: Option<String>,
     admission: AdmissionGate<'_>,
 ) -> Result<WorkflowDefinitionVersion, DefinitionGovernanceError> {
-    let vid = version_id;
-    let exp_for_receipt = expected_revision.clone();
-
-    governance_with_receipt(
+    governance_publish_version_with_actor(
         pool,
         actor_id,
         idempotency_key,
-        COMMAND_TYPE_PUBLISH,
         request_id,
-        move |service, _cmd: serde_json::Value| async move {
-            let cmd = PublishVersion {
-                actor_principal_id: actor_id,
-                definition_version_id: vid,
-                expected_revision,
-            };
-            let result = service.publish_version(cmd, admission).await?;
-            Ok(result)
-        },
-        serde_json::json!({"definitionVersionId": vid, "expectedRevision": exp_for_receipt}),
+        version_id,
+        expected_revision,
+        admission,
         None,
     )
     .await
@@ -464,7 +454,7 @@ where
             let error_response = match &gov_err {
                 DefinitionGovernanceError::GraphValidationFailed(details) => {
                     serde_json::json!({"error": gov_err.label(), "details": details, "graphInputHash": diagnostic_hash})
-                },
+                }
                 _ => serde_json::json!({"error": gov_err.label()}),
             };
             let status = gov_err.status_code() as i32;
