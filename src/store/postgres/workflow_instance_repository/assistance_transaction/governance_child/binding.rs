@@ -50,7 +50,7 @@ pub(crate) async fn bind(
         }
     }
 }
-async fn admit(
+pub(super) async fn admit(
     tx: &mut Transaction<'_, Postgres>,
     c: &BindGovernanceChildCommand,
     command: Uuid,
