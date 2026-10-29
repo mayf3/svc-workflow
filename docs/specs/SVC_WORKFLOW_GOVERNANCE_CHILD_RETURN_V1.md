@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V1
 title: Owner-bound governance child and verified return to the originating visit
-status: accepted
+status: superseded
 accepted_date: 2026-10-28
 accepted_at: 2026-10-28T06:04:48Z
 accepted_by: Codex root (explicitly delegated by mayf3)
@@ -42,7 +42,7 @@ external_authorities:
     revision: 599107b6909e5f3153afd29bc846a122e50ebfd7
     relation: interoperates_with
 supersedes: []
-superseded_by: null
+superseded_by: SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2
 owners:
   - mayf3
 architecture_authority: SVC_WORKFLOW_ARCHITECTURE_V0_4_3

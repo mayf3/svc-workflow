@@ -1,6 +1,6 @@
 ---
 authority_id: POSTGRES_STORAGE_CONTRACT_V0_3
-status: proposed
+status: accepted
 authority_kind: storage_contract
 owning_repository: mayf3/svc-workflow
 implementation_authority: none
@@ -13,13 +13,15 @@ owners:
 date: 2026-10-29
 revision: draft-2
 candidate_base: f5e7f328ccba5f6e0d752abf74e68558ef38ca0f
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
-# POSTGRES_STORAGE_CONTRACT_V0_3 — proposed whole-authority successor
+# POSTGRES_STORAGE_CONTRACT_V0_3 — accepted whole-authority successor
 
-This proposal preserves the complete `POSTGRES_STORAGE_CONTRACT_V0_2` predecessor body below. The existing predecessor remains accepted and effective in the current main base: this proposed document makes no reciprocal lifecycle mutation and grants no implementation or production authority. The field and route details are proposed and trace to the paired authority below; independent review and acceptance remain outstanding. No claims of conformance or testing are made.
+Accepted whole-authority storage successor. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. The storage contract specifies source-level schema and transaction requirements only; it does not authorize migration apply or production changes.
 
-## Proposed bounded delta
+## Bounded contract delta
 
 V0.3 retains all V0.2 rules and adds exactly the five relations below, one forward integrity migration, and the named command-type additions below. It does not rewrite/delete historical facts, broaden ordinary Event uniqueness, or add a ledger for handoff, plan, recovery, or admission counts. FKs prove actual DB identity; transactional semantic guards must also prove receipt type/status/actor, digest, business facts, and cross-row lineage.
 
@@ -47,7 +49,7 @@ The forward migration validates old data before installing guards, preserves all
 
 Paired authority: `SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 §§3–4, 8, 11–12`; exact field/guard/cardinality source is the immutable author storage/stage correction artifact SHA-256 `8eab0f233793e1704c3612e1659f0c69c0e4323b45b0f1d395c8f9fec8a8ab06`, paired with design `db3c63991d816e11e31d94d24e312a60c9204d0cec0e160cd6dbbef0db4dd717`, Broker mapping `34cf1f937d50c6f5bb45b4fba3d008e320b283507778552194617663104f955f`, producer/discovery `874e36341a4ef0e390aafebae090f482a986def3faea665ca0d99cf108c55823`, and review-gap closure `79e47fa08a3be5068c21f0b08f7a0b090097d804fc8894f0f92d25174105a6ce`. All are design inputs, not implementation evidence.
 
-The complete predecessor body is carried forward unchanged below. The predecessor remains accepted and effective until this exact proposed successor is independently reviewed, accepted by the authorized Owner, and merged with reciprocal lifecycle links. No tests or conformance are claimed here.
+The predecessor contracts are carried forward below with only the bounded successor changes stated above; the predecessor source remains unchanged. This successor is accepted in the same paired lifecycle transaction that records the reciprocal predecessor backlink. Acceptance is not implementation or conformance evidence.
 
 Predecessor source: `docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_2.md` at `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; original file SHA-256 `6642a5addd9dfc0f9da025b76923c2f577035b6706c0407fd119b1eec6647eb3`.
 

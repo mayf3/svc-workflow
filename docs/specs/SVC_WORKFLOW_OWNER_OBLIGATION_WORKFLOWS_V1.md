@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
 title: Svc-owned bootstrap, semantic effects, and durable Owner review Workflows
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -30,13 +30,13 @@ external_authorities:
     authority_id: AGENT_CORE_TRUSTED_NATIVE_TOOL_POLICY_V1
     revision: 45268be276276462bd71040f0cd51b28a7764fe0
     relation: constrained_by
+acceptance_authority_basis: >-
+  Root acceptance under user-delegated authority; ROOT_OWNER_ACCEPTANCE.json SHA-256 43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e; reviewed semantic Svc b115c0641e4c2b6b965a6a3cd24252734754c14f and Core 0629858c08029ebcaed39b012b4c4a2a2a8078fb. Lifecycle transaction only; no production apply authority.
 ---
 
 # SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1 — Svc-owned intake/effect/review authority
 
-This is a proposed whole paired governing Spec, `status: proposed`. It records the root-selected V1 design and exact field/API contract from the frozen author artifact. It grants no implementation, migration, new Grant/Secret, production-principal provisioning, deploy, or A75 action. The currently accepted predecessors remain authoritative until exact-head review, Owner lifecycle action, and paired merge.
-
-`NEW_EVIDENCE` is the A75 normal Owner-turn completion with only a successful supplier creation, no consumer/GCR creation call, and the source case still `OWNER_PENDING`, pinned in `docs/investigations/A75_OWNER_OBLIGATION_NEW_EVIDENCE_20261029.md`. This does not establish why the model stopped and does not claim WAIT/READY was observed.
+Accepted paired governing Spec. Root acceptance under the user-delegated authority, recorded in `ROOT_OWNER_ACCEPTANCE.json` (SHA-256 `43eef302fb86cf131106fd6d39c0e338abc0acf9f14fb0210a5e51918d91448e`), binds the independently reviewed semantic heads Svc `b115c0641e4c2b6b965a6a3cd24252734754c14f` and Core `0629858c08029ebcaed39b012b4c4a2a2a8078fb`. This lifecycle-only transaction records acceptance and reciprocal predecessor links. Accepted governing Specs with `implementation_authority: contracts` authorize later source implementation within their Contracts once present in its base; Product, Architecture, and Storage authority retain `implementation_authority: none`. Production apply, migration execution, deployment, and A75 mutation remain unauthorized. The A75 evidence remains observational only; unobserved WAIT/READY and unattended business completion remain UNKNOWN. No production conformance is claimed.
 
 ## Goal
 
@@ -44,15 +44,15 @@ Give each opted-in Owner request a durable, bounded intake Workflow and each exa
 
 ## Scope and non-goals
 
-This proposal defines Svc publication, responsibility/effect storage, exact command/Event behavior, readiness and STOP truth, and the wire read/write seam paired with Core's existing WAE/WEC. It does not authorize source implementation, migration apply, new role/grant/secret, production activation, deployment, or A75 replay. It adds no plan/template DSL, second phase executor, generic recovery/handoff, or recursive intake.
+This accepted authority defines Svc publication, responsibility/effect storage, exact command/Event behavior, readiness and STOP truth, and the wire read/write seam paired with Core's existing WAE/WEC. It does not authorize migration apply, new role/grant/secret, production activation, deployment, or A75 replay. Source implementation is permitted only within these accepted Contracts after the paired accepted set is present in the implementation base. It adds no plan/template DSL, second phase executor, generic recovery/handoff, or recursive intake.
 
 ## Authority
 
-This is proposed Svc authority paired with Core `AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1`. It proposes whole successors to Product V11, Architecture V0.4.5, Storage V0.2 and the listed Svc contracts; all accepted predecessors remain current and untouched until paired independent review, authorized lifecycle action and merge. Frozen author design/addenda are inputs, not approval or implementation evidence.
+This accepted Svc authority is paired with accepted Core `AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1`. The paired lifecycle transaction supersedes Product V11, Architecture V0.4.5, Storage V0.2, and the listed Svc contracts with complete successors and reciprocal links. Frozen author design/addenda are inputs, not approval or implementation evidence.
 
 ## Current State
 
-Svc proposal base is `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f`; Core proposal base is `45268be276276462bd71040f0cd51b28a7764fe0`. The A75 run naturally exited with only the successful supplier creation observed, no consumer/GCR create observed, and source case still `OWNER_PENDING`. WAIT/READY exercise remains UNKNOWN. No source or production conformance is claimed.
+Reviewed semantic bases were Svc `f5e7f328ccba5f6e0d752abf74e68558ef38ca0f` and Core `45268be276276462bd71040f0cd51b28a7764fe0`; accepted semantic heads are bound in the acceptance record. The A75 run naturally exited with only the successful supplier creation observed, no consumer/GCR create observed, and source case still `OWNER_PENDING`. WAIT/READY exercise remains UNKNOWN. No source or production conformance is claimed.
 
 ## Observations
 
@@ -65,11 +65,11 @@ The exact read-only run evidence, natural-exit receipt, and retained isolated-DB
 
 ## Evidence relations
 
-The Investigation Record supports `CLM-SVC-OWNER-001` for the specific observed run and records the retained A75 DB sample supporting only the existing pm/Domain/Owner identity facts. The four frozen author design inputs (preferred design plus three addenda) and separately pinned review-gap closure define selected schema/mapping/producer and blocker-closure details, but do not support runtime conformance or production readiness. The accepted Core authority `AGENT_CORE_TRUSTED_NATIVE_TOOL_POLICY_V1` at `45268be276276462bd71040f0cd51b28a7764fe0` (file SHA-256 `3173692fb7d7fb8580fc09367c1f7921f02e6a0369354b7736603bf2ff9024bf`, §§2–4) and the pinned Core/Native implementation sources establish the exact model-tool dispatch boundary; A75 itself retained read/write tools and did not meet the proposed activation gate. The gate further requires the actual policy-generation ACK, non-sensitive synthetic deny probe, non-model-writable Broker/module/policy configuration, and environment key-name-only readback. This is not OS same-UID isolation and does not claim that A75 met the boundary. A75 is not replayed or mutated.
+The Investigation Record supports `CLM-SVC-OWNER-001` for the specific observed run and records the retained A75 DB sample supporting only the existing pm/Domain/Owner identity facts. The four frozen author design inputs (preferred design plus three addenda) and separately pinned review-gap closure defined selected schema/mapping/producer and blocker-closure details, but do not support runtime conformance or production readiness. The accepted Core authority `AGENT_CORE_TRUSTED_NATIVE_TOOL_POLICY_V1` at `45268be276276462bd71040f0cd51b28a7764fe0` (file SHA-256 `3173692fb7d7fb8580fc09367c1f7921f02e6a0369354b7736603bf2ff9024bf`, §§2–4) and the pinned Core/Native implementation sources establish the exact model-tool dispatch boundary; A75 itself retained read/write tools and did not meet the required activation gate. The gate further requires the actual policy-generation ACK, non-sensitive synthetic deny probe, non-model-writable Broker/module/policy configuration, and environment key-name-only readback. This is not OS same-UID isolation and does not claim that A75 met the boundary. A75 is not replayed or mutated.
 
 ## Decisions
 
-Use one real published intake GCR singleton and one separate real review Workflow singleton over existing WAE/WEC, QA, RETURN and GCR. Persist responsibilities and stable effects in the exact five proposed relations; bind successful business outcomes to actual existing receipts and Events. Keep current prerequisite readiness live and Scheduler semantics unchanged. Owner replacement is an explicit durable unsupported STOP in V1.
+Use one real published intake GCR singleton and one separate real review Workflow singleton over existing WAE/WEC, QA, RETURN and GCR. Persist responsibilities and stable effects in the exact five relations; bind successful business outcomes to actual existing receipts and Events. Keep current prerequisite readiness live and Scheduler semantics unchanged. Owner replacement is an explicit durable unsupported STOP in V1.
 
 ## 1. Selected architecture and actual gap
 
@@ -81,7 +81,7 @@ Actual frozen sources inspected: Core45268be276276462bd71040f0cd51b28a7764fe0; S
 
 ## 2. Request-time route: exact, preauthorized, no selector
 
-PROPOSED source Context Schema root annotation `x-workflow-owner-obligation-v1` is a CLOSED object:
+Accepted source Context Schema root annotation `x-workflow-owner-obligation-v1` is a CLOSED object:
 
 - `version`: integer constant1.
 - `intakeDefinitionVersionId`: UUID of same-Domain, published Model3 DefinitionVersion.
@@ -150,7 +150,7 @@ Registry operation key/version/hash and real graph/node declaration are separate
 
 Stable effect key = (`caseId`,`managedWorkflowInstanceId`,`definitionVersionId`,`nodeDefinitionId`,`slotKey`,`logicalOccurrence=1`). Server derives all coordinates. **Do not include current NodeVisitId, attemptId, Router turn, Owner/assignment epoch, CAS version or inputDigest in identity.** Those are invocation authorization/evidence only. RETURN creates a new visit, so `(caseId,NodeVisitId,slot)` is unsafe. V1 has one logical occurrence; legitimate repeated business creation needs a separately accepted generation contract and is not silently enabled by RETURN/new Owner/new ID.
 
-Proposed `workflow_operation_effects`: effectId UUID; above unique key; registry descriptor and ordinary-create target pin where applicable; definitionGraphDigest; firstAuthorizingVisitId; actorPrincipalId; businessIntentDigest; currentState PREPARED|STARTED|SUCCEEDED|REJECTED_ZERO_FACTS|UNKNOWN; concreteRequestDigest; commandId; actualResult JSON; actualResultDigest; lastOutcomeCode. Preserve original attempt/receipt references; V1 does not authorize changed-input correction. Never overwrite a successful effect/result.
+Accepted `workflow_operation_effects`: effectId UUID; above unique key; registry descriptor and ordinary-create target pin where applicable; definitionGraphDigest; firstAuthorizingVisitId; actorPrincipalId; businessIntentDigest; currentState PREPARED|STARTED|SUCCEEDED|REJECTED_ZERO_FACTS|UNKNOWN; concreteRequestDigest; commandId; actualResult JSON; actualResultDigest; lastOutcomeCode. Preserve original attempt/receipt references; V1 does not authorize changed-input correction. Never overwrite a successful effect/result.
 
 In one Svc transaction, acquire the effect claim and actual business command receipt, lock source/managed instance and case/Domain under existing ordering, validate current Owner/assignee/visit/version, lineage, exact published descriptor, then execute the existing command. Successful effect stores that actual receipt/Instance/Event/result, including original `admissionObservation` where present. It does not create a wrapper receipt or overwrite original `response_body`. Preserve ordinary one-Event and GCR exact-two-Event rules.
 
@@ -164,7 +164,7 @@ Task ADVANCE and relevant terminal acceptance join the node's required effect to
 
 Reuse runtime `workflowExecutionContextAccess.resolveWorkflowProvenance`, exact `{kind:'workflow_execution',workflowInstanceId,nodeVisitId,attemptId}` validation and the existing ledger-minted attempt. For managed intake/review turns, Broker resolves that provenance independently of model arguments and looks up the authoritative managed-work/node contract. Generic `workflow_execute.create_instance`, direct transition and assistance action cannot bypass it: route the declared operation through the effect guard or refuse GOVERNED_OPERATION_REQUIRED. The model cannot omit/change trusted coordinates or select an undeclared slot/new plan.
 
-Proposed closed API:
+Accepted closed API:
 
 - `GET /internal/v1/workflow-instances/{managedInstanceId}/owner-obligation`: narrow actual managed-work relation, source/case/policy/current Owner assignment, retirement/stop and allowed current node operation descriptors. Existing assignee/current Owner visibility only; no public global enumeration or business payload expansion.
 - `POST /internal/v1/workflow-instances/{managedInstanceId}/node-visits/{nodeVisitId}/operation-effects/{slotKey}:execute`: body exactly `{expectedWorkflowStateVersion,expectedSourceWorkflowStateVersion,operation:{key,version,hash},arguments}`. Actor from auth; instance/visit/case/slot/effect identity derived/validated, not accepted as forged body fields. operation arguments retain the existing exact business DTO shapes. Success `{effectId,state:'SUCCEEDED',commandId,result,resultDigest,replayed}`; declared non-success preserves actual existing deterministic/transport distinction. UNKNOWN must never return a success envelope or fake command/Instance ID.
@@ -180,7 +180,7 @@ The activation gate is the measured model-tool-reachable boundary: the actual na
 
 The intake child is created BEFORE its own supplier exists, so its published entry Context is genuinely prerequisite-free. Existing WPO V3 root marker requires the real source UUID at birth and must remain unchanged. No placeholder/future UUID, optional relaxation of that old marker or fake proof.
 
-A new CLOSED `node.metadata.workflowPrerequisiteGate` declaration is proposed:
+The accepted CLOSED `node.metadata.workflowPrerequisiteGate` declaration is:
 
 `{version:1,kind:'TERMINAL_SUBMISSION',producer:{nodeId,slotKey}}`.
 
@@ -255,19 +255,19 @@ No results are claimed. Independent acceptance must bind exact Core/Svc candidat
 | `OWNER-OBL-012` discovery/bound | Lose first response; resolve by `read`; exercise RETURN edges, WAE per-Visit cap, ADVANCE cycle rejection, each real STOP producer | Isolated Svc/Core pair and published graph fixtures | Exact effect-union DTO, WAE admission receipts, actual RETURN/escalation receipts, graph validation evidence | Missing effect ID is discovered by stable key; total bound matches actual producers | Absence called NOT_STARTED without authoritative lookup, invented cross-RETURN claim, higher cap override or uncounted cycle |
 | `OWNER-OBL-013` pinned target/leaf | Create against exact target, vary Version/digest, try managed target and nested leaf Assistance/create | Isolated Svc/Core pair with published target Versions | Node descriptor pin, ordinary create receipt/Event, causal origin row, nested STOP | Only pinned ordinary leaf is created; it cannot recursively create workflow | Dynamic target, managed role via ordinary route, leaf forks, or naked Owner path |
 
-Review must inspect actual generated HTTP/OpenAPI DTOs against the exact field sets in §§2-8, exact publish receipt/error semantics, actual service Principal/config activation assumptions, permission visibility, every named command/Event cardinality, old-read and replay compatibility, target/leaf closure, and all counterexamples in §9. The migration is not accepted without executable upgrade+rollback and integrity verification. Runtime configuration, deployment, service Principal provisioning, secret/grant changes, and A75 remain out of this proposal.
+Review must inspect actual generated HTTP/OpenAPI DTOs against the exact field sets in §§2-8, exact publish receipt/error semantics, actual service Principal/config activation assumptions, permission visibility, every named command/Event cardinality, old-read and replay compatibility, target/leaf closure, and all counterexamples in §9. The migration is not accepted without executable upgrade+rollback and integrity verification. Runtime configuration, deployment, service Principal provisioning, secret/grant changes, and A75 remain outside this accepted Spec.
 
 ## 12. Whole-authority successor closure
 
-This paired Spec is supplemented by complete proposed successors preserving all accepted predecessor content:
+This paired Spec is accompanied by accepted complete successors preserving predecessor contracts, with the explicitly declared ACC-GCR-003 acceptance-row change in Core GCR V2:
 
 - `SVC_WORKFLOW_PRODUCT_BOUNDARY_V12` supersedes Product V11.
 - `SVC_WORKFLOW_ARCHITECTURE_V0_4_6` supersedes Architecture V0_4_5.
 - `POSTGRES_STORAGE_CONTRACT_V0_3` supersedes Storage V0.2.
-- `SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2`, `SVC_WORKFLOW_EXECUTION_CONTROL_V2`, `SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2`, and `SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V4` are proposed whole successors to the corresponding V1/V3 authority files and carry all prior clauses.
+- `SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2`, `SVC_WORKFLOW_EXECUTION_CONTROL_V2`, `SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V2`, and `SVC_WORKFLOW_PREREQUISITE_ORCHESTRATION_V4` are accepted whole successors to the corresponding predecessor authority files and carry their prior clauses, subject only to their explicitly stated bounded deltas.
 - Core `AGENT_CORE_WORKFLOW_ASSIGNEE_TRANSITION_CAPABILITY_V2` is required: it carries accepted CTR-010 and amends only trusted managed routing through the guarded effect endpoint, preserving the single existing `workflow_execute` model write entry and adding no effect-execute write tool.
 
-The specific new boundaries in §§2-9 apply only if the paired Spec set is accepted in both repositories. Each old accepted file must remain untouched and `accepted` through proposal review; reciprocal predecessor backlinks, index updates and accepted status changes are a distinct exact-head lifecycle action. No partial authority mutation is proposed.
+The specific Contracts in §§2–9 are accepted as a paired set. The separate lifecycle transaction records reciprocal predecessor backlinks, index updates, and superseded status; it does not modify implementation or runtime state.
 
 ## 13. Preserved decision and limits
 
@@ -282,7 +282,7 @@ The only selected execution plan is the exact published intake Workflow and sepa
 
 ## 15. Migration, compatibility, and rollback
 
-A future implementation requires one forward migration for exactly the five relations and named guards in Storage V0.3, with validated existing data, concurrency/upgrade proof, and exact preservation of historical receipt/Event bytes and IDs. No migration is authorized by this proposal. Existing non-opted-in request/create/GCR behavior, `admissionObservation`, `prerequisiteReadiness`, receipt response bodies, read permissions, Scheduler projections, and command/Event cardinalities remain unchanged except the two explicitly named AUTO command types. A rollback may restore a prior global Event-command uniqueness rule only if it installs without error; it may not delete or rewrite a valid multi-Event GCR/intake pair. If valid pair facts exist, maintain the pair-aware constraint or use a separately reviewed forward recovery plan. UNKNOWN/successful effects and responsibility identities are never reset to enable rollback.
+A future implementation requires one forward migration for exactly the five relations and named guards in Storage V0.3, with validated existing data, concurrency/upgrade proof, and exact preservation of historical receipt/Event bytes and IDs. No migration apply is authorized by this accepted Spec. Existing non-opted-in request/create/GCR behavior, `admissionObservation`, `prerequisiteReadiness`, receipt response bodies, read permissions, Scheduler projections, and command/Event cardinalities remain unchanged except the two explicitly named AUTO command types. A rollback may restore a prior global Event-command uniqueness rule only if it installs without error; it may not delete or rewrite a valid multi-Event GCR/intake pair. If valid pair facts exist, maintain the pair-aware constraint or use a separately reviewed forward recovery plan. UNKNOWN/successful effects and responsibility identities are never reset to enable rollback.
 
 ### Frozen design inputs (proposal evidence only)
 
