@@ -39,46 +39,7 @@ pub(crate) async fn list_due(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_scope(&principal, "workflow.read")?;
 
-    let limit = query.limit.unwrap_or(50);
-    if !(1..=100).contains(&limit) {
-        return Err(ApiError::unprocessable(
-            "invalid_pagination",
-            "limit must be 1-100",
-        ));
-    }
-
-    // CTR-DKC-001: both-or-neither; malformed values land in the same 422
-    // invalid_pagination family. Validation is handler-side and precedes the
-    // in-snapshot role check (the cursor never reaches the query when it is
-    // malformed).
-    let cursor = match (
-        query.after_next_eligible_at.as_deref(),
-        query.after_dispatch_intent_id.as_deref(),
-    ) {
-        (None, None) => None,
-        (Some(ts), Some(id)) => {
-            let parsed_ts = chrono::DateTime::parse_from_rfc3339(ts)
-                .ok()
-                .map(|t| t.with_timezone(&chrono::Utc));
-            let parsed_id = id.parse::<uuid::Uuid>().ok();
-            match (parsed_ts, parsed_id) {
-                (Some(ts), Some(id)) => Some((ts, id)),
-                _ => {
-                    return Err(ApiError::unprocessable(
-                        "invalid_pagination",
-                        "afterNextEligibleAt must be RFC3339 and afterDispatchIntentId must be a UUID",
-                    ));
-                }
-            }
-        }
-        _ => {
-            return Err(ApiError::unprocessable(
-                "invalid_pagination",
-                "afterNextEligibleAt and afterDispatchIntentId must be provided together",
-            ));
-        }
-    };
-
+    let (limit, cursor) = parse_query(&query)?;
     let intents = state
         .query_service
         .list_due_dispatch_intents(principal.principal_id.into_uuid(), limit, cursor)
@@ -145,4 +106,68 @@ pub(crate) async fn owner_assistance_resume_evidence(
     Ok(Json(
         crate::http::dto::OwnerAssistanceResumeEvidenceEnvelope { evidence },
     ))
+}
+
+fn parse_query(
+    query: &DueDispatchIntentsQuery,
+) -> Result<(i64, Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>), ApiError> {
+    let limit = query.limit.unwrap_or(50);
+    if !(1..=100).contains(&limit) {
+        return Err(ApiError::unprocessable(
+            "invalid_pagination",
+            "limit must be 1-100",
+        ));
+    }
+
+    // CTR-DKC-001: both-or-neither; malformed values land in the same 422
+    // invalid_pagination family. Validation is handler-side and precedes the
+    // in-snapshot role check (the cursor never reaches the query when it is
+    // malformed).
+    let cursor = match (
+        query.after_next_eligible_at.as_deref(),
+        query.after_dispatch_intent_id.as_deref(),
+    ) {
+        (None, None) => None,
+        (Some(ts), Some(id)) => {
+            let parsed_ts = chrono::DateTime::parse_from_rfc3339(ts)
+                .ok()
+                .map(|t| t.with_timezone(&chrono::Utc));
+            let parsed_id = id.parse::<uuid::Uuid>().ok();
+            match (parsed_ts, parsed_id) {
+                (Some(ts), Some(id)) => Some((ts, id)),
+                _ => {
+                    return Err(ApiError::unprocessable(
+                        "invalid_pagination",
+                        "afterNextEligibleAt must be RFC3339 and afterDispatchIntentId must be a UUID",
+                    ));
+                }
+            }
+        }
+        _ => {
+            return Err(ApiError::unprocessable(
+                "invalid_pagination",
+                "afterNextEligibleAt and afterDispatchIntentId must be provided together",
+            ));
+        }
+    };
+
+    Ok((limit, cursor))
+}
+pub(crate) async fn list_ready(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Query(query): Query<DueDispatchIntentsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    crate::http::handlers::definitions::require_direct_token(&principal)?;
+    let (limit, cursor) = parse_query(&query)?;
+    let items = crate::store::postgres::workflow_instance_repository::query_ready_intents::list(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        limit,
+        cursor,
+    )
+    .await
+    .map_err(ApiError::from_query)?;
+    Ok(Json(serde_json::json!({"items":items})))
 }

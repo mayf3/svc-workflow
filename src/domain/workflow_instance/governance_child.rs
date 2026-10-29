@@ -14,6 +14,17 @@ pub struct BindGovernanceChildCommand {
     pub acceptance_transition_id: TransitionId,
     pub expected_workflow_state_version: i32,
 }
+#[derive(Debug, Clone)]
+pub struct CreateAndBindGovernanceChildCommand {
+    pub principal_id: PrincipalId,
+    pub idempotency_key: String,
+    pub command_schema_version: String,
+    pub assistance_case_id: AssistanceCaseId,
+    pub definition_version_id: crate::domain::ids::DefinitionVersionId,
+    pub context_payload: Value,
+    pub acceptance_transition_id: TransitionId,
+    pub expected_workflow_state_version: i32,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GovernanceAcceptance {

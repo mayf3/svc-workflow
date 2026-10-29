@@ -274,3 +274,20 @@ fn parse_domain_cursor(
         )),
     }
 }
+
+pub(crate) async fn readiness(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(instance): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    let id = path_uuid(&instance)?;
+    crate::store::postgres::workflow_instance_repository::prerequisite::read(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        id,
+    )
+    .await
+    .map(Json)
+    .map_err(ApiError::from_query)
+}

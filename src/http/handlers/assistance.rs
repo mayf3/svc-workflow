@@ -343,3 +343,29 @@ pub(crate) async fn bind_governance_child(
     .map_err(ApiError::from_assistance)?;
     Ok((StatusCode::OK, Json(value)))
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CreateAndBindBody {
+    definition_version_id: Uuid,
+    context_payload: serde_json::Value,
+    acceptance_transition_id: Uuid,
+    expected_workflow_state_version: i32,
+}
+pub(crate) async fn create_and_bind(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(case): Path<String>,
+    headers: HeaderMap,
+    payload: Result<Json<CreateAndBindBody>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
+    require_scope(&principal, "workflow.execute")?;
+    let key = idempotency_key(&headers)?;
+    let case = path_id(&case)?;
+    let Json(p) = payload.map_err(ApiError::from_json_rejection)?;
+    let admission =
+        crate::store::postgres::admission_gate::AdmissionGate::new(state.admission_client.as_ref())
+            .with_pool(Some(&state.pool));
+    let value=crate::application::workflow_instance::assistance::create_and_bind_governance_child(&state.pool,admission,crate::domain::workflow_instance::governance_child::CreateAndBindGovernanceChildCommand{principal_id:principal.principal_id,idempotency_key:key,command_schema_version:"v1".into(),assistance_case_id:AssistanceCaseId::from_uuid(case),definition_version_id:crate::domain::ids::DefinitionVersionId::from_uuid(p.definition_version_id),context_payload:p.context_payload,acceptance_transition_id:crate::domain::ids::TransitionId::from_uuid(p.acceptance_transition_id),expected_workflow_state_version:p.expected_workflow_state_version}).await.map_err(ApiError::from_assistance)?;
+    Ok((StatusCode::CREATED, Json(value)))
+}

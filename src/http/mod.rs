@@ -47,6 +47,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::instances::detail),
         )
         .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/readiness",
+            get(handlers::instances::readiness),
+        )
+        .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
             post(handlers::transitions::execute).layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -72,6 +76,13 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             post(handlers::assistance::bind_governance_child).layer(
                 middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
             ),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/governance-child:create-and-bind",
+            post(handlers::assistance::create_and_bind).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
         )
         .route(
             "/internal/v1/assistance-cases/{assistanceCaseId}/resolve",
@@ -141,6 +152,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/dispatch-intents",
             get(handlers::dispatch_intents::list_due),
+        )
+        .route(
+            "/internal/v1/dispatch-intents/ready",
+            get(handlers::dispatch_intents::list_ready),
         )
         .route(
             "/internal/v1/dispatch-intents/{dispatchIntentId}/owner-assistance-resume-evidence",

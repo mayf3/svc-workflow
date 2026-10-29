@@ -57,7 +57,12 @@ impl<R: DefinitionRepository> DefinitionService<R> {
 
         // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-001): the
         // reserved opt-in annotation must pass the closed placement matrix.
-        result.errors.extend(crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(version.semantic_model_version, &graph));
+        result.errors.extend(
+            crate::domain::definition::acceptance_binding::validate_graph_annotation_placement(
+                version.semantic_model_version,
+                &graph,
+            ),
+        );
 
         result.valid = result.errors.is_empty();
 
@@ -119,6 +124,12 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // Validate each transition's submission_schema
         for trans in &graph.transitions {
             if let Some(schema) = &trans.submission_schema {
+                if crate::domain::definition::prerequisite::contains_marker(schema) {
+                    errors.push(GraphValidationError::new(
+                        "INVALID_SUBMISSION_SCHEMA",
+                        "prerequisite annotation is permitted only at Context root",
+                    ));
+                }
                 if let Err(e) = validate_json_schema(schema) {
                     errors.push(GraphValidationError::new(
                         "INVALID_SUBMISSION_SCHEMA",
@@ -276,6 +287,8 @@ fn validate_json_schema(schema: &serde_json::Value) -> Result<(), String> {
     if !schema.is_object() {
         return Err("schema must be a JSON object".to_string());
     }
+
+    crate::domain::definition::prerequisite::validate_schema(schema)?;
 
     // Recursively check for external references
     check_external_refs(schema)?;
@@ -552,3 +565,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "prerequisite_marker_tests.rs"]
+mod prerequisite_marker_tests;
