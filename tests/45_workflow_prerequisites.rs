@@ -54,3 +54,6 @@ mod readiness;
 mod unidentified;
 #[path = "prerequisites/upgrade.rs"]
 mod upgrade;
+
+#[path = "prerequisites/observation.rs"]
+mod observation;
