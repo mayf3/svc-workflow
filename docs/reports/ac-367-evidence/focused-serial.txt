@@ -1,0 +1,91 @@
+warning: unused import: `tokio::net::TcpListener`
+  --> tests/common/mod.rs:30:5
+   |
+30 | use tokio::net::TcpListener;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::io::AsyncWriteExt`
+  --> tests/common/mod.rs:29:5
+   |
+29 | use tokio::io::AsyncWriteExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling svc-workflow v0.1.0 (/private/tmp/sw-367)
+warning: `svc-workflow` (test "40_definition_input_contract_member_read_tests") generated 2 warnings (run `cargo fix --test "40_definition_input_contract_member_read_tests" -p svc-workflow` to apply 1 suggestion)
+warning: `svc-workflow` (test "22_repair_context") generated 2 warnings (2 duplicates)
+warning: `svc-workflow` (test "38_declared_context_inputs_v5_distribution") generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.27s
+     Running tests/22_repair_context.rs (target/debug/deps/22_repair_context-f9c23f707f040940)
+
+running 10 tests
+test apply_appends_revision_event_and_audit ... ok
+test archived_instance_rejected ... ok
+test cancelled_instance_rejected ... ok
+test disabled_operator_rejected ... ok
+test dry_run_returns_plan_without_writing ... ok
+test non_authorized_operator_rejected ... ok
+test payload_adding_non_required_key_rejected ... ok
+test payload_altering_existing_value_rejected ... ok
+test payload_still_missing_required_key_rejected_on_apply ... ok
+test unknown_principal_in_payload_rejected ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/26_workflow_assistance_http.rs (target/debug/deps/26_workflow_assistance_http-e55ec6365784ae16)
+
+running 1 test
+test assistance_http_agent_owner_human_query_and_resume_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.80s
+
+     Running tests/36_execution_control_v1.rs (target/debug/deps/36_execution_control_v1-4a2c6832495437a1)
+
+running 8 tests
+test acc010_assignee_resume_evidence_uses_persisted_request_and_resolution ... ok
+test acc010_forged_ordinary_policy_payload_has_no_resume_evidence ... ok
+test acc01_create_queues_binding_forum_event_and_kick ... ok
+test acc03_advance_queues_transition_committed_event ... ok
+test acc04_return_limit_escalates_then_blocks ... ok
+test acc05_escalation_endpoint_gates_idempotency_and_due_feed ... ok
+test acc05b_escalation_last_attempt_id_is_opaque_string ... ok
+test acc06_outbox_event_key_is_unique ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.49s
+
+     Running tests/38_declared_context_inputs_v5_distribution.rs (target/debug/deps/38_declared_context_inputs_v5_distribution-cea15130f26bc594)
+
+running 7 tests
+test corrected_v5_contract_refuses_invalid_context_and_projects_nothing ... ok
+test declared_array_input_allowing_empty_fails_publish ... ok
+test declared_array_input_with_unbounded_values_fails_publish ... ok
+test declared_input_not_required_by_schema_fails_publish ... ok
+test declared_input_rule_covers_visit_activation_model ... ok
+test declared_input_without_schema_type_fails_publish ... ok
+test malformed_declared_inputs_fail_publish ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.84s
+
+     Running tests/40_definition_input_contract_member_read_tests.rs (target/debug/deps/40_definition_input_contract_member_read_tests-6d84bcc26570449e)
+
+running 17 tests
+test p10_disabled_domain_denied_like_create ... ok
+test p11_serialized_contract_carries_no_management_data ... ok
+test p1_member_with_active_binding_reads_published_input_contract ... ok
+test p2_member_still_denied_on_h5_owner_reads ... ok
+test p3_owner_reads_new_surface_and_h5_reads_still_work ... ok
+test p4_non_member_denied_on_existing_and_unknown_version ... ok
+test p5_revoked_membership_binding_denies_read ... ok
+test p6_cross_domain_member_denied ... ok
+test p7_draft_version_denied_for_member ... ok
+test p8_deprecated_version_denied_for_member ... ok
+test p9_disabled_principal_denied ... ok
+test snapshot::snapshot_authorized_before_binding_revocation_can_return_old_contract ... ok
+test snapshot::snapshot_authorized_before_deprecation_can_return_old_contract ... ok
+test snapshot::snapshot_denial_precedence_and_missing_principal_are_preserved ... ok
+test snapshot::snapshot_deprecation_before_membership_grant_never_authorizes ... ok
+test snapshot::snapshot_membership_revocation_before_domain_enable_never_authorizes ... ok
+test snapshot::snapshot_principal_disable_before_membership_grant_never_authorizes ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
