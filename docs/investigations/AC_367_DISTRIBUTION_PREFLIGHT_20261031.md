@@ -188,7 +188,10 @@ The following is a handoff, not an executed recovery or permission grant:
    For legacy work, do not invent an activation; verify the actual runtime
    consumer respects the existing Assistance stop instead of the time label
    alone. No such runtime verification was performed here.
-4. Do not use the assignee-only repair CLI to add/replace `targetPlatforms`.
+4. Do not use the operator repair CLI, which is limited to missing required
+   assignee keys, to add/replace `targetPlatforms`. That CLI is a trusted-host
+   maintenance surface; its operator ID is audit attribution, not authenticated
+   current-assignee authority.
    A valid existing Legacy Creator+DRAFT route applies only if its actual
    actor/node/model preconditions hold. General non-DRAFT/model3 correction
    needs accepted authority; preserving the old immutable evidence is required.
