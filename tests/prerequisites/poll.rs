@@ -112,7 +112,7 @@ async fn ready_poll_filters_blocked_prefix_before_page_and_restarts() {
     finish.submission_payload = Some(json!({"actual":"supplier artifact"}));
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         finish,
     )
     .await

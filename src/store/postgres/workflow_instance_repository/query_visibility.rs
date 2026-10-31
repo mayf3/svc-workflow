@@ -268,6 +268,25 @@ pub(crate) async fn load_base(
     .map_err(storage)
 }
 
+/// Compare the current actor with the unique effective assignee from the
+/// existing immutable P9 lineage. Historical assignee facts are unchanged;
+/// this predicate grants no creator, Domain Owner, or administrative rights.
+pub(crate) async fn actor_is_effective_current_assignee(
+    tx: &mut Transaction<'_, Postgres>,
+    stored_assignee: Option<Uuid>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    let Some(stored) = stored_assignee else {
+        return Ok(false);
+    };
+    let effective = crate::store::postgres::identity_successor::resolve_current_principal(
+        &mut **tx, stored,
+    )
+    .await
+    .map_err(storage)?;
+    Ok(effective == Some(actor))
+}
+
 async fn classify_visibility(
     tx: &mut Transaction<'_, Postgres>,
     base: &QueryBaseRow,
@@ -277,7 +296,10 @@ async fn classify_visibility(
     if owner {
         return Ok(Some(QueryVisibility::DomainOwnerFull));
     }
-    if base.current_assignee_principal_id == Some(actor)
+    let effective_assignee =
+        actor_is_effective_current_assignee(&mut *tx, base.current_assignee_principal_id, actor)
+            .await?;
+    if effective_assignee
         && base.current_node_type.as_deref() != Some("TERMINAL")
         && base.visit_instance_id == Some(base.workflow_instance_id)
         && base.node_definition_version_id == Some(base.definition_version_id)

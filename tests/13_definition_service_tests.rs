@@ -400,7 +400,7 @@ async fn seed_minimal_and_publish(
         definition_version_id: ver_id,
         expected_revision: None,
     };
-    service.publish_version(pub_cmd, AdmissionGate::disabled())
+    service.publish_version(pub_cmd, crate::common::admitting_gate())
         .await
         .expect("publish");
 }

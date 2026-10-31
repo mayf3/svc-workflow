@@ -278,7 +278,7 @@ pub async fn import(
                     admission_principals.insert(assignee);
                 }
                 admission
-                    .admit(admission_principals)
+                    .admit_on_tx(&mut tx, admission_principals)
                     .await
                     .map_err(LegacyImportError::AdmissionFailed)?;
             }

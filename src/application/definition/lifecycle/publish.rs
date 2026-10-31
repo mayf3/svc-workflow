@@ -32,13 +32,12 @@ impl<R: DefinitionRepository> DefinitionService<R> {
     /// Auth/Agent-core directory reads, fail-closed. Draft/reopen paths
     /// persist literals too, but nothing authoritative: a DRAFT is not
     /// executable truth, so publish is the single authoritative gate
-    /// (CTR-CIR-003: "corrected-source publish"). Dormant mode
-    /// (`AdmissionGate::disabled()`) preserves the pre-admission behavior
-    /// exactly.
+    /// (CTR-CIR-003: "corrected-source publish"). Agent literals require fresh
+    /// directory proof in the committing repository transaction.
     pub(crate) async fn prepare_publish(
         &self,
         cmd: &PublishVersion,
-        admission: AdmissionGate<'_>,
+        _admission: AdmissionGate<'_>,
     ) -> Result<String, DefinitionError> {
         self.ensure_principal_enabled(cmd.actor_principal_id)
             .await?;
@@ -135,19 +134,14 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         // publishing transaction; any admission failure fails the whole
         // publish closed (zero business delta — the version stays DRAFT).
         // -------------------------------------------------------------------
-        let identity_literals =
+        let _identity_literals =
             admission_gate_module::collect_definition_publish_identity_literals(
                 &nodes,
                 version.context_schema.as_ref(),
             )
             .map_err(DefinitionError::GraphValidationFailed)?;
-        admission
-            .admit(identity_literals)
-            .await
-            .map_err(DefinitionError::AdmissionFailed)?;
-        admission
-            .check_commit_budget()
-            .map_err(DefinitionError::AdmissionFailed)?;
+        // Fresh identity admission uses the re-read graph in the committing
+        // repository transaction, after its digest/CAS checks.
 
         // Compute digest
         let node_key_map: HashMap<_, _> = nodes

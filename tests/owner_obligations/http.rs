@@ -171,7 +171,7 @@ async fn http_loaded_policy_actor_mismatch_refuses_admission_then_actual_produce
         http_support::http(app.clone(), owner, &jwk, "GET", &path, None, json!({})).await;
     assert_eq!(status, 409, "{error}");
     assert_eq!(error["error"]["code"], "policy_actor_mismatch");
-    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_configured(&p,Some(wrong),svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled()).await.unwrap();
+    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_configured(&p,Some(wrong),crate::common::admitting_gate()).await.unwrap();
     let (status, stopped) =
         http_support::http(app, owner, &jwk, "GET", &path, None, json!({})).await;
     assert_eq!(status, 200, "{stopped}");

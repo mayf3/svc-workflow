@@ -111,7 +111,7 @@ async fn seed_published_version(pool: &sqlx::PgPool) -> PublishedVersion {
             },
             // Dormant admission mode preserves pre-admission publish behavior;
             // the seed fixture carries no identity literals to admit.
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
         .expect("seed: publish");

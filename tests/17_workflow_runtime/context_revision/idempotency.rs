@@ -8,7 +8,7 @@ async fn test_revise_same_key_hash_replays_same_revision() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -20,11 +20,11 @@ async fn test_revise_same_key_hash_replays_same_revision() {
     );
     cmd.idempotency_key = idem_key.clone();
     let r1 = revise_workflow_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
+        crate::common::admitting_gate(), cmd.clone())
         .await
         .expect("first");
     let r2 = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("replay");
+    crate::common::admitting_gate(), cmd).await.expect("replay");
     assert_eq!(
         r1.current_context_revision_id,
         r2.current_context_revision_id
@@ -37,7 +37,7 @@ async fn test_revise_replay_does_not_increase_state_version() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -49,12 +49,12 @@ async fn test_revise_replay_does_not_increase_state_version() {
     );
     cmd.idempotency_key = idem_key.clone();
     let r1 = revise_workflow_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
+        crate::common::admitting_gate(), cmd.clone())
         .await
         .expect("first");
     assert_eq!(r1.workflow_state_version, 2);
     let r2 = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("replay");
+    crate::common::admitting_gate(), cmd).await.expect("replay");
     assert_eq!(
         r2.workflow_state_version, 2,
         "replay must not increase state version"
@@ -75,7 +75,7 @@ async fn test_revise_same_key_different_payload_conflict() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -87,7 +87,7 @@ async fn test_revise_same_key_different_payload_conflict() {
     );
     cmd_a.idempotency_key = idem_key.clone();
     let _ = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await.expect("first");
+    crate::common::admitting_gate(), cmd_a).await.expect("first");
     let mut cmd_b = make_revise_command(
         principal_id,
         r.workflow_instance_id,
@@ -96,7 +96,7 @@ async fn test_revise_same_key_different_payload_conflict() {
     );
     cmd_b.idempotency_key = idem_key;
     let err = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await.unwrap_err();
+    crate::common::admitting_gate(), cmd_b).await.unwrap_err();
     assert!(matches!(
         &err,
         ReviseWorkflowContextError::IdempotencyConflict { .. }
@@ -109,7 +109,7 @@ async fn test_revise_conflict_writes_attempt_audit() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let idem_key = Uuid::new_v4().to_string();
@@ -121,7 +121,7 @@ async fn test_revise_conflict_writes_attempt_audit() {
     );
     cmd_a.idempotency_key = idem_key.clone();
     let _ = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await.expect("first");
+    crate::common::admitting_gate(), cmd_a).await.expect("first");
     let mut cmd_b = make_revise_command(
         principal_id,
         r.workflow_instance_id,
@@ -130,7 +130,7 @@ async fn test_revise_conflict_writes_attempt_audit() {
     );
     cmd_b.idempotency_key = idem_key.clone();
     let _ = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await;
+    crate::common::admitting_gate(), cmd_b).await;
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_command_attempt_audits WHERE idempotency_key = $1",
     )

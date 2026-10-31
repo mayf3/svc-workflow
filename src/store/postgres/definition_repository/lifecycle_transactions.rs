@@ -344,6 +344,17 @@ impl PgDefinitionRepository {
             policy_actor,
         )
         .await?;
+        let literals =
+            crate::store::postgres::admission_gate::collect_definition_publish_identity_literals(
+                &nodes,
+                version.context_schema.as_ref(),
+            )
+            .map_err(DefinitionError::GraphValidationFailed)?;
+        admission
+            .admit_on_tx(tx, literals)
+            .await
+            .map_err(DefinitionError::AdmissionFailed)?;
+
         // 7. Write publish status inside tx
         sqlx::query(
             r#"

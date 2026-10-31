@@ -65,7 +65,14 @@ pub(crate) async fn request_assistance(
     if let Err(error) = validate_actor_enabled(&mut tx, actor).await {
         return deterministic_failure(tx, command_id, error).await;
     }
-    if instance.assignee_principal_id != Some(actor) {
+    if !super::super::query_visibility::actor_is_effective_current_assignee(
+        &mut tx,
+        instance.assignee_principal_id,
+        actor,
+    )
+    .await
+    .map_err(|error| AssistanceError::StorageError(error.to_string()))?
+    {
         return deterministic_failure(tx, command_id, AssistanceError::PrincipalNotAssignee).await;
     }
     let owner = match effective_owner(&mut tx, instance.domain_id).await {

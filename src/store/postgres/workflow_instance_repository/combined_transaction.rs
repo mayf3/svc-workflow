@@ -205,7 +205,21 @@ pub(crate) async fn revise_context_and_transition_atomically(
     if instance.created_by_principal_id != principal_id {
         deterministic_failure!(ReviseContextAndTransitionError::PrincipalNotCreator);
     }
-    if current_visit.assignee_principal_id != Some(principal_id) {
+    let effective_assignee = match super::query_visibility::actor_is_effective_current_assignee(
+        &mut tx,
+        current_visit.assignee_principal_id,
+        principal_id,
+    )
+    .await
+    {
+        Ok(matches) => matches,
+        Err(error) => {
+            return Err(ReviseContextAndTransitionError::StorageError(
+                error.to_string(),
+            ));
+        }
+    };
+    if !effective_assignee {
         deterministic_failure!(ReviseContextAndTransitionError::PrincipalNotAssignee);
     }
     match super::assistance_transaction::has_open_assistance(&mut tx, current_visit.node_visit_id)
@@ -336,6 +350,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
         &instance,
         domain_id,
         Some(&command.context_payload),
+        false, // combined accepts only ADVANCE; never a historical RETURN bridge
     )
     .await
     .map_err(ReviseContextAndTransitionError::from));
@@ -381,7 +396,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
             admission_principals.push(assignee);
         }
         admission
-            .admit(admission_principals)
+            .admit_on_tx(&mut tx, admission_principals)
             .await
             .map_err(ReviseContextAndTransitionError::AdmissionFailed)?;
     }

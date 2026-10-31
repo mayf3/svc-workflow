@@ -52,6 +52,7 @@ use common::MockJwksServer;
 enum StubMode {
     Admit,
     PrincipalDisabled,
+    AgentDisabled,
 }
 
 struct StubDirectory {
@@ -103,7 +104,7 @@ fn serve_connection(
         .push(path.clone());
 
     let principal_status = match mode {
-        StubMode::Admit => "active",
+        StubMode::Admit | StubMode::AgentDisabled => "active",
         StubMode::PrincipalDisabled => "disabled",
     };
 
@@ -112,11 +113,15 @@ fn serve_connection(
         let scope = form_value(&body, "scope");
         (200, token_body(&scope))
     } else if let Some(rest) = path.strip_prefix("/api/v1/directory/principals/") {
+        let agent_id = format!(
+            "agt_{}",
+            rest.strip_suffix("/agent").unwrap_or(rest).replace('-', "")
+        );
         match rest.strip_suffix("/agent") {
             Some(principal) => (
                 200,
                 format!(
-                    r#"{{"principalId":"{principal}","agentId":"agent-{principal}","principalStatus":"{principal_status}"}}"#
+                    r#"{{"principalId":"{principal}","agentId":"{agent_id}","principalStatus":"{principal_status}"}}"#
                 ),
             ),
             None => (404, r#"{"error":"unexpected_path"}"#.to_string()),
@@ -124,7 +129,10 @@ fn serve_connection(
     } else if let Some(agent_id) = path.strip_prefix("/v1/directory/agents/") {
         (
             200,
-            format!(r#"{{"agentId":"{agent_id}","exists":true,"enabled":true}}"#),
+            format!(
+                r#"{{"agentId":"{agent_id}","exists":true,"enabled":{}}}"#,
+                mode != StubMode::AgentDisabled
+            ),
         )
     } else {
         (404, r#"{"error":"unexpected_path"}"#.to_string())
@@ -333,12 +341,22 @@ struct Fixture {
     domain_id: Uuid,
     version_id: Uuid,
     draft_advance: Uuid,
-    normal_advance: Uuid,
+    work_return: Uuid,
 }
 
 async fn seed(pool: &sqlx::PgPool) -> Fixture {
+    seed_with_fixed_draft(pool, false).await
+}
+
+async fn seed_with_fixed_draft(pool: &sqlx::PgPool, fixed: bool) -> Fixture {
     let (caller, domain_id) = common::seed_principal_domain_with_owner(pool).await;
     let agent = common::seed_second_principal(pool).await;
+    sqlx::query("UPDATE principals SET principal_type = 'AGENT' WHERE principal_id IN ($1,$2)")
+        .bind(caller)
+        .bind(agent)
+        .execute(pool)
+        .await
+        .unwrap();
 
     let def_id = Uuid::new_v4();
     let version_id = Uuid::new_v4();
@@ -370,11 +388,13 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
     let done = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_node_definitions \
-         (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) \
-         VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', 'WORKFLOW_CREATOR')",
+         (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type, fixed_principal_id) \
+         VALUES ($1, $2, 'draft', 'Draft', 0, 'DRAFT', $3::assignee_ref_type, $4)",
     )
     .bind(draft)
     .bind(version_id)
+    .bind(if fixed { "FIXED_PRINCIPAL" } else { "WORKFLOW_CREATOR" })
+    .bind(if fixed { Some(caller) } else { None })
     .execute(pool)
     .await
     .expect("insert draft node");
@@ -440,6 +460,10 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
         .await
         .expect("set normal primary");
 
+    let work_return = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1,$2,'return-draft','Return',$3,$4,'RETURN')")
+        .bind(work_return).bind(version_id).bind(normal).bind(draft).execute(pool).await.unwrap();
+
     sqlx::query("UPDATE workflow_definition_versions SET version_status = 'PUBLISHED' WHERE definition_version_id = $1")
         .bind(version_id)
         .execute(pool)
@@ -452,7 +476,7 @@ async fn seed(pool: &sqlx::PgPool) -> Fixture {
         domain_id,
         version_id,
         draft_advance,
-        normal_advance,
+        work_return,
     }
 }
 
@@ -558,7 +582,7 @@ async fn admission_enabled_create_writes_and_admits_command_principals() {
     assert!(
         requests
             .iter()
-            .any(|p| p == &format!("/v1/directory/agents/agent-{}", fixture.caller)),
+            .any(|p| p == &format!("/v1/directory/agents/agt_{}", fixture.caller.simple())),
         "agent-core directory read expected: {requests:?}"
     );
     // Fresh token per exact read audience per command.
@@ -604,7 +628,7 @@ async fn create_rejected_fails_closed_with_zero_writes() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "body: {body}");
-    assert_eq!(body["error"]["code"], "admission_rejected");
+    assert_eq!(body["error"]["code"], "admission_target_disabled");
 
     // Zero business delta: no instance, no receipt, no context revision.
     assert_eq!(instance_count(&pool, fixture.domain_id).await, 0);
@@ -664,7 +688,7 @@ async fn create_unavailable_fails_closed() {
 /// (d) Admission disabled (dormant deploy): behavior unchanged, no directory
 /// traffic, write succeeds.
 #[tokio::test]
-async fn create_dormant_when_disabled_writes_without_directory() {
+async fn create_disabled_admission_rejects_agent_assignment_without_directory() {
     let pool = common::create_pool().await;
     let fixture = seed(&pool).await;
     let mock = MockJwksServer::start().await;
@@ -685,8 +709,9 @@ async fn create_dormant_when_disabled_writes_without_directory() {
         })),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED, "body: {body}");
-    assert_eq!(instance_count(&pool, fixture.domain_id).await, 1);
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+    assert_eq!(body["error"]["code"], "admission_unavailable");
+    assert_eq!(instance_count(&pool, fixture.domain_id).await, 0);
 }
 
 /// (e) Transition onto an assigned node with a rejecting directory fails
@@ -735,7 +760,7 @@ async fn transition_rejected_fails_closed_then_same_key_retry_admits() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "body: {body}");
-    assert_eq!(body["error"]["code"], "admission_rejected");
+    assert_eq!(body["error"]["code"], "admission_target_disabled");
 
     // Zero business delta: state version and visit count unchanged, and the
     // transition receipt rolled back.
@@ -798,11 +823,10 @@ async fn revise_rejected_fails_closed_then_same_key_retry_admits() {
     let admitting = StubDirectory::spawn(StubMode::Admit);
     let rejecting = StubDirectory::spawn(StubMode::PrincipalDisabled);
 
-    // Create with admission dormant (base instance; identity keys are
-    // validated at create by the create-time invariant).
+    // Create the base instance with the task-local admitting directory.
     let created = create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        AdmissionGate::new(Some(&enabled_client(&admitting))),
         CreateWorkflowInstanceCommand {
             principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
             idempotency_key: "adm-revise-base".to_string(),
@@ -840,7 +864,7 @@ async fn revise_rejected_fails_closed_then_same_key_retry_admits() {
         matches!(error, ReviseWorkflowContextError::AdmissionFailed(_)),
         "{error:?}"
     );
-    assert_eq!(revise_error_label(&error), "admission_rejected");
+    assert_eq!(revise_error_label(&error), "admission_target_disabled");
     assert_eq!(
         receipt_count(&pool, fixture.caller, "adm-revise-1").await,
         0
@@ -946,155 +970,296 @@ async fn seed_iip_revision_target(pool: &sqlx::PgPool, domain_id: Uuid, agent: U
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn t62_successor_admission_observes_successor_but_persisted_visit_stays_source() {
+async fn t62_explicit_legacy_target_is_rejected_without_new_responsibility() {
     let pool = common::create_pool().await;
     let fixture = seed(&pool).await;
-    // fixture.agent = P: the work node's FIXED_PRINCIPAL assignee.
-    let successor_q = common::seed_second_principal(&pool).await; // Q
-
-    // Lineage edge P -> Q.
-    sqlx::query(
-        "INSERT INTO workflow_identity_successor_lines \
-         (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id, classification, evidence, repair_reason) \
-         VALUES ($1, $2, $3, $4, 'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR', \
-                 jsonb_build_object('source', 'tests/31 t62 runtime probe'), \
-                 'T62 runtime fixture: unique canonical successor mechanically proven')",
-    )
-    .bind(fixture.agent)
-    .bind(successor_q)
-    .bind(format!("legacy-{}", fixture.agent))
-    .bind(format!("canonical-{}", successor_q))
-    .execute(&pool)
-    .await
-    .expect("insert successor line");
-
+    let q = common::seed_second_principal(&pool).await;
+    insert_lineage(&pool, fixture.agent, q).await;
     let stub = StubDirectory::spawn(StubMode::Admit);
     let client = enabled_client(&stub);
-    // Production wiring (main.rs) attaches the pool so the gate can resolve
-    // identity lineage (canonicalize_principals -> resolve_current_principal).
     let gate = AdmissionGate::new(Some(&client)).with_pool(Some(&pool));
-
-    // Create as CALLER (draft visit = caller; caller has no lineage edge so
-    // its own admission canonicalizes to itself).
-    let run = Uuid::new_v4().simple().to_string();
     let created = create_workflow_instance(
         &pool,
-        gate.clone(),
-        create_command(fixture.caller, &fixture, format!("t62-create-{run}")),
+        gate,
+        create_command(fixture.caller, &fixture, Uuid::new_v4().to_string()),
     )
     .await
-    .expect("create instance");
-
-    // Transition draft -> work as CALLER: the new visit's assignment target
-    // is the work node's FIXED_PRINCIPAL = P. Admission canonicalizes P -> Q;
-    // the persisted insert (Step 9) is expected to stay bound to P.
-    let outcome = execute_workflow_transition(
+    .unwrap();
+    let key = Uuid::new_v4().to_string();
+    let result = execute_workflow_transition(
         &pool,
         gate,
-        ExecuteWorkflowTransitionCommand {
-            principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
-            idempotency_key: format!("t62-advance-1-{run}"),
-            command_schema_version: "v1".to_string(),
-            workflow_instance_id: WorkflowInstanceId::from_uuid(created.workflow_instance_id),
-            expected_workflow_state_version: 1,
-            transition_definition_id: TransitionId::from_uuid(fixture.draft_advance),
-            submission_payload: None,
-        },
+        transition_command(
+            fixture.caller,
+            created.workflow_instance_id,
+            1,
+            fixture.draft_advance,
+            &key,
+        ),
     )
-    .await
-    .expect("transition executes");
-
-    assert_eq!(
-        outcome.workflow_state_version, 2,
-        "transition must execute (admission passes via canonical successor)"
-    );
-
-    // ── Observation 1+2: the directory admitted the CANONICAL successor Q ──
-    let requests = stub.requests();
-    let q_admitted = requests
-        .iter()
-        .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", successor_q));
-    let p_admitted = requests
-        .iter()
-        .any(|p| p == &format!("/api/v1/directory/principals/{}/agent", fixture.agent));
-    println!(
-        "T62 DEBUG: agent(P)={} successor(Q)={} caller={} requests={:?}",
-        fixture.agent, successor_q, fixture.caller, requests
-    );
+    .await;
     assert!(
-        q_admitted,
-        "O1/O2: admission must canonicalize P -> Q before the directory reads (requests: {requests:?})"
+        result.unwrap_err().to_string().contains("legacy"),
+        "explicit legacy definition target must be rejected"
     );
-    assert!(
-        !p_admitted,
-        "O1/O2: the stale source P must NOT be admitted under its own id"
-    );
-
-    // ── Observation 3+4: the persisted new work visit stays bound to P ──
-    let persisted_assignee: Uuid = sqlx::query_scalar(
-        "SELECT v.assignee_principal_id FROM workflow_node_visits v \
-         JOIN workflow_node_definitions d ON d.node_id = v.node_id \
-         WHERE v.workflow_instance_id = $1 AND d.node_key = 'work'",
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1",
     )
     .bind(created.workflow_instance_id)
     .fetch_one(&pool)
     .await
-    .expect("work visit readback");
-    assert_eq!(
-        persisted_assignee, fixture.agent,
-        "O3/O4 FAIL_CONDITION: persisted visit assignee must be the PRE-canonical source P (validation saw Q)"
+    .unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(receipt_count(&pool, fixture.caller, &key).await, 0);
+    assert!(
+        !stub.requests().iter().any(|p| p.contains(&q.to_string())),
+        "explicit input must not silently admit Q"
     );
-    assert_ne!(persisted_assignee, successor_q);
+}
 
-    // ── Observation 5: the transition receipt's principal is the command
-    // principal P (receipt identity bound pre-canonicalization) ──
-    let receipt_principal: Uuid = sqlx::query_scalar(
-        "SELECT principal_id FROM workflow_command_receipts \
-         WHERE idempotency_key = 't62-advance-1-' || $1",
+async fn insert_lineage(pool: &sqlx::PgPool, p: Uuid, q: Uuid) {
+    insert_lineage_with_agent(pool, p, q, &format!("agt_{}", q.simple())).await;
+}
+
+async fn insert_lineage_with_agent(pool: &sqlx::PgPool, p: Uuid, q: Uuid, expected_agent: &str) {
+    sqlx::query("INSERT INTO workflow_identity_successor_lines (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id, classification, evidence, repair_reason) VALUES ($1,$2,$3,$4,'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR',jsonb_build_object('source','owned #1277 fixture'),'owned canonical successor fixture')")
+        .bind(p).bind(q).bind(format!("legacy-{p}")).bind(expected_agent).execute(pool).await.unwrap();
+}
+
+fn transition_command(
+    actor: Uuid,
+    instance: Uuid,
+    version: i32,
+    transition: Uuid,
+    key: &str,
+) -> ExecuteWorkflowTransitionCommand {
+    ExecuteWorkflowTransitionCommand {
+        principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(actor),
+        idempotency_key: key.to_string(),
+        command_schema_version: "v1".into(),
+        workflow_instance_id: WorkflowInstanceId::from_uuid(instance),
+        expected_workflow_state_version: version,
+        transition_definition_id: TransitionId::from_uuid(transition),
+        submission_payload: None,
+    }
+}
+
+#[tokio::test]
+async fn historical_return_persists_validated_q_preserving_p_and_original_request() {
+    let pool = common::create_pool().await;
+    let fixture = seed_with_fixed_draft(&pool, true).await;
+    let stub = StubDirectory::spawn(StubMode::Admit);
+    let client = enabled_client(&stub);
+    let gate = AdmissionGate::new(Some(&client)).with_pool(Some(&pool));
+    let created = create_workflow_instance(
+        &pool,
+        gate,
+        create_command(fixture.caller, &fixture, Uuid::new_v4().to_string()),
     )
-    .bind(&run)
-    .fetch_one(&pool)
     .await
-    .expect("receipt readback");
-    assert_eq!(receipt_principal, fixture.caller,
-        "O5: the transition receipt records the commanding principal (caller); the assignment face (visit assignee = source P) is asserted above");
-
-    // ── T62-REPAIR regression legs (read-side enrichment is the fix surface;
-    // transition persistence stays un-rewritten) ──
-    // Leg 3: Q's worklist includes the P-stored active work EXACTLY ONCE.
-    // Leg 4: the stale source P cannot act as current owner (empty worklist).
-    // Leg 5: an unrelated principal sees nothing.
-    let unrelated = common::seed_second_principal(&pool).await;
-    // Read visibility: BOTH the stale source (existing CIR read-side
-    // enrichment contract, test 34) and the canonical successor see the
-    // active work; an unrelated principal sees none.
-    for (who, expected) in [
-        (successor_q, 1usize),
-        (fixture.agent, 1usize),
-        (unrelated, 0usize),
-    ] {
-        let page = svc_workflow::store::postgres::workflow_instance_repository::query_worklists::list_assigned_to_me(
+    .unwrap();
+    let old_visit = created.current_node_visit_id;
+    let before: Value =
+        sqlx::query_scalar("SELECT to_jsonb(v) FROM workflow_node_visits v WHERE node_visit_id=$1")
+            .bind(old_visit)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    execute_workflow_transition(
+        &pool,
+        gate,
+        transition_command(
+            fixture.caller,
+            created.workflow_instance_id,
+            1,
+            fixture.draft_advance,
+            &Uuid::new_v4().to_string(),
+        ),
+    )
+    .await
+    .unwrap();
+    let q = common::seed_second_principal(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(q)
+        .execute(&pool)
+        .await
+        .unwrap();
+    insert_lineage(&pool, fixture.caller, q).await;
+    sqlx::query("UPDATE principals SET enabled=false WHERE principal_id=$1")
+        .bind(fixture.caller)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let key = Uuid::new_v4().to_string();
+    let command = transition_command(
+        fixture.agent,
+        created.workflow_instance_id,
+        2,
+        fixture.work_return,
+        &key,
+    );
+    for mode in [StubMode::PrincipalDisabled, StubMode::AgentDisabled] {
+        let rejecting = StubDirectory::spawn(mode);
+        let rejecting_client = enabled_client(&rejecting);
+        let error = execute_workflow_transition(
             &pool,
-            svc_workflow::application::workflow_instance::query_types::ListAssignedToMe {
-                actor_principal_id: who,
-                before: None,
-                limit: Some(20),
-            },
+            AdmissionGate::new(Some(&rejecting_client)),
+            command.clone(),
         )
         .await
-        .expect("worklist readback");
+        .unwrap_err();
         assert_eq!(
-            page.items.len(),
-            expected,
-            "worklist for {who} must contain {expected} item(s) (exactly-once semantics)"
+            svc_workflow::domain::workflow_instance::errors::transition_error_label(&error),
+            "admission_target_disabled"
         );
-        if expected == 1 {
-            assert_eq!(
-                page.items[0].detail.instance.workflow_instance_id,
-                created.workflow_instance_id
-            );
-        }
+        assert_eq!(receipt_count(&pool, fixture.agent, &key).await, 0);
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1",
+        )
+        .bind(created.workflow_instance_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            count, 2,
+            "denied RETURN leaves the current work and history intact"
+        );
     }
+    let returned = execute_workflow_transition(&pool, gate, command.clone())
+        .await
+        .unwrap();
+    let new_assignee: Uuid = sqlx::query_scalar(
+        "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id=$1",
+    )
+    .bind(returned.current_node_visit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        new_assignee, q,
+        "validation Q must reach the new responsibility"
+    );
+    let after: Value =
+        sqlx::query_scalar("SELECT to_jsonb(v) FROM workflow_node_visits v WHERE node_visit_id=$1")
+            .bind(old_visit)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        before, after,
+        "immutable old P visit/provenance remains exact"
+    );
+    let first_hash: String = sqlx::query_scalar("SELECT request_hash FROM workflow_command_receipts WHERE principal_id=$1 AND idempotency_key=$2").bind(fixture.agent).bind(&key).fetch_one(&pool).await.unwrap();
+    let replay = execute_workflow_transition(&pool, gate, command)
+        .await
+        .unwrap();
+    assert_eq!(returned.current_node_visit_id, replay.current_node_visit_id);
+    let replay_hash: String = sqlx::query_scalar("SELECT request_hash FROM workflow_command_receipts WHERE principal_id=$1 AND idempotency_key=$2").bind(fixture.agent).bind(&key).fetch_one(&pool).await.unwrap();
+    assert_eq!(first_hash, replay_hash);
+    assert_eq!(receipt_count(&pool, fixture.agent, &key).await, 1);
+}
 
-    println!("T62 RESULT: admission saw canonical Q; persisted assignee + receipt bound to source P — VALIDATED_TARGET(Q) != PERSISTED_TARGET(P) confirmed at runtime; Q worklist enrichment exactly-once verified");
+#[tokio::test]
+async fn agent_definition_disabled_has_typed_rejection_and_zero_writes() {
+    let pool = common::create_pool().await;
+    let fixture = seed(&pool).await;
+    let rejecting = StubDirectory::spawn(StubMode::AgentDisabled);
+    let mock = MockJwksServer::start().await;
+    let app = build_app(
+        pool.clone(),
+        &mock.url,
+        admission_config_enabled(&rejecting.url()),
+    );
+    let bearer = token(fixture.caller, "workflow.execute", &mock.key_pair);
+    let (status, body) = send(app, "POST", "/internal/v1/workflow-instances", &bearer, Some("agent-disabled"), Some(json!({"domainId":fixture.domain_id,"definitionVersionId":fixture.version_id,"metadata":{},"contextPayload":{}}))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "admission_target_disabled");
+    assert_eq!(instance_count(&pool, fixture.domain_id).await, 0);
+    assert_eq!(
+        receipt_count(&pool, fixture.caller, "agent-disabled").await,
+        0
+    );
+}
+
+#[tokio::test]
+async fn historical_return_rejects_conflicting_canonical_agent_evidence_without_writes() {
+    assert_historical_identity_conflict(true, true).await;
+}
+
+#[tokio::test]
+async fn historical_return_rejects_wrong_projected_type_without_writes() {
+    assert_historical_identity_conflict(false, false).await;
+}
+
+async fn assert_historical_identity_conflict(mismatched_agent: bool, projected_agent: bool) {
+    let pool = common::create_pool().await;
+    let f = seed_with_fixed_draft(&pool, true).await;
+    let directory = StubDirectory::spawn(StubMode::Admit);
+    let client = enabled_client(&directory);
+    let created = create_workflow_instance(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        create_command(f.caller, &f, Uuid::new_v4().to_string()),
+    )
+    .await
+    .unwrap();
+    execute_workflow_transition(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        transition_command(
+            f.caller,
+            created.workflow_instance_id,
+            1,
+            f.draft_advance,
+            &Uuid::new_v4().to_string(),
+        ),
+    )
+    .await
+    .unwrap();
+    let q = common::seed_second_principal(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type=$2::principal_type WHERE principal_id=$1")
+        .bind(q)
+        .bind(if projected_agent { "AGENT" } else { "HUMAN" })
+        .execute(&pool)
+        .await
+        .unwrap();
+    // Both are valid canonical Agent IDs; the contradiction is in the exact
+    // authoritative binding, never a prefix/name inference.
+    let recorded_agent = if mismatched_agent {
+        "agt_original-binding".to_string()
+    } else {
+        format!("agt_{}", q.simple())
+    };
+    insert_lineage_with_agent(&pool, f.caller, q, &recorded_agent).await;
+    let before:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_context_revisions WHERE workflow_instance_id=$1)").bind(created.workflow_instance_id).fetch_one(&pool).await.unwrap();
+    let key = Uuid::new_v4().to_string();
+    let error = execute_workflow_transition(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        transition_command(
+            f.agent,
+            created.workflow_instance_id,
+            2,
+            f.work_return,
+            &key,
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        svc_workflow::domain::workflow_instance::errors::transition_error_label(&error),
+        "admission_rejected"
+    );
+    if projected_agent {
+        assert!(
+            directory
+                .requests()
+                .iter()
+                .any(|p| p == &format!("/v1/directory/agents/agt_{}", q.simple())),
+            "fresh Q observation is otherwise valid"
+        );
+    }
+    let after:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_context_revisions WHERE workflow_instance_id=$1)").bind(created.workflow_instance_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(before, after);
+    assert_eq!(receipt_count(&pool, f.agent, &key).await, 0);
 }

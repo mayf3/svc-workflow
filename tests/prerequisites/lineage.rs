@@ -47,7 +47,7 @@ async fn closed_and_corrupt_lineage_never_dispatch_and_current_task_is_bounded()
     c.submission_payload = Some(json!({"value":"canonical"}));
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         c,
     )
     .await

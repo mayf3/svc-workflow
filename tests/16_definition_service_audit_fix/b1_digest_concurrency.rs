@@ -33,7 +33,7 @@ async fn test_digest_readback_consistency() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await
         .expect("publish should succeed");
 

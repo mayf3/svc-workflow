@@ -2,6 +2,178 @@ use super::*;
 
 use svc_workflow::application::workflow_instance::query_types::*;
 
+async fn seed_creator_test_identity_line(pool: &PgPool, source: Uuid, successor: Uuid) {
+    sqlx::query(
+        "INSERT INTO workflow_identity_successor_lines
+         (id, source_principal_id, successor_principal_id, legacy_agent_id,
+          canonical_agent_id, classification, evidence, repair_reason)
+         VALUES ($1, $2, $3, 'legacy-creator-test', 'agt-creator-test',
+                 'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR', '\"test fixture\"', '\"test fixture\"')",
+    )
+    .bind(Uuid::new_v4())
+    .bind(source)
+    .bind(successor)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn creator_sql_exact_creator_with_legacy_assignee_lists_and_combines() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    let (version, _, _, advance, _) = seed_combined_graph(
+        &pool,
+        seed.domain,
+        "FIXED_PRINCIPAL",
+        "WORKFLOW_CREATOR",
+        Some(seed.assignee),
+        None,
+        None,
+    )
+    .await;
+    let created = create_combined_instance(
+        &pool,
+        seed.creator,
+        seed.domain,
+        version,
+        serde_json::json!({}),
+    )
+    .await;
+    seed_creator_test_identity_line(&pool, seed.assignee, seed.creator).await;
+
+    let page = query_service(&pool)
+        .list_creator_owned_drafts(ListCreatorOwnedDrafts {
+            actor_principal_id: seed.creator,
+            before: None,
+            limit: None,
+        })
+        .await
+        .expect("exact creator must retain effective-assignee continuity");
+    assert_eq!(page.items.len(), 1);
+    let item = &page.items[0];
+    assert_eq!(
+        item.detail.instance.workflow_instance_id,
+        created.workflow_instance_id
+    );
+    assert_eq!(
+        item.detail.current_visit.assignee_principal_id,
+        Some(seed.assignee)
+    );
+    assert!(item.context_editable);
+    assert!(item.combined_executable);
+    assert!(item.detail.outgoing_transitions.iter().any(|transition| {
+        transition.transition_id == advance && transition.executable_for_actor
+    }));
+
+    revise_context_and_transition(
+        &pool,
+        crate::common::admitting_gate(),
+        make_combined_command(seed.creator, created.workflow_instance_id, 1, advance),
+    )
+    .await
+    .expect("exact creator and effective assignee must pass the combined transaction");
+}
+
+#[tokio::test]
+async fn creator_sql_legacy_creator_successor_is_excluded_without_page_failure_and_cannot_revise() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    let own = create_combined_instance(
+        &pool,
+        seed.assignee,
+        seed.domain,
+        seed.version,
+        serde_json::json!({"title": "successor's own draft"}),
+    )
+    .await;
+    let legacy = create_query_instance(&pool, &seed).await;
+    seed_creator_test_identity_line(&pool, seed.creator, seed.assignee).await;
+
+    let revise_error = revise_workflow_context(
+        &pool,
+        crate::common::admitting_gate(),
+        ReviseWorkflowContextCommand {
+            principal_id: PrincipalId::from_uuid(seed.assignee),
+            idempotency_key: Uuid::new_v4().to_string(),
+            command_schema_version: "v1".to_string(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(legacy.workflow_instance_id),
+            expected_workflow_state_version: 1,
+            context_payload: serde_json::json!({"title": "forbidden"}),
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        revise_error,
+        ReviseWorkflowContextError::PrincipalNotFound
+    ));
+    let combined_error = revise_context_and_transition(
+        &pool,
+        crate::common::admitting_gate(),
+        make_combined_command(
+            seed.assignee,
+            legacy.workflow_instance_id,
+            1,
+            seed.draft_advance,
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        combined_error,
+        ReviseContextAndTransitionError::PrincipalNotCreator
+    ));
+
+    let state: (Uuid, Uuid, i32, i64, i64, i64) = sqlx::query_as(
+        "SELECT wi.created_by_principal_id, v.assignee_principal_id, wi.workflow_state_version,
+                (SELECT COUNT(*) FROM workflow_context_revisions WHERE workflow_instance_id = $1),
+                (SELECT COUNT(*) FROM workflow_node_visits WHERE workflow_instance_id = $1),
+                (SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1)
+         FROM workflow_instances wi
+         JOIN workflow_node_visits v ON v.node_visit_id = wi.current_node_visit_id
+         WHERE wi.workflow_instance_id = $1",
+    )
+    .bind(legacy.workflow_instance_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, (seed.creator, seed.creator, 1, 1, 1, 1));
+
+    let service = query_service(&pool);
+    let page = service
+        .list_creator_owned_drafts(ListCreatorOwnedDrafts {
+            actor_principal_id: seed.assignee,
+            before: None,
+            limit: Some(1),
+        })
+        .await
+        .expect("a legacy creator's successor must not poison the creator draft page");
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(
+        page.items[0].detail.instance.workflow_instance_id,
+        own.workflow_instance_id
+    );
+    assert!(
+        page.next_cursor.is_none(),
+        "excluded legacy draft must not affect pagination"
+    );
+    for non_creator in [seed.owner, seed.outsider] {
+        let page = service
+            .list_creator_owned_drafts(ListCreatorOwnedDrafts {
+                actor_principal_id: non_creator,
+                before: None,
+                limit: None,
+            })
+            .await
+            .unwrap();
+        assert!(
+            page.items.is_empty(),
+            "owner/outsider must not inherit creator rights"
+        );
+    }
+}
+
 #[tokio::test]
 async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_execution_context() {
     let pool = create_pool().await;
@@ -9,7 +181,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
     let created = create_query_instance(&pool, &seed).await;
     let advanced = execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -86,7 +258,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
 
     let returned = execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,
@@ -129,7 +301,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
 
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -142,7 +314,7 @@ async fn assigned_to_me_uses_only_current_non_terminal_visit_and_returns_executi
     .unwrap();
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,
@@ -172,7 +344,7 @@ async fn assigned_worklist_keeps_deprecated_and_revoked_instances_with_stable_bl
     let created = create_query_instance(&pool, &seed).await;
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -252,7 +424,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
     let first = create_query_instance(&pool, &seed).await;
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(seed.creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -275,8 +447,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
     .await;
     let mut fixed_command = make_command(seed.creator, seed.domain, fixed_version);
     fixed_command.context_payload = serde_json::json!({"title": "fixed-draft"});
-    let fixed = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), fixed_command)
+    let fixed = create_workflow_instance(&pool, crate::common::admitting_gate(), fixed_command)
         .await
         .unwrap();
 
@@ -311,7 +482,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
 
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             first.workflow_instance_id,
@@ -432,7 +603,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     for cycle in 0..26 {
         let advanced = execute_workflow_transition_with_policy(
             &pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             make_transition_command(
                 seed.creator,
                 created.workflow_instance_id,
@@ -447,7 +618,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
         state += 1;
         execute_workflow_transition_with_policy(
             &pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             make_transition_command(
                 seed.assignee,
                 created.workflow_instance_id,
@@ -479,4 +650,72 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     assert_eq!(page.items[0].return_feedback_events.len(), 26);
     assert!(page.items[0].submissions_truncated);
     assert!(!page.items[0].return_events_truncated);
+}
+
+#[tokio::test]
+async fn canonical_successor_worklist_excludes_enabled_stored_actor() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(seed.assignee)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let created = create_query_instance(&pool, &seed).await;
+    let advanced = execute_workflow_transition(
+        &pool,
+        crate::common::admitting_gate(),
+        make_transition_command(
+            seed.creator,
+            created.workflow_instance_id,
+            1,
+            seed.draft_advance,
+            Some(serde_json::json!({"work":"ready"})),
+        ),
+    )
+    .await
+    .unwrap();
+    let q = seed_second_principal(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(q)
+        .execute(&pool)
+        .await
+        .unwrap();
+    seed_creator_test_identity_line(&pool, seed.assignee, q).await;
+    for (actor, count) in [
+        (q, 1),
+        (seed.assignee, 0),
+        (seed.owner, 0),
+        (seed.outsider, 0),
+    ] {
+        let page = query_service(&pool)
+            .list_assigned_to_me(ListAssignedToMe {
+                actor_principal_id: actor,
+                before: None,
+                limit: Some(1),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            page.items.len(),
+            count,
+            "only effective current assignee may list current work: {actor}"
+        );
+        assert!(page.next_cursor.is_none());
+    }
+    let stored: Uuid = sqlx::query_scalar(
+        "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id=$1",
+    )
+    .bind(advanced.current_node_visit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, seed.assignee, "audit origin remains P");
+    let copied_grants: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM domain_role_bindings WHERE principal_id=$1")
+            .bind(q)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(copied_grants, 0);
 }

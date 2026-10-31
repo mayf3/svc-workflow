@@ -183,7 +183,7 @@ async fn cross_instance_key_conflict_is_opaque_after_current_authorization() {
     run_rebuild(&pool, original).await.unwrap();
     let second = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_command(fixture.creator, fixture.domain, fixture.version),
     )
     .await

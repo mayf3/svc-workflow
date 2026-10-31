@@ -214,7 +214,21 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 7: Validate caller is current visit assignee
     // ---------------------------------------------------------------
-    if current_visit.assignee_principal_id != Some(principal_uuid) {
+    let effective_assignee = match super::query_visibility::actor_is_effective_current_assignee(
+        &mut tx,
+        current_visit.assignee_principal_id,
+        principal_uuid,
+    )
+    .await
+    {
+        Ok(matches) => matches,
+        Err(error) => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(
+                error.to_string(),
+            ));
+        }
+    };
+    if !effective_assignee {
         deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
     }
 
@@ -688,10 +702,11 @@ pub(crate) async fn execute_workflow_transition_atomically(
             &instance,
             domain_uuid,
             current_context_payload.as_ref(),
+            effect == "RETURN",
         )
         .await
     );
-    if is_visit_activation {
+    if is_visit_activation && effect != "RETURN" {
         if let Some(owner_id) = target_assignee_id {
             let owner_type_check =
                 activation_facts::validate_owner_is_human_or_agent(&mut tx, owner_id)
@@ -718,10 +733,40 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
     // never borrow a second pool connection while this transaction holds one
     // (self-starves a max_connections=1 deployment until acquire timeout).
-    admission
-        .admit_on_tx(&mut tx, target_assignee_id)
-        .await
+    let target_assignee_id = if let Some(original) = target_assignee_id {
+        let validated = if effect == "RETURN" {
+            admission
+                .admit_historical_target_on_tx(
+                    &mut tx,
+                    instance_uuid,
+                    target_node.node_id,
+                    original,
+                )
+                .await
+        } else {
+            admission.admit_on_tx(&mut tx, [original]).await
+        }
         .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+        Some(
+            validated
+                .responsibility(original)
+                .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?,
+        )
+    } else {
+        None
+    };
+    if is_visit_activation && effect == "RETURN" {
+        if let Some(owner) = target_assignee_id {
+            let checked = activation_facts::validate_owner_is_human_or_agent(&mut tx, owner)
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if let Err(reason) = checked {
+                return Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    reason,
+                ));
+            }
+        }
+    }
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number
