@@ -616,15 +616,13 @@ async fn identity_repair_operator_end_to_end_conformance() {
         })
         .await
         .expect("assigned worklist for the stale principal");
-    assert_eq!(worklist.items.len(), 1);
-    assert_eq!(
-        worklist.items[0]
-            .detail
-            .current_visit
-            .assignee_canonical_agent_id
-            .as_deref(),
-        Some(canonical)
-    );
+    assert!(worklist.items.is_empty(), "old enabled P is no longer the current assignee");
+    let current = query_service.list_assigned_to_me(ListAssignedToMe {
+        actor_principal_id: fx.successor, before: None, limit: Some(10),
+    }).await.unwrap();
+    assert_eq!(current.items.len(), 1);
+    assert_eq!(current.items[0].detail.current_visit.assignee_principal_id, Some(fx.source));
+    assert_eq!(current.items[0].detail.current_visit.assignee_canonical_agent_id.as_deref(), Some(canonical));
 
     // Store helper follows exactly one edge and yields the successor.
     let resolved = svc_workflow::store::postgres::identity_successor::resolve_current_principal(

@@ -263,3 +263,85 @@ async fn owner_replacement_race_serializes_current_owner_authority(pool: PgPool)
         assert_eq!(status, "RESOLVED");
     }
 }
+
+#[sqlx::test]
+async fn canonical_successor_assistance_keeps_request_and_owner_roles_separate(pool: PgPool) {
+    let f = setup(&pool).await;
+    let q = seed_agent(&pool, "successor").await;
+    sqlx::query("INSERT INTO workflow_identity_successor_lines (source_principal_id,successor_principal_id,legacy_agent_id,canonical_agent_id,classification,evidence,repair_reason) VALUES($1,$2,$3,$4,'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR',jsonb_build_object('source','owned T2 fixture'),'owned one-edge fixture')")
+        .bind(f.agent).bind(q).bind(format!("legacy-{}",f.agent)).bind(format!("canonical-{q}")).execute(&pool).await.unwrap();
+    for actor in [f.agent, f.outsider, f.owner, f.coordinator, f.admin] {
+        let mut command = request_command(&f, Uuid::new_v4().to_string());
+        command.principal_id = PrincipalId::from_uuid(actor);
+        assert_eq!(
+            request_assistance(&pool, command).await.unwrap_err(),
+            AssistanceError::PrincipalNotAssignee
+        );
+    }
+    let mut command = request_command(&f, Uuid::new_v4().to_string());
+    command.principal_id = PrincipalId::from_uuid(q);
+    let opened = request_assistance(&pool, command.clone()).await.unwrap();
+    assert_eq!(opened.workflow_state_version, 2);
+    let replay = request_assistance(&pool, command).await.unwrap();
+    assert_eq!(replay.assistance_case_id, opened.assistance_case_id);
+    assert!(replay.replayed);
+    let (requester,stored): (Uuid,Uuid) = sqlx::query_as("SELECT a.requested_by_principal_id,v.assignee_principal_id FROM workflow_assistance_cases a JOIN workflow_node_visits v USING(node_visit_id) WHERE assistance_case_id=$1").bind(opened.assistance_case_id).fetch_one(&pool).await.unwrap();
+    assert_eq!((requester, stored), (q, f.agent));
+    let copied_grants: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM domain_role_bindings WHERE principal_id=$1")
+            .bind(q)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(copied_grants, 0);
+    let mut duplicate = request_command(&f, Uuid::new_v4().to_string());
+    duplicate.principal_id = PrincipalId::from_uuid(q);
+    duplicate.expected_workflow_state_version = 2;
+    assert_eq!(
+        request_assistance(&pool, duplicate.clone())
+            .await
+            .unwrap_err(),
+        AssistanceError::AssistanceAlreadyOpen
+    );
+    sqlx::query("UPDATE principals SET enabled=false WHERE principal_id=$1")
+        .bind(q)
+        .execute(&pool)
+        .await
+        .unwrap();
+    duplicate.idempotency_key = Uuid::new_v4().to_string();
+    assert_eq!(
+        request_assistance(&pool, duplicate).await.unwrap_err(),
+        AssistanceError::PrincipalDisabled
+    );
+    sqlx::query("UPDATE principals SET enabled=true WHERE principal_id=$1")
+        .bind(q)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let attempt = EscalateAssistanceCommand {
+        principal_id: PrincipalId::from_uuid(q),
+        idempotency_key: Uuid::new_v4().to_string(),
+        command_schema_version: "v1".into(),
+        assistance_case_id: AssistanceCaseId::from_uuid(opened.assistance_case_id),
+        expected_workflow_state_version: 2,
+        escalation: payload("not an Owner"),
+    };
+    assert_eq!(
+        escalate_assistance_to_human(&pool, attempt)
+            .await
+            .unwrap_err(),
+        AssistanceError::NotDomainOwner
+    );
+    let closed = resolve(&pool, &f, opened.assistance_case_id, 2).await;
+    assert_eq!(closed.workflow_state_version, 3);
+    let mut next = request_command(&f, Uuid::new_v4().to_string());
+    next.principal_id = PrincipalId::from_uuid(q);
+    next.expected_workflow_state_version = 3;
+    let reopened = request_assistance(&pool, next).await.unwrap();
+    assert_ne!(reopened.assistance_case_id, opened.assistance_case_id);
+    assert_eq!(reopened.workflow_state_version, 4);
+    assert_eq!(
+        case_status(&pool, opened.assistance_case_id).await.0,
+        "RESOLVED"
+    );
+}

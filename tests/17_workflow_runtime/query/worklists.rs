@@ -447,8 +447,7 @@ async fn creator_drafts_use_runtime_draft_latest_context_status_and_combined_ass
     .await;
     let mut fixed_command = make_command(seed.creator, seed.domain, fixed_version);
     fixed_command.context_payload = serde_json::json!({"title": "fixed-draft"});
-    let fixed = create_workflow_instance(&pool,
-        crate::common::admitting_gate(), fixed_command)
+    let fixed = create_workflow_instance(&pool, crate::common::admitting_gate(), fixed_command)
         .await
         .unwrap();
 
@@ -651,4 +650,72 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
     assert_eq!(page.items[0].return_feedback_events.len(), 26);
     assert!(page.items[0].submissions_truncated);
     assert!(!page.items[0].return_events_truncated);
+}
+
+#[tokio::test]
+async fn canonical_successor_worklist_excludes_enabled_stored_actor() {
+    let pool = create_pool().await;
+    let seed = seed_query_fixture(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(seed.assignee)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let created = create_query_instance(&pool, &seed).await;
+    let advanced = execute_workflow_transition(
+        &pool,
+        crate::common::admitting_gate(),
+        make_transition_command(
+            seed.creator,
+            created.workflow_instance_id,
+            1,
+            seed.draft_advance,
+            Some(serde_json::json!({"work":"ready"})),
+        ),
+    )
+    .await
+    .unwrap();
+    let q = seed_second_principal(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(q)
+        .execute(&pool)
+        .await
+        .unwrap();
+    seed_creator_test_identity_line(&pool, seed.assignee, q).await;
+    for (actor, count) in [
+        (q, 1),
+        (seed.assignee, 0),
+        (seed.owner, 0),
+        (seed.outsider, 0),
+    ] {
+        let page = query_service(&pool)
+            .list_assigned_to_me(ListAssignedToMe {
+                actor_principal_id: actor,
+                before: None,
+                limit: Some(1),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            page.items.len(),
+            count,
+            "only effective current assignee may list current work: {actor}"
+        );
+        assert!(page.next_cursor.is_none());
+    }
+    let stored: Uuid = sqlx::query_scalar(
+        "SELECT assignee_principal_id FROM workflow_node_visits WHERE node_visit_id=$1",
+    )
+    .bind(advanced.current_node_visit_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stored, seed.assignee, "audit origin remains P");
+    let copied_grants: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM domain_role_bindings WHERE principal_id=$1")
+            .bind(q)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(copied_grants, 0);
 }
