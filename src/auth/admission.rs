@@ -116,6 +116,8 @@ pub enum RejectionReason {
     AgentDisabled,
     /// Explicit new inputs must select the canonical Principal themselves.
     LegacyInput,
+    /// Immutable successor evidence and current identity facts disagree.
+    CanonicalBindingMismatch,
 }
 
 impl fmt::Display for RejectionReason {
@@ -127,6 +129,7 @@ impl fmt::Display for RejectionReason {
             RejectionReason::AgentMissing => {
                 write!(f, "agent missing in agent-core directory")
             }
+            RejectionReason::CanonicalBindingMismatch => write!(f, "canonical identity disagrees with immutable successor evidence"),
             RejectionReason::LegacyInput => write!(f, "legacy principal input; select the verified canonical principal through the existing authoring lifecycle"),
             RejectionReason::AgentDisabled => {
                 write!(f, "agent disabled in agent-core directory")
