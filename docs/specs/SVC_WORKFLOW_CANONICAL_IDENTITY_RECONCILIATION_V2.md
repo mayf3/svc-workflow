@@ -100,6 +100,43 @@ Identity literals inside input defaults/enums/examples and source configuration 
 
 Every affected published old version is either paired with an approved corrected version or held as an unresolved source. For exactly the two versions in parent CTR-WACI-010, the reviewed plan may deprecate without publishing a replacement, atomically recording SOURCE_IDENTITY_UNRESOLVED and preserving every task/history fact. No cancel/archive/assignee rewrite or implicit redirect follows. Other unresolved versions fail planning and cannot be silently added to that exception. New intake into a held version fails the existing deprecated-version rule. Its real existing work remains unresolved, not excluded from the final census and not relabeled invalid business merely because identity proof is missing. Successful source activation and predecessor deprecation are one database transaction; old published graphs remain untouched. All authoritative caller source-version references found by census are updated through their owning accepted surface. A deprecated old UUID must fail new creation, never redirect invisibly or fall back to another Legacy source. No current-generation readiness claim while an unresolved bad source remains available to normal creation.
 
+### CTR-CIR-003-DISABLED — Disabled-target admission
+
+**Accepted amendment, 2026-10-31.** This additive subsection implements the
+Owner-delegated ruling in [agent-control#1277](https://github.com/mayf3/agent-control/issues/1277#issuecomment-6536769590).
+Non-author review PASS binds semantic head `bd2f0c8d735f512afafccf9393c946de3a948526`;
+acceptance follows that ruling. Review receipt: `docs/reports/AC1277_DISABLED_ADMISSION_AMENDMENT_REVIEW.json`.
+Source implementation must consume this separately accepted documentation first.
+All pre-existing sections, external authority pins and frozen repair membership
+remain unchanged.
+
+**CTR-CIR-DA-001 — Reject the disabled target.** A new admission whose exact
+canonical target is disabled in Auth (`principalStatus == disabled`) or Agent
+Definition (`enabled == false`) MUST fail closed with an explicit typed
+`admission_target_disabled` rejection (the ADMISSION_TARGET_DISABLED class).
+The whole business transaction has zero delta, including new Visits, Events,
+Context facts and receipts. No name, alias, orphan Principal or silent successor
+substitution may turn that rejection into success. Other missing, revoked,
+noncanonical, ambiguous or unavailable proof retains CTR-CIR-003's rejection
+and zero-delta obligations. This is a target lifecycle rule, not an implicit
+selection of an admission deployment configuration.
+
+**CTR-CIR-DA-002 — Preserve in-flight work and explicit handling.** Existing
+work does not disappear when its target is disabled. A successor or park action
+must be explicit and use its existing independently authorized Workflow
+transaction/repair/assistance lifecycle, with its role, state, CAS and request
+identity checks. This subsection creates no reassignment endpoint, grant,
+alias-login, caller-selected mapping or new repair membership. The historical
+V1 Broker capability reference in the ruling is consumed through its current
+accepted successor; it does not grant arbitrary reassignment to a transition.
+History and migration origin remain immutable. UNKNOWN writes still require
+recovery of the original request/result before any further mutation.
+
+| Acceptance | Contracts | Method / environment / evidence | Expected result / failure condition |
+| --- | --- | --- | --- |
+| ACC-CIR-DA-001 | DA-001 | Owned PostgreSQL plus local Auth/Agent directory stubs; HTTP create and affected write-path fixtures, exact source HEAD and before/after counts | Auth-disabled and Agent-disabled targets return the typed rejection with zero business delta; silent remapping, a new responsibility or a receipt on rejection fails |
+| ACC-CIR-DA-002 | DA-001,DA-002 | Owned fixtures with an existing Visit, immutable history digest, rejected new command and existing authorized explicit handling/replay paths | Existing work/history remains readable under prior visibility; no implicit move, grant inheritance, duplicate UNKNOWN mutation or enlarged repair scope |
+
 ### CTR-CIR-004 — Same-model successor and preserved lineage
 
 For an eligible active model1 Instance, preassign one successor Instance on the approved corrected model1 version and the mapped same logical current node. Preserve source original Instance Definition/model/creator, Context rows, Visits, Submissions, Events, receipts and audit facts byte-for-byte. Create new successor facts; never overwrite or duplicate old historical facts as if they were newly authored.
