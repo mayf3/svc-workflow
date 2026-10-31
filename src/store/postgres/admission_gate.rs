@@ -193,7 +193,7 @@ impl<'a> AdmissionGate<'a> {
             result
         } else {
             self.observe(
-                distinct.into_iter().map(|p| (p, p, false)).collect(),
+                distinct.into_iter().map(|p| (p, p, None)).collect(),
                 BTreeSet::new(),
             )
             .await
@@ -239,7 +239,7 @@ impl<'a> AdmissionGate<'a> {
                 .await
                 .map_err(|_| AdmissionError::Unavailable)?
                 .unwrap_or(original);
-            if canonical != original {
+            let expected_agent_id = if canonical != original {
                 if !historical
                     || resolve_current_principal(&mut **tx, canonical)
                         .await
@@ -251,7 +251,12 @@ impl<'a> AdmissionGate<'a> {
                         reason: RejectionReason::LegacyInput,
                     });
                 }
-            }
+                let recorded: Option<String> = sqlx::query_scalar("SELECT canonical_agent_id FROM workflow_identity_successor_lines WHERE source_principal_id=$1 AND successor_principal_id=$2")
+                    .bind(original).bind(canonical).fetch_optional(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
+                Some(recorded.ok_or(AdmissionError::Unavailable)?)
+            } else {
+                None
+            };
             let local: Option<(String, bool)> = sqlx::query_as(
                 "SELECT principal_type::text, enabled FROM principals WHERE principal_id=$1",
             )
@@ -259,6 +264,14 @@ impl<'a> AdmissionGate<'a> {
             .fetch_optional(&mut **tx)
             .await
             .map_err(|_| AdmissionError::Unavailable)?;
+            if expected_agent_id.is_some()
+                && local.as_ref().map(|(kind, _)| kind.as_str()) != Some("AGENT")
+            {
+                return Err(AdmissionError::Rejected {
+                    principal: canonical,
+                    reason: RejectionReason::CanonicalBindingMismatch,
+                });
+            }
             if matches!(local.as_ref(), Some((_, false))) {
                 return Err(AdmissionError::Rejected {
                     principal: canonical,
@@ -270,14 +283,14 @@ impl<'a> AdmissionGate<'a> {
             {
                 humans.insert(canonical);
             }
-            targets.push((original, canonical, canonical != original));
+            targets.push((original, canonical, expected_agent_id));
         }
         self.observe(targets, humans).await
     }
 
     async fn observe(
         &self,
-        targets: Vec<(Uuid, Uuid, bool)>,
+        targets: Vec<(Uuid, Uuid, Option<String>)>,
         humans: BTreeSet<Uuid>,
     ) -> Result<ValidatedTargets, AdmissionError> {
         let agents: BTreeSet<_> = targets
@@ -292,11 +305,19 @@ impl<'a> AdmissionGate<'a> {
             Some(client.admit(self.start, &agents).await?)
         };
         let mut validated = BTreeMap::new();
-        for (original, canonical, mapped) in targets {
+        for (original, canonical, expected_agent_id) in targets {
             let evidence_reference = if let Some(observed) =
                 report.as_ref().and_then(|r| r.observations.get(&canonical))
             {
-                format!("auth-directory:/api/v1/directory/principals/{canonical}/agent;agent-directory:/v1/directory/agents/{}{}", observed.agent_id, if mapped { format!(";workflow_identity_successor_lines:{original}") } else { String::new() })
+                if let Some(expected) = expected_agent_id.as_deref() {
+                    if expected != observed.agent_id {
+                        return Err(AdmissionError::Rejected {
+                            principal: canonical,
+                            reason: RejectionReason::CanonicalBindingMismatch,
+                        });
+                    }
+                }
+                format!("auth-directory:/api/v1/directory/principals/{canonical}/agent;agent-directory:/v1/directory/agents/{}{}", observed.agent_id, if expected_agent_id.is_some() { format!(";workflow_identity_successor_lines:{original}") } else { String::new() })
             } else if humans.contains(&canonical) {
                 format!("workflow:principals/{canonical}:HUMAN")
             } else {
