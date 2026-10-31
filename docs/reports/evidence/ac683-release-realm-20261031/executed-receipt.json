@@ -1,0 +1,502 @@
+{
+  "schema": "ac683-source-revalidation-observation-v1",
+  "recorded_at_utc": "2026-10-31T03:43:28.320597+00:00",
+  "repository": "mayf3/svc-workflow",
+  "source_head": "3b81d8f99a286caeb04ea2c349966b0f6662275d",
+  "implementation_head": "4a7e8191d6bca800786f32848453a8c094eac756",
+  "implementation_merge": "2b746b5d478d8f98db9d7fc6658dd1460706d6bf",
+  "release_sha256": "7fec7e8c3476779ed773a42c7e03a14bc6c885b75eba2217b4545623f2e3fc68",
+  "fixture_sha256": "6dd4a4f6f5509fb431817ee4be60b4afef8f11f71b4a6a967a1f2f648226acbb",
+  "original_raw_realm_mismatch": "NOT_FOUND_IN_AVAILABLE_WORKSPACE",
+  "production_actions": "NONE",
+  "fixture": {
+    "command": "KEEP_WORK=1 bash scripts/test-release-target-resolution.sh",
+    "command_exit": 0,
+    "observed_console_result": "RESULT: 80 passed, 0 failed",
+    "console_result_kind": "transcription of executed tool stdout; per-case raw files below",
+    "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.gqE6Nj",
+    "cases": [
+      {
+        "tag": "A",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "500cbd643f80f155bd710f6f52eef235321ba9000547c1801409c416933edae5",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114012 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "AR1",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "c507ea5da0be59c3e2b2844bfa6d9998f60bf5cfab6023675292307d41d36347",
+        "fingerprint_after_sha256": "52b3740c1d3da760ea9b644e77bf33ab3c9ce59bcf8fba0fa5bf7f52408b6be7",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger archived: ledger.json -> ledger.json.archived (bytes 10974, sha256 345ed7587e5f695b4a873b3061e439cc0d56a71858577f11db5e4317575cca84)\n[release] switch receipt: ledger.json.archived.receipt.json; the next deploy starts a fresh ledger pinned by EXPECTED_LAUNCHCTL_TARGET\n"
+      },
+      {
+        "tag": "AR2",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "52b3740c1d3da760ea9b644e77bf33ab3c9ce59bcf8fba0fa5bf7f52408b6be7",
+        "fingerprint_after_sha256": "52b3740c1d3da760ea9b644e77bf33ab3c9ce59bcf8fba0fa5bf7f52408b6be7",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ledger already archived (integrity verified): /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json.archived.receipt.json\n"
+      },
+      {
+        "tag": "AR3",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "7b3b25f99aaefb1db865a54b827102f034f8a1fea1d033baf794fe21f31db00d",
+        "fingerprint_after_sha256": "7b3b25f99aaefb1db865a54b827102f034f8a1fea1d033baf794fe21f31db00d",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: archived ledger digest mismatch: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json.archived sha256=4d409c2778e7c6cd3b27f24ab0061f04977cbad06a5f829d24bd5a1c5af4c237 != receipt 345ed7587e5f695b4a873b3061e439cc0d56a71858577f11db5e4317575cca84; the archive was modified after the switch\n"
+      },
+      {
+        "tag": "AR4",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "13a02fa03df8b46a7f5d7b578ba9d94c07e4657e573829e83861b47e080c7a91",
+        "fingerprint_after_sha256": "13a02fa03df8b46a7f5d7b578ba9d94c07e4657e573829e83861b47e080c7a91",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: archive conflict: receipt /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json.archived.receipt.json exists but an active ledger is also present; an earlier switch did not complete — resolve manually (compare the active file against the receipt digest, keep exactly one) ; refusing to overwrite anything\n"
+      },
+      {
+        "tag": "AR5",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "e2f3acf58c130584ba1f4101c8bc4919510a68f0d44624ab4dd89dd94f3079e4",
+        "fingerprint_after_sha256": "e2f3acf58c130584ba1f4101c8bc4919510a68f0d44624ab4dd89dd94f3079e4",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: refusing to overwrite existing archive: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json.archived; an earlier archive attempt left it behind without a receipt — resolve manually\n"
+      },
+      {
+        "tag": "B",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service target resolution: ambiguous, 2 present units (gui=present system=present); zero live writes performed\n"
+      },
+      {
+        "tag": "C",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service target resolution: no unit found (gui=absent system=absent); zero live writes performed\n"
+      },
+      {
+        "tag": "D",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service process uid=501 != expected 502; refusing to bind target=system/com.svc-workflow; zero live writes performed\n"
+      },
+      {
+        "tag": "E",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: PREIMAGE MISMATCH: target sha256=d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27 != declared deadbeef; zero live writes performed\n"
+      },
+      {
+        "tag": "E1",
+        "release_rc": "1\n",
+        "fingerprint_before_sha256": "1f505c0a840976334a95d953665177dc6f7d975fc373c8af28584107f1b7156c",
+        "fingerprint_after_sha256": "1f505c0a840976334a95d953665177dc6f7d975fc373c8af28584107f1b7156c",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: deployment ledger record has no valid modern binding (launchctlTarget must be a non-empty string); archive pre-#683 history with 'release.sh archive' and start a fresh ledger; refusing pre-write; zero live writes performed\n"
+      },
+      {
+        "tag": "E2",
+        "release_rc": "1\n",
+        "fingerprint_before_sha256": "598078ad21d3c1087a1b47e6e2ada298bef1bac2548b99670f26f9da658f845b",
+        "fingerprint_after_sha256": "598078ad21d3c1087a1b47e6e2ada298bef1bac2548b99670f26f9da658f845b",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: deployment ledger record has no valid modern binding (launchctlTarget must be a non-empty string); archive pre-#683 history with 'release.sh archive' and start a fresh ledger; refusing pre-write; zero live writes performed\n"
+      },
+      {
+        "tag": "F",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d434bad0a78c8e96e781e856f2e166ac1e189baffdb81053a64eed894bdf0063",
+        "fingerprint_after_sha256": "968433afadfe9698b159400dfab42e3d53c9767cda0497e0f16c0f9487add3fc",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27 ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] VERIFY PASSED: 运行中的 svc-workflow = clean commit 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 的产物（sha256 d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27）\n"
+      },
+      {
+        "tag": "H",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: system-domain control requires root execution (current euid 502); hand to the deploy Owner; zero live writes performed\n"
+      },
+      {
+        "tag": "J",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_after_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service target resolution: unit program (/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/foreign-install/svc-workflow) != /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; refusing to manage a foreign install (same-hash different-path is not equivalent); zero live writes performed\n"
+      },
+      {
+        "tag": "K",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: declared preimage missing: EXPECTED_PREIMAGE_SHA256 must be set for an existing-service update; zero live writes performed\n"
+      },
+      {
+        "tag": "K2",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_after_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: target preimage missing: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow does not exist or is not a readable regular file; zero live writes performed\n"
+      },
+      {
+        "tag": "L",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_after_sha256": "e042097a618e972f513d96826fc0e68fe64bb04bf868180d0ef4488de912d433",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: target preimage missing: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow does not exist or is not a readable regular file; zero live writes performed\n"
+      },
+      {
+        "tag": "M",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service target resolution: denied/unknown launchctl print result (gui=denied_unknown system=present); zero live writes performed\n"
+      },
+      {
+        "tag": "N",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: service target resolution: ambiguous, 2 present units (gui=present_stopped system=present); zero live writes performed\n"
+      },
+      {
+        "tag": "O1",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "8bfb7365a9cf07e4829c44fc3c19beaab11f34e132400458150aeafe7f8322da",
+        "fingerprint_after_sha256": "8bfb7365a9cf07e4829c44fc3c19beaab11f34e132400458150aeafe7f8322da",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\njq: parse error: Unfinished string at EOF at line 13, column 0\n[release] ERROR: deployment ledger corrupt (JSON stream parse failed): /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json; zero live writes performed\n"
+      },
+      {
+        "tag": "O2",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "8bfb7365a9cf07e4829c44fc3c19beaab11f34e132400458150aeafe7f8322da",
+        "fingerprint_after_sha256": "8bfb7365a9cf07e4829c44fc3c19beaab11f34e132400458150aeafe7f8322da",
+        "fingerprint_unchanged": true,
+        "stdout": "jq: parse error: Unfinished string at EOF at line 13, column 0\n[release] ERROR: VERIFY FAIL: deployment ledger corrupt (JSON stream parse failed): /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n"
+      },
+      {
+        "tag": "Opre",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "ea88d4b593751ead39281cc599cf3b84c50079dbe80a05473d9c9eeec9e43fdf",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114015 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "P",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_after_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27 ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] ERROR: VERIFY FAIL: ledger's latest event is sourceSha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01, not this deployment (18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78); refusing to annotate a stale record\n"
+      },
+      {
+        "tag": "Q",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_after_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: gui/502/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: binding drift: ledger records system/com.svc-workflow but resolved gui/502/com.svc-workflow; rollback is same-binding only; zero live writes performed\n"
+      },
+      {
+        "tag": "Q2",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_after_sha256": "b0e925acc9f2c755b8d2cf9fd7843617ecb7ba6c619aba066111712e2f7d48b0",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: VERIFY FAIL: ledger-recorded binding system/com.svc-workflow not present per launchctl print (rc=113); substitute realms are not accepted\n"
+      },
+      {
+        "tag": "R",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "6dd91981cfe919ccab98fedbfad5d6cc5f455a760296f3650bd77f60f5830809",
+        "fingerprint_after_sha256": "6dd91981cfe919ccab98fedbfad5d6cc5f455a760296f3650bd77f60f5830809",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: stopped unit identity unverifiable: no uid in unit config for system/com.svc-workflow; restore refused; zero live writes performed\n"
+      },
+      {
+        "tag": "Rpre",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "6dd91981cfe919ccab98fedbfad5d6cc5f455a760296f3650bd77f60f5830809",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114016 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "S",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "009c6df4bd0aab96e7b9a5d1d5801be04145bb180d0e2f306e55274115995096",
+        "fingerprint_after_sha256": "b6a73bb81437df2ccb9653485279a2eb9c4c829f3aa9ce770228d05b8e9fa837",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid none, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114017 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "Spre",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "009c6df4bd0aab96e7b9a5d1d5801be04145bb180d0e2f306e55274115995096",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114017 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "T",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ERROR: running executable (/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/foreign-install/svc-workflow) != install target /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow (same-hash different-path is not equivalent); refusing target=system/com.svc-workflow; zero live writes performed\n"
+      },
+      {
+        "tag": "T2",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "dc9d9c8c222b81f12956c910984691c676732706444df016d66bdf5012b5b83d",
+        "fingerprint_after_sha256": "dc9d9c8c222b81f12956c910984691c676732706444df016d66bdf5012b5b83d",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 ✓\n[release] /version.gitTreeState == clean ✓\n[release] ERROR: VERIFY FAIL: running binary (/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/foreign-install/svc-workflow) != install target /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow (same-hash different-path is not equivalent)\n"
+      },
+      {
+        "tag": "T2pre",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d4fcdebb3380634b2a4e6212a6240dca997feafd6c1688dcf8a3cca072590c63",
+        "fingerprint_after_sha256": "dc9d9c8c222b81f12956c910984691c676732706444df016d66bdf5012b5b83d",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114018 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "UP1",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "66f62ef03bbabcf79b3af2910fe32c4092cff359f3c827bb7c2cc14374c8a40a",
+        "fingerprint_after_sha256": "08b08f75ee809dcccc33801577cd82acb16d5b9a0dfa95ad3f98c9c6d89d6e08",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114020 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "UP1V",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "08b08f75ee809dcccc33801577cd82acb16d5b9a0dfa95ad3f98c9c6d89d6e08",
+        "fingerprint_after_sha256": "d3b760f70fa0e2dd37938a0ccd5913420a9b3a9083ff5a7cc152869ae6fb3313",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27 ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] VERIFY PASSED: 运行中的 svc-workflow = clean commit 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 的产物（sha256 d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27）\n"
+      },
+      {
+        "tag": "UP2",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d3b760f70fa0e2dd37938a0ccd5913420a9b3a9083ff5a7cc152869ae6fb3313",
+        "fingerprint_after_sha256": "d8e1de642163e63091f3a2a3d4fb14431e45bce494dcab281a4fed4cbd400afc",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114021 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "UP2V",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "d8e1de642163e63091f3a2a3d4fb14431e45bce494dcab281a4fed4cbd400afc",
+        "fingerprint_after_sha256": "5d126855b17055dcff28256709ebcec37dd2ce81eb51f92de77abd148129ab4a",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == de9d43b8bd7d37d16cb2579f7664b9442f2e39c2 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] VERIFY PASSED: 运行中的 svc-workflow = clean commit de9d43b8bd7d37d16cb2579f7664b9442f2e39c2 的产物（sha256 abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d）\n"
+      },
+      {
+        "tag": "UP3",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "5d126855b17055dcff28256709ebcec37dd2ce81eb51f92de77abd148129ab4a",
+        "fingerprint_after_sha256": "2cd783c513e5a90f2e3bf40317290ffbd605f0d7e5c52a0cc609318072fc33d0",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114021 (abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "UP3V",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "2cd783c513e5a90f2e3bf40317290ffbd605f0d7e5c52a0cc609318072fc33d0",
+        "fingerprint_after_sha256": "3984951707ff78ab1d86d12051cef41f60289dd4585290a4e9d9df48a9b9fee2",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27 ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] VERIFY PASSED: 运行中的 svc-workflow = clean commit 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78 的产物（sha256 d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27）\n"
+      },
+      {
+        "tag": "UPPRE",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "7517895884db3eccb3c2e92a5299e0651ab4b099d370c3a768939482c6f253aa",
+        "fingerprint_after_sha256": "965b11f716cf685d50892fac18c4af4b12f5692c8d169b49960d9cbc555f48ef",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger archived: ledger.json -> ledger.json.archived (bytes 10974, sha256 72ce8ad69bfa8470bf76693fe6049846ec3a8bf8b3d1964ded2ffba7b5542958)\n[release] switch receipt: ledger.json.archived.receipt.json; the next deploy starts a fresh ledger pinned by EXPECTED_LAUNCHCTL_TARGET\n"
+      },
+      {
+        "tag": "V1",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "7805fb08ebbfaa2eb880536527886898ce1d28378cba18653907674464381785",
+        "fingerprint_after_sha256": "ee26c35dde7d3f713ffbe4555097555de2af0664f98f8afa4fe7309d383b123f",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114018 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "V2",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "ee26c35dde7d3f713ffbe4555097555de2af0664f98f8afa4fe7309d383b123f",
+        "fingerprint_after_sha256": "f3a2be1d99636dc77463fc50c46fa0b85d5772ecb4bb32e96f6b0011366e90c9",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114018 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "V3",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "f3a2be1d99636dc77463fc50c46fa0b85d5772ecb4bb32e96f6b0011366e90c9",
+        "fingerprint_after_sha256": "e2d4600999d6e1fc1353a31e84cd6e196b07c69920ee3d909aa4a56e24a7611b",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] ledger-recorded binding system/com.svc-workflow verified (pid 99999, uid 502)\n[release] /version.gitSha == de9d43b8bd7d37d16cb2579f7664b9442f2e39c2 ✓\n[release] /version.gitTreeState == clean ✓\n[release] 运行中 binary sha256 == abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d ✓ (path: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow)\n[release] migration bundle max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a == provenance ✓\n[release] smoke: healthz=200 readyz=200 auth(domains)=401\n[release] VERIFY PASSED: 运行中的 svc-workflow = clean commit de9d43b8bd7d37d16cb2579f7664b9442f2e39c2 的产物（sha256 abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d）\n"
+      },
+      {
+        "tag": "V4",
+        "release_rc": "0",
+        "fingerprint_before_sha256": "e2d4600999d6e1fc1353a31e84cd6e196b07c69920ee3d909aa4a56e24a7611b",
+        "fingerprint_after_sha256": "872004ed29e755eec75de5ec241d82f61febe144ca9b56f1314654c6dcf161f2",
+        "fingerprint_unchanged": false,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow.backup-20261031-114019 (abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\n"
+      },
+      {
+        "tag": "V5",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "73562da4fa7aebef0d762239b32f7404158e6e47097c5dc5a12b7d6ad5e1a533",
+        "fingerprint_after_sha256": "73562da4fa7aebef0d762239b32f7404158e6e47097c5dc5a12b7d6ad5e1a533",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\njq: parse error: Unfinished string at EOF at line 41, column 0\n[release] ERROR: deployment ledger corrupt (JSON stream parse failed): /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json; zero live writes performed\n"
+      },
+      {
+        "tag": "V6",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "872004ed29e755eec75de5ec241d82f61febe144ca9b56f1314654c6dcf161f2",
+        "fingerprint_after_sha256": "872004ed29e755eec75de5ec241d82f61febe144ca9b56f1314654c6dcf161f2",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: gui/502/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: binding drift: ledger records system/com.svc-workflow but resolved gui/502/com.svc-workflow; rollback is same-binding only; zero live writes performed\n"
+      },
+      {
+        "tag": "W",
+        "release_rc": "1",
+        "fingerprint_before_sha256": "04adc84aa3bdd9c1d2ba533f70e4e6c445c17aab965bad8b4fb27f580d850440",
+        "fingerprint_after_sha256": "04adc84aa3bdd9c1d2ba533f70e4e6c445c17aab965bad8b4fb27f580d850440",
+        "fingerprint_unchanged": true,
+        "stdout": "[release] service target resolved: gui/502/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/svc-workflow; other realm: absent)\n[release] ERROR: deployment binding record missing: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.gqE6Nj/services/svc-workflow/ledger.json does not exist and EXPECTED_LAUNCHCTL_TARGET is not set; first update of an existing service must pin the binding from approved evidence; refusing pre-write; zero live writes performed\n"
+      }
+    ],
+    "limitation": "File fingerprints cover the staged service tree, not the separate fake kickstart log. Self-test Z1/Z2 deliberately deletes/alters fingerprint files; Z3 removes its rc file."
+  },
+  "paired": {
+    "command": "isolated Python orchestrator invoking fixture-prefix-derived paired-driver.sh six times",
+    "driver_sha256": "8fe2f9a45103881275581b5e356e3d4e1d43f73e2a8b4c19de7bfb3db1f282b1",
+    "fixture_prefix_rule": "Take the unchanged current fixture before # ── A. existing service updated; replace RELEASE_SH=\"$HERE/release.sh\" with RELEASE_SH=\"$CANDIDATE_RELEASE_SH\". Append driver_tail. Baseline script is git show 18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78:scripts/release.sh under a temporary repo/scripts root whose .git links to this clone for read-only commit validation. No build/worktree mutation is invoked.",
+    "driver_tail": "\nstage_release_for \"$MERGE_SHA\" /bin/echo\nstage_release_for \"$NEW_SHA\" /bin/test\nif [[ \"$SCENARIO\" = deploy ]]; then\n  TARGET_SHA=\"$NEW_SHA\"\n  cp /bin/echo \"$SVC/svc-workflow\"\nelse\n  TARGET_SHA=\"$MERGE_SHA\"\n  cp /bin/test \"$SVC/svc-workflow\"\n  jq -n --arg s \"$NEW_SHA\" '{sourceSha:$s,launchctlTarget:\"system/com.svc-workflow\"}' > \"$SVC/ledger.json\"\nfi\nmkdir -p \"$SVC/migrations\"\nprintf 'synthetic previous bundle\\n' > \"$SVC/migrations/0000_previous.sql\"\nset_state system \"$CALLER_UID\" 502\nrun_deploy_env pair \"$TARGET_SHA\" EXPECTED_PREIMAGE_SHA256=\"$(installed_sha)\" EXPECTED_LAUNCHCTL_TARGET=\"$SYS_TARGET\"\nprintf 'PAIR_RESULT rc=%s fp_intact=%s system_kicks=%s gui_kicks=%s\\n' \"$(rc_of pair)\" \"$(fp_intact pair)\" \"$(kick_count \"$SYS_TARGET\")\" \"$(kick_count \"gui/502/com.svc-workflow\")\"\ncat \"$WORK/out-pair.txt\"\n",
+    "driver_tail_note": "Use SCENARIO=deploy|rollback, CALLER_UID=502|0, CANDIDATE_RELEASE_SH=<baseline|current>, KEEP_WORK=1. All ids/processes/service control are fake.",
+    "assertions": "All 6 driver exits 0; baseline releases fail and change fingerprints; current caller502 releases fail with unchanged fingerprints and no fake kickstarts; current caller0 releases succeed and fake-kickstart only system once.",
+    "results": [
+      {
+        "tag": "RED-18fb-deploy-caller502",
+        "driver_rc": 0,
+        "release_rc": 1,
+        "fingerprint_unchanged": false,
+        "before_sha256": "66f7081ac5f558a6301145c5ba54875fed3f38b023ea01d490bc8ec8a0e84508",
+        "after_sha256": "326fc40f27789f26fc5609d56445cb28c52d67cc88787110d842e662ed8d9991",
+        "kickstarts": [],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.NdGFxk",
+        "source_sha256": "3f68ebfa590ff1fc812f5819ed33f7275492b983e2608ee5bbcbd5836ca2cab6",
+        "stdout": "PAIR_RESULT rc=1 fp_intact=0 system_kicks=0 gui_kicks=0\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.NdGFxk/services/svc-workflow/svc-workflow.backup-20261031-114143 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.NdGFxk/services/svc-workflow/ledger.json\n[release] ERROR: launchctl 服务不存在: com.svc-workflow（先加载 plist）\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.NdGFxk\n",
+        "fingerprint_before": "54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow",
+        "fingerprint_after": "a4831d466d37c20f817f46132c5b1a759cbd8c4a47eec48a04963fc0affad4bd  ./ledger.json\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./migrations/0001_fixture.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./svc-workflow.backup-20261031-114143/migrations/0000_previous.sql\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow.backup-20261031-114143/svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      },
+      {
+        "tag": "RED-18fb-rollback-caller502",
+        "driver_rc": 0,
+        "release_rc": 1,
+        "fingerprint_unchanged": false,
+        "before_sha256": "597d184008c3cff97bc97f4ef233a2025d7c7616da4bf0be2664b2998db26543",
+        "after_sha256": "e6f9a62bc1d333571e57b9f090e79ea15519b977864fa3f3fb6ecd06bc50f861",
+        "kickstarts": [],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.Q8ThoB",
+        "source_sha256": "3f68ebfa590ff1fc812f5819ed33f7275492b983e2608ee5bbcbd5836ca2cab6",
+        "stdout": "PAIR_RESULT rc=1 fp_intact=0 system_kicks=0 gui_kicks=0\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.Q8ThoB/services/svc-workflow/svc-workflow.backup-20261031-114144 (abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.Q8ThoB/services/svc-workflow/ledger.json\n[release] ERROR: launchctl 服务不存在: com.svc-workflow（先加载 plist）\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.Q8ThoB\n",
+        "fingerprint_before": "80435bb64c7e0ffda6523bfd0d333d8fe339fb7e32e36d7fa24a806e376fb986  ./ledger.json\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow",
+        "fingerprint_after": "47bcb36393d415491e02f7d991153e5bf973396615e92fd667dd3b2aa7134ff7  ./ledger.json\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./migrations/0001_fixture.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./svc-workflow.backup-20261031-114144/migrations/0000_previous.sql\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow.backup-20261031-114144/svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      },
+      {
+        "tag": "GREEN-main-deploy-caller502",
+        "driver_rc": 0,
+        "release_rc": 1,
+        "fingerprint_unchanged": true,
+        "before_sha256": "66f7081ac5f558a6301145c5ba54875fed3f38b023ea01d490bc8ec8a0e84508",
+        "after_sha256": "66f7081ac5f558a6301145c5ba54875fed3f38b023ea01d490bc8ec8a0e84508",
+        "kickstarts": [],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.KoRk4D",
+        "source_sha256": "7fec7e8c3476779ed773a42c7e03a14bc6c885b75eba2217b4545623f2e3fc68",
+        "stdout": "PAIR_RESULT rc=1 fp_intact=1 system_kicks=0 gui_kicks=0\n[release] ERROR: system-domain control requires root execution (current euid 502); hand to the deploy Owner; zero live writes performed\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.KoRk4D\n",
+        "fingerprint_before": "54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow",
+        "fingerprint_after": "54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      },
+      {
+        "tag": "GREEN-main-deploy-caller0",
+        "driver_rc": 0,
+        "release_rc": 0,
+        "fingerprint_unchanged": false,
+        "before_sha256": "66f7081ac5f558a6301145c5ba54875fed3f38b023ea01d490bc8ec8a0e84508",
+        "after_sha256": "ba9c91e4c6b29f3b72763a3032e215aceebd9ad6a5948e235fdb8b9c92bf06b7",
+        "kickstarts": [
+          "2026-10-31T03:41:48Z kickstart -k system/com.svc-workflow"
+        ],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.yFVRSb",
+        "source_sha256": "7fec7e8c3476779ed773a42c7e03a14bc6c885b75eba2217b4545623f2e3fc68",
+        "stdout": "PAIR_RESULT rc=0 fp_intact=0 system_kicks=1 gui_kicks=0\n[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.yFVRSb/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.yFVRSb/services/svc-workflow/svc-workflow.backup-20261031-114148 (d2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.yFVRSb/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.yFVRSb\n",
+        "fingerprint_before": "54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow",
+        "fingerprint_after": "a268d6b07ca2961a20b786b867e722fe35a85ccb155a620be235bd8f8ad75377  ./ledger.json\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./migrations/0001_fixture.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./svc-workflow.backup-20261031-114148/migrations/0000_previous.sql\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow.backup-20261031-114148/svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      },
+      {
+        "tag": "GREEN-main-rollback-caller502",
+        "driver_rc": 0,
+        "release_rc": 1,
+        "fingerprint_unchanged": true,
+        "before_sha256": "597d184008c3cff97bc97f4ef233a2025d7c7616da4bf0be2664b2998db26543",
+        "after_sha256": "597d184008c3cff97bc97f4ef233a2025d7c7616da4bf0be2664b2998db26543",
+        "kickstarts": [],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.xQj7Kv",
+        "source_sha256": "7fec7e8c3476779ed773a42c7e03a14bc6c885b75eba2217b4545623f2e3fc68",
+        "stdout": "PAIR_RESULT rc=1 fp_intact=1 system_kicks=0 gui_kicks=0\n[release] ERROR: system-domain control requires root execution (current euid 502); hand to the deploy Owner; zero live writes performed\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.xQj7Kv\n",
+        "fingerprint_before": "80435bb64c7e0ffda6523bfd0d333d8fe339fb7e32e36d7fa24a806e376fb986  ./ledger.json\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow",
+        "fingerprint_after": "80435bb64c7e0ffda6523bfd0d333d8fe339fb7e32e36d7fa24a806e376fb986  ./ledger.json\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      },
+      {
+        "tag": "GREEN-main-rollback-caller0",
+        "driver_rc": 0,
+        "release_rc": 0,
+        "fingerprint_unchanged": false,
+        "before_sha256": "597d184008c3cff97bc97f4ef233a2025d7c7616da4bf0be2664b2998db26543",
+        "after_sha256": "f3dc87a73136870854164125f0ef23b59baaad36c0ad281349d3d074aa49b738",
+        "kickstarts": [
+          "2026-10-31T03:41:52Z kickstart -k system/com.svc-workflow"
+        ],
+        "work": "/var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T/release-fix-test.L96abq",
+        "source_sha256": "7fec7e8c3476779ed773a42c7e03a14bc6c885b75eba2217b4545623f2e3fc68",
+        "stdout": "PAIR_RESULT rc=0 fp_intact=0 system_kicks=1 gui_kicks=0\n[release] service target resolved: system/com.svc-workflow (pid 99999, uid 502, program /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.L96abq/services/svc-workflow/svc-workflow; other realm: absent)\n[release] 已备份当前 binary+migrations → /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.L96abq/services/svc-workflow/svc-workflow.backup-20261031-114152 (abf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d)\n[release] 已安装 binary + migrations bundle (max=0001, digest=b24d420157db408e125ab1e8bb738ecd66bc1113f72ec6e940cedae1f501651a)\n[release] deployment ledger 已追加: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.L96abq/services/svc-workflow/ledger.json\n[release] restart system/com.svc-workflow (launchctl kickstart -k)\nKEEP_WORK: /var/folders/jh/5k4x44w12ps1kbrch8__f6b80000gp/T//release-fix-test.L96abq\n",
+        "fingerprint_before": "80435bb64c7e0ffda6523bfd0d333d8fe339fb7e32e36d7fa24a806e376fb986  ./ledger.json\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./migrations/0000_previous.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow",
+        "fingerprint_after": "d607e1a851ccdff3f35c3d7bfdd3f1963eedb09c97aa3defa000f383d5739f1f  ./ledger.json\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./migrations/0001_fixture.sql\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/migrations/0001_fixture.sql\ncb2ce5973ed8ce25bed90675d33a23eac18eb1fceb627249d76252029f5f3352  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/provenance.json\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./releases/18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78/svc-workflow\n76a0281729b349c5a5892c37f3caa7809c240896dcc25fff39aa996aa1a31149  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/migrations/0001_fixture.sql\n5b4a1cf9e2627e38e3f76d7c6f86301f83ef37c9d1c9459f249413372d95190f  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/provenance.json\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./releases/de9d43b8bd7d37d16cb2579f7664b9442f2e39c2/svc-workflow\nd2d4d70e62f249417d70cd1cee1a9c623213ccfb6445c82d9de6b9021edacc27  ./svc-workflow\n54361f7efe8a360c1087536580aed7cb0af40b4a76f82124160dc611f1a0c9cd  ./svc-workflow.backup-20261031-114152/migrations/0000_previous.sql\nabf9c4d6bdccbab1f540629a1048fd8884cb72beb25a254f0adee9e1cfa3758d  ./svc-workflow.backup-20261031-114152/svc-workflow",
+        "release_script_rc_source": "rc-pair.txt (driver exit 0 is not the release result)"
+      }
+    ]
+  }
+}
