@@ -113,11 +113,15 @@ fn serve_connection(
         let scope = form_value(&body, "scope");
         (200, token_body(&scope))
     } else if let Some(rest) = path.strip_prefix("/api/v1/directory/principals/") {
+        let agent_id = format!(
+            "agt_{}",
+            rest.strip_suffix("/agent").unwrap_or(rest).replace('-', "")
+        );
         match rest.strip_suffix("/agent") {
             Some(principal) => (
                 200,
                 format!(
-                    r#"{{"principalId":"{principal}","agentId":"agent-{principal}","principalStatus":"{principal_status}"}}"#
+                    r#"{{"principalId":"{principal}","agentId":"{agent_id}","principalStatus":"{principal_status}"}}"#
                 ),
             ),
             None => (404, r#"{"error":"unexpected_path"}"#.to_string()),
@@ -578,7 +582,7 @@ async fn admission_enabled_create_writes_and_admits_command_principals() {
     assert!(
         requests
             .iter()
-            .any(|p| p == &format!("/v1/directory/agents/agent-{}", fixture.caller)),
+            .any(|p| p == &format!("/v1/directory/agents/agt_{}", fixture.caller.simple())),
         "agent-core directory read expected: {requests:?}"
     );
     // Fresh token per exact read audience per command.
@@ -1014,8 +1018,12 @@ async fn t62_explicit_legacy_target_is_rejected_without_new_responsibility() {
 }
 
 async fn insert_lineage(pool: &sqlx::PgPool, p: Uuid, q: Uuid) {
+    insert_lineage_with_agent(pool, p, q, &format!("agt_{}", q.simple())).await;
+}
+
+async fn insert_lineage_with_agent(pool: &sqlx::PgPool, p: Uuid, q: Uuid, expected_agent: &str) {
     sqlx::query("INSERT INTO workflow_identity_successor_lines (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id, classification, evidence, repair_reason) VALUES ($1,$2,$3,$4,'STALE_PRINCIPAL_WITH_UNIQUE_REPAIR',jsonb_build_object('source','owned #1277 fixture'),'owned canonical successor fixture')")
-        .bind(p).bind(q).bind(format!("legacy-{p}")).bind(format!("canonical-{q}")).execute(pool).await.unwrap();
+        .bind(p).bind(q).bind(format!("legacy-{p}")).bind(expected_agent).execute(pool).await.unwrap();
 }
 
 fn transition_command(
@@ -1171,4 +1179,87 @@ async fn agent_definition_disabled_has_typed_rejection_and_zero_writes() {
         receipt_count(&pool, fixture.caller, "agent-disabled").await,
         0
     );
+}
+
+#[tokio::test]
+async fn historical_return_rejects_conflicting_canonical_agent_evidence_without_writes() {
+    assert_historical_identity_conflict(true, true).await;
+}
+
+#[tokio::test]
+async fn historical_return_rejects_wrong_projected_type_without_writes() {
+    assert_historical_identity_conflict(false, false).await;
+}
+
+async fn assert_historical_identity_conflict(mismatched_agent: bool, projected_agent: bool) {
+    let pool = common::create_pool().await;
+    let f = seed_with_fixed_draft(&pool, true).await;
+    let directory = StubDirectory::spawn(StubMode::Admit);
+    let client = enabled_client(&directory);
+    let created = create_workflow_instance(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        create_command(f.caller, &f, Uuid::new_v4().to_string()),
+    )
+    .await
+    .unwrap();
+    execute_workflow_transition(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        transition_command(
+            f.caller,
+            created.workflow_instance_id,
+            1,
+            f.draft_advance,
+            &Uuid::new_v4().to_string(),
+        ),
+    )
+    .await
+    .unwrap();
+    let q = common::seed_second_principal(&pool).await;
+    sqlx::query("UPDATE principals SET principal_type=$2::principal_type WHERE principal_id=$1")
+        .bind(q)
+        .bind(if projected_agent { "AGENT" } else { "HUMAN" })
+        .execute(&pool)
+        .await
+        .unwrap();
+    // Both are valid canonical Agent IDs; the contradiction is in the exact
+    // authoritative binding, never a prefix/name inference.
+    let recorded_agent = if mismatched_agent {
+        "agt_original-binding".to_string()
+    } else {
+        format!("agt_{}", q.simple())
+    };
+    insert_lineage_with_agent(&pool, f.caller, q, &recorded_agent).await;
+    let before:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_context_revisions WHERE workflow_instance_id=$1)").bind(created.workflow_instance_id).fetch_one(&pool).await.unwrap();
+    let key = Uuid::new_v4().to_string();
+    let error = execute_workflow_transition(
+        &pool,
+        AdmissionGate::new(Some(&client)),
+        transition_command(
+            f.agent,
+            created.workflow_instance_id,
+            2,
+            f.work_return,
+            &key,
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        svc_workflow::domain::workflow_instance::errors::transition_error_label(&error),
+        "admission_rejected"
+    );
+    if projected_agent {
+        assert!(
+            directory
+                .requests()
+                .iter()
+                .any(|p| p == &format!("/v1/directory/agents/agt_{}", q.simple())),
+            "fresh Q observation is otherwise valid"
+        );
+    }
+    let after:(i64,i64,i64)=sqlx::query_as("SELECT (SELECT count(*) FROM workflow_node_visits WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$1),(SELECT count(*) FROM workflow_context_revisions WHERE workflow_instance_id=$1)").bind(created.workflow_instance_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(before, after);
+    assert_eq!(receipt_count(&pool, f.agent, &key).await, 0);
 }
