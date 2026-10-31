@@ -102,10 +102,11 @@ Every affected published old version is either paired with an approved corrected
 
 ### CTR-CIR-003-DISABLED — Disabled-target admission
 
-**Amendment candidate, 2026-10-31.** This additive subsection implements the
+**Accepted amendment, 2026-10-31.** This additive subsection implements the
 Owner-delegated ruling in [agent-control#1277](https://github.com/mayf3/agent-control/issues/1277#issuecomment-6536769590).
-It becomes accepted after independent non-author review under that ruling;
-source implementation must consume the separately accepted documentation first.
+Non-author review PASS binds semantic head `bd2f0c8d735f512afafccf9393c946de3a948526`;
+acceptance follows that ruling. Review receipt: `docs/reports/AC1277_DISABLED_ADMISSION_AMENDMENT_REVIEW.json`.
+Source implementation must consume this separately accepted documentation first.
 All pre-existing sections, external authority pins and frozen repair membership
 remain unchanged.
 
