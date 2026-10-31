@@ -233,8 +233,14 @@ pub async fn list_creator_owned_drafts(
             base.definition_version_status.as_str(),
             "PUBLISHED" | "DEPRECATED"
         );
+        let effective_assignee = super::query_visibility::actor_is_effective_current_assignee(
+            &mut tx,
+            base.current_assignee_principal_id,
+            query.actor_principal_id,
+        )
+        .await?;
         let combined_executable = context_editable
-            && base.current_assignee_principal_id == Some(query.actor_principal_id)
+            && effective_assignee
             && detail.outgoing_transitions.iter().any(|transition| {
                 transition.transition_effect == "ADVANCE"
                     && Some(transition.transition_id) == base.current_primary_advance_transition_id
