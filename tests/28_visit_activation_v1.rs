@@ -39,7 +39,7 @@ use svc_workflow::http::{self, AppState, HttpConfig};
 
 fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -233,7 +233,7 @@ async fn create_v1_instance(
 ) -> (Uuid, Uuid, i32) {
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
@@ -266,7 +266,7 @@ async fn transition_v1(
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             ExecuteWorkflowTransitionCommand {
                 principal_id: PrincipalId::from_uuid(actor_id),
                 idempotency_key: format!("trans-{}", Uuid::new_v4()),
@@ -481,7 +481,7 @@ async fn service_owner_fails_closed() {
         .expect("count activations before");
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator),
             idempotency_key: format!("create-svc-{}", Uuid::new_v4()),
@@ -858,7 +858,7 @@ async fn legacy_protection_and_v1_command_guards() {
     let revise_result =
         svc_workflow::application::workflow_instance::revise::revise_workflow_context(
             &pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             svc_workflow::domain::workflow_instance::commands::ReviseWorkflowContextCommand {
                 principal_id: PrincipalId::from_uuid(creator),
                 idempotency_key: format!("revise-{}", Uuid::new_v4()),

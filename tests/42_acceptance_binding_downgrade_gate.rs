@@ -465,7 +465,7 @@ async fn seed_and_publish_annotated(
                 definition_version_id: ver_id,
                 expected_revision: None,
             },
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
         .expect("annotated version must publish on the new implementation");
@@ -491,7 +491,7 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
     // the old binary therefore has nothing integration-shaped to touch.
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
@@ -515,7 +515,7 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
 
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: format!("trans-{}", Uuid::new_v4()),
@@ -554,7 +554,7 @@ async fn ctr6_revoked_optin_version_rejected_by_new_and_old_binary() {
     // New binary refuses ordinary execution of the REVOKED version.
     let err = svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(agent),
             idempotency_key: format!("trans-{}", Uuid::new_v4()),

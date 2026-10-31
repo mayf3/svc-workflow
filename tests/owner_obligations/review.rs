@@ -37,7 +37,7 @@ async fn review_roundtrip(verdict: &str) {
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         managed,
         visit,
         "create-dependency",
@@ -55,7 +55,7 @@ async fn review_roundtrip(verdict: &str) {
     transition(&p, qa, managed, 2, t, Some(acceptance))
         .await
         .unwrap();
-    let births = reconcile::reconcile_pending(&p, pm, AdmissionGate::disabled())
+    let births = reconcile::reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap();
     assert_eq!(births.len(), 1);
@@ -108,7 +108,7 @@ async fn review_roundtrip(verdict: &str) {
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         review,
         visit,
         "owner-decision",
@@ -121,7 +121,7 @@ async fn review_roundtrip(verdict: &str) {
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         review,
         visit,
         "owner-decision",
@@ -252,7 +252,7 @@ async fn review_roundtrip(verdict: &str) {
         "COMPLETED"
     );
     assert!(
-        reconcile::reconcile_pending(&p, pm, AdmissionGate::disabled())
+        reconcile::reconcile_pending(&p, pm, crate::common::admitting_gate())
             .await
             .unwrap()
             .is_empty()

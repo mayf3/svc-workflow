@@ -174,11 +174,12 @@ async fn transition_identity_state(
         &instance,
         base.domain_id,
         base.context_payload.as_ref(),
+        false,
     )
     .await?;
     if model == 1 {
         if let Some(id) = target_assignee {
-            v::verify_principal_enabled_for_transition(tx, id).await?;
+            v::verify_principal_enabled_for_transition(tx, id, false).await?;
         }
     }
     if model == 3 {

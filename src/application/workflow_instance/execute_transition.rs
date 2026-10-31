@@ -49,8 +49,8 @@ impl From<transition_transaction::TransitionResult> for ExecuteWorkflowTransitio
 ///
 /// `admission` is the canonical identity admission gate (CTR-CIR-003): the
 /// command's monotonic admission start is captured here at service entry,
-/// before the transaction opens. Dormant mode (`AdmissionGate::disabled()`)
-/// preserves the pre-admission behavior exactly.
+/// before the transaction opens. An absent client rejects new Agent
+/// admission; ordinary HUMAN eligibility remains independently checked.
 ///
 /// # Errors
 ///

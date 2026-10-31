@@ -38,7 +38,7 @@ async fn one_http_snapshot_does_not_mix_a_concurrent_context_revision() {
     );
     svc_workflow::application::workflow_instance::revise::revise_workflow_context(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(h.seed.creator),
             idempotency_key: Uuid::new_v4().to_string(),

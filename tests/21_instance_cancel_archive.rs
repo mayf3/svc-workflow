@@ -121,7 +121,7 @@ async fn create_instance(
 ) -> (Uuid, i32) {
     let result = create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
@@ -160,7 +160,7 @@ async fn advance_to_terminal(
 
     let result = execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(actor_id),
             idempotency_key: format!("advance-{}", Uuid::new_v4()),
@@ -393,7 +393,7 @@ async fn cancel_prevents_further_transition(pool: PgPool) {
     // Try to transition — should fail because instance is cancelled
     let err = execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(owner_id),
             idempotency_key: "advance-after-cancel".to_string(),
@@ -905,7 +905,7 @@ async fn cancelled_instance_cannot_advance_via_combined_path(pool: PgPool) {
 
     let err = revise_context_and_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseContextAndTransitionCommand {
             principal_id: PrincipalId::from_uuid(owner_id),
             idempotency_key: "combined-after-cancel".to_string(),

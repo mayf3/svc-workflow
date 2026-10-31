@@ -35,7 +35,7 @@ pub(super) async fn pair(
     let b =
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             cmd.clone(),
         )
         .await

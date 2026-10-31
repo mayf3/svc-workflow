@@ -12,10 +12,10 @@ async fn nonselected_terminal_has_review_but_no_resolve_proof(pool: PgPool) {
     let mut cmd = transition_command(&c, 1);
     cmd.transition_definition_id = TransitionId::from_uuid(alt);
     cmd.submission_payload = None;
-    execute_workflow_transition(&pool, AdmissionGate::disabled(), cmd.clone())
+    execute_workflow_transition(&pool, crate::common::admitting_gate(), cmd.clone())
         .await
         .unwrap();
-    execute_workflow_transition(&pool, AdmissionGate::disabled(), cmd)
+    execute_workflow_transition(&pool, crate::common::admitting_gate(), cmd)
         .await
         .unwrap();
     let rows = review_rows(&pool).await;
@@ -172,7 +172,7 @@ async fn bind_and_terminal_race_never_loses_review_obligation(pool: PgPool) {
         });
         let terminal = tokio::spawn(async move {
             tb.wait().await;
-            execute_workflow_transition(&tp, AdmissionGate::disabled(), term).await
+            execute_workflow_transition(&tp, crate::common::admitting_gate(), term).await
         });
         barrier.wait().await;
         let br = bind.await.unwrap();
@@ -227,7 +227,7 @@ async fn terminal_and_owner_replacement_serialize_to_current_recipient(pool: PgP
         cmd.submission_payload = Some(envelope(&b, "ACCEPTED"));
         let terminal = tokio::spawn(async move {
             tb.wait().await;
-            execute_workflow_transition(&tp, AdmissionGate::disabled(), cmd).await
+            execute_workflow_transition(&tp, crate::common::admitting_gate(), cmd).await
         });
         let owner = tokio::spawn(async move {
             bb.wait().await;

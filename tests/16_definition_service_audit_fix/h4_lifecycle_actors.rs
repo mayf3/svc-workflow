@@ -21,7 +21,7 @@ async fn test_publish_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await
         .expect("publish should succeed");
 
@@ -51,7 +51,7 @@ async fn test_deprecate_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await
         .expect("publish");
 
@@ -92,7 +92,7 @@ async fn test_revoke_sets_actor() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await
         .expect("publish");
 
@@ -127,7 +127,7 @@ async fn test_three_stage_actors_all_preserved() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await
         .expect("publish");
 

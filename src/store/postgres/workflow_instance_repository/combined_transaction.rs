@@ -214,7 +214,9 @@ pub(crate) async fn revise_context_and_transition_atomically(
     {
         Ok(matches) => matches,
         Err(error) => {
-            return Err(ReviseContextAndTransitionError::StorageError(error.to_string()));
+            return Err(ReviseContextAndTransitionError::StorageError(
+                error.to_string(),
+            ));
         }
     };
     if !effective_assignee {
@@ -348,6 +350,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
         &instance,
         domain_id,
         Some(&command.context_payload),
+        false, // combined accepts only ADVANCE; never a historical RETURN bridge
     )
     .await
     .map_err(ReviseContextAndTransitionError::from));
@@ -393,7 +396,7 @@ pub(crate) async fn revise_context_and_transition_atomically(
             admission_principals.push(assignee);
         }
         admission
-            .admit(admission_principals)
+            .admit_on_tx(&mut tx, admission_principals)
             .await
             .map_err(ReviseContextAndTransitionError::AdmissionFailed)?;
     }

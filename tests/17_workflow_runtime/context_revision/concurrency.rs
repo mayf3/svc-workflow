@@ -8,12 +8,12 @@ async fn test_revise_expected_version_correct_succeeds() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -31,13 +31,13 @@ async fn test_revise_stale_version_conflict() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     // First revise succeeds with version 1
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -50,7 +50,7 @@ async fn test_revise_stale_version_conflict() {
     // Second revise with stale version 1 should conflict (current is 2)
     let err = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -79,12 +79,12 @@ async fn test_revise_conflict_no_revision_created() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -96,7 +96,7 @@ async fn test_revise_conflict_no_revision_created() {
     .expect("first revise");
     let _ = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -121,7 +121,7 @@ async fn test_revise_two_different_keys_same_version_one_succeeds() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let cmd_a = make_revise_command(
@@ -140,9 +140,9 @@ async fn test_revise_two_different_keys_same_version_one_succeeds() {
     let pool2 = pool.clone();
     let (r1, r2) = tokio::join!(
         tokio::spawn(async move { revise_workflow_context(&pool1,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await }),
+        crate::common::admitting_gate(), cmd_a).await }),
         tokio::spawn(async move { revise_workflow_context(&pool2,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await }),
+    crate::common::admitting_gate(), cmd_b).await }),
     );
     let r1 = r1.expect("join");
     let r2 = r2.expect("join");

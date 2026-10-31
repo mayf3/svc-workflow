@@ -24,10 +24,10 @@ async fn source_terminal_and_dependent_create_have_one_serial_order() {
         c.submission_payload = Some(json!({"real":"terminal"}));
         let create = create_workflow_instance(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             create_cmd(&f, dv, reference(source, v, t)),
         );
-        let finish=svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(&p,AdmissionGate::disabled(),c);
+        let finish=svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(&p,crate::common::admitting_gate(),c);
         let (dependent, terminal) = tokio::join!(create, finish);
         terminal.unwrap();
         let dependent = dependent.unwrap();

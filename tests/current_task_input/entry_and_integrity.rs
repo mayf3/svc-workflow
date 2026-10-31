@@ -48,7 +48,7 @@ async fn actual_administrative_override_has_no_invented_transition() {
     sqlx::query("INSERT INTO domain_role_bindings(binding_id,domain_id,principal_id,role_key) VALUES($1,$2,$3,'WORKFLOW_ADMIN')").bind(Uuid::new_v4()).bind(h.seed.domain).bind(h.seed.owner).execute(&h.pool).await.unwrap();
     let r = svc_workflow::application::workflow_instance::admin_recovery::admin_emergency_override(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         AdminEmergencyOverrideCommand {
             principal_id: PrincipalId::from_uuid(h.seed.owner),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -116,7 +116,7 @@ async fn imported_normal_visit_is_initial_without_visit_number_guessing() {
     let digest = snapshot.digest().unwrap();
     let r = svc_workflow::application::workflow_instance::import::import_legacy_workflow_instance(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ImportLegacyWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(service),
             command_schema_version: COMMAND_SCHEMA_VERSION.into(),

@@ -94,7 +94,7 @@ pub(super) fn create_cmd(f: &Fixture, v: Uuid, c: Value) -> CreateWorkflowInstan
     }
 }
 pub(super) async fn create(p: &PgPool, f: &Fixture, v: Uuid, c: Value) -> Uuid {
-    create_workflow_instance(p, AdmissionGate::disabled(), create_cmd(f, v, c))
+    create_workflow_instance(p, crate::common::admitting_gate(), create_cmd(f, v, c))
         .await
         .unwrap()
         .workflow_instance_id

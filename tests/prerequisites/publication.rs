@@ -22,7 +22,7 @@ async fn publication_checks_context_root_marker_and_immutable_digest() {
                     definition_version_id: v,
                     expected_revision: None
                 },
-                AdmissionGate::disabled()
+                crate::common::admitting_gate()
             )
             .await
             .is_err());
@@ -36,7 +36,7 @@ async fn publication_checks_context_root_marker_and_immutable_digest() {
                 definition_version_id: v,
                 expected_revision: None,
             },
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
         .unwrap();

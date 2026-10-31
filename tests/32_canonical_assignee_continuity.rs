@@ -38,7 +38,7 @@ use svc_workflow::http::{self, AppState, HttpConfig};
 
 fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -215,7 +215,7 @@ async fn create_instance(
 ) -> Uuid {
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
@@ -246,7 +246,6 @@ async fn canonical_assignee_reads_and_advances_where_stale_uuid_stored() {
     let stale = seed_agent(&pool).await;
     let canonical = seed_agent(&pool).await; // actor (canonical successor)
     let outsider = seed_agent(&pool).await;
-    seed_identity_line(&pool, stale, canonical).await;
 
     let domain = common::seed_principal_domain_with_owner(&pool).await.1;
     let (_def_id, ver_id, trans_id) = seed_published_definition(&pool, domain).await;
@@ -260,6 +259,8 @@ async fn canonical_assignee_reads_and_advances_where_stale_uuid_stored() {
     .await
     .expect("grant stale principal domain membership");
     let inst = create_instance(&pool, stale, domain, ver_id, "canon continuity").await;
+    // This is pre-cutover historical work, not new legacy intake.
+    seed_identity_line(&pool, stale, canonical).await;
 
     let app = build_app(pool.clone(), &mock.url, vec![]);
     let t_canon_read = direct_token(canonical, "workflow.read", &mock.key_pair);

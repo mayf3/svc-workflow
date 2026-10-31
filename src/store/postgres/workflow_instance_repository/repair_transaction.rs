@@ -488,7 +488,7 @@ pub async fn repair_context_atomically(
     //     delta — no partial write, no retry).
     // ------------------------------------------------------------------
     admission
-        .admit(invariant_candidate_ids)
+        .admit_on_tx(&mut tx, invariant_candidate_ids)
         .await
         .map_err(RepairContextError::AdmissionFailed)?;
 

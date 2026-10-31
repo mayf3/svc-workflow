@@ -4,7 +4,7 @@ use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::http::{self, AppState, HttpConfig};
 fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -106,7 +106,7 @@ impl Harness {
         let seed = seed_query_fixture(&pool).await;
         let mut command = make_command(seed.creator, seed.domain, seed.version);
         command.context_payload = payload;
-        let instance = create_workflow_instance(&pool, AdmissionGate::disabled(), command)
+        let instance = create_workflow_instance(&pool, crate::common::admitting_gate(), command)
             .await
             .unwrap()
             .workflow_instance_id;
@@ -185,7 +185,7 @@ impl Harness {
     pub async fn step(&self,actor:Uuid,version:i32,transition:Uuid,payload:Option<Value>)->svc_workflow::application::workflow_instance::execute_transition::ExecuteWorkflowTransitionResult{
         execute_workflow_transition_with_policy(
             &self.pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             make_transition_command(actor, self.instance, version, transition, payload),
             100,
         )

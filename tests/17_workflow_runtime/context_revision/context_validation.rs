@@ -20,7 +20,7 @@ async fn seeded_instance_with_schema(pool: &PgPool) -> (Uuid, Uuid) {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.context_payload = serde_json::json!({"title": "initial", "priority": 0});
     let r = create_workflow_instance(pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("create");
+    crate::common::admitting_gate(), cmd).await.expect("create");
     (principal_id, r.workflow_instance_id)
 }
 
@@ -32,7 +32,7 @@ async fn assert_revise_schema_rejection(
 ) {
     let err = revise_workflow_context(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, payload),
     )
     .await
@@ -58,12 +58,12 @@ async fn test_revise_no_schema_any_json_accepted() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let r = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             r.workflow_instance_id,
@@ -81,7 +81,7 @@ async fn test_revise_schema_valid_accepted() {
     let (principal_id, instance_id) = seeded_instance_with_schema(&pool).await;
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             instance_id,
@@ -139,7 +139,7 @@ async fn test_revise_payload_too_large() {
     let big_str = "x".repeat(1024 * 1024 + 1);
     let err = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             instance_id,
@@ -163,7 +163,7 @@ async fn test_revise_schema_failure_replays() {
     let cmd1 = make_revise_command(principal_id, instance_id, 1, payload.clone());
     let idem_key = cmd1.idempotency_key.clone();
     let err1 = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await.unwrap_err();
+    crate::common::admitting_gate(), cmd1).await.unwrap_err();
     assert!(matches!(
         &err1,
         ReviseWorkflowContextError::ContextValidationFailed(_)
@@ -175,7 +175,7 @@ async fn test_revise_schema_failure_replays() {
         ..cmd2
     };
     let err2 = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await.unwrap_err();
+    crate::common::admitting_gate(), cmd2).await.unwrap_err();
     assert!(
         matches!(
             &err2,
