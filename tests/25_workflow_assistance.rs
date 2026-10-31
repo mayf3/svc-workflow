@@ -14,3 +14,7 @@ mod lifecycle;
 mod permissions;
 #[path = "25_workflow_assistance/replay_history.rs"]
 mod replay_history;
+
+#[allow(dead_code, unused_imports)]
+#[path = "common/mod.rs"]
+mod common;

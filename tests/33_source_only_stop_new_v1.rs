@@ -215,7 +215,7 @@ async fn stop_new_deprecation_refuses_new_creation_but_existing_work_continues()
     // Existing instance created while the version is PUBLISHED.
     let created = create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(fixture.caller, &fixture, "stop-new-existing"),
     )
     .await
@@ -243,7 +243,7 @@ async fn stop_new_deprecation_refuses_new_creation_but_existing_work_continues()
     // NEW intake fails the existing deprecated-version rule (409 family).
     let error = create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(fixture.caller, &fixture, "stop-new-late"),
     )
     .await
@@ -257,7 +257,7 @@ async fn stop_new_deprecation_refuses_new_creation_but_existing_work_continues()
     // DEPRECATED version (transition validation allows DEPRECATED).
     let advanced = execute_workflow_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: svc_workflow::domain::ids::PrincipalId::from_uuid(fixture.caller),
             idempotency_key: "stop-new-transition".to_string(),

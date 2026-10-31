@@ -209,7 +209,7 @@ async fn test_transition_submission_insert_failure_rolls_back() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, av_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
 
     // No new submission, visit, event, or state change
@@ -241,7 +241,7 @@ async fn test_transition_visit_insert_failure_rolls_back() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -265,7 +265,7 @@ async fn test_transition_instance_update_failure_rolls_back() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -287,7 +287,7 @@ async fn test_transition_event_insert_failure_rolls_back() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
 
     let inst: (i32, Uuid) = sqlx::query_as(
@@ -312,7 +312,7 @@ async fn test_transition_receipt_completion_failure_rolls_back() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, draft_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
 
     // No new receipt (should be rolled back), no state changes

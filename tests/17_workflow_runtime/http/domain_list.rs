@@ -154,7 +154,7 @@ async fn create_dlist_instance(
     };
     let created = create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         command,
     )
     .await
@@ -180,7 +180,7 @@ async fn advance_to_normal(
     };
     execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -205,7 +205,7 @@ async fn advance_to_terminal(
     };
     execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await

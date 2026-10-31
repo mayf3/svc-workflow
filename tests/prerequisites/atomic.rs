@@ -106,7 +106,7 @@ async fn deterministic_rejection_preserves_receipt_and_zero_business_facts() {
     let first =
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             cmd.clone(),
         )
         .await
@@ -114,7 +114,7 @@ async fn deterministic_rejection_preserves_receipt_and_zero_business_facts() {
     let second =
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             cmd.clone(),
         )
         .await

@@ -233,7 +233,7 @@ async fn create_and_advance_to_normal(
     let cmd = make_command_with_payload(creator, domain_id, ver_id, context_payload);
     let created =
         svc_workflow::application::workflow_instance::create::create_workflow_instance(pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
+            crate::common::admitting_gate(), cmd)
             .await
             .expect("create instance");
 
@@ -248,7 +248,7 @@ async fn create_and_advance_to_normal(
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), transition,
+    crate::common::admitting_gate(), transition,
     )
     .await
     .expect("advance to normal");
@@ -511,7 +511,7 @@ async fn outgoing_target_instance_input_principal_from_draft() {
         json!({"reviewerPrincipalId": reviewer_principal}),
     );
     let created = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
+        crate::common::admitting_gate(), cmd)
         .await
         .expect("create instance");
 

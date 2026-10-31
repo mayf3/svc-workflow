@@ -28,7 +28,7 @@ async fn test_primary_effect_not_advance_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(
         result.is_err(),
@@ -61,7 +61,7 @@ async fn test_primary_advance_allowed() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(
         result.is_ok(),

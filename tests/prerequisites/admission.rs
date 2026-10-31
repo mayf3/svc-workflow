@@ -23,13 +23,13 @@ async fn ordinary_admission_rejects_invalid_and_unauthorized_without_facts() {
     failures.push(extra);
     for c in failures {
         let cmd = create_cmd(&f, dv, c);
-        assert!(create_workflow_instance(&p, AdmissionGate::disabled(), cmd)
+        assert!(create_workflow_instance(&p, crate::common::admitting_gate(), cmd)
             .await
             .is_err());
     }
     let mut member = create_cmd(&f, dv, reference(source, v, t));
     member.principal_id = PrincipalId::from_uuid(f.agent);
-    assert!(matches!(create_workflow_instance(&p,AdmissionGate::disabled(),member).await,Err(svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError::NotDomainOwner)));
+    assert!(matches!(create_workflow_instance(&p,crate::common::admitting_gate(),member).await,Err(svc_workflow::domain::workflow_instance::errors::CreateWorkflowInstanceError::NotDomainOwner)));
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM workflow_instances WHERE definition_version_id=$1"
@@ -47,7 +47,7 @@ async fn ordinary_admission_rejects_invalid_and_unauthorized_without_facts() {
         .unwrap();
     assert!(create_workflow_instance(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_cmd(&f, dv, reference(source, v, t))
     )
     .await
@@ -59,7 +59,7 @@ async fn ordinary_admission_rejects_invalid_and_unauthorized_without_facts() {
         .unwrap();
     assert!(create_workflow_instance(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_cmd(&f, dv, reference(source, v, t))
     )
     .await

@@ -20,10 +20,9 @@
 //! transaction's existing lock/re-validate preconditions provide the
 //! discard-on-drift discipline).
 //!
-//! Dormant mode: when the admission client is absent (`None`, the default
-//! deployment), every method here is a no-op and runtime behavior is exactly
-//! the pre-admission behavior. Activation is a separate reviewed production
-//! step.
+//! An absent admission client cannot validate an Agent target: nonempty
+//! Agent admissions fail closed. Known HUMAN assignments retain their existing
+//! local Workflow predicates and do not use the Agent directory.
 //!
 //! Surfaces wired for canonical identity admission:
 //! - workflow instance create / transition / revise / revise-and-transition /
@@ -46,22 +45,42 @@
 //! - provisioning `self_projection` — the caller's own identity
 //!   registration, not an assignment of work to any principal.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::auth::admission::{AdmissionClient, AdmissionError};
+use crate::auth::admission::{AdmissionClient, AdmissionError, RejectionReason};
 use crate::domain::definition::error::GraphValidationError;
 use crate::domain::definition::model::NodeDefinition;
 use crate::domain::enums::AssigneeRefType;
 use crate::store::postgres::identity_successor::resolve_current_principal;
 
+/// Per-command validated responsibility, never an authorization ticket.
+#[derive(Debug, Clone)]
+pub struct ValidatedTarget {
+    pub original_principal: Uuid,
+    pub canonical_principal: Uuid,
+    pub evidence_reference: String,
+}
+
+#[derive(Debug, Default)]
+pub struct ValidatedTargets(pub BTreeMap<Uuid, ValidatedTarget>);
+
+impl ValidatedTargets {
+    pub fn responsibility(&self, original: Uuid) -> Result<Uuid, AdmissionError> {
+        self.0
+            .get(&original)
+            .map(|v| v.canonical_principal)
+            .ok_or(AdmissionError::Unavailable)
+    }
+}
+
 /// Per-command admission gate.
 ///
-/// `client == None` is the dormant deploy: every check is a no-op and the
-/// database keeps its existing timeout behavior. When enabled, `start` is the
+/// `client == None` cannot admit an Agent target. Non-directory commands keep
+/// their existing timeout behavior. With a client, `start` is the
 /// monotonic instant captured at app-service entry — before the transaction
 /// opens — and bounds the whole admission-through-commit window.
 #[derive(Clone, Copy)]
@@ -72,7 +91,7 @@ pub struct AdmissionGate<'a> {
 }
 
 impl<'a> AdmissionGate<'a> {
-    /// Dormant mode (admission disabled): enforcement is a no-op.
+    /// No directory client: Agent targets fail closed as unavailable.
     pub fn disabled() -> Self {
         Self {
             client: None,
@@ -154,39 +173,145 @@ impl<'a> AdmissionGate<'a> {
         }
     }
 
-    /// Admit every distinct Agent Principal the command will persist, inside
-    /// the committing transaction and before its first runtime-fact write.
-    ///
-    /// Duplicate IDs are collapsed into one still-current observation
-    /// (CTR-CIR-003 allows per-command sharing; nothing is cached across
-    /// commands). An empty set means the command persists no assignment
-    /// target and acceptance is trivially satisfied — no network is touched.
-    /// Dormant mode is always `Ok(())`.
+    /// Validate explicit identities without silently mapping legacy input.
+    /// The pool is used only for authoritative Workflow projection/lineage;
+    /// Agent lifecycle facts still require fresh directory observations.
     pub async fn admit(
         &self,
         principals: impl IntoIterator<Item = Uuid>,
-    ) -> Result<(), AdmissionError> {
-        let Some(client) = self.client else {
-            return Ok(());
-        };
-        let distinct: BTreeSet<Uuid> = principals.into_iter().collect();
-        let distinct = self.canonicalize_principals(distinct).await?;
-        client.admit(self.start, &distinct).await.map(|_| ())
+    ) -> Result<ValidatedTargets, AdmissionError> {
+        let distinct: BTreeSet<_> = principals.into_iter().collect();
+        if let Some(pool) = self.pool {
+            let mut tx = pool
+                .begin()
+                .await
+                .map_err(|_| AdmissionError::Unavailable)?;
+            let result = self.admit_on_tx(&mut tx, distinct).await;
+            tx.rollback()
+                .await
+                .map_err(|_| AdmissionError::Unavailable)?;
+            result
+        } else {
+            self.observe(
+                distinct.into_iter().map(|p| (p, p, false)).collect(),
+                BTreeSet::new(),
+            )
+            .await
+        }
     }
 
-    /// T72: admission that resolves lineage through the COMMITTING
-    /// transaction (no second pool borrow — safe for max_connections=1).
     pub async fn admit_on_tx(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        tx: &mut Transaction<'_, Postgres>,
         principals: impl IntoIterator<Item = Uuid>,
-    ) -> Result<(), AdmissionError> {
-        let Some(client) = self.client else {
-            return Ok(());
+    ) -> Result<ValidatedTargets, AdmissionError> {
+        self.validate_on_tx(tx, principals, false).await
+    }
+
+    /// The sole internal bridge: an exact prior responsibility in this
+    /// Instance/node, selected by the server's existing RETURN transaction.
+    /// This never makes an old definition literal a valid explicit input.
+    pub async fn admit_historical_target_on_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        instance: Uuid,
+        node: Uuid,
+        original: Uuid,
+    ) -> Result<ValidatedTargets, AdmissionError> {
+        let historical: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_node_visits WHERE workflow_instance_id=$1 AND node_id=$2 AND assignee_principal_id=$3)")
+            .bind(instance).bind(node).bind(original).fetch_one(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
+        // A native canonical RETURN target needs no identity bridge, even
+        // when this is its first entry; only a mapped legacy target needs
+        // an exact historical responsibility fact.
+        self.validate_on_tx(tx, [original], historical).await
+    }
+
+    async fn validate_on_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        principals: impl IntoIterator<Item = Uuid>,
+        historical: bool,
+    ) -> Result<ValidatedTargets, AdmissionError> {
+        let mut targets = Vec::new();
+        let mut humans = BTreeSet::new();
+        for original in principals.into_iter().collect::<BTreeSet<_>>() {
+            let canonical = resolve_current_principal(&mut **tx, original)
+                .await
+                .map_err(|_| AdmissionError::Unavailable)?
+                .unwrap_or(original);
+            if canonical != original {
+                if !historical
+                    || resolve_current_principal(&mut **tx, canonical)
+                        .await
+                        .map_err(|_| AdmissionError::Unavailable)?
+                        != Some(canonical)
+                {
+                    return Err(AdmissionError::Rejected {
+                        principal: original,
+                        reason: RejectionReason::LegacyInput,
+                    });
+                }
+            }
+            let local: Option<(String, bool)> = sqlx::query_as(
+                "SELECT principal_type::text, enabled FROM principals WHERE principal_id=$1",
+            )
+            .bind(canonical)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|_| AdmissionError::Unavailable)?;
+            if matches!(local.as_ref(), Some((_, false))) {
+                return Err(AdmissionError::Rejected {
+                    principal: canonical,
+                    reason: RejectionReason::PrincipalNotActive("disabled".into()),
+                });
+            }
+            if local.as_ref().map(|(kind, _)| kind.as_str()) == Some("HUMAN")
+                && canonical == original
+            {
+                humans.insert(canonical);
+            }
+            targets.push((original, canonical, canonical != original));
+        }
+        self.observe(targets, humans).await
+    }
+
+    async fn observe(
+        &self,
+        targets: Vec<(Uuid, Uuid, bool)>,
+        humans: BTreeSet<Uuid>,
+    ) -> Result<ValidatedTargets, AdmissionError> {
+        let agents: BTreeSet<_> = targets
+            .iter()
+            .map(|(_, q, _)| *q)
+            .filter(|q| !humans.contains(q))
+            .collect();
+        let report = if agents.is_empty() {
+            None
+        } else {
+            let client = self.client.ok_or(AdmissionError::Unavailable)?;
+            Some(client.admit(self.start, &agents).await?)
         };
-        let distinct: BTreeSet<Uuid> = principals.into_iter().collect();
-        let distinct = self.canonicalize_principals_on_tx(tx, distinct).await?;
-        client.admit(self.start, &distinct).await.map(|_| ())
+        let mut validated = BTreeMap::new();
+        for (original, canonical, mapped) in targets {
+            let evidence_reference = if let Some(observed) =
+                report.as_ref().and_then(|r| r.observations.get(&canonical))
+            {
+                format!("auth-directory:/api/v1/directory/principals/{canonical}/agent;agent-directory:/v1/directory/agents/{}{}", observed.agent_id, if mapped { format!(";workflow_identity_successor_lines:{original}") } else { String::new() })
+            } else if humans.contains(&canonical) {
+                format!("workflow:principals/{canonical}:HUMAN")
+            } else {
+                return Err(AdmissionError::Unavailable);
+            };
+            validated.insert(
+                original,
+                ValidatedTarget {
+                    original_principal: original,
+                    canonical_principal: canonical,
+                    evidence_reference,
+                },
+            );
+        }
+        Ok(ValidatedTargets(validated))
     }
 
     /// Map the command's principals through the immutable identity-successor
@@ -212,13 +337,11 @@ impl<'a> AdmissionGate<'a> {
             Some(pool) => {
                 let mut mapped = BTreeSet::new();
                 for principal in principals {
-                    mapped.insert(
-                        match resolve_current_principal(pool, principal).await {
-                            Ok(Some(resolved)) => resolved,
-                            Ok(None) => principal,
-                            Err(_) => return Err(AdmissionError::Unavailable),
-                        },
-                    );
+                    mapped.insert(match resolve_current_principal(pool, principal).await {
+                        Ok(Some(resolved)) => resolved,
+                        Ok(None) => principal,
+                        Err(_) => return Err(AdmissionError::Unavailable),
+                    });
                 }
                 Ok(mapped)
             }
@@ -350,12 +473,7 @@ pub fn collect_definition_publish_identity_literals(
                 let Some(key) = &assignee_ref.assignee_input_key else {
                     continue;
                 };
-                collect_schema_identity_literals(
-                    context_schema,
-                    key,
-                    &mut literals,
-                    &mut errors,
-                );
+                collect_schema_identity_literals(context_schema, key, &mut literals, &mut errors);
             }
             _ => {}
         }
@@ -387,13 +505,7 @@ fn collect_schema_identity_literals(
     };
 
     // `default`: a single value.
-    inspect_identity_literal(
-        property.get("default"),
-        key,
-        "default",
-        literals,
-        errors,
-    );
+    inspect_identity_literal(property.get("default"), key, "default", literals, errors);
 
     // `enum` / `examples`: arrays of values.
     for keyword in ["enum", "examples"] {
@@ -508,18 +620,21 @@ mod tests {
     }
 
     #[test]
-    fn dormant_gate_is_total_noop() {
+    fn unconfigured_gate_has_no_directory_commit_budget() {
         let gate = AdmissionGate::disabled();
         assert!(!gate.is_enabled());
         assert_eq!(gate.check_commit_budget(), Ok(()));
     }
 
     #[tokio::test]
-    async fn dormant_gate_admits_without_network() {
+    async fn unavailable_gate_rejects_nonempty_targets_without_network() {
         let gate = AdmissionGate::disabled();
-        gate.admit([Uuid::new_v4(), Uuid::new_v4()])
-            .await
-            .expect("dormant admission is a no-op");
+        assert_eq!(
+            gate.admit([Uuid::new_v4(), Uuid::new_v4()])
+                .await
+                .unwrap_err(),
+            AdmissionError::Unavailable
+        );
     }
 
     #[tokio::test]
@@ -679,7 +794,10 @@ mod tests {
             None,
             Some("owner"),
         )];
-        let schema = schema_property("owner", serde_json::json!({ "type": "string", "default": 42 }));
+        let schema = schema_property(
+            "owner",
+            serde_json::json!({ "type": "string", "default": 42 }),
+        );
         let errors = collect_definition_publish_identity_literals(&nodes, Some(&schema))
             .expect_err("non-string identity literal must be rejected");
         assert_eq!(errors[0].code, "INSTANCE_INPUT_LITERAL_NOT_STRING");

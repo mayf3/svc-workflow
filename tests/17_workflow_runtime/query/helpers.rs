@@ -310,7 +310,7 @@ pub(crate) async fn create_query_instance(
     command.metadata = serde_json::json!({"source": "query-test"});
     command.context_payload = serde_json::json!({"title": "initial"});
     create_workflow_instance(pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await.unwrap()
+crate::common::admitting_gate(), command).await.unwrap()
 }
 
 pub(crate) async fn complete_query_instance(pool: &PgPool) -> CompletedFixture {
@@ -318,7 +318,7 @@ pub(crate) async fn complete_query_instance(pool: &PgPool) -> CompletedFixture {
     let created = create_query_instance(pool, &seed).await;
     let first = execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -332,7 +332,7 @@ pub(crate) async fn complete_query_instance(pool: &PgPool) -> CompletedFixture {
     let creator_submission = first.submission_id.unwrap();
     let feedback = execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,
@@ -351,7 +351,7 @@ pub(crate) async fn complete_query_instance(pool: &PgPool) -> CompletedFixture {
     let feedback_submission = feedback.submission_id.unwrap();
     execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -364,7 +364,7 @@ pub(crate) async fn complete_query_instance(pool: &PgPool) -> CompletedFixture {
     .unwrap();
     execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,

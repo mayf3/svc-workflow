@@ -46,7 +46,7 @@ fn build_app_with_policy(
     max_returns_per_edge: u32,
 ) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -221,7 +221,7 @@ async fn create_instance(
 ) -> (Uuid, Uuid, i32) {
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(creator_id),
             idempotency_key: format!("create-{}", Uuid::new_v4()),
@@ -257,7 +257,7 @@ async fn transition(
 >{
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition_with_policy(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(actor_id),
             idempotency_key: format!("transition-{}", Uuid::new_v4()),

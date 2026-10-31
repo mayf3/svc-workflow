@@ -19,7 +19,7 @@ async fn test_transition_authorization_current_assignee_succeeds() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(result.is_ok());
 }
 
@@ -44,7 +44,7 @@ async fn test_transition_non_assignee_rejected() {
 
     let cmd = make_transition_command(other_id, instance_id, 2, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::PrincipalNotAssignee
@@ -72,7 +72,7 @@ async fn test_transition_creator_not_assignee_rejected() {
 
     let cmd = make_transition_command(creator_id, instance_id, 2, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::PrincipalNotAssignee
@@ -100,7 +100,7 @@ async fn test_transition_domain_owner_not_assignee_rejected() {
 
     let cmd = make_transition_command(owner_id, instance_id, 2, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::PrincipalNotAssignee
@@ -132,7 +132,7 @@ async fn test_transition_disabled_assignee_rejected() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::PrincipalDisabled
@@ -159,12 +159,12 @@ async fn test_transition_source_node_terminal_rejected() {
     // Advance to terminal
     let cmd1 = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     execute_workflow_transition(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await.unwrap();
+crate::common::admitting_gate(), cmd1).await.unwrap();
 
     // Try to transition from terminal
     let cmd2 = make_transition_command(principal_id, instance_id, 3, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await.unwrap_err();
+    crate::common::admitting_gate(), cmd2).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::SourceNodeTerminal

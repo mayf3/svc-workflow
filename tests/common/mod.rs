@@ -573,3 +573,6 @@ pub async fn set_domain_enabled(pool: &PgPool, domain_id: uuid::Uuid, enabled: b
         .await
         .expect("failed to update domain enabled");
 }
+
+mod admission;
+pub use admission::{admitting_config, admitting_gate};
