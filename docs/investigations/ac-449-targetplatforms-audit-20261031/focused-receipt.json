@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--offline",
+    "--locked",
+    "--test",
+    "38_declared_context_inputs_v5_distribution",
+    "--",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "started_at": "2026-10-31T15:57:14.272957+00:00",
+  "finished_at": "2026-10-31T15:58:17.531027+00:00",
+  "rc": 0,
+  "head": "ddf81196225f28bb5ffe0b8e73c8bc747aae736b",
+  "fixture_dsn": "postgres://sw449_fixture@127.0.0.1:64370/sw449_targetplatforms"
+}

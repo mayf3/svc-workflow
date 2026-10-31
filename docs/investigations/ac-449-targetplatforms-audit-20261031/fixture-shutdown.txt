@@ -1,0 +1,4 @@
+$ /opt/homebrew/bin/pg_ctl -D /tmp/sw-449-fix/target/ac449-fixture/pgdata -m fast -w stop
+waiting for server to shut down.... done
+server stopped
+rc=0

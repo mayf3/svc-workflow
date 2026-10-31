@@ -1,0 +1,37 @@
+OBSERVED_AT=2026-10-31T15:59:01.258423+00:00
+$ git status --short
+?? docs/investigations/ac-449-targetplatforms-audit-20261031/
+rc=0
+
+$ git branch --show-current
+ac-449-targetplatforms-validation
+rc=0
+
+$ git rev-parse HEAD
+ddf81196225f28bb5ffe0b8e73c8bc747aae736b
+rc=0
+
+$ git rev-parse origin/main
+ddf81196225f28bb5ffe0b8e73c8bc747aae736b
+rc=0
+
+$ git ls-remote origin refs/heads/main
+ddf81196225f28bb5ffe0b8e73c8bc747aae736b	refs/heads/main
+rc=0
+
+$ git merge-base --is-ancestor 7c533cfc2676ea970d502969662dff3bbdd3e66c HEAD
+rc=0
+
+$ git diff --raw HEAD
+rc=0
+
+$ git diff --numstat HEAD
+rc=0
+
+$ git diff --exit-code 7c533cfc2676ea970d502969662dff3bbdd3e66c HEAD -- tests/38_declared_context_inputs_v5_distribution.rs
+rc=0
+
+$ git log -1 --format=%H %s -- .agents/governance.lock.json
+f4a591af81c2f40f330d8254fc2aaa9700270eb7 governance: accept v1.1.0 adoption (accepted_by mayf3) + restore tool exec modes
+rc=0
+
