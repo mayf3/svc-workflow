@@ -19,6 +19,10 @@
 
 mod common;
 
+#[path = "definition_input_contract/h5.rs"]
+mod h5;
+#[path = "definition_input_contract/http.rs"]
+mod http;
 #[path = "definition_input_contract/snapshot.rs"]
 mod snapshot;
 
@@ -31,9 +35,7 @@ use svc_workflow::application::definition::commands::{
     CreateDefinition, CreateDraftVersion, DeprecateVersion, PublishVersion, RawNodeDefinition,
     RawTransitionDefinition, ReplaceDraftGraph,
 };
-use svc_workflow::application::definition::queries::{
-    GetDefinition, GetDefinitionVersion, GetPublishedVersionInputContract,
-};
+use svc_workflow::application::definition::queries::GetPublishedVersionInputContract;
 use svc_workflow::application::definition::DefinitionService;
 use svc_workflow::domain::definition::error::DefinitionError;
 use svc_workflow::domain::enums::DefinitionVersionStatus;
@@ -231,59 +233,6 @@ async fn p1_member_with_active_binding_reads_published_input_contract() {
     assert_eq!(contract.definition_id, seeded.definition_id);
     assert_eq!(contract.version_status, DefinitionVersionStatus::PUBLISHED);
     assert_eq!(contract.context_schema, Some(input_schema()));
-}
-
-// ---------------------------------------------------------------------------
-// P2/P3 — H-5 unchanged
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn p2_member_still_denied_on_h5_owner_reads() {
-    let pool = create_pool().await;
-    let seeded = seed_published_version(&pool).await;
-    let member_id = seed_domain_member(&pool, seeded.domain_id, true).await;
-
-    let repo = PgDefinitionRepository::new(pool.clone());
-    let service = DefinitionService::new(repo);
-
-    let err = service
-        .get_definition(GetDefinition {
-            actor_principal_id: member_id,
-            workflow_definition_id: seeded.definition_id,
-        })
-        .await
-        .expect_err("H-5 must still deny member get_definition");
-    assert!(matches!(err, DefinitionError::PermissionDenied));
-
-    let err = service
-        .get_definition_version(GetDefinitionVersion {
-            actor_principal_id: member_id,
-            definition_version_id: seeded.version_id,
-        })
-        .await
-        .expect_err("H-5 must still deny member get_definition_version");
-    assert!(matches!(err, DefinitionError::PermissionDenied));
-}
-
-#[tokio::test]
-async fn p3_owner_reads_new_surface_and_h5_reads_still_work() {
-    let pool = create_pool().await;
-    let seeded = seed_published_version(&pool).await;
-
-    let contract = member_read(&pool, seeded.owner_id, seeded.version_id)
-        .await
-        .expect("owner may read the input contract via the new surface");
-    assert_eq!(contract.version_status, DefinitionVersionStatus::PUBLISHED);
-
-    let repo = PgDefinitionRepository::new(pool.clone());
-    let service = DefinitionService::new(repo);
-    service
-        .get_definition_version(GetDefinitionVersion {
-            actor_principal_id: seeded.owner_id,
-            definition_version_id: seeded.version_id,
-        })
-        .await
-        .expect("owner H-5 read unchanged");
 }
 
 // ---------------------------------------------------------------------------
