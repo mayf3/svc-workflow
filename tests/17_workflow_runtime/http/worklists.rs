@@ -771,6 +771,8 @@ async fn no_domain_permission_hides_items() {
 
 #[tokio::test]
 async fn domain_disabled_hides_items() {
+    // Historical test ID retained for named-suite comparisons. Query contract
+    // section 3 preserves current-assignee reads when the Domain is disabled.
     let pool = create_pool().await;
     let (_owner, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let creator = seed_second_principal(&pool).await;
@@ -813,7 +815,7 @@ async fn domain_disabled_hides_items() {
         .await
         .unwrap();
 
-    // Assignee should no longer see the item
+    // Domain disablement must not hide the current assignee's existing work.
     let resp = app
         .clone()
         .oneshot(request(
@@ -824,7 +826,9 @@ async fn domain_disabled_hides_items() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(json_body(resp).await["items"].as_array().unwrap().len(), 0);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+    assert_eq!(body["items"][0]["detail"]["instance"]["domain_enabled"], false);
 
     // Re-enable the domain
     sqlx::query("UPDATE domains SET enabled = TRUE WHERE domain_id = $1")
@@ -833,7 +837,7 @@ async fn domain_disabled_hides_items() {
         .await
         .unwrap();
 
-    // Assignee should see the item again
+    // Re-enabling the Domain preserves visibility.
     let resp = app
         .clone()
         .oneshot(request(
@@ -1410,4 +1414,135 @@ async fn unknown_path_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn d10_exact_assignees_keep_disabled_domain_work_across_pages() {
+    use std::collections::BTreeSet;
+
+    let pool = create_pool().await;
+    let (_, retro_domain) = seed_principal_domain_with_owner(&pool).await;
+    let (_, merge_domain) = seed_principal_domain_with_owner(&pool).await;
+    let (_, family_domain) = seed_principal_domain_with_owner(&pool).await;
+    let (_, unrelated_domain) = seed_principal_domain_with_owner(&pool).await;
+    let creator = seed_second_principal(&pool).await;
+    let actor_a = seed_second_principal(&pool).await;
+    let actor_b = seed_second_principal(&pool).await;
+    let bystander = seed_second_principal(&pool).await;
+    let successor = seed_second_principal(&pool).await;
+    for domain in [retro_domain, merge_domain, family_domain, unrelated_domain] {
+        domain_membership(&pool, domain, creator).await;
+    }
+    // The assignees have no Domain roles. All instances and identities are synthetic.
+    let (retro_version, retro_advance, _, _) =
+        seed_worklist_definition(&pool, retro_domain, actor_a).await;
+    let mut expected_a = BTreeSet::new();
+    for _ in 0..4 {
+        expected_a.insert(
+            create_and_advance(&pool, creator, retro_domain, retro_version, retro_advance).await,
+        );
+    }
+    let (merge_version, merge_advance, _, _) =
+        seed_worklist_definition(&pool, merge_domain, actor_a).await;
+    let merge =
+        create_and_advance(&pool, creator, merge_domain, merge_version, merge_advance).await;
+    expected_a.insert(merge);
+    let (family_version, family_advance, _, _) =
+        seed_worklist_definition(&pool, family_domain, actor_b).await;
+    let family = create_and_advance(
+        &pool,
+        creator,
+        family_domain,
+        family_version,
+        family_advance,
+    )
+    .await;
+
+    eprintln!(
+        "D10 synthetic fixture: retro_domain={retro_domain}, merge_domain={merge_domain}, family_domain={family_domain}, merge_instance={merge}, family_instance={family}"
+    );
+
+    // Same-Domain and unrelated-Domain work assigned to someone else must stay hidden.
+    for domain in [retro_domain, unrelated_domain] {
+        let (version, advance, _, _) = seed_worklist_definition(&pool, domain, bystander).await;
+        create_and_advance(&pool, creator, domain, version, advance).await;
+    }
+    for domain in [retro_domain, family_domain] {
+        sqlx::query("UPDATE domains SET enabled = FALSE WHERE domain_id = $1")
+            .bind(domain)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    // Preserve the existing disabled-Domain boundary for lineage-only successor reads.
+    sqlx::query(
+        "INSERT INTO workflow_identity_successor_lines
+         (source_principal_id, successor_principal_id, legacy_agent_id, canonical_agent_id,
+          classification, evidence, repair_reason)
+         VALUES ($1, $2, $3, $4, 'MECHANICALLY_PROVEN_SUCCESSOR', $5, 'Synthetic D10 fixture')",
+    )
+    .bind(actor_a)
+    .bind(successor)
+    .bind(format!("d10-legacy-{actor_a}"))
+    .bind(format!("agt_d10-{successor}"))
+    .bind(json!({"fixture": "D10", "synthetic": true}))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mock = common::MockJwksServer::start().await;
+    let mut mismatches = Vec::new();
+    for (actor, expected) in [
+        (actor_a, expected_a),
+        (actor_b, [family].into_iter().collect()),
+        (successor, [merge].into_iter().collect()),
+    ] {
+        let (app, _state) = build_config(&pool, &mock.url, &actor.to_string());
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let token = common::v1_token(actor, "workflow.read", "test-client", 300, &mock.key_pair);
+        let mut uri = "/internal/v1/worklists/assigned-to-me?limit=2".to_string();
+        let mut seen = BTreeSet::new();
+        loop {
+            let response = app
+                .clone()
+                .oneshot(request("GET", &uri, Some(&token)))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = json_body(response).await;
+            let items = body["items"].as_array().unwrap();
+            assert!(items.len() <= 2);
+            for item in items {
+                let instance = &item["detail"]["instance"];
+                let id =
+                    Uuid::parse_str(instance["workflow_instance_id"].as_str().unwrap()).unwrap();
+                assert!(seen.insert(id), "duplicate worklist item {id}");
+                assert_eq!(instance["domain_enabled"], json!(id == merge));
+            }
+            assert!(seen.len() <= expected.len(), "unexpected worklist items");
+            let cursor = &body["next_cursor"];
+            if cursor.is_null() {
+                break;
+            }
+            assert_eq!(items.len(), 2, "cursor requires a full page");
+            uri = format!(
+                "/internal/v1/worklists/assigned-to-me?limit=2&beforeCreatedAt={}&beforeId={}",
+                cursor["created_at"].as_str().unwrap(),
+                cursor["id"].as_str().unwrap(),
+            );
+        }
+        eprintln!(
+            "D10 actor={actor}: expected={}, returned={}, missing={:?}",
+            expected.len(),
+            seen.len(),
+            expected.difference(&seen).collect::<Vec<_>>(),
+        );
+        if seen != expected {
+            mismatches.push((actor, expected, seen));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "D10 exact current-assignee discovery: {mismatches:?}"
+    );
 }
