@@ -55,7 +55,11 @@ pub async fn list_assigned_to_me(
           AND v.workflow_instance_id = wi.workflow_instance_id
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
-         JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
+         -- Current assignees retain instance-local reads in disabled Domains
+         -- (WORKFLOW_QUERY_CONTRACT_V0_1, section 3). Lineage-only discovery
+         -- keeps its existing enabled-Domain boundary.
+         JOIN domains d ON d.domain_id = wi.domain_id
+          AND (d.enabled = TRUE OR v.assignee_principal_id = $1)
          -- Identity repair lineage (migration 0025): read-side enrichment
          -- ONLY (T62). Active work whose stored assignee resolves through the
          -- lineage edge to the requesting canonical principal is surfaced on
