@@ -124,7 +124,7 @@ pub async fn publish(
         "isolated-test",
         v,
         None,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         pm,
     )
     .await
@@ -172,7 +172,7 @@ pub async fn create(
     };
     svc_workflow::application::workflow_instance::create::create_workflow_instance(
         p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(owner),
             domain_id: DomainId::from_uuid(domain),
@@ -259,7 +259,7 @@ pub async fn operation_fixture_return(
     .await
     .unwrap();
     request(p, owner, s.workflow_instance_id, s.current_node_visit_id).await;
-    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(p,pm,svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled()).await.unwrap();
+    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(p,pm,crate::common::admitting_gate()).await.unwrap();
     let managed: Uuid = sqlx::query_scalar(
         "SELECT workflow_instance_id FROM workflow_owner_managed_instances WHERE kind='INTAKE'",
     )
@@ -282,7 +282,7 @@ pub async fn transition(p:&PgPool,actor:Uuid,instance:Uuid,version:i32,t:Uuid,pa
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         p,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(actor),
             idempotency_key: Uuid::new_v4().to_string(),

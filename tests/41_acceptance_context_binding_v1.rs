@@ -225,7 +225,7 @@ async fn publish_draft(
                 definition_version_id: version_id,
                 expected_revision: None,
             },
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
         .map(|_| ())
@@ -282,7 +282,7 @@ async fn create_instance(
 ) -> (Uuid, Uuid, i32) {
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(
             creator,
             domain_id,
@@ -391,7 +391,7 @@ async fn advance_to_work(pool: &PgPool, actor: Uuid, instance: &(Uuid, Uuid, i32
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(actor, instance.0, instance.2, t1, None),
         )
         .await
@@ -874,7 +874,7 @@ async fn acc2_missing_catalog_rejected_zero_delta_with_failure_receipt() {
     let before = fact_counts(&pool).await;
     let err = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(owner, domain, fx.version_id, json!({"title": "no catalog"}), json!({})),
     )
     .await
@@ -990,7 +990,7 @@ async fn acc2_create_rejects_malformed_catalog_shapes() {
         let err =
             svc_workflow::application::workflow_instance::create::create_workflow_instance(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 create_command(owner, domain, fx.version_id, context, json!({})),
             )
             .await
@@ -1020,7 +1020,7 @@ async fn acc2_create_rejects_malformed_catalog_shapes() {
             });
             svc_workflow::application::workflow_instance::create::create_workflow_instance(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 create_command(owner, domain, fx.version_id, ok_ctx, json!({})),
             )
             .await
@@ -1034,7 +1034,7 @@ async fn acc2_create_rejects_malformed_catalog_shapes() {
             });
             svc_workflow::application::workflow_instance::create::create_workflow_instance(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 create_command(owner, domain, fx.version_id, case_sensitive, json!({})),
             )
             .await
@@ -1054,7 +1054,7 @@ async fn acc2_metadata_cannot_substitute_for_formal_catalog() {
     // Perfect catalog in `metadata`, but nothing at the formal context path.
     let err = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(
             owner,
             domain,
@@ -1082,7 +1082,7 @@ async fn acc2_unannotated_definition_has_no_catalog_gate() {
     // No acceptanceCriteria anywhere: creation is unaffected (CTR-ACB-006).
     let result = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_command(owner, domain, fx.version_id, json!({"title": "plain"}), json!({})),
     )
     .await
@@ -1104,7 +1104,7 @@ async fn acc3_exact_current_uuid_and_full_pass_set_advances_once() {
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(
                 agent,
                 a.0,
@@ -1153,7 +1153,7 @@ async fn acc3_same_ids_other_instance_context_uuid_cannot_exchange_reports() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(actor, instance, version, fx.advance_work_done, Some(report)),
             )
             .await
@@ -1204,7 +1204,7 @@ async fn acc3_wrong_uuid_shapes_rejected() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(agent, a.0, ver, fx.advance_work_done, Some(report)),
             )
             .await
@@ -1233,7 +1233,7 @@ async fn acc3_missing_unknown_substituted_and_duplicate_ids_rejected() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(
                     agent,
                     a.0,
@@ -1296,7 +1296,7 @@ async fn acc3_non_pass_verdicts_rejected() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(
                     agent,
                     a.0,
@@ -1331,7 +1331,7 @@ async fn acc3_structurally_valid_but_semantically_wrong_evidence_passes_gate() {
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(
                 agent,
                 a.0,
@@ -1361,7 +1361,7 @@ async fn acc3_third_instance_with_different_catalog_rejects_foreign_id_sets() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(agent, c.0, ver_c, fx.advance_work_done, Some(acceptance_report(c.1, entries))),
             )
             .await
@@ -1375,7 +1375,7 @@ async fn acc3_third_instance_with_different_catalog_rejects_foreign_id_sets() {
     // C's own catalog advances.
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition_command(
             agent,
             c.0,
@@ -1396,7 +1396,7 @@ async fn acc3_annotated_advance_without_payload_still_submission_required() {
     let err =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(agent, a.0, ver, fx.advance_work_done, None),
         )
         .await
@@ -1420,7 +1420,7 @@ async fn acc3_unannotated_advance_does_not_require_report() {
         let result =
             svc_workflow::application::workflow_instance::create::create_workflow_instance(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 create_command(owner, domain, fx.version_id, json!({"title": "x"}), json!({})),
             )
             .await
@@ -1440,7 +1440,7 @@ async fn acc3_unannotated_advance_does_not_require_report() {
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(agent, instance, ver, fx.advance_work_done, Some(payload)),
         )
         .await
@@ -1501,7 +1501,7 @@ async fn acc4_combined_with_annotated_schema_fails_closed_zero_delta() {
     let created =
         svc_workflow::application::workflow_instance::create::create_workflow_instance(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             create_command(owner, domain, ver, catalog_context(&["X1"]), json!({})),
         )
         .await
@@ -1523,7 +1523,7 @@ async fn acc4_combined_with_annotated_schema_fails_closed_zero_delta() {
     let before = fact_counts(&pool).await;
     let err = revise_context_and_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseContextAndTransitionCommand {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: format!("combined-{}", Uuid::new_v4()),
@@ -1559,7 +1559,7 @@ async fn acc4_model3_combined_still_rejected_as_legacy_command() {
     let (_domain, fx, owner, _agent, a, _b) = two_instance_rig(&pool).await;
     let err = revise_context_and_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseContextAndTransitionCommand {
             principal_id: PrincipalId::from_uuid(owner),
             idempotency_key: format!("combined-{}", Uuid::new_v4()),
@@ -1590,7 +1590,7 @@ async fn acc4_return_executes_without_all_pass_after_rejected_report() {
     let err =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(
                 agent,
                 a.0,
@@ -1608,7 +1608,7 @@ async fn acc4_return_executes_without_all_pass_after_rejected_report() {
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(
                 agent,
                 a.0,
@@ -1635,7 +1635,7 @@ async fn acc4_terminate_executes_without_all_pass() {
     let result =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(agent, a.0, ver, fx.terminate_work_failed, Some(json!({
                 "rootCauseNodeVisitId": current_visit_of(&pool, a.0).await.to_string(),
                 "reasonCode": "CANCELLED_WORK",
@@ -1672,7 +1672,7 @@ async fn acc5_stale_cas_conflicts_with_zero_delta_and_receipt() {
     let err =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
             &pool,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             transition_command(
                 agent,
                 a.0,
@@ -1713,7 +1713,7 @@ async fn acc5_success_replay_returns_original_without_gate_or_new_facts() {
     cmd.idempotency_key = "acb-replay-success-key".to_string();
     let first =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd.clone(),
+            &pool, crate::common::admitting_gate(), cmd.clone(),
         )
         .await
         .expect("first execution succeeds");
@@ -1721,7 +1721,7 @@ async fn acc5_success_replay_returns_original_without_gate_or_new_facts() {
 
     let replay =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd,
+            &pool, crate::common::admitting_gate(), cmd,
         )
         .await
         .expect("same-key same-payload replay succeeds");
@@ -1754,7 +1754,7 @@ async fn acc5_failure_then_replay_returns_original_failure_zero_extra_facts() {
     cmd.idempotency_key = "acb-replay-failure-key".to_string();
     let first =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd.clone(),
+            &pool, crate::common::admitting_gate(), cmd.clone(),
         )
         .await
         .err()
@@ -1765,7 +1765,7 @@ async fn acc5_failure_then_replay_returns_original_failure_zero_extra_facts() {
     // Same key, same (bad) payload → original failure replayed.
     let replay =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd,
+            &pool, crate::common::admitting_gate(), cmd,
         )
         .await
         .err()
@@ -1792,7 +1792,7 @@ async fn acc5_failure_then_replay_returns_original_failure_zero_extra_facts() {
     changed.idempotency_key = "acb-replay-failure-key".to_string();
     let conflict =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), changed,
+            &pool, crate::common::admitting_gate(), changed,
         )
         .await
         .err()
@@ -1819,7 +1819,7 @@ mod http_roundtrip {
 
     fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
         let config = HttpConfig {
-            admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+            admission: crate::common::admitting_config(),
             bind_addr: "127.0.0.1:0".parse().unwrap(),
             request_body_max_bytes: 2_097_152,
             request_timeout_seconds: 30,
@@ -2232,7 +2232,7 @@ async fn f1_existing_linked_context_with_missing_catalog_is_deterministic_422() 
     let before = binding_fact_counts(&pool).await;
     let err =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd.clone(),
+            &pool, crate::common::admitting_gate(), cmd.clone(),
         )
         .await
         .err()
@@ -2261,7 +2261,7 @@ async fn f1_existing_linked_context_with_missing_catalog_is_deterministic_422() 
     // Same-key same-payload replay returns the original deterministic failure.
     let replay_err =
         svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
-            &pool, AdmissionGate::disabled(), cmd,
+            &pool, crate::common::admitting_gate(), cmd,
         )
         .await
         .err()
@@ -2299,7 +2299,7 @@ async fn f1_existing_linked_context_with_malformed_catalog_rejected() {
         let err =
             svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
                 &pool,
-                AdmissionGate::disabled(),
+                crate::common::admitting_gate(),
                 transition_command(
                     agent,
                     instance,

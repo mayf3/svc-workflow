@@ -260,7 +260,7 @@ async fn seed_instance_on_source(pool: &PgPool) -> Fixture {
 
     let created = create_workflow_instance(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(caller),
             idempotency_key: format!("identity-repair-{}", Uuid::new_v4()),
@@ -279,7 +279,7 @@ async fn seed_instance_on_source(pool: &PgPool) -> Fixture {
 
     let advanced = execute_workflow_transition(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ExecuteWorkflowTransitionCommand {
             principal_id: PrincipalId::from_uuid(caller),
             idempotency_key: format!("identity-repair-adv-{}", Uuid::new_v4()),

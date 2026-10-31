@@ -37,8 +37,8 @@ impl From<combined_transaction::CombinedResult> for ReviseContextAndTransitionRe
 /// Revise DRAFT context and execute its primary ADVANCE in one transaction.
 ///
 /// `admission` is the canonical identity admission gate (CTR-CIR-003); the
-/// monotonic admission start is captured here at service entry. Dormant mode
-/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
+/// monotonic admission start is captured here at service entry. An absent directory client
+/// rejects new Agent admission rather than bypassing validation.
 pub async fn revise_context_and_transition(
     pool: &PgPool,
     admission: AdmissionGate<'_>,

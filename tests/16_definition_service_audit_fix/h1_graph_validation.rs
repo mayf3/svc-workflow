@@ -30,7 +30,7 @@ async fn test_directed_unreachable_node_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(result.is_err(), "isolated node should be rejected");
     match result.unwrap_err() {
@@ -95,7 +95,7 @@ async fn test_node_only_reachable_via_backwards_edge_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(
         result.is_err(),

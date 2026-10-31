@@ -181,7 +181,7 @@ async fn create_and_advance(
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         command,
     )
     .await
@@ -198,7 +198,7 @@ async fn create_and_advance(
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -228,7 +228,7 @@ async fn create_draft_only(
     };
     let created = svc_workflow::application::workflow_instance::create::create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         command,
     )
     .await
@@ -934,7 +934,7 @@ async fn role_binding_revoked_hides_items() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await

@@ -54,7 +54,7 @@ async fn readiness_http_waiting_then_exact_submission_and_archive() {
     command.submission_payload = Some(json!({"artifact":"actual"}));
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         command,
     )
     .await
@@ -92,7 +92,7 @@ async fn readiness_http_waiting_then_exact_submission_and_archive() {
     );
     assert!(create_workflow_instance(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         create_cmd(&f, dv, reference(source, v, t))
     )
     .await

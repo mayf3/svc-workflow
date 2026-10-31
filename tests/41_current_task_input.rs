@@ -121,7 +121,7 @@ async fn entry_is_causal_and_same_visit_context_revision_is_not_corruption() {
     let initial = h.input().await;
     svc_workflow::application::workflow_instance::revise::revise_workflow_context(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(h.seed.creator),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -275,7 +275,7 @@ async fn long_unicode_bodies_reconstruct_and_stale_hash_never_emits_chunk() {
 #[tokio::test]
 async fn combined_entry_uses_new_context_and_submission_causal_chain() {
     let h = Harness::new(json!({"old":true})).await;
-    let r=svc_workflow::application::workflow_instance::revise_and_transition::revise_context_and_transition(&h.pool,AdmissionGate::disabled(),ReviseContextAndTransitionCommand{principal_id:PrincipalId::from_uuid(h.seed.creator),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),workflow_instance_id:WorkflowInstanceId::from_uuid(h.instance),expected_workflow_state_version:1,transition_definition_id:TransitionId::from_uuid(h.seed.draft_advance),context_payload:json!({"new":true}),submission_payload:json!({"review":"newcontext"})}).await.unwrap();
+    let r=svc_workflow::application::workflow_instance::revise_and_transition::revise_context_and_transition(&h.pool,crate::common::admitting_gate(),ReviseContextAndTransitionCommand{principal_id:PrincipalId::from_uuid(h.seed.creator),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),workflow_instance_id:WorkflowInstanceId::from_uuid(h.instance),expected_workflow_state_version:1,transition_definition_id:TransitionId::from_uuid(h.seed.draft_advance),context_payload:json!({"new":true}),submission_payload:json!({"review":"newcontext"})}).await.unwrap();
     let input = h.input().await;
     assert_eq!(
         input["entry"]["event_type"],

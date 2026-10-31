@@ -8,8 +8,8 @@ use crate::domain::workflow_instance::recovery::{
     AdminEmergencyOverrideCommand, RebuildProjectionCommand, RecoveryError, WorkflowProjection,
     COMMAND_TYPE_ADMIN_EMERGENCY_OVERRIDE, COMMAND_TYPE_REBUILD_PROJECTION,
 };
-use crate::store::postgres::admission_gate::AdmissionGate;
 use crate::store::postgres::admin_recovery_repository;
+use crate::store::postgres::admission_gate::AdmissionGate;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,8 +140,8 @@ pub async fn rebuild_projection(
 ///
 /// `admission` is the canonical identity admission gate (CTR-CIR-003): the
 /// override's target assignee (when the operation assigns work) is admitted
-/// inside the committing transaction. Dormant mode
-/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
+/// inside the committing transaction. An absent directory client
+/// rejects new Agent admission rather than bypassing validation.
 pub async fn admin_emergency_override(
     pool: &PgPool,
     admission: AdmissionGate<'_>,
