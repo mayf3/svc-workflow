@@ -703,7 +703,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
         )
         .await
     );
-    if semantic_model_version == 1 && effect == "RETURN" {
+    if semantic_model_version == 1 {
         if let Some(assignee_id) = target_assignee_id {
             validation_result!(
                 transition_validation::verify_principal_enabled_for_transition(
