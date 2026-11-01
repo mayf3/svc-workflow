@@ -703,6 +703,17 @@ pub(crate) async fn execute_workflow_transition_atomically(
         )
         .await
     );
+    if semantic_model_version == 1 && effect == "RETURN" {
+        if let Some(assignee_id) = target_assignee_id {
+            validation_result!(
+                transition_validation::verify_principal_enabled_for_transition(
+                    &mut tx,
+                    assignee_id
+                )
+                .await
+            );
+        }
+    }
     if is_visit_activation {
         if let Some(owner_id) = target_assignee_id {
             let owner_type_check =
