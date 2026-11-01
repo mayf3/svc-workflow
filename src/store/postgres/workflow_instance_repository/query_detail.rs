@@ -22,6 +22,61 @@ fn page_limit(limit: Option<u32>, default: u32, max: u32) -> Result<usize, Workf
     Ok(limit as usize)
 }
 
+
+/// Project the submission schema for one outgoing transition with the
+/// engine-level RETURN contract merged in (mayf3/svc-workflow#84 D1).
+///
+/// For transitions whose effect is RETURN, the transition executor enforces
+/// submission-payload fields that Definition submission schemas do not
+/// declare: `rootCauseNodeVisitId` (a nodeVisit UUID of this instance),
+/// `reasonCode`, `reason` (and optional `relatedSubmissionIds` UUID array) —
+/// see `transition_validation::validate_return_references`. A schema-valid
+/// payload therefore can still be rejected, and the agent has no way to
+/// discover the contract from the projection. This merge is PROJECTION-ONLY:
+/// server-side submission validation still runs against the stored schema,
+/// so behavior is unchanged — the outgoing projection simply tells the truth
+/// about everything the executor will require.
+fn project_submission_schema(
+    effect: &str,
+    stored: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    if effect != "RETURN" {
+        return stored;
+    }
+    let mut schema = stored.unwrap_or_else(|| serde_json::json!({"type": "object"}));
+    if !schema.is_object() {
+        return Some(schema);
+    }
+    let obj = schema.as_object_mut().expect("checked is_object");
+    if !obj.get("type").is_some_and(|t| t == "object") {
+        obj.insert("type".to_string(), serde_json::json!("object"));
+    }
+    let properties = obj
+        .entry("properties")
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(props) = properties.as_object_mut() {
+        for (key, value) in [
+            ("rootCauseNodeVisitId", serde_json::json!({"type": "string", "format": "uuid", "description": "nodeVisitId of a visit of THIS instance where the root cause was observed (engine-required for RETURN; take it from the instance's node-visit history)"})),
+            ("reasonCode", serde_json::json!({"type": "string", "minLength": 1, "description": "engine-required machine-readable return reason code, e.g. EVIDENCE_INCOMPLETE"})),
+            ("reason", serde_json::json!({"type": "string", "minLength": 1, "description": "engine-required human-readable return reason"})),
+            ("relatedSubmissionIds", serde_json::json!({"type": "array", "items": {"type": "string", "format": "uuid"}, "description": "optional: submission UUIDs of this instance related to the return"})),
+        ] {
+            props.entry(key.to_string()).or_insert_with(|| value.clone());
+        }
+    }
+    let required = obj
+        .entry("required")
+        .or_insert_with(|| serde_json::json!([]));
+    if let Some(req) = required.as_array_mut() {
+        for key in ["rootCauseNodeVisitId", "reasonCode", "reason"] {
+            if !req.iter().any(|v| v == key) {
+                req.push(serde_json::json!(key));
+            }
+        }
+    }
+    Some(schema)
+}
+
 async fn load_outgoing(
     tx: &mut Transaction<'_, Postgres>,
     base: &QueryBaseRow,
@@ -135,13 +190,20 @@ async fn load_outgoing(
             && Some(row.transition_id) != base.current_primary_advance_transition_id
         {
             Some(TransitionBlockedReason::AdvanceNotPrimary)
-        } else if base.current_assignee_principal_id != Some(actor) {
+        } else if !super::query_visibility::actor_is_effective_current_assignee(
+            &mut *tx,
+            base.current_assignee_principal_id,
+            actor,
+        )
+        .await?
+        {
             Some(TransitionBlockedReason::ActorNotCurrentAssignee)
         } else if !target_available {
             Some(TransitionBlockedReason::TargetAssigneeUnavailable)
         } else {
             None
         };
+        let transition_effect = row.transition_effect.clone();
         items.push(OutgoingTransitionItem {
             transition_id: row.transition_id,
             transition_key: row.transition_key,
@@ -153,7 +215,10 @@ async fn load_outgoing(
                 display_name: row.target_display_name,
                 node_type: row.target_node_type,
             },
-            submission_schema: row.submission_schema,
+            submission_schema: project_submission_schema(
+                &transition_effect,
+                row.submission_schema,
+            ),
             executable_for_actor: blocked_reason.is_none(),
             blocked_reason,
         });

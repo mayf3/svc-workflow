@@ -170,6 +170,25 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         Ok(())
     }
 
+    /// Definition read gate (mayf3/svc-workflow#80): DOMAIN_OWNER of the
+    /// domain, or the domain-independent GLOBAL_WORKFLOW_AUDITOR
+    /// governance-read role. Read surfaces only — write surfaces keep
+    /// calling `ensure_domain_owner` directly.
+    pub(crate) async fn ensure_definition_read(
+        &self,
+        principal_id: Uuid,
+        domain_id: Uuid,
+    ) -> Result<(), DefinitionError> {
+        let auditor = self
+            .repo
+            .check_global_role(principal_id, "GLOBAL_WORKFLOW_AUDITOR")
+            .await?;
+        if auditor {
+            return Ok(());
+        }
+        self.ensure_domain_owner(principal_id, domain_id).await
+    }
+
     pub(crate) async fn ensure_domain_owner(
         &self,
         principal_id: Uuid,
