@@ -226,12 +226,20 @@ count=max-1 时仍可列入，真正成功的 max-th RETURN 才在原事务打�
 detail 读取不能提前触发。RETURN payload 的 same-instance references 仍执行时验证。
 
 Managed transition MUST 复用 `owner_obligation::{reads,guards,transition_context}`：
-当前 Owner/Domain/intent fence、责任未停止、source operation effect 的 SUCCEEDED、
-真实 producer/create receipt/Instance binding、Review 自身成功 effect 和 case outcome 等
-所有 state-only 条件。没有真实 producer 不得把“未来可填 UUID”当成合法；已存在真实
-producer 但需 gated-entry `contextPayload` 时保留 payload 待验，不因当前 payload 缺省
-误删合法操作。进入 gate 可以绑定真实 WAITING supplier；不把后续 READY dispatch 闸
-加入 transition。Review 的 `reviewOutcome` 内容仍执行时核验。
+当前 Owner/Domain/intent fence 和适用的责任状态。每项检查 MUST 保留原 accepted
+动作/effect/节点分支，不能提升成所有 managed transition 的统一前置：
+
+- 仅 ADVANCE 且 source 声明 requiredForAdvance operation 时，要求该 source effect
+  SUCCEEDED；相关 terminal acceptance 保留其原有 required-effect 证明。source effect
+  未完成本身不阻断其他条件合法的 RETURN，不能把 requiredForAdvance 变成 requiredForReturn。
+- 仅进入声明 prerequisite gate 的 target 时，要求真实 producer/create receipt/Instance
+  binding；无 gate 的 target 不增加 producer 要求。该分支没有真实 producer 时不得把
+  “未来可填 UUID”当成合法；已有真实 producer、仅需 gated-entry `contextPayload` 时
+  保留 payload 待验，不因 detail 未提交 payload 误删合法操作。
+- 仅目标 TERMINAL 且 managed kind=REVIEW 时，要求 Review 自身成功 effect、对应 case
+  outcome 等原 terminal 证明；`reviewOutcome` 内容仍执行时核验，非终态 Review 不套用。
+
+进入 gate 可以绑定真实 WAITING supplier；不把后续 READY dispatch 闸加入 transition。
 
 `ACTIONABLE_NOW`/`WAITING_FOR_TIME` 和 prerequisite READY 不是本 Spec 新增的 transition
 授权条件。WEP V2 明确 transition 不 enforce eligibility；不得修补该债务或声称此清单
@@ -241,8 +249,7 @@ producer 但需 gated-entry `contextPayload` 时保留 payload 待验，不因�
 
 `request_assistance` MUST 独立要求当前非 terminal、非 cancelled/archived Visit、enabled
 requester、**该命令实际使用的 raw current assignee 等式**、enabled Domain 及唯一有效
-current Owner、无
-OWNER_PENDING/HUMAN_REQUIRED case，并复用适用 managed fence。不可因 transition
+current Owner、无 OWNER_PENDING/HUMAN_REQUIRED case，并复用适用 managed fence。不可因 transition
 blocked 或无 outgoing edge 自动隐藏求助；也不能将 successor-effective transition 权限
 自动复制为 raw-assignee Assistance 权限。
 
@@ -373,7 +380,7 @@ isolated PostgreSQL+真实 HTTP 配置、调用身份/token scope（不记 Secre
 | Acceptance | Contracts | Method / inputs | Required evidence / expected result / failure condition |
 |---|---|---|---|
 | ACC-AA-001 | CTR-AA-001/CTR-AA-003/CTR-AA-004 | RED：旧 true+cancelled、open case、RETURN count=max 各一独立 fixture；GREEN：各操作执行前共享 evaluator 与 detail 集合双向比对 | 写命令以合规 payload 验证拒绝并零业务事实；原缺新字段/旧过滤方案必须有针对性 RED，不能只报编译失败；GREEN 每类集合相等，任一 false positive/negative 即 FAIL |
-| ACC-AA-002 | CTR-AA-003/CTR-AA-004 | Legacy/模型3的合法 primary ADVANCE、RETURN、TERMINATE；RETURN count=0/max-1/max；target disabled、revoked/DRAFT、Owner/assignee 更换、managed effect/producer/Review fixtures | 明确覆盖 executable_for_actor=true 且合法项被保留，以及 true 但实际状态拒绝被排除；max-1 成功写才开 target case，detail 读取零写；无 edge 不虚构，漏项/多项/读提前开 case 即 FAIL |
+| ACC-AA-002 | CTR-AA-003/CTR-AA-004 | Legacy/模型3的合法 primary ADVANCE、RETURN、TERMINATE；RETURN count=0/max-1/max；target disabled、revoked/DRAFT、Owner/assignee 更换、managed effect/producer/Review fixtures | 明确覆盖 executable_for_actor=true 且合法项被保留，以及 true 但实际状态拒绝被排除；source effect未成功但其他条件合法且target无gate的managed RETURN仍列入并可执行，ADVANCE相应被阻断；非gate target/非terminal Review不误套producer/terminal proof；max-1 成功写才开 target case，detail 读取零写；无 edge 不虚构，漏项/多项/读提前开 case 即 FAIL |
 | ACC-AA-003 | CTR-AA-001/CTR-AA-005 | raw assignee vs canonical successor；open/not-open/旧 Visit case；Owner/non-owner；linked child 未终态/终态证明；opted-in ordinary vs真实 effect入口 | request/escalate/resolve 分别对照原独立判定；不能从 transition bool 推权；managed普通直写不在清单，专用操作不冒充 INCLUDED；任一错误权限或伪证据即 FAIL |
 | ACC-AA-004 | CTR-AA-001/CTR-AA-006 | 无 outgoing 的 active Owner；cancelled/terminal 未归档；已归档；current/replaced Owner、Coordinator；active activation、cleanup actor | cancel/archive 独立集合，普通 assignee无治理权；cancelled允许合法 archive但无 transition；无重复归档；原执行器角色/closure一致，套用transition过滤或扩权即 FAIL |
 | ACC-AA-005 | CTR-AA-002/CTR-AA-007/CTR-AA-008 | full read+execute / read-only token / write gate关闭；无合法动作；restricted/隐藏/disabled Principal；四种node_type、业务类别缺失、Minimal2 | 精确 ten-field full / 原 restricted 字段集与 oneOf schema；[]及status一致，business_task_type=null不臆测；Minimal2显式UNSUPPORTED_MODEL且其实现验收非PASS；任意漏标、假动作、case泄露即FAIL |
