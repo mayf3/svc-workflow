@@ -34,6 +34,37 @@ describe('Contract V1 lock and fixture', () => {
     expect(createWorkflowInstanceRequestSchema.parse(fixture)).toEqual(fixture);
   });
 
+  it.each(['BUSINESS', 'NON_BUSINESS_TEST'] as const)(
+    'preserves the accepted executionClass %s in create requests',
+    async (executionClass) => {
+      const fixture = JSON.parse(
+        await readFile('contracts/workflow-http/v1/fixtures/create-request.json', 'utf8'),
+      );
+      const request = { ...fixture, executionClass };
+      expect(createWorkflowInstanceRequestSchema.parse(request)).toEqual(request);
+    },
+  );
+
+  it.each(['business', 'TEST', '', null, 1, true, {}, []])(
+    'rejects the invalid executionClass %j in create requests',
+    async (executionClass) => {
+      const fixture = JSON.parse(
+        await readFile('contracts/workflow-http/v1/fixtures/create-request.json', 'utf8'),
+      );
+      expect(
+        createWorkflowInstanceRequestSchema.safeParse({ ...fixture, executionClass }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('keeps executionClass optional without materializing a default', async () => {
+    const fixture = JSON.parse(
+      await readFile('contracts/workflow-http/v1/fixtures/create-request.json', 'utf8'),
+    );
+    const { executionClass: _executionClass, ...request } = fixture;
+    expect(createWorkflowInstanceRequestSchema.parse(request)).toEqual(request);
+  });
+
   it('rejects undeclared actor fields before transport', () => {
     const result = createWorkflowInstanceRequestSchema.safeParse({
       domainId: '22222222-2222-2222-2222-222222222222',
