@@ -479,7 +479,8 @@ pub(crate) async fn revise_workflow_context_atomically(
     // ---------------------------------------------------------------
     sqlx::query(
         "UPDATE workflow_instances \
-         SET current_context_revision_id = $1, workflow_state_version = $2 \
+         SET current_context_revision_id = $1, workflow_state_version = $2, \
+             updated_at = now() \
          WHERE workflow_instance_id = $3",
     )
     .bind(new_context_revision_id)

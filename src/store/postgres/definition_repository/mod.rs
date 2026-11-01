@@ -76,6 +76,14 @@ impl DefinitionRepository for PgDefinitionRepository {
             .await
     }
 
+    async fn check_global_role(
+        &self,
+        principal_id: uuid::Uuid,
+        role_key: &str,
+    ) -> Result<bool, DefinitionError> {
+        self.check_global_role_inner(principal_id, role_key).await
+    }
+
     // -- Definition CRUD -------------------------------------------------------
 
     async fn create_definition(
