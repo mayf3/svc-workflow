@@ -121,18 +121,60 @@ pub(crate) async fn record_terminal(
     review::queue_current(tx, &b, None).await?;
     Ok(())
 }
+async fn resolve_binding(
+    tx: &mut Transaction<'_, Postgres>,
+    case: Uuid,
+    lock: bool,
+) -> Result<Option<Binding>, AssistanceError> {
+    let child:Option<Uuid>=sqlx::query_scalar("SELECT governance_child_instance_id FROM workflow_governance_child_bindings WHERE assistance_case_id=$1").bind(case).fetch_optional(&mut **tx).await.map_err(storage)?;
+    let Some(child) = child else { return Ok(None) };
+    load_instance(tx, child, lock).await?;
+    let b = by_child_with_lock(tx, child, lock).await?.ok_or_else(conflict)?;
+    if !source_valid(tx, &b).await? {
+        return Err(conflict());
+    }
+    Ok(Some(b))
+}
+
+struct ResolveFacts {
+    event: Uuid,
+    terminal: TerminalFacts,
+}
+
+async fn resolve_state(
+    tx: &mut Transaction<'_, Postgres>,
+    b: &Binding,
+) -> Result<ResolveFacts, AssistanceError> {
+    let event = b.terminal_event_id.ok_or_else(conflict)?;
+    let f = facts(tx, b.governance_child_instance_id, event).await?;
+    let p = proof(b, &f)?;
+    let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_instances WHERE workflow_instance_id=$1 AND definition_version_id=$2 AND current_node_visit_id=$3 AND cancelled=FALSE AND archived_at IS NULL)").bind(b.governance_child_instance_id).bind(b.child_definition_version_id).bind(f.target_node_visit_id).fetch_one(&mut **tx).await.map_err(storage)?;
+    if !current
+        || b.terminal_proof.as_ref() != Some(&p)
+        || f.transition_id != b.acceptance_transition_id
+        || p["verdict"] != "ACCEPTED"
+    {
+        return Err(conflict());
+    }
+    Ok(ResolveFacts { event, terminal: f })
+}
+
+pub(crate) async fn validate_resolve_identity_state(
+    tx: &mut Transaction<'_, Postgres>,
+    case: Uuid,
+) -> Result<(), AssistanceError> {
+    if let Some(b) = resolve_binding(tx, case, false).await? {
+        resolve_state(tx, &b).await?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn validate_resolve(
     tx: &mut Transaction<'_, Postgres>,
     case: Uuid,
     payload: &Value,
 ) -> Result<Option<Value>, AssistanceError> {
-    let child:Option<Uuid>=sqlx::query_scalar("SELECT governance_child_instance_id FROM workflow_governance_child_bindings WHERE assistance_case_id=$1").bind(case).fetch_optional(&mut **tx).await.map_err(storage)?;
-    let Some(child) = child else { return Ok(None) };
-    lock_instance(tx, child).await?;
-    let b = by_child(tx, child).await?.ok_or_else(conflict)?;
-    if !source_valid(tx, &b).await? {
-        return Err(conflict());
-    }
+    let Some(b) = resolve_binding(tx, case, true).await? else { return Ok(None) };
     let r: GovernanceChildReview = serde_json::from_value(
         payload
             .pointer("/supportingPayload/governanceChildReview")
@@ -140,18 +182,11 @@ pub(crate) async fn validate_resolve(
             .ok_or_else(|| invalid("linked resolve requires governanceChildReview"))?,
     )
     .map_err(|_| invalid("governanceChildReview must be a closed exact reference"))?;
-    let event = b.terminal_event_id.ok_or_else(conflict)?;
-    let f = facts(tx, child, event).await?;
-    let p = proof(&b, &f)?;
-    let current:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_instances WHERE workflow_instance_id=$1 AND definition_version_id=$2 AND current_node_visit_id=$3 AND cancelled=FALSE AND archived_at IS NULL)").bind(child).bind(b.child_definition_version_id).bind(f.target_node_visit_id).fetch_one(&mut **tx).await.map_err(storage)?;
-    if !current
-        || b.terminal_proof.as_ref() != Some(&p)
-        || f.transition_id != b.acceptance_transition_id
-        || p["verdict"] != "ACCEPTED"
-        || r.binding_id != b.binding_id
-        || r.terminal_event_id != event
-        || Some(r.submission_id) != f.submission_id
-        || Some(&r.submission_digest) != f.payload_digest.as_ref()
+    let f = resolve_state(tx, &b).await?;
+    if r.binding_id != b.binding_id
+        || r.terminal_event_id != f.event
+        || Some(r.submission_id) != f.terminal.submission_id
+        || Some(&r.submission_digest) != f.terminal.payload_digest.as_ref()
         || r.acceptance_contract_digest != b.acceptance_contract_digest
     {
         return Err(conflict());

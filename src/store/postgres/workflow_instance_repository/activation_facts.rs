@@ -77,27 +77,19 @@ pub(crate) async fn close_activation_by_visit(
     command_id: Uuid,
     event_id: Option<Uuid>,
 ) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        r#"
-        INSERT INTO workflow_activation_closures
+    let query = format!(
+        "INSERT INTO workflow_activation_closures
             (activation_id, closed_at, closure_reason, command_id, event_id)
-        SELECT a.activation_id, NOW(), $3, $4, $5
-          FROM workflow_activations a
-         WHERE a.workflow_instance_id = $1
-           AND a.node_visit_id = $2
-           AND NOT EXISTS (
-               SELECT 1 FROM workflow_activation_closures c
-                WHERE c.activation_id = a.activation_id
-           )
-        "#,
-    )
-    .bind(workflow_instance_id)
-    .bind(node_visit_id)
-    .bind(closure_reason)
-    .bind(command_id)
-    .bind(event_id)
-    .execute(&mut **tx)
-    .await?;
+         SELECT a.activation_id, NOW(), $3, $4, $5 {CURRENT_ACTIVE_ACTIVATION_SELECTION}",
+    );
+    let result = sqlx::query(&query)
+        .bind(workflow_instance_id)
+        .bind(node_visit_id)
+        .bind(closure_reason)
+        .bind(command_id)
+        .bind(event_id)
+        .execute(&mut **tx)
+        .await?;
     Ok(result.rows_affected() == 1)
 }
 
@@ -113,6 +105,9 @@ pub(crate) async fn close_activation_by_visit_required(
     command_id: Uuid,
     event_id: Option<Uuid>,
 ) -> Result<bool, sqlx::Error> {
+    if !validate_current_activation(tx, workflow_instance_id, node_visit_id).await? {
+        return Ok(false);
+    }
     close_activation_by_visit(
         tx,
         workflow_instance_id,
@@ -122,6 +117,33 @@ pub(crate) async fn close_activation_by_visit_required(
         event_id,
     )
     .await
+}
+
+// The read predicate and the actual closure INSERT use the same coordinate
+// and active-state selection; read evaluation cannot manufacture a closure.
+const CURRENT_ACTIVE_ACTIVATION_SELECTION: &str = "
+    FROM workflow_activations a
+    WHERE a.workflow_instance_id = $1
+      AND a.node_visit_id = $2
+      AND NOT EXISTS (
+          SELECT 1 FROM workflow_activation_closures c
+          WHERE c.activation_id = a.activation_id
+      )";
+
+/// True only for the one currently closable activation at these coordinates.
+/// The caller retains its existing typed consistency error when false.
+pub(crate) async fn validate_current_activation(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workflow_instance_id: Uuid,
+    node_visit_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let query = format!("SELECT COUNT(*)::bigint {CURRENT_ACTIVE_ACTIVATION_SELECTION}");
+    let count: i64 = sqlx::query_scalar(&query)
+        .bind(workflow_instance_id)
+        .bind(node_visit_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(count == 1)
 }
 
 /// Archive guard: true when the Visit still has an ACTIVE activation
