@@ -31,7 +31,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization — caller must be domain owner
-        self.ensure_domain_owner(query.actor_principal_id, definition.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, definition.domain_id.into_uuid())
             .await?;
 
         Ok(DefinitionQueryResult {
@@ -59,7 +59,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let (nodes, transitions) = self
@@ -96,7 +96,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization — check before listing versions
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let versions = self
@@ -132,7 +132,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let (nodes, transitions) = self
@@ -186,7 +186,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // Domain owner check happens here.
-        self.ensure_domain_owner(query.actor_principal_id, query.domain_id)
+        self.ensure_definition_read(query.actor_principal_id, query.domain_id)
             .await?;
         self.ensure_domain_enabled(query.domain_id).await?;
 

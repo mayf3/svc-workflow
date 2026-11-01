@@ -66,6 +66,14 @@ pub trait DefinitionRepository {
         domain_id: Uuid,
     ) -> Result<bool, DefinitionError>;
 
+    /// Check that a principal holds an enabled global (domain-independent)
+    /// role binding (e.g., GLOBAL_WORKFLOW_AUDITOR).
+    async fn check_global_role(
+        &self,
+        principal_id: Uuid,
+        role_key: &str,
+    ) -> Result<bool, DefinitionError>;
+
     // -----------------------------------------------------------------------
     // Definition CRUD
     // -----------------------------------------------------------------------
