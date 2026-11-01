@@ -12,6 +12,10 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+mod identity_state;
+pub(crate) use identity_state::evaluate_identity_state;
+pub(super) use identity_state::{actor_enabled, governance_role};
+
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::commands::CancelWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::CancelWorkflowInstanceError;
@@ -227,32 +231,7 @@ pub(crate) async fn cancel_workflow_instance_atomically(
         .await
         .map_err(storage)?;
     // Step 3: Load and lock instance FOR UPDATE
-    let instance_row: Option<(
-        Uuid,
-        Uuid,
-        Option<Uuid>,
-        i32,
-        bool,
-        Option<String>,
-        Option<String>,
-        Option<chrono::DateTime<chrono::Utc>>,
-    )> = sqlx::query_as(
-        "SELECT wi.workflow_instance_id, wi.domain_id,
-                    wi.current_node_visit_id, wi.workflow_state_version,
-                    wi.cancelled,
-                    nd.node_type::text,
-                    nd.node_key,
-                    wi.archived_at
-             FROM workflow_instances wi
-             LEFT JOIN workflow_node_visits nv ON nv.node_visit_id = wi.current_node_visit_id
-             LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
-             WHERE wi.workflow_instance_id = $1
-             FOR UPDATE OF wi",
-    )
-    .bind(instance_uuid)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(storage)?;
+    let instance_row = identity_state::load_instance(&mut tx, instance_uuid, true).await?;
 
     let (
         _,
@@ -263,7 +242,7 @@ pub(crate) async fn cancel_workflow_instance_atomically(
         current_node_type,
         current_node_key,
         archived_at,
-    ) = instance_row.ok_or(CancelWorkflowInstanceError::InstanceNotFound)?;
+    ) = instance_row;
 
     // Step 4: Validate workflow_state_version.
     //
@@ -285,43 +264,15 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     // (SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 CTR-CP-001 W-widening).
     // Authorization input is only the instance's real domainId (read from
     // the instance row) and the caller credential principal.
-    let is_owner: bool = sqlx::query_scalar(
-        "SELECT EXISTS(
-           SELECT 1 FROM domain_role_bindings
-           WHERE domain_id = $1 AND principal_id = $2
-             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)
-         OR EXISTS(
-           SELECT 1 FROM global_role_bindings g
-           JOIN principals p ON p.principal_id = g.principal_id
-           WHERE g.principal_id = $2
-             AND g.role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND g.enabled = TRUE
-             AND p.enabled = TRUE)",
-    )
-    .bind(domain_id)
-    .bind(principal_uuid)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-
-    if !is_owner
-        && !super::owner_obligation::intents::cleanup_authorized(
-            &mut tx,
-            instance_uuid,
-            principal_uuid,
-        )
-        .await
-        .map_err(storage)?
-    {
-        return Err(CancelWorkflowInstanceError::NotDomainOwner);
-    }
+    identity_state::authorize(&mut tx, domain_id, principal_uuid, instance_uuid).await?;
 
     // CTR-WPE-002: receipt replay and governance authorization precede this
     // fresh actor check; retain the lock through the command transaction.
-    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
-        .await
-        .map_err(storage)?
-        != Some(true)
-    {
+    if !identity_state::actor_enabled(
+        crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
+            .await
+            .map_err(storage)?,
+    ) {
         let error = CancelWorkflowInstanceError::PrincipalDisabled;
         let body = serde_json::json!({"error": "principal_disabled"});
         crate::store::postgres::write_path_enabled::audit_denial(
@@ -343,15 +294,11 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     }
 
     // Step 6: Check instance state
-    if is_cancelled {
-        return Err(CancelWorkflowInstanceError::AlreadyCancelled);
-    }
-    if current_node_type.as_deref() == Some("TERMINAL") {
-        return Err(CancelWorkflowInstanceError::SourceNodeTerminal);
-    }
-    if archived_at.is_some() {
-        return Err(CancelWorkflowInstanceError::InstanceArchived);
-    }
+    identity_state::lifecycle(
+        is_cancelled,
+        current_node_type.as_deref(),
+        archived_at.is_some(),
+    )?;
 
     // SVC_WORKFLOW_DANGLING_INSTANCE_CANCEL_V1 (M1B closure): a dangling
     // instance (current_node_visit_id IS NULL) may be cancelled only while it
@@ -361,26 +308,8 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     // a current visit: cancel refuses without touching the instance, its
     // runtime facts, or the state version, and repairs belong to a separately
     // accepted recovery path, never to this branch.
-    if current_node_visit_id.is_none() {
-        let open_runtime_fact: bool = sqlx::query_scalar(
-            "SELECT EXISTS(
-               SELECT 1 FROM workflow_activations a
-               LEFT JOIN workflow_activation_closures c
-                 ON c.activation_id = a.activation_id
-               WHERE a.workflow_instance_id = $1
-                 AND c.activation_id IS NULL)",
-        )
-        .bind(instance_uuid)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(storage)?;
-        if open_runtime_fact {
-            return Err(CancelWorkflowInstanceError::InternalConsistency(
-                "dangling instance has an open runtime fact — fail-closed, cancel refused"
-                    .to_string(),
-            ));
-        }
-    }
+    identity_state::dangling_has_no_runtime_fact(&mut tx, instance_uuid, current_node_visit_id)
+        .await?;
 
     // A dangling instance has no visit to bind and no activation to close;
     // the CANCELLED event records source_node_visit_id = NULL ("never had a
@@ -402,36 +331,23 @@ pub(crate) async fn cancel_workflow_instance_atomically(
     // VISIT_ACTIVATION_V1: close the current activation in this same
     // transaction (v0.4.0 §5.9; CTR-VAI-006). The closure's Event FK is
     // deferred, so writing it before the Step 9 Event insert is valid.
-    let (semantic_model_version,): (i16,) = sqlx::query_as(
-        "SELECT wdv.semantic_model_version \
-         FROM workflow_instances wi \
-         JOIN workflow_definition_versions wdv \
-           ON wdv.definition_version_id = wi.definition_version_id \
-         WHERE wi.workflow_instance_id = $1",
-    )
-    .bind(instance_uuid)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-    if let Some(visit_id) = source_visit_id {
-        if semantic_model_version == 3 {
-            let closed = super::activation_facts::close_activation_by_visit_required(
-                &mut tx,
-                instance_uuid,
-                visit_id,
-                super::activation_facts::CLOSURE_REASON_CANCELLED,
-                actual_command_id,
-                Some(event_id),
-            )
-            .await
-            .map_err(storage)?;
-            if !closed {
-                return Err(CancelWorkflowInstanceError::InternalConsistency(
-                    "VISIT_ACTIVATION_V1 current visit has no active activation to close"
-                        .to_string(),
-                ));
-            }
-        }
+    let semantic_model_version =
+        identity_state::semantic_model_version(&mut tx, instance_uuid).await?;
+
+    if let Some(visit_id) =
+        identity_state::activation_visit(semantic_model_version, source_visit_id)
+    {
+        let closed = super::activation_facts::close_activation_by_visit_required(
+            &mut tx,
+            instance_uuid,
+            visit_id,
+            super::activation_facts::CLOSURE_REASON_CANCELLED,
+            actual_command_id,
+            Some(event_id),
+        )
+        .await
+        .map_err(storage)?;
+        identity_state::activation_closable(closed)?;
     }
 
     // Step 7: Update instance — set cancelled flag, increment state version.
