@@ -714,6 +714,63 @@ pub(crate) async fn execute_workflow_transition_atomically(
             );
         }
     }
+    // CTR-WPE-005: Minimal creator resolution snapshots a new assignment.
+    // Preserve Fixed/Input checks and the independent Legacy/model3 paths.
+    if is_minimal
+        && target_node.assignee_ref_type_enum()
+            == Some(crate::domain::enums::AssigneeRefType::WorkflowCreator)
+    {
+        if let Some(assignee_id) = target_assignee_id {
+            let enabled =
+                crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, assignee_id)
+                    .await
+                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if enabled != Some(true) {
+                let err = ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    if enabled.is_none() {
+                        "resolved principal not found"
+                    } else {
+                        "resolved principal is disabled"
+                    }
+                    .to_string(),
+                );
+                crate::store::postgres::write_path_enabled::audit_denial(
+                    &mut tx,
+                    _actual_command_id,
+                    "assignee_resolution_failed",
+                    &serde_json::json!({
+                        "domainId": domain_uuid, "workflowInstanceId": instance_uuid,
+                        "checkedPrincipalId": assignee_id, "checkObject": "target"
+                    }),
+                )
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                let body = transition_validation::error_response_body(&err);
+                let response_digest = digest::compute_json_digest(&body)
+                    .map_err(ExecuteWorkflowTransitionError::StorageError)?;
+                complete_transition_receipt(
+                    &mut tx,
+                    _actual_command_id,
+                    422,
+                    &body,
+                    &response_digest,
+                )
+                .await?;
+                crate::store::postgres::write_path_enabled::verify_denial_receipt(
+                    &mut tx,
+                    _actual_command_id,
+                    422,
+                    &body,
+                )
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                tx.commit()
+                    .await
+                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                return Err(err);
+            }
+        }
+    }
     if is_visit_activation {
         if let Some(owner_id) = target_assignee_id {
             let owner_type_check =
