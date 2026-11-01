@@ -20,16 +20,24 @@ pub(super) async fn lock_instance(
     tx: &mut Transaction<'_, Postgres>,
     instance_uuid: Uuid,
 ) -> Result<InstanceLockRow, ExecuteWorkflowTransitionError> {
-    let instance: Option<InstanceLockRow> = sqlx::query_as(
-        "SELECT workflow_instance_id, created_by_principal_id, \
-         definition_version_id, current_context_revision_id, \
-         current_node_visit_id, workflow_state_version, cancelled \
-         FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE",
-    )
-    .bind(instance_uuid)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    read_instance(tx, instance_uuid, true).await
+}
+
+pub(super) async fn read_instance(
+    tx: &mut Transaction<'_, Postgres>,
+    instance_uuid: Uuid,
+    lock: bool,
+) -> Result<InstanceLockRow, ExecuteWorkflowTransitionError> {
+    let sql = if lock {
+        "SELECT workflow_instance_id, created_by_principal_id, definition_version_id, current_context_revision_id, current_node_visit_id, workflow_state_version, cancelled FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE"
+    } else {
+        "SELECT workflow_instance_id, created_by_principal_id, definition_version_id, current_context_revision_id, current_node_visit_id, workflow_state_version, cancelled FROM workflow_instances WHERE workflow_instance_id = $1"
+    };
+    let instance: Option<InstanceLockRow> = sqlx::query_as(sql)
+        .bind(instance_uuid)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     instance.ok_or(ExecuteWorkflowTransitionError::InstanceNotFound)
 }
@@ -59,14 +67,24 @@ pub(super) async fn validate_definition_version_status(
     tx: &mut Transaction<'_, Postgres>,
     definition_version_id: Uuid,
 ) -> Result<DefinitionVersionStatus, ExecuteWorkflowTransitionError> {
-    let status: Option<(String,)> = sqlx::query_as(
-        "SELECT version_status::TEXT FROM workflow_definition_versions \
-         WHERE definition_version_id = $1 FOR UPDATE",
-    )
-    .bind(definition_version_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    read_definition_version_status(tx, definition_version_id, true).await
+}
+
+pub(super) async fn read_definition_version_status(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: Uuid,
+    lock: bool,
+) -> Result<DefinitionVersionStatus, ExecuteWorkflowTransitionError> {
+    let sql = if lock {
+        "SELECT version_status::TEXT FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE"
+    } else {
+        "SELECT version_status::TEXT FROM workflow_definition_versions WHERE definition_version_id = $1"
+    };
+    let status: Option<(String,)> = sqlx::query_as(sql)
+        .bind(definition_version_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     match status {
         None => Err(ExecuteWorkflowTransitionError::InternalConsistency(

@@ -1,0 +1,20 @@
+{
+  "source": "/tmp/sw-aa-r4-evidence/extended-red/shared-read-record.json",
+  "source_sha256": "4e53bc708b371951629a2d1033ec106668cb7f756a5c3ba49750ff54ec6a7d15",
+  "json_pointer": "/shared/detail_without_new_fields",
+  "capture_base": "b32c0d1a82abeafbf993c5638bbc9f55e436d9a1",
+  "fixture_sha256": "90c51866455cea0960fcf4cac3d6ed34f36586f3e9acd040d1e7ab47ede408f0",
+  "transform": "JSON pretty-print only, no field/value editing",
+  "existing_current_visit_keys": [
+    "assignee_canonical_agent_id",
+    "assignee_principal_id",
+    "created_at",
+    "eligibility",
+    "entered_by_transition_id",
+    "instructions",
+    "node",
+    "node_visit_id",
+    "visit_number",
+    "workflow_instance_id"
+  ]
+}
