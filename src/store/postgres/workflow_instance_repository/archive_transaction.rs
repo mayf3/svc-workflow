@@ -286,6 +286,32 @@ pub(crate) async fn archive_workflow_instance_atomically(
         return Err(ArchiveWorkflowInstanceError::NotDomainOwner);
     }
 
+    // CTR-WPE-002: only first execution reaches this fresh actor gate.
+    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
+        .await
+        .map_err(storage)?
+        != Some(true)
+    {
+        let error = ArchiveWorkflowInstanceError::PrincipalDisabled;
+        let body = serde_json::json!({"error": "principal_disabled"});
+        crate::store::postgres::write_path_enabled::audit_denial(
+            &mut tx,
+            actual_command_id,
+            "principal_disabled",
+            &serde_json::json!({
+                "domainId": domain_id, "workflowInstanceId": instance_uuid,
+                "checkedPrincipalId": principal_uuid, "checkObject": "actor"
+            }),
+        )
+        .await
+        .map_err(storage)?;
+        complete_receipt(&mut tx, actual_command_id, 403, &body)
+            .await
+            .map_err(|e| ArchiveWorkflowInstanceError::StorageError(e.to_string()))?;
+        tx.commit().await.map_err(storage)?;
+        return Err(error);
+    }
+
     // Step 6: Check instance is in a terminal state (cancelled OR node_type == TERMINAL)
     let is_terminal = is_cancelled || node_type.as_deref() == Some("TERMINAL");
     if !is_terminal {
@@ -454,6 +480,7 @@ fn error_from_body(body: &serde_json::Value) -> ArchiveWorkflowInstanceError {
         .as_str()
         .unwrap_or("internal_consistency_error")
     {
+        "principal_disabled" => ArchiveWorkflowInstanceError::PrincipalDisabled,
         "not_domain_owner" => ArchiveWorkflowInstanceError::NotDomainOwner,
         "instance_not_terminal" => ArchiveWorkflowInstanceError::InstanceNotTerminal,
         "already_archived" => ArchiveWorkflowInstanceError::AlreadyArchived,
