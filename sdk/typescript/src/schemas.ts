@@ -33,6 +33,7 @@ export const createWorkflowInstanceRequestSchema = z
   .object({
     domainId: uuidSchema,
     definitionVersionId: uuidSchema,
+    executionClass: z.enum(['BUSINESS', 'NON_BUSINESS_TEST']).optional(),
     externalReference: z.string().max(512).optional(),
     externalUrl: z.string().url().optional(),
     metadata: jsonObjectSchema,
