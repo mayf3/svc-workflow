@@ -196,7 +196,9 @@ async fn test_replace_draft_graph_atomic() {
                 assignee_input_key: None,
                 instructions: Some("Review the work".to_string()),
                 primary_advance_transition_key: Some("advance-done".to_string()),
-                metadata: None,
+                // READY_CONTRACT exemption: this fixture exercises atomic draft
+                // replacement mechanics, not publish-graph contract validation.
+                metadata: Some(serde_json::json!({"readyContractExempt": true})),
             },
             RawNodeDefinition {
                 node_key: "done".to_string(),

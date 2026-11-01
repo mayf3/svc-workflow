@@ -195,7 +195,15 @@ pub async fn list_creator_owned_drafts(
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
-         WHERE wi.created_by_principal_id = $1 AND n.node_type = 'DRAFT'
+         -- Identity repair lineage (migration 0025): drafts created by the
+         -- requesting principal's own legacy identity surface exactly once
+         -- for the canonical successor, mirroring the my_tasks contract.
+         WHERE (wi.created_by_principal_id = $1
+                OR wi.created_by_principal_id IN (
+                  SELECT wisl.source_principal_id
+                  FROM workflow_identity_successor_lines wisl
+                  WHERE wisl.successor_principal_id = $1))
+           AND n.node_type = 'DRAFT'
            AND EXISTS (
              SELECT 1 FROM domain_role_bindings drb
              WHERE drb.domain_id = wi.domain_id
@@ -237,8 +245,15 @@ pub async fn list_creator_owned_drafts(
             base.definition_version_status.as_str(),
             "PUBLISHED" | "DEPRECATED"
         );
+        let effective_assignee =
+            super::query_visibility::actor_is_effective_current_assignee(
+                &mut tx,
+                base.current_assignee_principal_id,
+                query.actor_principal_id,
+            )
+            .await?;
         let combined_executable = context_editable
-            && base.current_assignee_principal_id == Some(query.actor_principal_id)
+            && effective_assignee
             && detail.outgoing_transitions.iter().any(|transition| {
                 transition.transition_effect == "ADVANCE"
                     && Some(transition.transition_id) == base.current_primary_advance_transition_id

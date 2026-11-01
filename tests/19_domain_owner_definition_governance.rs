@@ -103,7 +103,7 @@ fn create_minimal_graph(
             assignee_input_key: None,
             instructions: None,
             primary_advance_transition_key: Some("advance-done".to_string()),
-            metadata: None,
+            metadata: Some(serde_json::json!({"readyContractExempt": true})),
         },
         RawNodeDefinition {
             node_key: term_node_key.clone(),
@@ -131,9 +131,20 @@ fn create_minimal_graph(
         RawTransitionDefinition {
             transition_key: "advance-done".to_string(),
             display_name: "Complete".to_string(),
-            source_node_key: normal_node_key,
-            target_node_key: term_node_key,
+            source_node_key: normal_node_key.clone(),
+            target_node_key: term_node_key.clone(),
             transition_effect: "ADVANCE".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
+        // Failure exit for the execution step (READY_CONTRACT, #84): evidence
+        // missing → HUMAN_REQUIRED-style terminate to done.
+        RawTransitionDefinition {
+            transition_key: "fail-step".to_string(),
+            display_name: "Fail Step".to_string(),
+            source_node_key: normal_node_key.clone(),
+            target_node_key: term_node_key.clone(),
+            transition_effect: "TERMINATE".to_string(),
             submission_schema: None,
             metadata: None,
         },
@@ -772,9 +783,18 @@ async fn test_concurrent_publish_expected_revision_race() {
                 RawTransitionDefinition {
                     transition_key: "advance-done".to_string(),
                     display_name: "Complete".to_string(),
-                    source_node_key: step_node_key,
-                    target_node_key: term_node_key,
+                    source_node_key: step_node_key.clone(),
+                    target_node_key: term_node_key.clone(),
                     transition_effect: "ADVANCE".to_string(),
+                    submission_schema: None,
+                    metadata: None,
+                },
+                RawTransitionDefinition {
+                    transition_key: "fail-step".to_string(),
+                    display_name: "Fail Step".to_string(),
+                    source_node_key: step_node_key.clone(),
+                    target_node_key: term_node_key.clone(),
+                    transition_effect: "TERMINATE".to_string(),
                     submission_schema: None,
                     metadata: None,
                 },
