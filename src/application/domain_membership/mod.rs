@@ -337,6 +337,31 @@ pub async fn add_member(
         return handle_receipt_result(receipt);
     }
 
+    // CTR-WPE-003: retain the pre-receipt role/domain gates and historical
+    // replay; only first execution checks the actual actor here.
+    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, actor_id)
+        .await
+        .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?
+        != Some(true)
+    {
+        let err = DomainMembershipError::PrincipalDisabled;
+        crate::store::postgres::write_path_enabled::audit_denial(
+            &mut tx,
+            receipt.command_id(),
+            err.label(),
+            &serde_json::json!({
+                "domainId": domain_id, "targetPrincipalId": target_principal_id,
+                "checkedPrincipalId": actor_id, "checkObject": "actor"
+            }),
+        )
+        .await
+        .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
+        complete_and_return_error(tx, receipt.command_id(), &err)
+            .await
+            .map_err(|e| DomainMembershipError::StorageError(format!("{e:?}")))?;
+        return Err(err);
+    }
+
     // 3. Verify target principal exists and is enabled
     let target_enabled =
         domain_role_repository::check_principal_enabled(pool, target_principal_id).await?;
@@ -497,6 +522,30 @@ pub async fn remove_member(
             .await
             .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
         return handle_receipt_result(receipt);
+    }
+
+    // CTR-WPE-003: check only the actor, never the removal target.
+    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, actor_id)
+        .await
+        .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?
+        != Some(true)
+    {
+        let err = DomainMembershipError::PrincipalDisabled;
+        crate::store::postgres::write_path_enabled::audit_denial(
+            &mut tx,
+            receipt.command_id(),
+            err.label(),
+            &serde_json::json!({
+                "domainId": domain_id, "targetPrincipalId": target_principal_id,
+                "checkedPrincipalId": actor_id, "checkObject": "actor"
+            }),
+        )
+        .await
+        .map_err(|e| DomainMembershipError::StorageError(e.to_string()))?;
+        complete_and_return_error(tx, receipt.command_id(), &err)
+            .await
+            .map_err(|e| DomainMembershipError::StorageError(format!("{e:?}")))?;
+        return Err(err);
     }
 
     // 3. Soft-delete DOMAIN_MEMBER binding

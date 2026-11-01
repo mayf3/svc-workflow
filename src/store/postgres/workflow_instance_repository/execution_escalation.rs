@@ -471,6 +471,37 @@ pub(crate) async fn system_execution_escalation(
     .await?
     {
         Receipt::Owned(command_id) => {
+            // CTR-WPE-004: this store gate also protects non-HTTP callers.
+            if crate::store::postgres::write_path_enabled::principal_enabled(
+                &mut tx,
+                command.principal_id,
+            )
+            .await
+            .map_err(storage)?
+                != Some(true)
+            {
+                let error = AssistanceError::PrincipalDisabled;
+                let body = super::assistance_transaction::error_body(&error);
+                crate::store::postgres::write_path_enabled::audit_denial(
+                    &mut tx,
+                    command_id,
+                    error.code(),
+                    &serde_json::json!({
+                        "workflowInstanceId": command.workflow_instance_id,
+                        "checkedPrincipalId": command.principal_id, "checkObject": "actor"
+                    }),
+                )
+                .await
+                .map_err(storage)?;
+                complete_receipt(&mut tx, command_id, 403, &body).await?;
+                crate::store::postgres::write_path_enabled::verify_denial_receipt(
+                    &mut tx, command_id, 403, &body,
+                )
+                .await
+                .map_err(storage)?;
+                tx.commit().await.map_err(storage)?;
+                return Err(error);
+            }
             let outcome = escalate_and_project(&mut tx, command_id, &command).await?;
             let body = serde_json::to_value(&outcome)
                 .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
@@ -478,7 +509,18 @@ pub(crate) async fn system_execution_escalation(
             tx.commit().await.map_err(storage)?;
             Ok(outcome)
         }
-        Receipt::Replay(_status, body) => {
+        Receipt::Replay(status, body) => {
+            if status != 200 {
+                tx.commit().await.map_err(storage)?;
+                return Err(if status == 403 && body["error"] == "principal_disabled" {
+                    AssistanceError::PrincipalDisabled
+                } else {
+                    AssistanceError::InternalConsistency(format!(
+                        "unknown replayed assistance failure: status={status}, code={}",
+                        body["error"]
+                    ))
+                });
+            }
             let mut outcome: SystemEscalationOutcome =
                 serde_json::from_value(body).map_err(|e| {
                     AssistanceError::InternalConsistency(format!(

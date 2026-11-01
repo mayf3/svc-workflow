@@ -315,6 +315,33 @@ pub(crate) async fn cancel_workflow_instance_atomically(
         return Err(CancelWorkflowInstanceError::NotDomainOwner);
     }
 
+    // CTR-WPE-002: receipt replay and governance authorization precede this
+    // fresh actor check; retain the lock through the command transaction.
+    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
+        .await
+        .map_err(storage)?
+        != Some(true)
+    {
+        let error = CancelWorkflowInstanceError::PrincipalDisabled;
+        let body = serde_json::json!({"error": "principal_disabled"});
+        crate::store::postgres::write_path_enabled::audit_denial(
+            &mut tx,
+            actual_command_id,
+            "principal_disabled",
+            &serde_json::json!({
+                "domainId": domain_id, "workflowInstanceId": instance_uuid,
+                "checkedPrincipalId": principal_uuid, "checkObject": "actor"
+            }),
+        )
+        .await
+        .map_err(storage)?;
+        complete_receipt(&mut tx, actual_command_id, 403, &body)
+            .await
+            .map_err(|e| CancelWorkflowInstanceError::StorageError(e.to_string()))?;
+        tx.commit().await.map_err(storage)?;
+        return Err(error);
+    }
+
     // Step 6: Check instance state
     if is_cancelled {
         return Err(CancelWorkflowInstanceError::AlreadyCancelled);
@@ -564,6 +591,7 @@ fn error_from_body(body: &serde_json::Value) -> CancelWorkflowInstanceError {
         .as_str()
         .unwrap_or("internal_consistency_error")
     {
+        "principal_disabled" => CancelWorkflowInstanceError::PrincipalDisabled,
         "not_domain_owner" => CancelWorkflowInstanceError::NotDomainOwner,
         "already_cancelled" => CancelWorkflowInstanceError::AlreadyCancelled,
         "source_node_terminal" => CancelWorkflowInstanceError::SourceNodeTerminal,
