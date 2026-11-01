@@ -1,3 +1,13 @@
+## Instance detail compatibility (1.9.0)
+
+Accepted `WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1` CTR-AA-007/009 is the precise
+exception to Rule 1 for the full instance-detail endpoint: its closed six-field
+detail becomes a closed ten-field endpoint object. Existing closed endpoint
+validators must update to this bundle. The envelope, restricted variant, old
+outgoing diagnostics, shared six-field Full, worklists, and CURRENT_DETAIL body
+and digest retain their accepted shapes and meanings. This exception creates no
+new command, permission, error, route, or production apply authority.
+
 ## Definition diagnostic compatibility (1.6.0)
 
 Previously opaque canonical graph failures now return 422 graph_validation_failed.

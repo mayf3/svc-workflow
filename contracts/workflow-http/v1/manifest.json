@@ -1,13 +1,13 @@
 {
   "serial": "V1-2026-09-18",
   "contract_id": "WORKFLOW_HTTP_CONTRACT_V1",
-  "contract_version": "1.8.0",
+  "contract_version": "1.9.0",
   "contract_scope": "runtime",
-  "title": "Workflow Runtime HTTP Contract V1 (Active Agent list documentation closure)",
+  "title": "Workflow Runtime HTTP Contract V1 (Instance detail authorized actions)",
   "owner_repository": "svc-workflow",
-  "owner_head_sha": "1e5a6057d000a115637dad3f0324a4f534dd2417",
-  "owner_tree_sha": "ed24da30a726c96cfb3aa0cf8c9576bb00eeed4e",
-  "owner_semantics": "Owner head and tree pin the accepted AAL-V2 + M1B implementation base the documented wire behavior belongs to. The implementation delivery commits are recorded separately in the implementation history and review records.",
+  "owner_head_sha": "69ce065c00082c01c3dc03defc72e46a7d0d18a1",
+  "owner_tree_sha": "f44ed2c5f44e04f02dd3dd9c4122d0a6d402a2ab",
+  "owner_semantics": "Owner head and tree pin the exact accepted WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1 authority, accepted in PR114 and merged by108a47a5. They are not an implementation or runtime-acceptance head. The implementation PR and its delivery commit are recorded separately; inherited AAL-V2, WEC and other accepted contracts remain effective.",
   "digest_algorithm": "SHA-256",
   "digest_spec_version": "1.0.0",
   "bundle_file_set": [
@@ -23,10 +23,10 @@
     "manifest.json",
     "openapi.yaml"
   ],
-  "schema_digest": "47e8cb8dc2542dee3dfa28309f6af5c6520fe860e0f80c255ca5f3c62615ea09",
-  "bundle_digest": "e042c34fbbf94fe6ae62672b837b7e28782748b1851480753a93c8cbca718c8a",
-  "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics",
+  "schema_digest": "6fa75957e020692c8a9b80cc7c6c7bbe0f8d3dd0733be84074b9dbf53c7d4e5f",
+  "bundle_digest": "99096b6b5a2f91020c060862e2f3a065344848d6368c1305da78e2544c5f4b0e",
+  "compatibility_policy": "strict_backward_compatible_except_accepted_graph_diagnostics_and_instance_detail_actions",
   "created_at": "2026-09-18T00:00:00Z",
   "author": "IMPLEMENTATION_AGENT",
-  "description": "Documents the accepted SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2 wire behavior on the global instance list: optional currentExecutorType query filter (HUMAN|AGENT, 422 invalid_current_executor_type otherwise) and the additive nullable current_executor_type summary member (GlobalInstanceSummary). Documentation-only; no new product semantics."
+  "description": "Implements accepted endpoint-only full instance detail authorized_actions scope/status/closed operation variants and current-node classification. Shared Full, CTI bytes/digest, worklists, restricted detail, routes, errors and permissions retain their existing contracts. Production apply authority remains none."
 }

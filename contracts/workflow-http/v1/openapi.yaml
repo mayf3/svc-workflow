@@ -1,11 +1,12 @@
 openapi: "3.0.3"
 info:
   title: Workflow Runtime HTTP API
-  version: "1.5.0"
+  version: "1.9.0"
   description: |
     Current-state freeze of all runtime workflow HTTP endpoints.
-    Workflow Assistance V1 is an additive Visit-scoped extension; the exact
-    implementation owner SHA is frozen in manifest.json.
+    Instance full detail includes the accepted endpoint-only authorized-actions
+    projection. Accepted authority provenance is pinned in manifest.json;
+    implementation delivery and runtime acceptance are recorded separately.
 
 servers:
   - url: http://{host}:{port}
@@ -1589,15 +1590,25 @@ components:
 
     # Detail (snake_case body in camelCase envelope)
     WorkflowInstanceDetailResponse:
-      type: object
-      additionalProperties: false
-      properties:
-        visibility:
-          type: string
-          enum: [full, historical_participant]
-        detail:
-          type: object
-      required: [visibility, detail]
+      oneOf:
+        - type: object
+          additionalProperties: false
+          properties:
+            visibility:
+              type: string
+              enum: [full]
+            detail:
+              $ref: "#/components/schemas/InstanceDetailWithAuthorizedActionsV1"
+          required: [visibility, detail]
+        - type: object
+          additionalProperties: false
+          properties:
+            visibility:
+              type: string
+              enum: [historical_participant]
+            detail:
+              $ref: "#/components/schemas/HistoricalParticipantInstanceDetail"
+          required: [visibility, detail]
 
     # Timeline (camelCase)
     TimelineResponse:
@@ -2506,6 +2517,210 @@ components:
         combined_executable:
           type: boolean
       required: [detail, context_editable, combined_executable]
+
+    InstanceDetailWithAuthorizedActionsV1:
+      type: object
+      additionalProperties: false
+      description: >
+        Endpoint-only full instance detail. Shared worklist and current-task-input
+        details retain FullWorkflowInstanceDetail without these four fields.
+      properties:
+        instance:
+          type: object
+        current_context_revision_id:
+          type: string
+          format: uuid
+        current_node_visit_id:
+          type: string
+          format: uuid
+        current_context:
+          type: object
+        current_visit:
+          type: object
+        outgoing_transitions:
+          type: array
+        authorized_actions_scope:
+          type: string
+          enum: [INSTANCE_TASK_AND_GOVERNANCE_V1]
+        authorized_actions_status:
+          type: string
+          enum:
+            - AVAILABLE
+            - NONE_FOR_ACTOR
+            - MISSING_EXECUTE_SCOPE
+            - WRITE_GATE_CLOSED
+            - UNSUPPORTED_MODEL
+          description: >
+            Server-derived priority is MISSING_EXECUTE_SCOPE, WRITE_GATE_CLOSED,
+            UNSUPPORTED_MODEL, then NONE_FOR_ACTOR or AVAILABLE. Actions are
+            nonempty exactly for AVAILABLE; all other statuses carry an empty
+            array. Existing authorization, consistency and storage errors take
+            precedence over a successful response.
+        authorized_actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthorizedActionV1"
+        current_task_type:
+          $ref: "#/components/schemas/CurrentTaskTypeV1"
+      required:
+        - instance
+        - current_context_revision_id
+        - current_node_visit_id
+        - current_context
+        - current_visit
+        - outgoing_transitions
+        - authorized_actions_scope
+        - authorized_actions_status
+        - authorized_actions
+        - current_task_type
+
+    AuthorizedActionV1:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [transition]
+            transition_id:
+              type: string
+              format: uuid
+            transition_effect:
+              type: string
+              enum: [ADVANCE, RETURN, TERMINATE]
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, transition_id, transition_effect, request_validation]
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [request_assistance]
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, request_validation]
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [escalate_assistance]
+            assistance_case_id:
+              type: string
+              format: uuid
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, assistance_case_id, request_validation]
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [resolve_assistance]
+            assistance_case_id:
+              type: string
+              format: uuid
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, assistance_case_id, request_validation]
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [cancel]
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, request_validation]
+        - type: object
+          additionalProperties: false
+          properties:
+            operation:
+              type: string
+              enum: [archive]
+            request_validation:
+              type: string
+              enum: [REQUIRED_AT_EXECUTION]
+          required: [operation, request_validation]
+
+    CurrentTaskTypeV1:
+      type: object
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+          enum: [CURRENT_NODE_TYPE]
+        node_type:
+          type: string
+          enum: [DRAFT, NORMAL, TASK, TERMINAL]
+        business_task_type:
+          type: string
+          nullable: true
+          enum: [null]
+      required: [source, node_type, business_task_type]
+
+    HistoricalParticipantInstanceDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        instance:
+          $ref: "#/components/schemas/HistoricalParticipantSummary"
+      required: [instance]
+
+    HistoricalParticipantSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        workflow_instance_id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        definition_version_id:
+          type: string
+          format: uuid
+        definition_version_status:
+          type: string
+        workflow_state_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        domain_enabled:
+          type: boolean
+        is_terminal:
+          type: boolean
+        current_node:
+          type: object
+          additionalProperties: false
+          properties:
+            node_id:
+              type: string
+              format: uuid
+            node_key:
+              type: string
+            display_name:
+              type: string
+            node_type:
+              type: string
+          required: [node_id, node_key, display_name, node_type]
+      required:
+        - workflow_instance_id
+        - domain_id
+        - definition_version_id
+        - definition_version_status
+        - workflow_state_version
+        - created_at
+        - domain_enabled
+        - is_terminal
+        - current_node
 
     FullWorkflowInstanceDetail:
       type: object

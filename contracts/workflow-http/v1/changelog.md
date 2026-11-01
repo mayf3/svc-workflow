@@ -1,3 +1,24 @@
+## 1.9.0 — 2026-11-01
+
+Implements accepted `WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1` (semantic head
+`69ce065c00082c01c3dc03defc72e46a7d0d18a1`, Owner acceptance in PR114).
+Only the full branch of `GET /internal/v1/workflow-instances/{workflowInstanceId}`
+adds the four required fields `authorized_actions_scope`,
+`authorized_actions_status`, `authorized_actions`, and `current_task_type`.
+The endpoint uses its own ten-field closed detail schema, six closed operation
+variants, and current-node type with `business_task_type: null`. The action set
+is selectable identity/state eligibility; every request still requires execution
+validation. The old outgoing diagnostics keep their existing meaning.
+
+Clients using the old closed endpoint validator must adopt this version before
+consuming the new detail response. Restricted detail, shared six-field Full,
+worklists, CURRENT_DETAIL bytes/digest, routes, errors, roles, and scopes retain
+their existing contracts. No production rollout is authorized by this bundle.
+The minor version is delivery metadata for this accepted wire change, not a new
+Product decision. The preceding SDK repair first aligned its stale 1.5.0 lock
+with the existing 1.8.0 bundle and restored the accepted optional create member
+`executionClass: BUSINESS | NON_BUSINESS_TEST`; neither repair changed that bundle.
+
 ## 1.8.0 — 2026-09-18
 
 Contract documentation closure for accepted SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2
