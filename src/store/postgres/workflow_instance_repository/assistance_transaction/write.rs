@@ -53,35 +53,22 @@ pub(crate) async fn request_assistance(
         return deterministic_failure(tx, command_id, AssistanceError::CurrentNodeVisitMismatch)
             .await;
     }
-    if instance.cancelled {
-        return deterministic_failure(tx, command_id, AssistanceError::InstanceCancelled).await;
-    }
-    if instance.archived_at.is_some() {
-        return deterministic_failure(tx, command_id, AssistanceError::InstanceArchived).await;
-    }
-    if instance.node_type.as_deref() == Some("TERMINAL") {
-        return deterministic_failure(tx, command_id, AssistanceError::SourceNodeTerminal).await;
+    if let Err(error) = super::checks::request_lifecycle(&instance) {
+        return deterministic_failure(tx, command_id, error).await;
     }
     if let Err(error) = validate_actor_enabled(&mut tx, actor).await {
         return deterministic_failure(tx, command_id, error).await;
     }
-    if instance.assignee_principal_id != Some(actor) {
-        return deterministic_failure(tx, command_id, AssistanceError::PrincipalNotAssignee).await;
+    if let Err(error) = super::checks::request_assignee(&instance, actor) {
+        return deterministic_failure(tx, command_id, error).await;
     }
     let owner = match effective_owner(&mut tx, instance.domain_id).await {
         Ok(owner) => owner,
         Err(error) => return deterministic_failure(tx, command_id, error).await,
     };
-    let open_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM workflow_assistance_cases
-         WHERE node_visit_id = $1 AND status IN ('OWNER_PENDING','HUMAN_REQUIRED'))",
-    )
-    .bind(requested_visit)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-    if open_exists {
-        return deterministic_failure(tx, command_id, AssistanceError::AssistanceAlreadyOpen).await;
+    let open_exists = has_open_assistance(&mut tx, requested_visit).await?;
+    if let Err(error) = super::checks::request_open_case(open_exists) {
+        return deterministic_failure(tx, command_id, error).await;
     }
 
     let case_id = Uuid::new_v4();
@@ -166,15 +153,6 @@ pub(crate) async fn request_assistance(
     complete_receipt(&mut tx, command_id, 201, &body).await?;
     tx.commit().await.map_err(storage)?;
     Ok(result)
-}
-
-#[derive(Debug, FromRow)]
-struct LockedCase {
-    assistance_case_id: Uuid,
-    workflow_instance_id: Uuid,
-    node_visit_id: Uuid,
-    status: String,
-    created_at: DateTime<Utc>,
 }
 
 #[derive(Clone)]
@@ -302,36 +280,15 @@ pub(crate) async fn owner_action_on_tx(
         Ok(owner) => owner,
         Err(error) => return Err(error),
     };
-    if owner != actor {
-        return Err(AssistanceError::NotDomainOwner);
-    }
-    let case: LockedCase = match sqlx::query_as(
-        "SELECT assistance_case_id, workflow_instance_id, node_visit_id, status, created_at
-         FROM workflow_assistance_cases WHERE assistance_case_id = $1 FOR UPDATE",
-    )
-    .bind(case_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(storage)?
-    {
-        Some(case) => case,
-        None => return Err(AssistanceError::AssistanceCaseNotFoundOrNotVisible),
-    };
-    if case.workflow_instance_id != instance_id
-        || instance.current_node_visit_id != Some(case.node_visit_id)
-    {
-        return Err(AssistanceError::AssistanceStatusConflict);
-    }
+    super::checks::owner_actor(owner, actor)?;
+    let case = super::checks::load_case(tx, case_id, true).await?;
+    super::checks::owner_case(
+        OwnerActionKind::from(&action),
+        instance_id,
+        instance.current_node_visit_id,
+        &case,
+    )?;
     let previous_status = case.status.clone();
-    let status_ok = match action {
-        OwnerAction::Escalate(_) => previous_status == "OWNER_PENDING",
-        OwnerAction::Resolve(_) => {
-            previous_status == "OWNER_PENDING" || previous_status == "HUMAN_REQUIRED"
-        }
-    };
-    if !status_ok {
-        return Err(AssistanceError::AssistanceStatusConflict);
-    }
 
     let governance_review = if matches!(action, OwnerAction::Resolve(_)) {
         match super::governance_child::validate_resolve(tx, case_id, &payload).await {

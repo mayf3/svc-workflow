@@ -33,6 +33,7 @@ export const createWorkflowInstanceRequestSchema = z
   .object({
     domainId: uuidSchema,
     definitionVersionId: uuidSchema,
+    executionClass: z.enum(['BUSINESS', 'NON_BUSINESS_TEST']).optional(),
     externalReference: z.string().max(512).optional(),
     externalUrl: z.string().url().optional(),
     metadata: jsonObjectSchema,
@@ -110,6 +111,18 @@ export const contextRevisionSchema = z
   })
   .strict();
 
+// Work eligibility classification (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1,
+// adjacently tagged): dispatchable now, or waiting with the effective instant.
+export const workEligibilitySchema = z.discriminatedUnion('classification', [
+  z.object({ classification: z.literal('ACTIONABLE_NOW') }).strict(),
+  z
+    .object({
+      classification: z.literal('WAITING_FOR_TIME'),
+      nextEligibleAt: dateTimeSchema,
+    })
+    .strict(),
+]);
+
 export const nodeVisitSchema = z
   .object({
     node_visit_id: uuidSchema,
@@ -117,6 +130,8 @@ export const nodeVisitSchema = z
     node: publicNodeSummarySchema,
     visit_number: z.number().int(),
     assignee_principal_id: uuidSchema.nullable(),
+    assignee_canonical_agent_id: z.string().nullable(),
+    eligibility: workEligibilitySchema,
     entered_by_transition_id: uuidSchema.nullable(),
     instructions: z.string().nullable(),
     created_at: dateTimeSchema,
@@ -147,6 +162,58 @@ export const fullWorkflowInstanceDetailSchema = z
   })
   .strict();
 
+export const authorizedActionV1Schema = z.discriminatedUnion('operation', [
+  z.object({
+    operation: z.literal('transition'),
+    transition_id: uuidSchema,
+    transition_effect: z.enum(['ADVANCE', 'RETURN', 'TERMINATE']),
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+  z.object({
+    operation: z.literal('request_assistance'),
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+  z.object({
+    operation: z.literal('escalate_assistance'),
+    assistance_case_id: uuidSchema,
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+  z.object({
+    operation: z.literal('resolve_assistance'),
+    assistance_case_id: uuidSchema,
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+  z.object({
+    operation: z.literal('cancel'),
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+  z.object({
+    operation: z.literal('archive'),
+    request_validation: z.literal('REQUIRED_AT_EXECUTION'),
+  }).strict(),
+]);
+
+export const currentTaskTypeV1Schema = z.object({
+  source: z.literal('CURRENT_NODE_TYPE'),
+  node_type: z.enum(['DRAFT', 'NORMAL', 'TASK', 'TERMINAL']),
+  business_task_type: z.null(),
+}).strict();
+
+export const instanceDetailWithAuthorizedActionsV1Schema = fullWorkflowInstanceDetailSchema
+  .extend({
+    authorized_actions_scope: z.literal('INSTANCE_TASK_AND_GOVERNANCE_V1'),
+    authorized_actions_status: z.enum([
+      'AVAILABLE',
+      'NONE_FOR_ACTOR',
+      'MISSING_EXECUTE_SCOPE',
+      'WRITE_GATE_CLOSED',
+      'UNSUPPORTED_MODEL',
+    ]),
+    authorized_actions: z.array(authorizedActionV1Schema),
+    current_task_type: currentTaskTypeV1Schema,
+  })
+  .strict();
+
 export const historicalParticipantSummarySchema = z
   .object({
     workflow_instance_id: uuidSchema,
@@ -165,7 +232,7 @@ export const workflowInstanceDetailResponseSchema = z.discriminatedUnion('visibi
   z
     .object({
       visibility: z.literal('full'),
-      detail: fullWorkflowInstanceDetailSchema,
+      detail: instanceDetailWithAuthorizedActionsV1Schema,
     })
     .strict(),
   z
@@ -283,18 +350,6 @@ export const worklistQuerySchema = z
     (query) => Boolean(query.beforeCreatedAt) === Boolean(query.beforeId),
     'beforeCreatedAt and beforeId must be provided together',
   );
-
-// Work eligibility classification (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1,
-// adjacently tagged): dispatchable now, or waiting with the effective instant.
-export const workEligibilitySchema = z.discriminatedUnion('classification', [
-  z.object({ classification: z.literal('ACTIONABLE_NOW') }).strict(),
-  z
-    .object({
-      classification: z.literal('WAITING_FOR_TIME'),
-      nextEligibleAt: dateTimeSchema,
-    })
-    .strict(),
-]);
 
 export const domainInstanceSummarySchema = z
   .object({

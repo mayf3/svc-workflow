@@ -14,6 +14,17 @@ pub struct WorkflowQueryService {
 }
 
 impl WorkflowQueryService {
+    pub async fn get_workflow_instance_detail_with_authorized_actions(
+        &self,
+        query: GetWorkflowInstanceDetail,
+        credential: super::authorized_actions::ActionCredential,
+    ) -> Result<super::authorized_actions::AuthorizedInstanceDetail, WorkflowQueryError> {
+        crate::store::postgres::workflow_instance_repository::query_authorized_actions::get(
+            &self.pool, query, credential,
+        )
+        .await
+    }
+
     pub async fn current_task_input(
         &self,
         actor: uuid::Uuid,

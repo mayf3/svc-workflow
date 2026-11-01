@@ -6,6 +6,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
 
+use crate::application::workflow_instance::authorized_actions::ActionCredential;
 use crate::application::workflow_instance::create::create_workflow_instance;
 use crate::application::workflow_instance::query_types::{
     GetWorkflowInstanceDetail, ListDomainInstances, ListGlobalInstances, StatusFilter,
@@ -16,7 +17,7 @@ use crate::domain::enums::WorkflowExecutionClass;
 use crate::domain::ids::{DefinitionVersionId, DomainId, WorkflowInstanceId};
 use crate::domain::workflow_instance::commands::CreateWorkflowInstanceCommand;
 use crate::http::dto::{
-    detail_response, parse_current_executor_type_param, parse_lifecycle_param, parse_status_param,
+    parse_current_executor_type_param, parse_lifecycle_param, parse_status_param,
     CreateWorkflowInstanceRequest, CreateWorkflowInstanceResponse, DomainInstanceQuery,
     GlobalInstanceQuery,
 };
@@ -105,13 +106,20 @@ pub(crate) async fn detail(
     let workflow_instance_id = path_uuid(&workflow_instance_id)?;
     let detail = state
         .query_service
-        .get_workflow_instance_detail(GetWorkflowInstanceDetail {
-            actor_principal_id: principal.principal_id.into_uuid(),
-            workflow_instance_id,
-        })
+        .get_workflow_instance_detail_with_authorized_actions(
+            GetWorkflowInstanceDetail {
+                actor_principal_id: principal.principal_id.into_uuid(),
+                workflow_instance_id,
+            },
+            ActionCredential {
+                execute_scope: principal.has_scope("workflow.execute"),
+                write_gate_open: state.auth_v1_canary_config.write_enabled,
+                max_returns_per_edge: state.execution_control.max_returns_per_edge,
+            },
+        )
         .await
         .map_err(ApiError::from_query)?;
-    Ok(Json(detail_response(detail)))
+    Ok(Json(detail))
 }
 
 /// GET /internal/v1/workflow-instances/domain

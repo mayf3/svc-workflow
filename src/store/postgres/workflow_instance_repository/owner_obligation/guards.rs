@@ -17,8 +17,9 @@ async fn producer_reference(
             .ok_or_else(|| OwnerError::new(422, "owner_node_gate_binding_required"))?,
     )
     .map_err(|_| OwnerError::new(422, "owner_node_gate_binding_mismatch"))?;
-    let actual:Option<(Uuid,Uuid)>=sqlx::query_as("SELECT o.created_instance_id,o.target_definition_version_id FROM workflow_operation_effects e JOIN workflow_owner_dependency_origins o ON o.parent_effect_id=e.effect_id AND o.create_command_id=e.command_id JOIN workflow_command_receipts c ON c.command_id=e.command_id AND c.receipt_status='COMPLETED' AND c.response_status BETWEEN 200 AND 299 AND c.command_type='CREATE_WORKFLOW_INSTANCE' WHERE e.managed_instance_id=$1 AND e.node_definition_id=$2 AND e.slot_key=$3 AND e.state='SUCCEEDED' AND e.result=c.response_body AND e.result_digest=c.response_digest").bind(s.instance).bind(p.node_id).bind(&p.slot_key).fetch_optional(&mut **tx).await.map_err(storage)?;
-    let terminal:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_transition_definitions t JOIN workflow_node_definitions n ON n.node_id=t.target_node_id AND n.definition_version_id=t.definition_version_id WHERE t.transition_id=$1 AND t.definition_version_id=$2 AND t.transition_effect='ADVANCE' AND n.node_type='TERMINAL' AND t.submission_schema IS NOT NULL)").bind(r.transition_id).bind(r.definition_version_id).fetch_one(&mut **tx).await.map_err(storage)?;
+    let actual = producer_origin(tx, s, p).await?;
+    let terminal =
+        terminal_reference_valid(tx, r.definition_version_id, Some(r.transition_id)).await?;
     if actual != Some((r.workflow_instance_id, r.definition_version_id)) || !terminal {
         return Err(OwnerError::new(422, "owner_node_gate_binding_mismatch"));
     }
@@ -44,41 +45,17 @@ pub(crate) async fn before_transition(
     context: Option<&Value>,
     submission: Option<&Value>,
 ) -> Result<(), OwnerError> {
-    let managed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_managed_instances WHERE workflow_instance_id=$1)").bind(instance).fetch_one(&mut **tx).await.map_err(storage)?;
-    if !managed {
+    let Some(s) = transition_source_state(tx, actor, instance, effect).await? else {
         return Ok(());
-    }
-    let s = reads::load(tx, actor, instance).await?;
-    if !reads::active(tx, &s).await? {
-        return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
-    }
-    if effect == "ADVANCE" {
-        if let Some(op) = contract::operation(s.metadata.as_ref()).map_err(storage)? {
-            if reads::effect_projection(tx, &s, s.node, &op.slot_key).await?["state"] != "SUCCEEDED"
-            {
-                return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
-            }
-        }
-    }
-    let target_metadata:Option<Value>=sqlx::query_scalar("SELECT metadata FROM workflow_node_definitions WHERE node_id=$1 AND definition_version_id=$2").bind(target).bind(s.version).fetch_one(&mut **tx).await.map_err(storage)?;
-    if let Some(g) = contract::gate(target_metadata.as_ref()).map_err(storage)? {
+    };
+    if let Some(g) = target_gate(tx, &s, target).await? {
         let c = context
             .or(s.context.as_ref())
             .ok_or_else(|| OwnerError::new(422, "owner_node_gate_binding_required"))?;
         producer_reference(tx, &s, &g.producer, c).await?;
     }
-    let terminal:bool=sqlx::query_scalar("SELECT node_type='TERMINAL' FROM workflow_node_definitions WHERE node_id=$1 AND definition_version_id=$2").bind(target).bind(s.version).fetch_one(&mut **tx).await.map_err(storage)?;
-    if terminal && s.kind == "REVIEW" {
-        let outcome = if s.case_status == "RESOLVED" {
-            "RESOLVED"
-        } else if s.case_status == "HUMAN_REQUIRED" {
-            "HUMAN_REQUIRED"
-        } else {
-            return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
-        };
-        if !reads::own_case_effect(tx, &s).await?
-            || submission.and_then(|v| v.get("reviewOutcome")) != Some(&json!(outcome))
-        {
+    if let Some(outcome) = terminal_review_state(tx, &s, target).await? {
+        if submission.and_then(|v| v.get("reviewOutcome")) != Some(&json!(outcome)) {
             return Err(OwnerError::new(422, "review_outcome_mismatch"));
         }
     }
@@ -128,4 +105,106 @@ pub(crate) async fn readiness(
         )),
         Err(e) => Err(e),
     }
+}
+
+/// The exact stored producer proof, shared by execution and action selection.
+async fn producer_origin(
+    tx: &mut Transaction<'_, Postgres>,
+    s: &reads::Snapshot,
+    p: &contract::Producer,
+) -> Result<Option<(Uuid, Uuid)>, OwnerError> {
+    sqlx::query_as("SELECT o.created_instance_id,o.target_definition_version_id FROM workflow_operation_effects e JOIN workflow_owner_dependency_origins o ON o.parent_effect_id=e.effect_id AND o.create_command_id=e.command_id JOIN workflow_command_receipts c ON c.command_id=e.command_id AND c.receipt_status='COMPLETED' AND c.response_status BETWEEN 200 AND 299 AND c.command_type='CREATE_WORKFLOW_INSTANCE' WHERE e.managed_instance_id=$1 AND e.node_definition_id=$2 AND e.slot_key=$3 AND e.state='SUCCEEDED' AND e.result=c.response_body AND e.result_digest=c.response_digest").bind(s.instance).bind(p.node_id).bind(&p.slot_key).fetch_optional(&mut **tx).await.map_err(storage)
+}
+async fn terminal_reference_valid(
+    tx: &mut Transaction<'_, Postgres>,
+    version: Uuid,
+    transition: Option<Uuid>,
+) -> Result<bool, OwnerError> {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_transition_definitions t JOIN workflow_node_definitions n ON n.node_id=t.target_node_id AND n.definition_version_id=t.definition_version_id WHERE ($1::uuid IS NULL OR t.transition_id=$1) AND t.definition_version_id=$2 AND t.transition_effect='ADVANCE' AND n.node_type='TERMINAL' AND t.submission_schema IS NOT NULL)").bind(transition).bind(version).fetch_one(&mut **tx).await.map_err(storage)
+}
+async fn transition_source_state(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+    instance: Uuid,
+    effect: &str,
+) -> Result<Option<reads::Snapshot>, OwnerError> {
+    let managed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_managed_instances WHERE workflow_instance_id=$1)").bind(instance).fetch_one(&mut **tx).await.map_err(storage)?;
+    if !managed {
+        return Ok(None);
+    }
+    let s = reads::load(tx, actor, instance).await?;
+    if !reads::active(tx, &s).await? {
+        return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
+    }
+    if effect == "ADVANCE" {
+        if let Some(op) = contract::operation(s.metadata.as_ref()).map_err(storage)? {
+            if reads::effect_projection(tx, &s, s.node, &op.slot_key).await?["state"] != "SUCCEEDED"
+            {
+                return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
+            }
+        }
+    }
+    Ok(Some(s))
+}
+async fn target_gate(
+    tx: &mut Transaction<'_, Postgres>,
+    s: &reads::Snapshot,
+    target: Uuid,
+) -> Result<Option<contract::Gate>, OwnerError> {
+    let target_metadata:Option<Value>=sqlx::query_scalar("SELECT metadata FROM workflow_node_definitions WHERE node_id=$1 AND definition_version_id=$2").bind(target).bind(s.version).fetch_one(&mut **tx).await.map_err(storage)?;
+    contract::gate(target_metadata.as_ref()).map_err(storage)
+}
+async fn terminal_review_state(
+    tx: &mut Transaction<'_, Postgres>,
+    s: &reads::Snapshot,
+    target: Uuid,
+) -> Result<Option<&'static str>, OwnerError> {
+    let terminal:bool=sqlx::query_scalar("SELECT node_type='TERMINAL' FROM workflow_node_definitions WHERE node_id=$1 AND definition_version_id=$2").bind(target).bind(s.version).fetch_one(&mut **tx).await.map_err(storage)?;
+    if !terminal || s.kind != "REVIEW" {
+        return Ok(None);
+    }
+    let outcome = if s.case_status == "RESOLVED" {
+        "RESOLVED"
+    } else if s.case_status == "HUMAN_REQUIRED" {
+        "HUMAN_REQUIRED"
+    } else {
+        return Err(OwnerError::new(409, "GOVERNED_OPERATION_REQUIRED"));
+    };
+    if !reads::own_case_effect(tx, s).await? {
+        return Err(OwnerError::new(422, "review_outcome_mismatch"));
+    }
+    Ok(Some(outcome))
+}
+
+/// Selectability without inventing a contextPayload or reviewOutcome. Only an
+/// INTAKE ADVANCE/RETURN may provide a late binding at execution (VAI V3).
+/// Other branches must already have the accepted producer reference in Context.
+pub(crate) async fn evaluate_transition_identity_state(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+    instance: Uuid,
+    target: Uuid,
+    effect: &str,
+) -> Result<(), OwnerError> {
+    let Some(s) = transition_source_state(tx, actor, instance, effect).await? else {
+        return Ok(());
+    };
+    if let Some(g) = target_gate(tx, &s, target).await? {
+        if s.kind == "INTAKE" && matches!(effect, "ADVANCE" | "RETURN") {
+            let Some((_, version)) = producer_origin(tx, &s, &g.producer).await? else {
+                return Err(OwnerError::new(422, "owner_node_gate_binding_mismatch"));
+            };
+            if !terminal_reference_valid(tx, version, None).await? {
+                return Err(OwnerError::new(422, "owner_node_gate_binding_mismatch"));
+            }
+        } else {
+            let c = s
+                .context
+                .as_ref()
+                .ok_or_else(|| OwnerError::new(422, "owner_node_gate_binding_required"))?;
+            producer_reference(tx, &s, &g.producer, c).await?;
+        }
+    }
+    terminal_review_state(tx, &s, target).await?;
+    Ok(())
 }

@@ -15,6 +15,7 @@ pub(crate) use binding::admit as bind_on_tx;
 pub(crate) use binding::bind;
 pub(crate) use review::{prepare_delivery, queue_owner_replacement};
 pub(crate) use terminal::{record_terminal, validate_resolve, validate_selected_submission};
+pub(super) use terminal::validate_resolve_identity_state;
 
 #[derive(Debug, FromRow)]
 pub(super) struct Binding {
@@ -39,8 +40,20 @@ async fn by_child(
     tx: &mut Transaction<'_, Postgres>,
     child: Uuid,
 ) -> Result<Option<Binding>, AssistanceError> {
-    sqlx::query_as("SELECT * FROM workflow_governance_child_bindings WHERE governance_child_instance_id=$1 FOR UPDATE").bind(child).fetch_optional(&mut **tx).await.map_err(storage)
+    by_child_with_lock(tx, child, true).await
 }
+async fn by_child_with_lock(
+    tx: &mut Transaction<'_, Postgres>,
+    child: Uuid,
+    lock: bool,
+) -> Result<Option<Binding>, AssistanceError> {
+    let query = format!(
+        "SELECT * FROM workflow_governance_child_bindings WHERE governance_child_instance_id=$1{}",
+        if lock { " FOR UPDATE" } else { "" },
+    );
+    sqlx::query_as(&query).bind(child).fetch_optional(&mut **tx).await.map_err(storage)
+}
+
 fn invalid(detail: &str) -> AssistanceError {
     AssistanceError::InvalidPayload(detail.into())
 }
