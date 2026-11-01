@@ -295,7 +295,7 @@ pub(super) async fn resolve_assignee(
 }
 
 /// Verify a principal exists and is enabled, returning its UUID. Fail-closed.
-async fn verify_principal_enabled_for_transition(
+pub(super) async fn verify_principal_enabled_for_transition(
     tx: &mut Transaction<'_, Postgres>,
     candidate: Uuid,
 ) -> Result<Uuid, ExecuteWorkflowTransitionError> {
