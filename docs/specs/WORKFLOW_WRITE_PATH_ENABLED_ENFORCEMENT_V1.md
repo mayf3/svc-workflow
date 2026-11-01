@@ -1,6 +1,8 @@
 ---
-spec_id: WORKFLOW_WRITE_PATH_ENABLED_ENFORCEMENT_V1
-status: proposed
+spec_id:
+accepted_at: 2026-11-02
+accepted_by: Owner (mayf3) via supervisor binding; receipt = PR acceptance comment (agent-control#1344 timeline, exact-head c6f1567f lineage) WORKFLOW_WRITE_PATH_ENABLED_ENFORCEMENT_V1
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
