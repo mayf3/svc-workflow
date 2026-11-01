@@ -186,9 +186,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 4: Check instance is not cancelled
     // ---------------------------------------------------------------
-    if instance.cancelled {
-        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
-    }
+    validation_result!(super::transition_checks::validate_not_cancelled(
+        instance.cancelled
+    ));
 
     // ---------------------------------------------------------------
     // Step 5: Read and validate current NodeVisit
@@ -199,9 +199,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 5: A Terminal visit is canonically unassigned and cannot transition.
     // ---------------------------------------------------------------
-    if current_visit.node_type_enum() == NodeType::TERMINAL {
-        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
-    }
+    validation_result!(super::transition_checks::validate_nonterminal_source(
+        current_visit.node_type_enum()
+    ));
 
     // ---------------------------------------------------------------
     // Step 6: Validate caller principal enabled
@@ -223,12 +223,14 @@ pub(crate) async fn execute_workflow_transition_atomically(
     {
         Ok(matches) => matches,
         Err(error) => {
-            return Err(ExecuteWorkflowTransitionError::StorageError(error.to_string()));
+            return Err(ExecuteWorkflowTransitionError::StorageError(
+                error.to_string(),
+            ));
         }
     };
-    if !effective_assignee {
-        deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
-    }
+    validation_result!(super::transition_checks::validate_assignee(
+        effective_assignee
+    ));
 
     // Assistance is a side-band Visit state, but an open case fail-closes all
     // normal transitions. This check runs under the same Instance lock and
@@ -280,73 +282,13 @@ pub(crate) async fn execute_workflow_transition_atomically(
         read_transition(&mut tx, transition_uuid, instance.definition_version_id).await
     );
 
-    // Validate transition source matches current node
-    if transition.source_node_id != current_visit.node_id {
-        deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-            "transition source node does not match current visit node".to_string(),
-        ));
-    }
-
-    // Validate transition effect, dispatching on the semantic model:
-    //  - Legacy (1): primary ADVANCE + orderIndex RETURN rules (unchanged)
-    //  - Minimal (2): any legal outgoing ADVANCE (no primary), RETURN by graph
-    //    ancestor (no orderIndex), TERMINATE forbidden (fail closed)
+    validation_result!(super::transition_checks::validate_source_and_effect(
+        &transition,
+        &current_visit,
+        &source_node,
+        is_minimal,
+    ));
     let effect = transition.transition_effect.clone();
-    match effect.as_str() {
-        "ADVANCE" => {
-            if !is_minimal {
-                // Verify this is the primary ADVANCE transition
-                let primary_id = source_node.primary_advance_transition_id.ok_or_else(|| {
-                    ExecuteWorkflowTransitionError::InternalConsistency(
-                        "source node has no primary advance transition".to_string(),
-                    )
-                })?;
-                if transition.transition_id != primary_id {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "ADVANCE must use the primary advance transition".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        "RETURN" => {
-            if !is_minimal {
-                // Verify it's NOT the primary ADVANCE transition
-                if let Some(primary_id) = source_node.primary_advance_transition_id {
-                    if transition.transition_id == primary_id {
-                        deterministic_failure!(
-                            ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                                "RETURN transition must not be the primary advance".to_string(),
-                            )
-                        );
-                    }
-                }
-            }
-        }
-        "TERMINATE" => {
-            if is_minimal {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "TERMINATE is forbidden in Minimal (V2) semantics".to_string(),
-                ));
-            }
-            // Verify it's NOT the primary ADVANCE transition
-            if let Some(primary_id) = source_node.primary_advance_transition_id {
-                if transition.transition_id == primary_id {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "TERMINATE transition must not be the primary advance".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        _ => {
-            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                format!("unknown transition effect: {}", effect)
-            ));
-        }
-    }
 
     // ---------------------------------------------------------------
     // Step 11: Read target node and validate node type vs effect
@@ -360,45 +302,12 @@ pub(crate) async fn execute_workflow_transition_atomically(
         .await
     );
 
-    match effect.as_str() {
-        "ADVANCE" => {
-            // ADVANCE allows any target: TASK continues, TERMINAL completes
-            // (normal completion contract, shared by Legacy and Minimal).
-        }
-        "RETURN" => {
-            // Target must be non-TERMINAL
-            if target_node.node_type_enum() == NodeType::TERMINAL {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "RETURN target must not be a TERMINAL node".to_string(),
-                ));
-            }
-            if !is_minimal {
-                // Legacy: orderIndex ordering rule. Minimal (V2) relies on the
-                // validator-guaranteed strict ADVANCE ancestor relation instead.
-                if target_node.order_index >= source_node.order_index {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "RETURN target must have lower order_index than source".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        "TERMINATE" => {
-            // Minimal is rejected earlier (v2 fail-closed); Legacy requires a
-            // TERMINAL target.
-            if target_node.node_type_enum() != NodeType::TERMINAL {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "TERMINATE target must be a TERMINAL node".to_string(),
-                ));
-            }
-        }
-        _ => {
-            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                format!("unknown transition effect: {}", effect)
-            ));
-        }
-    }
+    validation_result!(super::transition_checks::validate_target(
+        &effect,
+        &target_node,
+        &source_node,
+        is_minimal,
+    ));
 
     // ---------------------------------------------------------------
     // Step 11c: WORKFLOW_EXECUTION_CONTROL_V1 RETURN policy (CTR-SWEC-005).
@@ -408,64 +317,28 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // OWNER_PENDING assistance was opened when the limit-reaching RETURN
     // committed (below, after the transition event).
     // ---------------------------------------------------------------
-    let managed_scope:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_managed_instances WHERE workflow_instance_id=$1)").bind(instance_uuid).fetch_one(&mut *tx).await.map_err(|e|ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-    let max_returns_per_edge = if managed_scope {
-        3
-    } else {
-        max_returns_per_edge
-    };
-    let prior_return_count: i64 = if effect == "RETURN" {
-        let row: (i64,) = sqlx::query_as(
-            // TransitionCommittedEventData serializes snake_case (no camelCase
-            // rename on that struct) — match the canonical key.
-            "SELECT COUNT(*) FROM workflow_events
-              WHERE workflow_instance_id = $1
-                AND transition_effect = 'RETURN'
-                AND event_data->>'transition_definition_id' = $2",
+    let (prior_return_count, max_returns_per_edge) = validation_result!(
+        super::transition_checks::return_budget(
+            &mut tx,
+            instance_uuid,
+            transition.transition_id,
+            &effect,
+            max_returns_per_edge,
         )
-        .bind(instance_uuid)
-        .bind(transition.transition_id.to_string())
-        .fetch_one(&mut *tx)
         .await
-        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-        row.0
-    } else {
-        0
-    };
-    if effect == "RETURN" && prior_return_count >= max_returns_per_edge as i64 {
-        deterministic_failure!(ExecuteWorkflowTransitionError::ReturnPolicyExhausted {
-            limit: max_returns_per_edge as i32,
-        });
-    }
+    );
 
     // ---------------------------------------------------------------
     // Step 11b: VISIT_ACTIVATION_V1 fail-closed node-kind checks
     // ---------------------------------------------------------------
-    if is_visit_activation {
-        // New-model graphs contain exactly TASK | TERMINAL; anything else on
-        // a v1 instance is invariant drift and must not transition.
-        if source_node.node_type_enum() != NodeType::TASK {
-            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 source node is not a TASK".to_string(),
-            ));
-        }
-        let target_is_task_or_terminal = matches!(
-            target_node.node_type_enum(),
-            NodeType::TASK | NodeType::TERMINAL
-        );
-        if !target_is_task_or_terminal {
-            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 target node is neither TASK nor TERMINAL".to_string(),
-            ));
-        }
-        if target_node.assignee_ref_type_enum()
-            == Some(crate::domain::enums::AssigneeRefType::InstanceInputPrincipal)
-        {
-            deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                "VISIT_ACTIVATION_V1 target uses INSTANCE_INPUT_PRINCIPAL, which is not                  in the new-model owner reference set"
-                    .to_string(),
-            ));
-        }
+    // Preserve this guard's original explicit failure-receipt path, including
+    // its InternalConsistency branch (which is not in is_deterministic_error).
+    if let Err(error) = super::transition_checks::validate_activation_node_types(
+        &source_node,
+        &target_node,
+        is_visit_activation,
+    ) {
+        deterministic_failure!(error);
     }
 
     let changed_context = match super::owner_obligation::transition_context::validate(

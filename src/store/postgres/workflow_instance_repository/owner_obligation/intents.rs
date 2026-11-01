@@ -164,6 +164,15 @@ pub(crate) async fn require_effect(
     case: Uuid,
     command: Uuid,
 ) -> Result<(), AssistanceError> {
+    require_effect_for_command(tx, case, Some(command)).await
+}
+/// Read-only callers supply no command provenance; only the real writer may
+/// provide its actual STARTED effect command identity.
+pub(crate) async fn require_effect_for_command(
+    tx: &mut Transaction<'_, Postgres>,
+    case: Uuid,
+    command: Option<Uuid>,
+) -> Result<(), AssistanceError> {
     let (managed,claimed):(bool,bool)=sqlx::query_as("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE'),EXISTS(SELECT 1 FROM workflow_operation_effects e JOIN workflow_owner_managed_instances m ON m.workflow_instance_id=e.managed_instance_id AND m.kind='REVIEW' WHERE e.case_id=$1 AND e.command_id=$2 AND e.state='STARTED')").bind(case).bind(command).fetch_one(&mut **tx).await.map_err(storage)?;
     if managed && !claimed {
         return Err(AssistanceError::GovernedOperationRequired);

@@ -11,6 +11,9 @@
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+mod identity_state;
+pub(crate) use identity_state::evaluate_identity_state;
+
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::commands::ArchiveWorkflowInstanceCommand;
 use crate::domain::workflow_instance::errors::ArchiveWorkflowInstanceError;
@@ -215,34 +218,10 @@ pub(crate) async fn archive_workflow_instance_atomically(
         .await
         .map_err(storage)?;
     // Step 3: Load and lock instance FOR UPDATE
-    let instance_row: Option<(
-        Uuid,
-        Uuid,
-        i32,
-        bool,
-        Option<String>,
-        bool,
-        Option<chrono::DateTime<chrono::Utc>>,
-    )> = sqlx::query_as(
-        "SELECT wi.workflow_instance_id, wi.domain_id,
-                    wi.workflow_state_version,
-                    wi.cancelled,
-                    nd.node_type::text,
-                    COALESCE(wi.archived_at IS NOT NULL, FALSE),
-                    wi.archived_at
-             FROM workflow_instances wi
-             LEFT JOIN workflow_node_visits nv ON nv.node_visit_id = wi.current_node_visit_id
-             LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
-             WHERE wi.workflow_instance_id = $1
-             FOR UPDATE OF wi",
-    )
-    .bind(instance_uuid)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(storage)?;
+    let instance_row = identity_state::load_instance(&mut tx, instance_uuid, true).await?;
 
     let (_, domain_id, current_state_version, is_cancelled, node_type, is_archived, _archived_at) =
-        instance_row.ok_or(ArchiveWorkflowInstanceError::InstanceNotFound)?;
+        instance_row;
 
     // Step 4: Validate workflow_state_version.
     //
@@ -264,34 +243,14 @@ pub(crate) async fn archive_workflow_instance_atomically(
     // (SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1 CTR-CP-001 W-widening).
     // Lifecycle legality below is UNCHANGED: coordinator authority never
     // bypasses it.
-    let is_owner: bool = sqlx::query_scalar(
-        "SELECT EXISTS(
-           SELECT 1 FROM domain_role_bindings
-           WHERE domain_id = $1 AND principal_id = $2
-             AND role_key = 'DOMAIN_OWNER' AND enabled = TRUE)
-         OR EXISTS(
-           SELECT 1 FROM global_role_bindings g
-           JOIN principals p ON p.principal_id = g.principal_id
-           WHERE g.principal_id = $2
-             AND g.role_key = 'GLOBAL_WORKFLOW_COORDINATOR' AND g.enabled = TRUE
-             AND p.enabled = TRUE)",
-    )
-    .bind(domain_id)
-    .bind(principal_uuid)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-
-    if !is_owner {
-        return Err(ArchiveWorkflowInstanceError::NotDomainOwner);
-    }
+    identity_state::authorize(&mut tx, domain_id, principal_uuid).await?;
 
     // CTR-WPE-002: only first execution reaches this fresh actor gate.
-    if crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
-        .await
-        .map_err(storage)?
-        != Some(true)
-    {
+    if !super::cancel_transaction::actor_enabled(
+        crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, principal_uuid)
+            .await
+            .map_err(storage)?,
+    ) {
         let error = ArchiveWorkflowInstanceError::PrincipalDisabled;
         let body = serde_json::json!({"error": "principal_disabled"});
         crate::store::postgres::write_path_enabled::audit_denial(
@@ -313,45 +272,11 @@ pub(crate) async fn archive_workflow_instance_atomically(
     }
 
     // Step 6: Check instance is in a terminal state (cancelled OR node_type == TERMINAL)
-    let is_terminal = is_cancelled || node_type.as_deref() == Some("TERMINAL");
-    if !is_terminal {
-        return Err(ArchiveWorkflowInstanceError::InstanceNotTerminal);
-    }
-
-    // Step 6a: Archive is a one-shot lifecycle change, symmetric with cancel's
-    // InstanceArchived guard. Under the FOR UPDATE row lock, an already
-    // archived instance is rejected: a new idempotency key must not overwrite
-    // archived_at/archive_reason, append a second archive event, or grow
-    // workflow_state_version. The error path rolls back the whole transaction,
-    // so no success receipt is created.
-    if is_archived {
-        return Err(ArchiveWorkflowInstanceError::AlreadyArchived);
-    }
+    identity_state::lifecycle(is_cancelled, node_type.as_deref(), is_archived)?;
 
     // Step 6b: VISIT_ACTIVATION_V1 fail-closed — an instance whose current
     // work is still active must not be archived (CTR-VAI-006).
-    let (semantic_model_version, current_visit_id): (i16, Option<Uuid>) = sqlx::query_as(
-        "SELECT wdv.semantic_model_version, wi.current_node_visit_id \
-         FROM workflow_instances wi \
-         JOIN workflow_definition_versions wdv \
-           ON wdv.definition_version_id = wi.definition_version_id \
-         WHERE wi.workflow_instance_id = $1",
-    )
-    .bind(instance_uuid)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-    if semantic_model_version == 3 {
-        if let Some(visit_id) = current_visit_id {
-            let has_active =
-                super::activation_facts::visit_has_active_activation_tx(&mut tx, visit_id)
-                    .await
-                    .map_err(storage)?;
-            if has_active {
-                return Err(ArchiveWorkflowInstanceError::ActiveActivationExists);
-            }
-        }
-    }
+    identity_state::activation_state(&mut tx, instance_uuid).await?;
 
     super::assistance_transaction::void_open_cases(
         &mut tx,
