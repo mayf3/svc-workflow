@@ -29,13 +29,31 @@ Domain Owners receive the full Case detail.
 
 **Status:** Current-state freeze
 **Date:** 2026-08-12
-**Contract Bundle Version:** 1.5.0
+**Contract Bundle Version:** 1.9.0
 **Service Version:** 0.3.1
 **Database Schema Version:** 0021
 **Runtime apiContractVersion:** internal-v0
 **Scope:** Runtime workflow endpoints only (control-plane `/internal/v1/admin/**` excluded)
 
 ---
+
+## Instance detail authorized actions (1.9.0)
+
+Accepted authority: `docs/specs/WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1.md`,
+semantic head `69ce065c00082c01c3dc03defc72e46a7d0d18a1` (Owner accepted in PR114,
+merged by `108a47a5eb3c3fb0aee7ee548e297fd65b134013`). CTR-AA-001 through 010
+govern the endpoint-only extension. The same authorized repeatable-read snapshot
+adds the required `authorized_actions_scope`, `authorized_actions_status`,
+`authorized_actions`, and `current_task_type` only to full instance detail.
+The closed schemas below enumerate their exact shape and operation variants.
+The set uses each existing writer's independent identity/state predicates;
+`request_validation: REQUIRED_AT_EXECUTION` preserves payload, CAS, evidence,
+idempotency, and transaction checks at execution. A read grants no permission.
+The old `executable_for_actor` and `blocked_reason` remain diagnostic values
+with their prior meaning. Restricted detail, shared Full, worklists, and CTI
+body bytes and digests retain their existing contracts. See compatibility.md
+for migration of old closed full-detail validators. This bundle authorizes no
+production apply or deployment.
 
 ## Active Agent Discovery (AAL-V2)
 
