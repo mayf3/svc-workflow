@@ -120,7 +120,7 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
     );
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -152,7 +152,7 @@ async fn creator_a_creates_for_assignee_b_who_is_not_a_domain_member() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -208,7 +208,7 @@ async fn assignee_b_worklist_visible_without_domain_membership() {
     );
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -225,7 +225,7 @@ async fn assignee_b_worklist_visible_without_domain_membership() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -281,7 +281,7 @@ async fn assignee_b_detail_visible_without_domain_membership() {
     );
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -298,7 +298,7 @@ async fn assignee_b_detail_visible_without_domain_membership() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -363,7 +363,7 @@ async fn assert_create_fails_closed(
     let cmd = make_command_with_payload(creator, domain_id, ver_id, payload);
     let err = create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -555,7 +555,7 @@ async fn failed_resolution_leaves_no_half_built_instance() {
     );
     let err = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -615,7 +615,7 @@ async fn arbitrary_input_key_resolves_correctly() {
     );
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -632,7 +632,7 @@ async fn arbitrary_input_key_resolves_correctly() {
     };
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition,
     )
     .await
@@ -725,7 +725,7 @@ async fn all_future_input_keys_validated_at_create() {
     );
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -745,7 +745,7 @@ async fn regression_workflow_creator_still_resolves() {
     let cmd = make_command(principal_id, domain_id, ver_id);
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -771,7 +771,7 @@ async fn regression_fixed_principal_still_resolves() {
     let cmd = make_command(principal_id, domain_id, ver_id);
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await
@@ -795,7 +795,7 @@ async fn regression_domain_owner_still_resolves() {
     let cmd = make_command(owner_id, domain_id, ver_id);
     let result = create_workflow_instance(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         cmd,
     )
     .await

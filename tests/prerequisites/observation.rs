@@ -65,7 +65,7 @@ async fn finish_source(p: &PgPool, f: &Fixture, source: Uuid, t: Uuid) {
     c.submission_payload = Some(json!({"z":2,"a":"实际 terminal"}));
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         c,
     )
     .await
@@ -437,7 +437,7 @@ async fn known_rollback_at_each_fact_receipt_and_deferred_commit_boundary_leaves
         let before:Value=sqlx::query_scalar("SELECT jsonb_build_array((SELECT count(*) FROM workflow_instances),(SELECT count(*) FROM workflow_context_revisions),(SELECT count(*) FROM workflow_node_visits),(SELECT count(*) FROM workflow_events),(SELECT count(*) FROM workflow_outbox),(SELECT count(*) FROM workflow_command_receipts))").fetch_one(&p).await.unwrap();
         let cmd = create_cmd(&f, dv, reference(source, sv, st));
         let key = cmd.idempotency_key.clone();
-        let outcome = create_workflow_instance(&p, AdmissionGate::disabled(), cmd).await;
+        let outcome = create_workflow_instance(&p, crate::common::admitting_gate(), cmd).await;
         assert!(
             outcome.is_err(),
             "{table} must not claim successful observation"
@@ -574,7 +574,7 @@ async fn concurrent_source_commit_and_create_observation_has_one_real_serializat
         let cmd = create_cmd(&f, dv, reference(source, sv, st));
         let key = cmd.idempotency_key.clone();
         let (created, ()) = tokio::join!(
-            create_workflow_instance(&p, AdmissionGate::disabled(), cmd),
+            create_workflow_instance(&p, crate::common::admitting_gate(), cmd),
             finish_source(&p, &f, source, st)
         );
         let created = created.unwrap();

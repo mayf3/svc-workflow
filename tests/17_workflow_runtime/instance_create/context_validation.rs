@@ -27,7 +27,7 @@ async fn test_valid_context_accepted() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.context_payload = serde_json::json!({"any": "value"});
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
+        crate::common::admitting_gate(), cmd)
         .await
         .expect("should succeed");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
@@ -42,7 +42,7 @@ async fn test_context_payload_too_large_rejected() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.context_payload = serde_json::json!({"data": big_str});
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         CreateWorkflowInstanceError::SizeLimitExceeded(_)
@@ -58,7 +58,7 @@ async fn test_metadata_too_large_rejected() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.metadata = serde_json::json!({"data": big_str});
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         CreateWorkflowInstanceError::SizeLimitExceeded(_)
@@ -75,7 +75,7 @@ async fn test_size_failure_completes_receipt_without_runtime_artifacts() {
     cmd.metadata = serde_json::json!({"data": big_str});
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(err.is_err());
     let receipt: (String, i32) = sqlx::query_as(
         "SELECT receipt_status::text, response_status FROM workflow_command_receipts \
@@ -118,7 +118,7 @@ async fn assert_schema_rejection(
 ) -> SchemaRejectionReceipt {
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+crate::common::admitting_gate(), cmd).await;
 
     assert!(
         matches!(
@@ -214,7 +214,7 @@ async fn test_context_schema_valid_accepted() {
     cmd.context_payload = serde_json::json!({"title": "test", "priority": 1});
 
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
+        crate::common::admitting_gate(), cmd)
         .await
         .expect("valid schema context should succeed");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
@@ -285,7 +285,7 @@ async fn test_context_schema_local_ref_accepted() {
     cmd.context_payload = serde_json::json!({"count": 5});
 
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd)
+        crate::common::admitting_gate(), cmd)
         .await
         .expect("local $ref context should succeed");
     verify_creation(&pool, &result, principal_id, domain_id, ver_id).await;
@@ -309,7 +309,7 @@ async fn test_context_schema_failure_replays_completed_error_receipt() {
     // Second call with same idempotency key — must return the same persisted error
     // without re-running creation logic
     let err2 = create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await;
+crate::common::admitting_gate(), cmd1).await;
 
     assert!(
         matches!(

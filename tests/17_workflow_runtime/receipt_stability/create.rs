@@ -38,7 +38,7 @@ async fn missing_principal_is_an_identity_failure_without_a_receipt() {
 
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
+        crate::common::admitting_gate(), command).await,
         Err(CreateWorkflowInstanceError::PrincipalNotFound)
     ));
     let count: i64 = sqlx::query_scalar(
@@ -61,10 +61,10 @@ async fn metadata_size_failure_replays_the_exact_persisted_detail() {
     let key = command.idempotency_key.clone();
 
     let first_detail = size_detail(create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
+    crate::common::admitting_gate(), command.clone()).await);
     let first_receipt = receipt(&pool, principal_id, &key).await;
     let replay_detail = size_detail(create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
+    crate::common::admitting_gate(), command).await);
     let replay_receipt = receipt(&pool, principal_id, &key).await;
 
     assert_eq!(first_detail, "metadata exceeds 64 KiB");
@@ -89,10 +89,10 @@ async fn context_schema_failure_replays_the_exact_validation_detail() {
     let key = command.idempotency_key.clone();
 
     let first_detail = validation_detail(create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
+    crate::common::admitting_gate(), command.clone()).await);
     let first_receipt = receipt(&pool, principal_id, &key).await;
     let replay_detail = validation_detail(create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
+crate::common::admitting_gate(), command).await);
 
     assert_eq!(replay_detail, first_detail);
     assert_eq!(first_receipt.2["detail"], first_detail);
@@ -114,7 +114,7 @@ async fn assignee_failure_survives_target_reenable_with_exact_detail() {
     let key = command.idempotency_key.clone();
 
     let first_detail = assignee_detail(create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await);
+    crate::common::admitting_gate(), command.clone()).await);
     let first_receipt = receipt(&pool, principal_id, &key).await;
     sqlx::query("UPDATE principals SET enabled = TRUE WHERE principal_id = $1")
         .bind(target_id)
@@ -122,7 +122,7 @@ async fn assignee_failure_survives_target_reenable_with_exact_detail() {
         .await
         .unwrap();
     let replay_detail = assignee_detail(create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await);
+crate::common::admitting_gate(), command).await);
 
     assert_eq!(replay_detail, first_detail);
     assert_eq!(first_receipt.1, 422);
@@ -143,7 +143,7 @@ async fn disabled_principal_failure_survives_reenable() {
     let key = command.idempotency_key.clone();
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await,
+        crate::common::admitting_gate(), command.clone()).await,
         Err(CreateWorkflowInstanceError::PrincipalDisabled)
     ));
     sqlx::query("UPDATE principals SET enabled = TRUE WHERE principal_id = $1")
@@ -153,7 +153,7 @@ async fn disabled_principal_failure_survives_reenable() {
         .unwrap();
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
+        crate::common::admitting_gate(), command).await,
         Err(CreateWorkflowInstanceError::PrincipalDisabled)
     ));
     let stored = receipt(&pool, principal_id, &key).await;
@@ -175,7 +175,7 @@ async fn disabled_domain_failure_survives_reenable() {
     let key = command.idempotency_key.clone();
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await,
+        crate::common::admitting_gate(), command.clone()).await,
         Err(CreateWorkflowInstanceError::DomainDisabled)
     ));
     sqlx::query("UPDATE domains SET enabled = TRUE WHERE domain_id = $1")
@@ -185,7 +185,7 @@ async fn disabled_domain_failure_survives_reenable() {
         .unwrap();
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
+        crate::common::admitting_gate(), command).await,
         Err(CreateWorkflowInstanceError::DomainDisabled)
     ));
     let stored = receipt(&pool, principal_id, &key).await;
@@ -202,13 +202,13 @@ async fn membership_failure_survives_a_later_binding() {
     let key = command.idempotency_key.clone();
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone()).await,
+        crate::common::admitting_gate(), command.clone()).await,
         Err(CreateWorkflowInstanceError::DomainMembershipRequired)
     ));
     seed_domain_owner(&pool, domain_id, principal_id).await;
     assert!(matches!(
         create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await,
+        crate::common::admitting_gate(), command).await,
         Err(CreateWorkflowInstanceError::DomainMembershipRequired)
     ));
     assert_eq!(receipt(&pool, principal_id, &key).await.1, 403);

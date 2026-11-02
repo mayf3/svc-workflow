@@ -169,7 +169,7 @@ async fn context_history_is_full_only_ascending_and_restricted_attempt_is_audite
     for (expected, title) in [(1, "second"), (2, "third")] {
         revise_workflow_context(
             &pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             ReviseWorkflowContextCommand {
                 principal_id: PrincipalId::from_uuid(seed.creator),
                 idempotency_key: Uuid::new_v4().to_string(),
@@ -222,7 +222,7 @@ async fn context_history_is_full_only_ascending_and_restricted_attempt_is_audite
 
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.creator,
             created.workflow_instance_id,
@@ -235,7 +235,7 @@ async fn context_history_is_full_only_ascending_and_restricted_attempt_is_audite
     .unwrap();
     execute_workflow_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             seed.assignee,
             created.workflow_instance_id,

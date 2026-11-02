@@ -12,7 +12,7 @@ async fn lost_reply_case_readback_recovers_exact_child_prerequisite_and_receipt(
     drop(
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             command.clone(),
         )
         .await
@@ -35,7 +35,7 @@ async fn lost_reply_case_readback_recovers_exact_child_prerequisite_and_receipt(
     let replay =
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             command.clone(),
         )
         .await
@@ -80,7 +80,7 @@ async fn lost_reply_case_readback_recovers_exact_child_prerequisite_and_receipt(
     finish.submission_payload = Some(json!({"actual":"supplier terminal artifact"}));
     svc_workflow::application::workflow_instance::execute_transition::execute_workflow_transition(
         &p,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         finish,
     )
     .await
@@ -96,7 +96,7 @@ async fn lost_reply_case_readback_recovers_exact_child_prerequisite_and_receipt(
     assert_eq!(
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             command
         )
         .await

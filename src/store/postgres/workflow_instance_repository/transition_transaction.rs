@@ -573,15 +573,42 @@ pub(crate) async fn execute_workflow_transition_atomically(
             &instance,
             domain_uuid,
             current_context_payload.as_ref(),
+            effect == "RETURN",
         )
         .await
     );
+    // A RETURN source is historical evidence, not the new target. Validate
+    // its exact prior responsibility and canonical successor before applying
+    // the shared enabled-target checks to the responsibility we will persist.
+    let target_assignee_id = if effect == "RETURN" {
+        if let Some(original) = target_assignee_id {
+            let validated = admission
+                .admit_historical_target_on_tx(
+                    &mut tx,
+                    instance_uuid,
+                    target_node.node_id,
+                    original,
+                )
+                .await
+                .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+            Some(
+                validated
+                    .responsibility(original)
+                    .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?,
+            )
+        } else {
+            None
+        }
+    } else {
+        target_assignee_id
+    };
     if semantic_model_version == 1 {
         if let Some(assignee_id) = target_assignee_id {
             validation_result!(
                 transition_validation::verify_principal_enabled_for_transition(
                     &mut tx,
-                    assignee_id
+                    assignee_id,
+                    false,
                 )
                 .await
             );
@@ -644,7 +671,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
             }
         }
     }
-    if is_visit_activation {
+    if is_visit_activation && effect != "RETURN" {
         if let Some(owner_id) = target_assignee_id {
             let owner_type_check =
                 activation_facts::validate_owner_is_human_or_agent(&mut tx, owner_id)
@@ -671,10 +698,35 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
     // never borrow a second pool connection while this transaction holds one
     // (self-starves a max_connections=1 deployment until acquire timeout).
-    admission
-        .admit_on_tx(&mut tx, target_assignee_id)
-        .await
-        .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+    let target_assignee_id = if effect != "RETURN" {
+        if let Some(original) = target_assignee_id {
+            let validated = admission
+                .admit_on_tx(&mut tx, [original])
+                .await
+                .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+            Some(
+                validated
+                    .responsibility(original)
+                    .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?,
+            )
+        } else {
+            None
+        }
+    } else {
+        target_assignee_id
+    };
+    if is_visit_activation && effect == "RETURN" {
+        if let Some(owner) = target_assignee_id {
+            let checked = activation_facts::validate_owner_is_human_or_agent(&mut tx, owner)
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if let Err(reason) = checked {
+                return Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    reason,
+                ));
+            }
+        }
+    }
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number

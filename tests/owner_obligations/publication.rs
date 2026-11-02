@@ -18,7 +18,7 @@ async fn publication_malformed_policy_is_rejected() {
         "req",
         v,
         None,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
     )
     .await;
     assert!(matches!(result,Err(svc_workflow::application::definition_governance::DefinitionGovernanceError::GraphValidationFailed(_))),"malformed closed policy must fail publication, got {result:?}");

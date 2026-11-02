@@ -168,17 +168,43 @@ async fn transition_identity_state(
             TransitionError::SubmissionValidationFailed(e.code)
         }
     })?;
+    let historical_return = transition.transition_effect == "RETURN";
     let target_assignee = v::resolve_assignee(
         tx,
         &target,
         &instance,
         base.domain_id,
         base.context_payload.as_ref(),
+        historical_return,
     )
     .await?;
+    // Mirror the executor's exact historical responsibility bridge before
+    // checking the adopted target. Directory admission remains at execution.
+    let target_assignee = if historical_return {
+        if let Some(original) = target_assignee {
+            let target = crate::store::postgres::admission_gate::resolve_historical_target_on_tx(
+                tx,
+                base.workflow_instance_id,
+                target.node_id,
+                original,
+            )
+            .await
+            .map_err(|error| match error {
+                crate::auth::admission::AdmissionError::Rejected { .. } => {
+                    TransitionError::AssigneeResolutionFailed(error.to_string())
+                }
+                _ => TransitionError::StorageError(error.to_string()),
+            })?;
+            Some(target.canonical)
+        } else {
+            None
+        }
+    } else {
+        target_assignee
+    };
     if model == 1 {
         if let Some(id) = target_assignee {
-            v::verify_principal_enabled_for_transition(tx, id).await?;
+            v::verify_principal_enabled_for_transition(tx, id, false).await?;
         }
     }
     if model == 3 {

@@ -41,9 +41,9 @@ async fn test_transition_concurrent_same_key_hash() {
     };
 
     let h1 = tokio::spawn(async move { execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await });
+    crate::common::admitting_gate(), cmd1).await });
     let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await });
+crate::common::admitting_gate(), cmd2).await });
 
     let (r1, r2) = tokio::join!(h1, h2);
     let r1 = r1.unwrap().unwrap();
@@ -76,9 +76,9 @@ async fn test_transition_concurrent_different_key_same_version() {
     let c2 = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
 
     let h1 = tokio::spawn(async move { execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), c1).await });
+    crate::common::admitting_gate(), c1).await });
     let h2 = tokio::spawn(async move { execute_workflow_transition(&pool2,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), c2).await });
+crate::common::admitting_gate(), c2).await });
 
     let (r1, r2) = tokio::join!(h1, h2);
     let r1 = r1.unwrap();
