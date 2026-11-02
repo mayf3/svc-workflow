@@ -91,6 +91,16 @@ pub(crate) fn valid_raw_graph() -> (Vec<RawNodeDefinition>, Vec<RawTransitionDef
             submission_schema: None,
             metadata: None,
         },
+        // READY_CONTRACT: keep a non-primary exit for missing evidence or input.
+        RawTransitionDefinition {
+            transition_key: "ready-contract-return".to_string(),
+            display_name: "Return to Draft".to_string(),
+            source_node_key: "dev_self_check".to_string(),
+            target_node_key: "draft".to_string(),
+            transition_effect: "RETURN".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
     ];
     (nodes, transitions)
 }

@@ -284,7 +284,11 @@ impl Harness {
              "submission_schema": {"type": "object",
                  "required": ["distributionInstances"],
                  "properties": {"distributionInstances":
-                     {"type": "array", "minItems": 1}}}}
+                     {"type": "array", "minItems": 1}}}},
+            // READY_CONTRACT: distribution has a non-primary failure exit.
+            {"transition_key": "return-draft", "display_name": "Return to draft",
+             "source_node_key": "distribution", "target_node_key": "draft",
+             "transition_effect": "RETURN"}
         ])
     }
 
