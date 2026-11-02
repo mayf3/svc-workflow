@@ -281,7 +281,7 @@ async fn canonical_successor_assistance_keeps_request_and_owner_roles_separate(p
         let detail = WorkflowQueryService::new(pool.clone())
             .get_workflow_instance_detail_with_authorized_actions(
                 GetWorkflowInstanceDetail {
-                    actor_principal_id: command.principal_id.as_uuid(),
+                    actor_principal_id: *command.principal_id.as_uuid(),
                     workflow_instance_id: f.instance,
                 },
                 ActionCredential {
@@ -300,12 +300,12 @@ async fn canonical_successor_assistance_keeps_request_and_owner_roles_separate(p
             AuthorizedAction::RequestAssistance { .. }
         )));
         let facts = "SELECT workflow_state_version, (SELECT count(*) FROM workflow_assistance_cases WHERE workflow_instance_id=$1), (SELECT count(*) FROM workflow_events WHERE workflow_instance_id=$1) FROM workflow_instances WHERE workflow_instance_id=$1";
-        let before: (i64, i64, i64) = sqlx::query_as(facts)
+        let before: (i32, i64, i64) = sqlx::query_as(facts)
             .bind(f.instance).fetch_one(pool).await.unwrap();
         let error = request_assistance(pool, command).await.unwrap_err();
         assert_eq!(error, AssistanceError::PrincipalNotAssignee);
         assert_eq!(error.status_code(), 403);
-        let after: (i64, i64, i64) = sqlx::query_as(facts)
+        let after: (i32, i64, i64) = sqlx::query_as(facts)
             .bind(f.instance).fetch_one(pool).await.unwrap();
         assert_eq!(before, after, "refusal must not advance state or create case/event");
     }
