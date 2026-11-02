@@ -1046,6 +1046,12 @@ fn transition_command(
 
 #[tokio::test]
 async fn historical_return_persists_validated_q_preserving_p_and_original_request() {
+    use svc_workflow::application::workflow_instance::{
+        authorized_actions::{ActionCredential, AuthorizedAction, AuthorizedInstanceDetail},
+        query_service::WorkflowQueryService,
+        query_types::GetWorkflowInstanceDetail,
+    };
+
     let pool = common::create_pool().await;
     let fixture = seed_with_fixed_draft(&pool, true).await;
     let stub = StubDirectory::spawn(StubMode::Admit);
@@ -1090,6 +1096,42 @@ async fn historical_return_persists_validated_q_preserving_p_and_original_reques
         .execute(&pool)
         .await
         .unwrap();
+    // The projection must adopt Q before checking target availability. P
+    // stays disabled throughout; disabling Q must remove this exact RETURN.
+    for target_enabled in [true, false, true] {
+        sqlx::query("UPDATE principals SET enabled=$2 WHERE principal_id=$1")
+            .bind(q)
+            .bind(target_enabled)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let detail = WorkflowQueryService::new(pool.clone())
+            .get_workflow_instance_detail_with_authorized_actions(
+                GetWorkflowInstanceDetail {
+                    actor_principal_id: fixture.agent,
+                    workflow_instance_id: created.workflow_instance_id,
+                },
+                ActionCredential {
+                    execute_scope: true,
+                    write_gate_open: true,
+                    max_returns_per_edge: 3,
+                },
+            )
+            .await
+            .unwrap();
+        let AuthorizedInstanceDetail::Full(detail) = detail else {
+            panic!("current work assignee retains full detail visibility");
+        };
+        let has_return = detail.authorized_actions.iter().any(|action| matches!(
+            action,
+            AuthorizedAction::Transition { transition_id, transition_effect, .. }
+                if *transition_id == fixture.work_return && transition_effect == "RETURN"
+        ));
+        assert_eq!(
+            has_return, target_enabled,
+            "RETURN projection must check adopted Q availability, not disabled stored P"
+        );
+    }
     let key = Uuid::new_v4().to_string();
     let command = transition_command(
         fixture.agent,

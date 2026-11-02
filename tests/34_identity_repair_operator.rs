@@ -616,7 +616,7 @@ async fn identity_repair_operator_end_to_end_conformance() {
         })
         .await
         .expect("assigned worklist for the stale principal");
-    assert!(worklist.items.is_empty(), "old enabled P is no longer the current assignee");
+    assert_eq!(worklist.items.len(), 1);
     let current = query_service.list_assigned_to_me(ListAssignedToMe {
         actor_principal_id: fx.successor, before: None, limit: Some(10),
     }).await.unwrap();

@@ -176,14 +176,9 @@ pub async fn list_creator_owned_drafts(
          JOIN workflow_node_definitions n ON n.node_id = v.node_id
           AND n.definition_version_id = wi.definition_version_id
          JOIN domains d ON d.domain_id = wi.domain_id AND d.enabled = TRUE
-         -- Identity repair lineage (migration 0025): drafts created by the
-         -- requesting principal's own legacy identity surface exactly once
-         -- for the canonical successor, mirroring the my_tasks contract.
-         WHERE (wi.created_by_principal_id = $1
-                OR wi.created_by_principal_id IN (
-                  SELECT wisl.source_principal_id
-                  FROM workflow_identity_successor_lines wisl
-                  WHERE wisl.successor_principal_id = $1))
+         -- Creator ownership remains exact; assignee lineage does not
+         -- transfer draft authorship. Apply this predicate before paging.
+         WHERE wi.created_by_principal_id = $1
            AND n.node_type = 'DRAFT'
            AND EXISTS (
              SELECT 1 FROM domain_role_bindings drb
