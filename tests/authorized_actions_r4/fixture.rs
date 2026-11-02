@@ -42,5 +42,5 @@ pub async fn setup_variant(pool:&PgPool,model:i16,work_owner:bool)->Fixture {
     Fixture{agent,owner,outsider,coordinator,domain,version,start:n("start"),work:n("work"),done:n("done"),advance:t("start_work"),finish:t("work_done"),ret:t("work_return"),terminate:if model==2 {t("work_done")}else{t("work_terminate")}}
 }
 pub async fn create(pool:&PgPool,f:Fixture)->Uuid {
-    create_workflow_instance(pool,AdmissionGate::disabled(),CreateWorkflowInstanceCommand{principal_id:PrincipalId::from_uuid(f.agent),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),execution_class:WorkflowExecutionClass::Business,domain_id:DomainId::from_uuid(f.domain),definition_version_id:DefinitionVersionId::from_uuid(f.version),external_reference:None,external_url:None,metadata:json!({}),context_payload:json!({})}).await.unwrap().workflow_instance_id
+    create_workflow_instance(pool,super::common::admitting_gate(),CreateWorkflowInstanceCommand{principal_id:PrincipalId::from_uuid(f.agent),idempotency_key:Uuid::new_v4().to_string(),command_schema_version:"v1".into(),execution_class:WorkflowExecutionClass::Business,domain_id:DomainId::from_uuid(f.domain),definition_version_id:DefinitionVersionId::from_uuid(f.version),external_reference:None,external_url:None,metadata:json!({}),context_payload:json!({})}).await.unwrap().workflow_instance_id
 }
