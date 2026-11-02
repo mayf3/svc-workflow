@@ -77,6 +77,83 @@ impl ValidatedTargets {
     }
 }
 
+/// Local responsibility resolution only; remote admission evidence is obtained
+/// by the command's `observe` call, never by action projection.
+pub(crate) struct LocalTarget {
+    pub(crate) canonical: Uuid,
+    expected_agent_id: Option<String>,
+    native_human: bool,
+}
+
+async fn resolve_local_target_on_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    original: Uuid,
+    historical: bool,
+) -> Result<LocalTarget, AdmissionError> {
+    let canonical = resolve_current_principal(&mut **tx, original)
+        .await
+        .map_err(|_| AdmissionError::Unavailable)?
+        .unwrap_or(original);
+    let expected_agent_id = if canonical != original {
+        if !historical
+            || resolve_current_principal(&mut **tx, canonical)
+                .await
+                .map_err(|_| AdmissionError::Unavailable)?
+                != Some(canonical)
+        {
+            return Err(AdmissionError::Rejected {
+                principal: original,
+                reason: RejectionReason::LegacyInput,
+            });
+        }
+        let recorded: Option<String> = sqlx::query_scalar("SELECT canonical_agent_id FROM workflow_identity_successor_lines WHERE source_principal_id=$1 AND successor_principal_id=$2")
+            .bind(original).bind(canonical).fetch_optional(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
+        Some(recorded.ok_or(AdmissionError::Unavailable)?)
+    } else {
+        None
+    };
+    let local: Option<(String, bool)> = sqlx::query_as(
+        "SELECT principal_type::text, enabled FROM principals WHERE principal_id=$1",
+    )
+    .bind(canonical)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|_| AdmissionError::Unavailable)?;
+    if expected_agent_id.is_some() && local.as_ref().map(|(kind, _)| kind.as_str()) != Some("AGENT")
+    {
+        return Err(AdmissionError::Rejected {
+            principal: canonical,
+            reason: RejectionReason::CanonicalBindingMismatch,
+        });
+    }
+    if matches!(local.as_ref(), Some((_, false))) {
+        return Err(AdmissionError::Rejected {
+            principal: canonical,
+            reason: RejectionReason::PrincipalNotActive("disabled".into()),
+        });
+    }
+    let native_human =
+        local.as_ref().map(|(kind, _)| kind.as_str()) == Some("HUMAN") && canonical == original;
+    Ok(LocalTarget {
+        canonical,
+        expected_agent_id,
+        native_human,
+    })
+}
+
+/// Shared read-only RETURN resolution in the caller's transaction snapshot.
+/// Only a mapped legacy target requires exact prior Instance/node responsibility.
+pub(crate) async fn resolve_historical_target_on_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    instance: Uuid,
+    node: Uuid,
+    original: Uuid,
+) -> Result<LocalTarget, AdmissionError> {
+    let historical: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_node_visits WHERE workflow_instance_id=$1 AND node_id=$2 AND assignee_principal_id=$3)")
+        .bind(instance).bind(node).bind(original).fetch_one(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
+    resolve_local_target_on_tx(tx, original, historical).await
+}
+
 /// Per-command admission gate.
 ///
 /// `client == None` cannot admit an Agent target. Non-directory commands keep
@@ -218,12 +295,17 @@ impl<'a> AdmissionGate<'a> {
         node: Uuid,
         original: Uuid,
     ) -> Result<ValidatedTargets, AdmissionError> {
-        let historical: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_node_visits WHERE workflow_instance_id=$1 AND node_id=$2 AND assignee_principal_id=$3)")
-            .bind(instance).bind(node).bind(original).fetch_one(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
-        // A native canonical RETURN target needs no identity bridge, even
-        // when this is its first entry; only a mapped legacy target needs
-        // an exact historical responsibility fact.
-        self.validate_on_tx(tx, [original], historical).await
+        let target = resolve_historical_target_on_tx(tx, instance, node, original).await?;
+        let humans = if target.native_human {
+            BTreeSet::from([target.canonical])
+        } else {
+            BTreeSet::new()
+        };
+        self.observe(
+            vec![(original, target.canonical, target.expected_agent_id)],
+            humans,
+        )
+        .await
     }
 
     async fn validate_on_tx(
@@ -235,55 +317,11 @@ impl<'a> AdmissionGate<'a> {
         let mut targets = Vec::new();
         let mut humans = BTreeSet::new();
         for original in principals.into_iter().collect::<BTreeSet<_>>() {
-            let canonical = resolve_current_principal(&mut **tx, original)
-                .await
-                .map_err(|_| AdmissionError::Unavailable)?
-                .unwrap_or(original);
-            let expected_agent_id = if canonical != original {
-                if !historical
-                    || resolve_current_principal(&mut **tx, canonical)
-                        .await
-                        .map_err(|_| AdmissionError::Unavailable)?
-                        != Some(canonical)
-                {
-                    return Err(AdmissionError::Rejected {
-                        principal: original,
-                        reason: RejectionReason::LegacyInput,
-                    });
-                }
-                let recorded: Option<String> = sqlx::query_scalar("SELECT canonical_agent_id FROM workflow_identity_successor_lines WHERE source_principal_id=$1 AND successor_principal_id=$2")
-                    .bind(original).bind(canonical).fetch_optional(&mut **tx).await.map_err(|_| AdmissionError::Unavailable)?;
-                Some(recorded.ok_or(AdmissionError::Unavailable)?)
-            } else {
-                None
-            };
-            let local: Option<(String, bool)> = sqlx::query_as(
-                "SELECT principal_type::text, enabled FROM principals WHERE principal_id=$1",
-            )
-            .bind(canonical)
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(|_| AdmissionError::Unavailable)?;
-            if expected_agent_id.is_some()
-                && local.as_ref().map(|(kind, _)| kind.as_str()) != Some("AGENT")
-            {
-                return Err(AdmissionError::Rejected {
-                    principal: canonical,
-                    reason: RejectionReason::CanonicalBindingMismatch,
-                });
+            let target = resolve_local_target_on_tx(tx, original, historical).await?;
+            if target.native_human {
+                humans.insert(target.canonical);
             }
-            if matches!(local.as_ref(), Some((_, false))) {
-                return Err(AdmissionError::Rejected {
-                    principal: canonical,
-                    reason: RejectionReason::PrincipalNotActive("disabled".into()),
-                });
-            }
-            if local.as_ref().map(|(kind, _)| kind.as_str()) == Some("HUMAN")
-                && canonical == original
-            {
-                humans.insert(canonical);
-            }
-            targets.push((original, canonical, expected_agent_id));
+            targets.push((original, target.canonical, target.expected_agent_id));
         }
         self.observe(targets, humans).await
     }
