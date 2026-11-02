@@ -194,7 +194,11 @@ impl Harness {
                 "required": ["confirm"], "properties": {"confirm": {"type": "boolean"}}}},
             {"transition_key": "finish", "display_name": "Finish",
              "source_node_key": "work", "target_node_key": "done",
-             "transition_effect": "ADVANCE"}
+             "transition_effect": "ADVANCE"},
+            // READY_CONTRACT: work has a non-primary failure exit.
+            {"transition_key": "return-draft", "display_name": "Return to draft",
+             "source_node_key": "work", "target_node_key": "draft",
+             "transition_effect": "RETURN"}
         ]);
         let (status, replaced) = self
             .request_json(

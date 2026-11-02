@@ -193,6 +193,16 @@ fn minimal_graph() -> (Vec<RawNodeDefinition>, Vec<RawTransitionDefinition>) {
             submission_schema: None,
             metadata: None,
         },
+        // READY_CONTRACT: the execution step has a non-primary failure exit.
+        RawTransitionDefinition {
+            transition_key: "return-draft".to_string(),
+            display_name: "Return to draft".to_string(),
+            source_node_key: normal_node_key,
+            target_node_key: draft_node_key,
+            transition_effect: "RETURN".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
     ];
     (nodes, transitions)
 }

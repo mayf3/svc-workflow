@@ -6,7 +6,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use serde_json::{json, Value};
 use svc_workflow::application::provisioning::ProvisioningConfig;
-use svc_workflow::auth::{admission::AdmissionConfig, AuthV1CanaryConfig, JwksConfig};
+use svc_workflow::auth::{AuthV1CanaryConfig, JwksConfig};
 use svc_workflow::http::{self as http_api, AppState, ExecutionControlConfig, HttpConfig};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ impl Harness {
     async fn new(pool: sqlx::PgPool) -> Self {
         let jwks = common::MockJwksServer::start().await;
         let config = HttpConfig {
-            admission: AdmissionConfig::disabled(),
+            admission: common::admitting_config(),
             bind_addr: "127.0.0.1:0".parse().unwrap(),
             request_body_max_bytes: 2_097_152,
             request_timeout_seconds: 30,
