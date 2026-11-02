@@ -79,7 +79,7 @@ async fn closed_admission_owner_cas_self_terminal_and_uniqueness(pool: PgPool) {
     let mut malformed = transition_command(&c, 1);
     malformed.submission_payload = Some(json!({}));
     assert!(
-        execute_workflow_transition(&pool, AdmissionGate::disabled(), malformed)
+        execute_workflow_transition(&pool, crate::common::admitting_gate(), malformed)
             .await
             .is_err()
     );
@@ -168,7 +168,7 @@ async fn same_visit_context_repair_preserves_request_and_bound_child_provenance(
     .unwrap();
     revise_workflow_context(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(f.agent),
             idempotency_key: "repair-source".into(),
@@ -187,7 +187,7 @@ async fn same_visit_context_repair_preserves_request_and_bound_child_provenance(
     let bound = b["child"]["contextRevisionAtBind"].clone();
     revise_context_and_transition(
         &pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseContextAndTransitionCommand {
             principal_id: PrincipalId::from_uuid(c.agent),
             idempotency_key: "child-terminal".into(),
@@ -270,7 +270,7 @@ async fn malformed_or_mismatched_envelope_never_commits_terminal(pool: PgPool) {
         let mut cmd = transition_command(&c, 1);
         cmd.submission_payload = Some(p);
         assert!(
-            execute_workflow_transition(&pool, AdmissionGate::disabled(), cmd)
+            execute_workflow_transition(&pool, crate::common::admitting_gate(), cmd)
                 .await
                 .is_err()
         );
@@ -295,7 +295,7 @@ async fn terminal_before_bind_and_one_layer_edges_are_refused(pool: PgPool) {
     cmd.submission_payload = Some(
         json!({"governanceAcceptance":{"bindingId":Uuid::new_v4(),"acceptanceContractDigest":"0".repeat(64),"sourceRequestPayloadDigest":"0".repeat(64),"verdict":"ACCEPTED"}}),
     );
-    execute_workflow_transition(&pool, AdmissionGate::disabled(), cmd)
+    execute_workflow_transition(&pool, crate::common::admitting_gate(), cmd)
         .await
         .unwrap();
     assert!(bind_governance_child(

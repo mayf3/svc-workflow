@@ -26,7 +26,7 @@ async fn exact_replay_survives_valid_post_import_lifecycle_changes() {
     let first = run(&fixture).await.unwrap();
     let revised = revise_workflow_context(
         &fixture.pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         ReviseWorkflowContextCommand {
             principal_id: PrincipalId::from_uuid(fixture.owner),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -49,7 +49,7 @@ async fn exact_replay_survives_valid_post_import_lifecycle_changes() {
     .unwrap();
     let transitioned = execute_workflow_transition(
         &fixture.pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_transition_command(
             fixture.owner,
             first.workflow_instance_id,
@@ -86,7 +86,7 @@ async fn same_fixed_key_with_different_request_conflicts() {
     let mut changed = fixture.command.clone();
     changed.metadata = serde_json::json!({"source": "changed"});
     let error = import_legacy_workflow_instance(&fixture.pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), changed)
+        crate::common::admitting_gate(), changed)
         .await
         .unwrap_err();
     assert_eq!(error, LegacyImportError::IdempotencyConflict);
@@ -108,9 +108,9 @@ async fn concurrent_identical_import_creates_one_fact_set() {
     let command_b = fixture.command.clone();
     let (left, right) = tokio::join!(
         import_legacy_workflow_instance(&pool_a,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command_a),
+        crate::common::admitting_gate(), command_a),
         import_legacy_workflow_instance(&pool_b,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command_b)
+    crate::common::admitting_gate(), command_b)
     );
     let left = left.unwrap();
     let right = right.unwrap();

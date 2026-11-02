@@ -407,37 +407,34 @@ pub(crate) async fn revise_workflow_context_atomically(
     )
     .await
     .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
-    let input_principal_ids =
-        match admission_gate_module::extract_required_input_principal_ids(
-            &input_keys,
-            &cmd.context_payload,
-        ) {
-            Ok(ids) => ids,
-            Err(detail) => {
-                let err = ReviseWorkflowContextError::ContextValidationFailed(detail);
-                let status_code =
-                    crate::domain::workflow_instance::errors::revise_error_code(&err);
-                let error_code =
-                    crate::domain::workflow_instance::errors::revise_error_label(&err);
-                let response_body = serde_json::json!({"error": error_code});
-                let response_digest = digest::compute_sha256(error_code.as_bytes());
-                complete_receipt(
-                    &mut tx,
-                    actual_command_id,
-                    status_code,
-                    &response_body,
-                    &response_digest,
-                )
+    let input_principal_ids = match admission_gate_module::extract_required_input_principal_ids(
+        &input_keys,
+        &cmd.context_payload,
+    ) {
+        Ok(ids) => ids,
+        Err(detail) => {
+            let err = ReviseWorkflowContextError::ContextValidationFailed(detail);
+            let status_code = crate::domain::workflow_instance::errors::revise_error_code(&err);
+            let error_code = crate::domain::workflow_instance::errors::revise_error_label(&err);
+            let response_body = serde_json::json!({"error": error_code});
+            let response_digest = digest::compute_sha256(error_code.as_bytes());
+            complete_receipt(
+                &mut tx,
+                actual_command_id,
+                status_code,
+                &response_body,
+                &response_digest,
+            )
+            .await
+            .map_err(map_create_err)?;
+            tx.commit()
                 .await
-                .map_err(map_create_err)?;
-                tx.commit()
-                    .await
-                    .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
-                return Err(err);
-            }
-        };
+                .map_err(|e| ReviseWorkflowContextError::StorageError(e.to_string()))?;
+            return Err(err);
+        }
+    };
     admission
-        .admit(input_principal_ids)
+        .admit_on_tx(&mut tx, input_principal_ids)
         .await
         .map_err(ReviseWorkflowContextError::AdmissionFailed)?;
 

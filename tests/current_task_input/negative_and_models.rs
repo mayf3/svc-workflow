@@ -7,7 +7,7 @@ async fn model3_task_entry_allows_null_submission() {
         seed_v1_definition(&h.pool, h.seed.domain, h.seed.assignee, false).await;
     h.instance = create_workflow_instance(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_command(h.seed.creator, h.seed.domain, version),
     )
     .await
@@ -221,7 +221,7 @@ async fn long_instructions_and_outgoing_schema_remain_exact_full_detail() {
         seed_v1_definition(&h.pool, h.seed.domain, h.seed.assignee, true).await;
     h.instance = create_workflow_instance(
         &h.pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_command(h.seed.creator, h.seed.domain, version),
     )
     .await

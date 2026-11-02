@@ -46,7 +46,7 @@ pub(crate) async fn seed_recovery_fixture(pool: &PgPool) -> RecoveryFixture {
     let (_, version, draft, normal, terminal, ..) =
         seed_transition_graph(pool, domain, "WORKFLOW_CREATOR", "WORKFLOW_CREATOR", None).await;
     let created = create_workflow_instance(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(creator, domain, version))
+        crate::common::admitting_gate(), make_command(creator, domain, version))
         .await
         .unwrap();
     RecoveryFixture {
@@ -136,7 +136,7 @@ pub(crate) async fn run_override(
 > {
     svc_workflow::application::workflow_instance::admin_recovery::admin_emergency_override(
         pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command,
+    crate::common::admitting_gate(), command,
     )
     .await
 }

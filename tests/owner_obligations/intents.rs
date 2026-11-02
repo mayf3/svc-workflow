@@ -60,12 +60,12 @@ async fn intents_auto_intake_is_one_exact_pair_under_concurrency_and_restart() {
         workflow_instance_repository::owner_obligation::reconcile::reconcile_pending,
     };
     let (a, b) = tokio::join!(
-        reconcile_pending(&p, pm, AdmissionGate::disabled()),
-        reconcile_pending(&p, pm, AdmissionGate::disabled())
+        reconcile_pending(&p, pm, crate::common::admitting_gate()),
+        reconcile_pending(&p, pm, crate::common::admitting_gate())
     );
     assert!(a.is_ok(), "{a:?}");
     assert!(b.is_ok(), "{b:?}");
-    assert!(reconcile_pending(&p, pm, AdmissionGate::disabled())
+    assert!(reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap()
         .is_empty());
@@ -96,7 +96,7 @@ async fn intents_config_actor_mismatch_stops_before_any_birth() {
     .await
     .unwrap();
     request(&p, owner, s.workflow_instance_id, s.current_node_visit_id).await;
-    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(&p,owner,svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled()).await.unwrap();
+    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(&p,owner,crate::common::admitting_gate()).await.unwrap();
     let row: (String, String, Option<Uuid>) = sqlx::query_as(
         "SELECT state,stop_code,managed_instance_id FROM workflow_owner_obligation_intents",
     )
@@ -134,11 +134,11 @@ async fn intents_invalid_initial_context_is_known_failure_no_auto_business_facts
         admission_gate::AdmissionGate,
         workflow_instance_repository::owner_obligation::reconcile::reconcile_pending,
     };
-    assert!(reconcile_pending(&p, pm, AdmissionGate::disabled())
+    assert!(reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap()
         .is_empty());
-    assert!(reconcile_pending(&p, pm, AdmissionGate::disabled())
+    assert!(reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap()
         .is_empty());
@@ -182,7 +182,7 @@ async fn intents_storage_fault_after_pair_rolls_back_all_birth_binding_and_recei
         admission_gate::AdmissionGate,
         workflow_instance_repository::owner_obligation::reconcile::reconcile_pending,
     };
-    assert!(reconcile_pending(&p, pm, AdmissionGate::disabled())
+    assert!(reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .is_err());
     let facts:(i64,i64,i64,i32)=sqlx::query_as("SELECT (SELECT count(*) FROM workflow_instances),(SELECT count(*) FROM workflow_governance_child_bindings),(SELECT count(*) FROM workflow_command_receipts WHERE command_type='AUTO_CREATE_AND_BIND_OWNER_INTAKE'),workflow_state_version FROM workflow_instances WHERE workflow_instance_id=$1").bind(s.workflow_instance_id).fetch_one(&p).await.unwrap();
@@ -199,7 +199,7 @@ async fn intents_storage_fault_after_pair_rolls_back_all_birth_binding_and_recei
         .await
         .unwrap();
     assert_eq!(
-        reconcile_pending(&p, pm, AdmissionGate::disabled())
+        reconcile_pending(&p, pm, crate::common::admitting_gate())
             .await
             .unwrap()
             .len(),

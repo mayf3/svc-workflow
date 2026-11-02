@@ -29,11 +29,11 @@ async fn combined_same_key_and_hash_replays_stored_result() {
     let (principal_id, advance_id, instance_id) = setup(&pool).await;
     let command = make_combined_command(principal_id, instance_id, 1, advance_id);
     let first = revise_context_and_transition(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone())
+        crate::common::admitting_gate(), command.clone())
         .await
         .unwrap();
     let replay = revise_context_and_transition(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await.unwrap();
+crate::common::admitting_gate(), command).await.unwrap();
 
     assert_eq!(first.workflow_state_version, replay.workflow_state_version);
     assert_eq!(
@@ -65,11 +65,11 @@ async fn combined_same_key_different_hash_writes_attempt_audit() {
     conflicting_command.context_payload = serde_json::json!({"title": "different"});
 
     revise_context_and_transition(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), first_command.clone())
+        crate::common::admitting_gate(), first_command.clone())
         .await
         .unwrap();
     let error = revise_context_and_transition(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), conflicting_command)
+        crate::common::admitting_gate(), conflicting_command)
         .await
         .unwrap_err();
     assert!(matches!(
@@ -123,7 +123,7 @@ async fn combined_deterministic_failure_is_stably_replayed() {
 
     for _ in 0..2 {
         let error = revise_context_and_transition(&pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command.clone())
+            crate::common::admitting_gate(), command.clone())
             .await
             .unwrap_err();
         assert!(matches!(
@@ -153,7 +153,7 @@ async fn revise_context_receipt_uses_its_own_command_type() {
     let (_, version_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let created =
         create_workflow_instance(&pool,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, version_id))
+            crate::common::admitting_gate(), make_command(principal_id, domain_id, version_id))
             .await
             .unwrap();
     let command = make_revise_command(
@@ -164,7 +164,7 @@ async fn revise_context_receipt_uses_its_own_command_type() {
     );
     let idempotency_key = command.idempotency_key.clone();
     revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await.unwrap();
+    crate::common::admitting_gate(), command).await.unwrap();
     let command_type: String = sqlx::query_scalar(
         "SELECT command_type FROM workflow_command_receipts \
          WHERE principal_id = $1 AND idempotency_key = $2",

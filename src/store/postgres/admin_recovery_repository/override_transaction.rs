@@ -378,7 +378,7 @@ pub async fn admin_emergency_override(
     // failure receipt, which would be a forbidden cached cross-command
     // result).
     admission
-        .admit(assignee)
+        .admit_on_tx(&mut tx, assignee)
         .await
         .map_err(RecoveryError::AdmissionFailed)?;
     let maximum_visit_number: Option<i32> = sqlx::query_scalar(
@@ -446,8 +446,7 @@ pub async fn admin_emergency_override(
         .map_err(|error| RecoveryError::StorageError(error.to_string()))?;
         if !closed {
             let error = RecoveryError::InvalidImmutableFacts(
-                "VISIT_ACTIVATION_V1 source visit has no active activation to close"
-                    .to_string(),
+                "VISIT_ACTIVATION_V1 source visit has no active activation to close".to_string(),
             );
             return commit_failure(tx, command_id, &command, request_hash, error).await;
         }

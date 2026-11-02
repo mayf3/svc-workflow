@@ -11,11 +11,11 @@ async fn test_same_key_same_request_returns_same_instance() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.idempotency_key = idempotency_key.clone();
     let r1 = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
+        crate::common::admitting_gate(), cmd.clone())
         .await
         .expect("first");
     let r2 = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("second");
+    crate::common::admitting_gate(), cmd).await.expect("second");
     assert_eq!(r1.workflow_instance_id, r2.workflow_instance_id);
     assert_eq!(
         r1.current_context_revision_id,
@@ -33,11 +33,11 @@ async fn test_replay_does_not_create_second_event() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.idempotency_key = idempotency_key;
     let r1 = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
+        crate::common::admitting_gate(), cmd.clone())
         .await
         .expect("first");
     let r2 = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("second");
+    crate::common::admitting_gate(), cmd).await.expect("second");
     let count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM workflow_events WHERE workflow_instance_id = $1")
             .bind(r1.workflow_instance_id)
@@ -58,12 +58,12 @@ async fn test_different_request_same_key_conflict() {
     cmd1.idempotency_key = idempotency_key.clone();
     cmd1.context_payload = serde_json::json!({"v": 1});
     let _r1 = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await.expect("first");
+    crate::common::admitting_gate(), cmd1).await.expect("first");
     let mut cmd2 = make_command(principal_id, domain_id, ver_id);
     cmd2.idempotency_key = idempotency_key.clone();
     cmd2.context_payload = serde_json::json!({"v": 2});
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await.unwrap_err();
+    crate::common::admitting_gate(), cmd2).await.unwrap_err();
     assert!(matches!(
         err,
         CreateWorkflowInstanceError::IdempotencyConflict { .. }
@@ -80,12 +80,12 @@ async fn test_conflict_writes_attempt_audit() {
     cmd1.idempotency_key = idempotency_key.clone();
     cmd1.context_payload = serde_json::json!({"v": 1});
     let _ = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await.expect("first");
+    crate::common::admitting_gate(), cmd1).await.expect("first");
     let mut cmd2 = make_command(principal_id, domain_id, ver_id);
     cmd2.idempotency_key = idempotency_key.clone();
     cmd2.context_payload = serde_json::json!({"v": 2});
     let _ = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await;
+    crate::common::admitting_gate(), cmd2).await;
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_command_attempt_audits WHERE idempotency_key = $1",
     )
@@ -106,12 +106,12 @@ async fn test_conflict_does_not_modify_original_receipt() {
     cmd1.idempotency_key = idempotency_key.clone();
     cmd1.context_payload = serde_json::json!({"v": 1});
     let _r1 = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await.expect("first");
+    crate::common::admitting_gate(), cmd1).await.expect("first");
     let mut cmd2 = make_command(principal_id, domain_id, ver_id);
     cmd2.idempotency_key = idempotency_key.clone();
     cmd2.context_payload = serde_json::json!({"v": 2});
     let _ = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await;
+    crate::common::admitting_gate(), cmd2).await;
     let (resp_status,): (i32,) = sqlx::query_as(
         "SELECT response_status FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
     ).bind(principal_id).bind(&idempotency_key).fetch_one(&pool).await.expect("receipt");
@@ -131,13 +131,13 @@ async fn test_different_principal_same_key_allowed() {
     let mut cmd1 = make_command(principal_a, domain_id, ver_id);
     cmd1.idempotency_key = idempotency_key.clone();
     let r1 = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1)
+        crate::common::admitting_gate(), cmd1)
         .await
         .expect("principal_a");
     let mut cmd2 = make_command(principal_b, domain_id, ver_id);
     cmd2.idempotency_key = idempotency_key;
     let r2 = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2)
+        crate::common::admitting_gate(), cmd2)
         .await
         .expect("principal_b");
     assert_ne!(r1.workflow_instance_id, r2.workflow_instance_id);
@@ -157,12 +157,12 @@ async fn test_deterministic_failure_replayable() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.idempotency_key = idempotency_key.clone();
     let err1 = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd.clone())
+        crate::common::admitting_gate(), cmd.clone())
         .await
         .unwrap_err();
     assert!(matches!(err1, CreateWorkflowInstanceError::DomainDisabled));
     let err2 = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(err2, CreateWorkflowInstanceError::DomainDisabled));
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
@@ -184,9 +184,9 @@ async fn test_concurrent_same_idempotent_request() {
     let pool2 = pool.clone();
     let (r1, r2) = tokio::join!(
         tokio::spawn(async move { create_workflow_instance(&pool1,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd1).await }),
+        crate::common::admitting_gate(), cmd1).await }),
         tokio::spawn(async move { create_workflow_instance(&pool2,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd2).await }),
+    crate::common::admitting_gate(), cmd2).await }),
     );
     let r1 = r1.expect("join");
     let r2 = r2.expect("join");
@@ -199,7 +199,7 @@ async fn test_concurrent_same_idempotent_request() {
             let mut retry = make_command(principal_id, domain_id, ver_id);
             retry.idempotency_key = idempotency_key;
             let r = create_workflow_instance(&pool3,
-                svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), retry)
+                crate::common::admitting_gate(), retry)
                 .await
                 .expect("retry");
             assert_eq!(r.workflow_instance_id, result.workflow_instance_id);
@@ -229,9 +229,9 @@ async fn test_concurrent_different_request_hash() {
     let pool2 = pool.clone();
     let (r1, r2) = tokio::join!(
         tokio::spawn(async move { create_workflow_instance(&pool1,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_a).await }),
+        crate::common::admitting_gate(), cmd_a).await }),
         tokio::spawn(async move { create_workflow_instance(&pool2,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd_b).await }),
+    crate::common::admitting_gate(), cmd_b).await }),
     );
     let r1 = r1.expect("join");
     let r2 = r2.expect("join");
@@ -257,7 +257,7 @@ async fn test_concurrent_different_request_hash() {
             let mut retry = make_command(principal_id, domain_id, ver_id);
             retry.idempotency_key = idempotency_key;
             let _ = create_workflow_instance(&pool3,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), retry).await;
+        crate::common::admitting_gate(), retry).await;
         }
         (
             Err(CreateWorkflowInstanceError::CommandStillProcessing),
@@ -269,7 +269,7 @@ async fn test_concurrent_different_request_hash() {
             let mut retry = make_command(principal_id, domain_id, ver_id);
             retry.idempotency_key = idempotency_key;
             let retry_result = create_workflow_instance(&pool3,
-            svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), retry).await;
+            crate::common::admitting_gate(), retry).await;
             // One of A or B should have succeeded
             assert!(
                 retry_result.is_ok()
@@ -317,7 +317,7 @@ async fn test_processing_receipt_not_taken_over() {
     let mut cmd = make_command(principal_id, domain_id, ver_id);
     cmd.idempotency_key = idempotency_key;
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         CreateWorkflowInstanceError::CommandStillProcessing

@@ -64,7 +64,7 @@ async fn seed_minimal_and_publish(
                 definition_version_id: version_id,
                 expected_revision: None,
             },
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
         .expect("should publish");
@@ -816,7 +816,7 @@ async fn test_concurrent_publish_expected_revision_race() {
         governance_publish_version(
             &pool_a, owner_id, &key_a, "req-a", ver_id,
             None, // no expected_revision - pure race on version lock
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
     });
@@ -829,7 +829,7 @@ async fn test_concurrent_publish_expected_revision_race() {
             "req-b",
             ver_id,
             None,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
         )
         .await
     });
@@ -1007,7 +1007,7 @@ async fn test_stale_expected_revision_returns_revision_conflict() {
         "req-stale",
         ver_id,
         Some("stale-digest-that-does-not-match".to_string()),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
     )
     .await
     .expect_err("stale expected_revision must fail");
@@ -1172,7 +1172,7 @@ async fn test_cross_domain_publish_returns_404() {
         "cross",
         ver_a,
         None,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
     )
     .await
     .expect_err("cross-domain publish must fail");

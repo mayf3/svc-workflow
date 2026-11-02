@@ -4,7 +4,7 @@
 //! Coverage:
 //!   PUBLISH_ADMITS_EVERY_IDENTITY_LITERAL (FIXED_PRINCIPAL + context-schema
 //!       default literal; directory sees exactly the two distinct principals)
-//!   PUBLISH_REJECTED_FAILS_CLOSED_ZERO_DELTA (HTTP 422 admission_rejected;
+//!   PUBLISH_REJECTED_FAILS_CLOSED_ZERO_DELTA (HTTP 422 admission_target_disabled;
 //!       the version stays DRAFT and the receipt rolls back, so the same
 //!       idempotency key can retry)
 //!   PUBLISH_INVALID_SCHEMA_LITERAL_FAILS_VALIDATION (422
@@ -328,6 +328,11 @@ async fn seed(pool: &sqlx::PgPool, graph: SeedGraph) -> Fixture {
     // existence); the schema default literal is validated by the directory,
     // not the local principal table.
     let agent_one = common::seed_second_principal(pool).await;
+    sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
+        .bind(agent_one)
+        .execute(pool)
+        .await
+        .unwrap();
 
     let definition_id = Uuid::new_v4();
     let version_id = Uuid::new_v4();
@@ -584,7 +589,7 @@ fn agent_two_id(schema: &Value) -> String {
 }
 
 /// (b) Directory rejects an identity literal: the publish fails closed with
-/// 422 admission_rejected, the version stays DRAFT, and the receipt rolls
+/// 422 admission_target_disabled, the version stays DRAFT, and the receipt rolls
 /// back so the SAME idempotency key can retry against an admitting directory
 /// (no cached negative result — CTR-CIR-003).
 #[tokio::test]
@@ -622,7 +627,7 @@ async fn publish_rejected_fails_closed_zero_delta() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "body: {body}");
-    assert_eq!(body["error"]["code"], "admission_rejected");
+    assert_eq!(body["error"]["code"], "admission_target_disabled");
 
     // Zero business delta: the version stays DRAFT and no receipt persists.
     assert_eq!(version_status(&pool, fixture.version_id).await, "DRAFT");
@@ -709,7 +714,7 @@ async fn publish_invalid_schema_literal_fails_validation_without_directory() {
 /// (d) Admission disabled (dormant deploy): publish behavior unchanged, no
 /// directory configured at all.
 #[tokio::test]
-async fn publish_dormant_when_disabled() {
+async fn publish_without_validator_rejects_new_agent_literals() {
     let pool = common::create_pool().await;
     let fixture = seed(
         &pool,
@@ -735,7 +740,7 @@ async fn publish_dormant_when_disabled() {
         Some(json!({"versionId": fixture.version_id})),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert_eq!(body["versionStatus"], "PUBLISHED");
-    assert_eq!(version_status(&pool, fixture.version_id).await, "PUBLISHED");
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "body: {body}");
+    assert_eq!(body["error"]["code"], "admission_unavailable");
+    assert_eq!(version_status(&pool, fixture.version_id).await, "DRAFT");
 }

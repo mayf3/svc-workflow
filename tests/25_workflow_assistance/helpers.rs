@@ -197,7 +197,7 @@ pub(crate) async fn setup_with_schema_and_alternate(
 
     let created = create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(agent),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -270,7 +270,7 @@ pub(crate) fn transition_command(f: &Fixture, expected: i32) -> ExecuteWorkflowT
 pub(crate) async fn transition(pool: &PgPool, f: &Fixture, expected: i32) -> i32 {
     execute_workflow_transition(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         transition_command(f, expected),
     )
     .await

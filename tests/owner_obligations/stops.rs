@@ -64,7 +64,7 @@ async fn stops_disabled_policy_actor_and_plain_owner_action_cannot_bypass() {
             &p,
             owner,
             Some(pm),
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             managed,
             visit,
             "create-dependency",
@@ -124,7 +124,7 @@ async fn stops_owner_replacement_before_birth_is_absorbing_across_aba_and_replay
     assert_eq!(before.0, "STOPPED");
     assert!(before.1.is_none());
     assert!(before.2.is_some());
-    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(&p,pm,svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled()).await.unwrap();
+    svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_pending(&p,pm,crate::common::admitting_gate()).await.unwrap();
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM workflow_owner_managed_instances")
         .fetch_one(&p)
         .await
@@ -166,7 +166,7 @@ async fn stops_parent_cancel_retires_and_separate_receipted_cleanup_preserves_le
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         managed,
         visit,
         "create-dependency",
@@ -191,10 +191,10 @@ async fn stops_parent_cancel_retires_and_separate_receipted_cleanup_preserves_le
     )
     .await
     .unwrap();
-    reconcile::reconcile_pending(&p, pm, AdmissionGate::disabled())
+    reconcile::reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap();
-    reconcile::reconcile_pending(&p, pm, AdmissionGate::disabled())
+    reconcile::reconcile_pending(&p, pm, crate::common::admitting_gate())
         .await
         .unwrap();
     let flags:Vec<(Uuid,bool)>=sqlx::query_as("SELECT workflow_instance_id,cancelled FROM workflow_instances WHERE workflow_instance_id=ANY($1) ORDER BY workflow_instance_id").bind(vec![managed,leaf]).fetch_all(&p).await.unwrap();
@@ -319,7 +319,7 @@ async fn stops_owner_replacement_races_actual_effect_without_duplicate_and_keeps
             &p,
             owner,
             Some(pm),
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             managed,
             visit,
             "create-dependency",
@@ -349,7 +349,7 @@ async fn stops_owner_replacement_races_actual_effect_without_duplicate_and_keeps
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         managed,
         visit,
         "create-dependency",
@@ -405,7 +405,7 @@ async fn stops_dependency_leaf_has_no_recursive_effect_and_nested_cap_uses_actua
         &p,
         owner,
         Some(pm),
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         managed,
         visit,
         "create-dependency",
@@ -426,7 +426,7 @@ async fn stops_dependency_leaf_has_no_recursive_effect_and_nested_cap_uses_actua
             &p,
             owner,
             Some(pm),
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             leaf,
             leaf_visit,
             "create-dependency",

@@ -111,12 +111,12 @@ async fn duplicate_atomic_commands_have_one_child_pair_and_one_receipt() {
     let (x, y) = tokio::join!(
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             command.clone()
         ),
         svc_workflow::application::workflow_instance::assistance::create_and_bind_governance_child(
             &p,
-            AdmissionGate::disabled(),
+            crate::common::admitting_gate(),
             command.clone()
         )
     );

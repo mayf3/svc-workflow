@@ -35,7 +35,7 @@ async fn child(pool: &PgPool, f: &Fixture) -> Fixture {
     .unwrap();
     let c = create_workflow_instance(
         pool,
-        AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         CreateWorkflowInstanceCommand {
             principal_id: PrincipalId::from_uuid(f.agent),
             idempotency_key: Uuid::new_v4().to_string(),
@@ -74,7 +74,7 @@ fn envelope(b: &Value, verdict: &str) -> Value {
 async fn finish(pool: &PgPool, f: &Fixture, b: &Value, verdict: &str) {
     let mut c = transition_command(f, 1);
     c.submission_payload = Some(envelope(b, verdict));
-    execute_workflow_transition(pool, AdmissionGate::disabled(), c)
+    execute_workflow_transition(pool, crate::common::admitting_gate(), c)
         .await
         .unwrap();
 }

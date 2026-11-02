@@ -50,7 +50,7 @@ use svc_workflow::http::{self, AppState, HttpConfig};
 
 fn build_app(pool: sqlx::PgPool, jwks_url: &str) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -772,7 +772,7 @@ async fn t5k_other_domain_owner_cannot_mark() {
 async fn idempotency_same_ik_different_class_is_conflict_not_replay() {
     let pool = common::create_pool().await;
     let (_owner, domain_id, creator, ver_id) = seed_fixture(&pool).await;
-    let admission = svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled();
+    let admission = crate::common::admitting_gate();
     let fixed_ik = format!("wec-conflict-{}", Uuid::new_v4());
 
     let first = svc_workflow::application::workflow_instance::create::create_workflow_instance(

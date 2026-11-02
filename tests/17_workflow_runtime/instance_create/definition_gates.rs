@@ -14,7 +14,7 @@ async fn test_draft_version_rejected() {
     sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status) VALUES ($1, $2, 1, 'DRAFT')")
         .bind(ver_id).bind(def_id).execute(&pool).await.expect("ver");
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -31,7 +31,7 @@ async fn test_deprecated_version_rejected() {
     sqlx::query("UPDATE workflow_definition_versions SET version_status = 'DEPRECATED' WHERE definition_version_id = $1")
         .bind(ver_id).execute(&pool).await.expect("deprecate");
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -48,7 +48,7 @@ async fn test_revoked_version_rejected() {
     sqlx::query("UPDATE workflow_definition_versions SET version_status = 'REVOKED' WHERE definition_version_id = $1")
         .bind(ver_id).execute(&pool).await.expect("revoke");
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -67,7 +67,7 @@ async fn test_cross_domain_version_rejected() {
         .bind(other_domain_id).bind(&other_domain_key).execute(&pool).await.expect("other domain");
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, other_domain_id).await;
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -87,7 +87,7 @@ async fn test_disabled_domain_rejected() {
         .await
         .expect("disable");
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(err, CreateWorkflowInstanceError::DomainDisabled));
@@ -113,7 +113,7 @@ async fn test_no_draft_node_defensive_failure() {
         .bind(ver_id).execute(&pool).await.expect("publish");
 
     let err = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .unwrap_err();
     assert!(matches!(

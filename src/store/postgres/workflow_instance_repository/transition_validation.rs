@@ -230,6 +230,7 @@ pub(super) async fn resolve_assignee(
     instance: &InstanceLockRow,
     domain_uuid: Uuid,
     context_payload: Option<&serde_json::Value>,
+    historical_return: bool,
 ) -> Result<Option<Uuid>, ExecuteWorkflowTransitionError> {
     if target_node.node_type_enum() == NodeType::TERMINAL {
         // Published legacy Terminal definitions can still carry an obsolete
@@ -255,7 +256,7 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            verify_principal_enabled_for_transition(tx, owner_id)
+            verify_principal_enabled_for_transition(tx, owner_id, historical_return)
                 .await
                 .map(Some)
         }
@@ -266,7 +267,7 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            verify_principal_enabled_for_transition(tx, fixed_id)
+            verify_principal_enabled_for_transition(tx, fixed_id, historical_return)
                 .await
                 .map(Some)
         }
@@ -302,7 +303,7 @@ pub(super) async fn resolve_assignee(
                     input_key, s
                 ))
             })?;
-            verify_principal_enabled_for_transition(tx, candidate)
+            verify_principal_enabled_for_transition(tx, candidate, historical_return)
                 .await
                 .map(Some)
         }
@@ -316,7 +317,14 @@ pub(super) async fn resolve_assignee(
 pub(super) async fn verify_principal_enabled_for_transition(
     tx: &mut Transaction<'_, Postgres>,
     candidate: Uuid,
+    historical_return: bool,
 ) -> Result<Uuid, ExecuteWorkflowTransitionError> {
+    // RETURN may refer to an inactive historical source. The exact prior
+    // responsibility, one-edge target and target lifecycle are checked by
+    // the admission gate in this SAME transaction before any fact is written.
+    if historical_return {
+        return Ok(candidate);
+    }
     let row: Option<(bool,)> =
         sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
             .bind(candidate)

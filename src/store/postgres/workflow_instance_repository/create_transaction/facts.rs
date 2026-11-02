@@ -234,9 +234,12 @@ pub(crate) async fn create_on_tx(
     // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
     // never borrow a second pool connection while this transaction holds one
     // (self-starves a max_connections=1 deployment until acquire timeout).
-    admission
+    let validated_targets = admission
         .admit_on_tx(tx, admission_principals)
         .await
+        .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
+    let resolved_assignee_id = validated_targets
+        .responsibility(resolved_assignee_id)
         .map_err(CreateWorkflowInstanceError::AdmissionFailed)?;
 
     // ---------------------------------------------------------------
