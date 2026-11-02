@@ -440,6 +440,26 @@ async fn seed(pool: &sqlx::PgPool, graph: SeedGraph) -> Fixture {
         .expect("set primary advance");
     }
 
+    // READY_CONTRACT: each execution node has a non-primary failure exit.
+    for (source, target, key) in [
+        (assign, draft, "return-draft"),
+        (review, assign, "return-assign"),
+    ] {
+        sqlx::query(
+            "INSERT INTO workflow_transition_definitions \
+             (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) \
+             VALUES ($1, $2, $3, 'Return', $4, $5, 'RETURN')",
+        )
+        .bind(Uuid::new_v4())
+        .bind(version_id)
+        .bind(key)
+        .bind(source)
+        .bind(target)
+        .execute(pool)
+        .await
+        .expect("insert failure exit");
+    }
+
     Fixture {
         caller,
         domain_id,
