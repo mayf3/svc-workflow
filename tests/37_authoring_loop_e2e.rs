@@ -193,7 +193,11 @@ impl Harness {
                          "transition_effect": "ADVANCE"},
                         {"transition_key": "finish", "display_name": "Finish",
                          "source_node_key": "work", "target_node_key": "done",
-                         "transition_effect": "ADVANCE"}
+                         "transition_effect": "ADVANCE"},
+                        // READY_CONTRACT: work can return without changing its primary advance.
+                        {"transition_key": "return-draft", "display_name": "Return to draft",
+                         "source_node_key": "work", "target_node_key": "draft",
+                         "transition_effect": "RETURN"}
                     ]
                 }),
             )

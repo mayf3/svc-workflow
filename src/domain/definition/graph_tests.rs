@@ -89,6 +89,19 @@ fn valid_graph() -> WorkflowGraph {
                 metadata: None,
                 created_at: chrono::Utc::now(),
             },
+            // READY_CONTRACT: keep a non-primary exit for missing evidence or input.
+            TransitionDefinition {
+                transition_id: TransitionId::new(),
+                definition_version_id: version_id,
+                transition_key: "ready-contract-return".to_string(),
+                display_name: "Return to Draft".to_string(),
+                source_node_id: normal_node_id,
+                target_node_id: draft_node_id,
+                transition_effect: TransitionEffect::Return,
+                submission_schema: None,
+                metadata: None,
+                created_at: chrono::Utc::now(),
+            },
         ],
         context_schema: Some(serde_json::json!({"type": "object"})),
     }
