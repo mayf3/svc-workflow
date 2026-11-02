@@ -63,8 +63,10 @@ pub async fn list_assigned_to_me(
          LEFT JOIN workflow_identity_successor_lines wisl
            ON wisl.source_principal_id = v.assignee_principal_id
          -- One immutable edge, matching the shared current-assignee helper.
-         -- Original P remains audit history; it is not a current-work owner.
-         WHERE COALESCE(wisl.successor_principal_id, v.assignee_principal_id) = $1
+         -- Canonical discovery is additive: enabled stored assignees retain
+         -- their exact-assignee worklist, including in disabled Domains.
+         WHERE (v.assignee_principal_id = $1
+                OR COALESCE(wisl.successor_principal_id, v.assignee_principal_id) = $1)
            AND n.node_type <> 'TERMINAL'
            AND wi.cancelled = FALSE
            AND (
@@ -74,6 +76,7 @@ pub async fn list_assigned_to_me(
                  AND drb.principal_id = $1
                  AND drb.enabled = TRUE
              )
+             OR v.assignee_principal_id = $1
              OR COALESCE(wisl.successor_principal_id, v.assignee_principal_id) = $1
            )
            AND ($2::timestamptz IS NULL OR (wi.created_at, wi.workflow_instance_id) < ($2, $3))
@@ -99,12 +102,14 @@ pub async fn list_assigned_to_me(
             })?;
         validate_base(&base)?;
         validate_all_facts(&mut tx, &base).await?;
-        let assignee_matches_actor = super::query_visibility::actor_is_effective_current_assignee(
-            &mut tx,
-            base.current_assignee_principal_id,
-            query.actor_principal_id,
-        )
-        .await?;
+        let assignee_matches_actor = base.current_assignee_principal_id
+            == Some(query.actor_principal_id)
+            || super::query_visibility::actor_is_effective_current_assignee(
+                &mut tx,
+                base.current_assignee_principal_id,
+                query.actor_principal_id,
+            )
+            .await?;
         if !assignee_matches_actor || base.current_node_type.as_deref() == Some("TERMINAL") {
             return Err(WorkflowQueryError::InternalConsistency(
                 "assigned worklist predicate disagrees with current projection".to_string(),

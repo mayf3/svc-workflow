@@ -653,7 +653,7 @@ async fn assigned_upstream_payload_is_capped_at_fifty_and_marks_truncation() {
 }
 
 #[tokio::test]
-async fn canonical_successor_worklist_excludes_enabled_stored_actor() {
+async fn canonical_successor_worklist_retains_enabled_stored_actor() {
     let pool = create_pool().await;
     let seed = seed_query_fixture(&pool).await;
     sqlx::query("UPDATE principals SET principal_type='AGENT' WHERE principal_id=$1")
@@ -684,7 +684,7 @@ async fn canonical_successor_worklist_excludes_enabled_stored_actor() {
     seed_creator_test_identity_line(&pool, seed.assignee, q).await;
     for (actor, count) in [
         (q, 1),
-        (seed.assignee, 0),
+        (seed.assignee, 1),
         (seed.owner, 0),
         (seed.outsider, 0),
     ] {
@@ -699,7 +699,7 @@ async fn canonical_successor_worklist_excludes_enabled_stored_actor() {
         assert_eq!(
             page.items.len(),
             count,
-            "only effective current assignee may list current work: {actor}"
+            "effective and enabled stored assignees retain current work: {actor}"
         );
         assert!(page.next_cursor.is_none());
     }
