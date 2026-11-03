@@ -179,8 +179,7 @@ fn validate_kick_url(value: &str) -> Result<(), &'static str> {
     // binds loopback only (the transport boundary), so a non-loopback or
     // wrong-path kick URL is a misconfiguration, not a deployment option.
     // Loopback-host parity with validate_auth_base_url (localhost and
-    // loopback literals in IPv4/IPv6) and one optional trailing slash, so
-    // documented loopback deployments never silently lose the channel.
+    // loopback literals in IPv4/IPv6); trailing slashes are tolerated.
     let url = reqwest::Url::parse(value)
         .map_err(|_| "execution kick configuration is incomplete or invalid")?;
     let host = url.host_str().unwrap_or_default();
