@@ -20,8 +20,12 @@
 //!   - A disabled channel never claims, attempts or rewrites its rows — no
 //!     attempt_count, backoff or delivered_at drift from a channel that is
 //!     off.
-//!   - One channel's failure cannot block another enabled channel in the same
-//!     pass.
+//!   - Delivery errors are isolated per row and per channel: one channel's
+//!     failure never blocks another enabled channel in the same pass. The
+//!     shared pass task is panic-contained (logged, loop continues); the
+//!     pool must have headroom for one extra connection while a FORUM_EVENT
+//!     delivery holds its claim transaction open across the thread-ensure
+//!     step.
 //!
 //! Delivery semantics:
 //!   - Delivery is at-least-once; rows are never deleted. The dedupe identity
@@ -47,6 +51,10 @@
 //!   - Dead-lettered rows keep payload, attempt_count and last_error; the
 //!     recovery entry is the documented requeue statement in
 //!     `migrations/0032_outbox_dead_letter.sql`.
+//!   - The kind-scoped batches never select any other outbox_kind. Current
+//!     writers emit only the three kinds above; a row written by a NEWER
+//!     binary and read by a downgraded one would sit invisible to the drain
+//!     (visible in SQL) instead of being blindly marked delivered.
 //!
 //! Dormancy: without any channel configuration the loop never starts and
 //! startup logs the honest disabled line.
@@ -170,11 +178,25 @@ fn validate_kick_url(value: &str) -> Result<(), &'static str> {
     // Same boundary discipline as the owner wake endpoint: the product-api
     // binds loopback only (the transport boundary), so a non-loopback or
     // wrong-path kick URL is a misconfiguration, not a deployment option.
+    // Loopback-host parity with validate_auth_base_url (localhost and
+    // loopback literals in IPv4/IPv6) and one optional trailing slash, so
+    // documented loopback deployments never silently lose the channel.
     let url = reqwest::Url::parse(value)
         .map_err(|_| "execution kick configuration is incomplete or invalid")?;
+    let host = url.host_str().unwrap_or_default();
+    let loopback_host = host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|address| address.is_loopback())
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::Ipv6Addr>()
+            .is_ok_and(|address| address.is_loopback());
+    let path = url.path().trim_end_matches('/');
     if url.scheme() != "http"
-        || url.host_str() != Some("127.0.0.1")
-        || url.path() != "/workflow-execution/kicks"
+        || !loopback_host
+        || path != "/workflow-execution/kicks"
         || !url.username().is_empty()
         || url.password().is_some()
         || url.query().is_some()
@@ -275,7 +297,9 @@ impl OutboxReconcilerConfig {
         match Self::kick_from_values() {
             Some(config) => Some(config),
             None => {
-                tracing::warn!("execution kick channel enabled but WORKFLOW_EXECUTION_KICK_URL/TOKEN incomplete or invalid — kick channel stays dormant");
+                tracing::error!(
+                    "execution kick channel enabled but WORKFLOW_EXECUTION_KICK_URL/TOKEN missing, blank, or not a loopback /workflow-execution/kicks URL — kick channel stays dormant and kick rows will not be delivered"
+                );
                 None
             }
         }
@@ -339,6 +363,7 @@ struct CachedToken {
 
 pub struct ForumClient {
     http: reqwest::Client,
+    kick_http: reqwest::Client,
     owner_wake_http: reqwest::Client,
     config: OutboxReconcilerConfig,
     token: Mutex<Option<CachedToken>>,
@@ -400,6 +425,13 @@ impl ForumClient {
                 .timeout(Duration::from_secs(10))
                 .build()
                 .expect("forum sync http client"),
+            // Redirects are not part of the kicks contract; a 3xx from the
+            // configured endpoint is classified, never followed.
+            kick_http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("kick http client"),
             owner_wake_http: reqwest::Client::builder()
                 .timeout(Duration::from_secs(5))
                 .redirect(reqwest::redirect::Policy::none())
@@ -1040,7 +1072,7 @@ async fn deliver_kick(forum: &ForumClient, row: &outbox::OutboxRow) -> Result<()
     })?;
     let started = Instant::now();
     let response = forum
-        .http
+        .kick_http
         .post(&kick.url)
         .header(
             reqwest::header::AUTHORIZATION,
@@ -1126,14 +1158,30 @@ async fn deliver_owner_assistance_wake(
 /// The background loop. Spawned by main when any channel is enabled.
 pub async fn run_loop(pool: PgPool, config: OutboxReconcilerConfig) {
     tracing::info!(channels = ?config.enabled_channel_names(), interval_ms = config.poll_interval_ms, "outbox reconciler loop started");
-    let forum = ForumClient::new(config);
+    let forum = std::sync::Arc::new(ForumClient::new(config));
     let mut ticker = tokio::time::interval(Duration::from_millis(forum.config.poll_interval_ms));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
-        let delivered = run_once(&pool, &forum).await;
-        if delivered > 0 {
-            tracing::info!(delivered, "outbox reconciler delivered rows");
+        // Each pass runs in its own supervised task: an unexpected panic in
+        // one pass is contained, logged, and the loop continues with the
+        // next tick instead of silently killing every channel until process
+        // restart. (Errors are always isolated per row/channel; only a panic
+        // would take the whole pass down, so it is contained here.)
+        let pass = {
+            let pass_pool = pool.clone();
+            let pass_forum = forum.clone();
+            tokio::spawn(async move { run_once(&pass_pool, &pass_forum).await })
+        };
+        match pass.await {
+            Ok(delivered) => {
+                if delivered > 0 {
+                    tracing::info!(delivered, "outbox reconciler delivered rows");
+                }
+            }
+            Err(join_error) => {
+                tracing::error!(error = %join_error, "outbox reconciler pass panicked — contained; the loop continues with the next tick");
+            }
         }
     }
 }
@@ -1950,8 +1998,11 @@ mod owner_assistance_wake_tests {
     #[test]
     fn kick_url_must_be_loopback_kicks_path() {
         assert!(validate_kick_url("http://127.0.0.1:8080/workflow-execution/kicks").is_ok());
-        assert!(validate_kick_url("https://127.0.0.1:8080/workflow-execution/kicks").is_err());
+        assert!(validate_kick_url("http://localhost:8788/workflow-execution/kicks").is_ok());
+        assert!(validate_kick_url("http://127.0.0.1:8080/workflow-execution/kicks/").is_ok());
+        assert!(validate_kick_url("http://[::1]:8080/workflow-execution/kicks").is_ok());
         assert!(validate_kick_url("http://example.test/workflow-execution/kicks").is_err());
+        assert!(validate_kick_url("https://example.test/workflow-execution/kicks").is_err());
         assert!(validate_kick_url(
             "http://127.0.0.1:8080/workflow-execution/owner-assistance-wakes"
         )

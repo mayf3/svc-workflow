@@ -47,40 +47,43 @@ use svc_workflow::forum_sync::{
 };
 
 // ============================================================================
-// Shared-DB isolation: the reconciler drains TABLE-WIDE per kind (production
-// semantics), so this suite serializes itself and quarantines every leftover
-// pending row at test start. Each test's run_once therefore only ever sees
-// the rows that the test itself queues.
+// Isolation: the reconciler drains TABLE-WIDE per kind (production
+// semantics), so every test runs against its OWN freshly created database
+// (per-binary TEST_DATABASE_URL server, unique db per test, migrations
+// applied). No cross-binary or cross-test interference is possible; no
+// quarantine or suite lock is needed.
 // ============================================================================
 
-static DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Create a unique database on the TEST_DATABASE_URL server, apply all
+/// migrations, and return its pool. Mirrors tests/prerequisites/support.rs.
+async fn isolated_db() -> PgPool {
+    let url = common::test_database_url();
+    let base = url
+        .rsplit_once('/')
+        .expect("TEST_DATABASE_URL must include a database segment")
+        .0
+        .to_string();
+    let name = format!("svc_outbox_p0b_{}", Uuid::new_v4().simple());
+    let admin = sqlx::PgPool::connect(&format!("{base}/postgres"))
+        .await
+        .expect("connect admin database of the isolated test server");
+    sqlx::query(&format!("CREATE DATABASE {name}"))
+        .execute(&admin)
+        .await
+        .expect("create per-test database");
+    admin.close().await;
 
-/// Serializes the suite (the reconciler drains TABLE-WIDE per kind) and
-/// quarantines every leftover pending row at test start, so each test's
-/// `run_once` only ever sees the rows the test itself queued. The returned
-/// guard must stay in scope for the whole test body; dropping it releases
-/// the suite lock.
-async fn isolated_db() -> (
-    PgPool,
-    tokio::sync::MutexGuard<'static, ()>,
-) {
-    let guard = DB_LOCK.lock().await;
-    let pool = common::create_pool().await;
-    sqlx::query(
-        "UPDATE workflow_outbox SET delivered_at = now()
-          WHERE delivered_at IS NULL AND dead_lettered_at IS NULL",
-    )
-    .execute(&pool)
-    .await
-    .expect("quarantine pending outbox rows");
-    sqlx::query(
-        "UPDATE workflow_forum_bindings SET binding_state = 'BOUND', forum_thread_id = workflow_instance_id::text
-          WHERE binding_state = 'PENDING'",
-    )
-    .execute(&pool)
-    .await
-    .expect("quarantine pending bindings");
-    (pool, guard)
+    let pool = sqlx::PgPool::connect(&format!("{base}/{name}"))
+        .await
+        .expect("connect per-test database");
+    let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("migrations"))
+        .await
+        .expect("load migrations");
+    migrator
+        .run(&pool)
+        .await
+        .expect("apply migrations on per-test database");
+    pool
 }
 
 // ============================================================================
@@ -368,7 +371,7 @@ fn kick_only_config(base_url: &str) -> OutboxReconcilerConfig {
 
 #[tokio::test]
 async fn kick_only_delivers_without_any_forum_dependency() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, visit) = create_instance_with_kick(&pool).await;
     let kicks = outbox_event_keys(&pool, instance, "EXECUTION_KICK").await;
     assert_eq!(kicks.len(), 1, "creation queues exactly one kick row");
@@ -426,7 +429,7 @@ async fn kick_only_delivers_without_any_forum_dependency() {
 
 #[tokio::test]
 async fn forum_api_outage_does_not_block_kick_channel() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let forum_row = outbox_first_row(&pool, instance, "FORUM_EVENT").await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
@@ -465,7 +468,7 @@ async fn forum_api_outage_does_not_block_kick_channel() {
 
 #[tokio::test]
 async fn kick_disabled_leaves_kick_rows_untouched() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -494,7 +497,7 @@ async fn kick_disabled_leaves_kick_rows_untouched() {
 
 #[tokio::test]
 async fn owner_wake_disabled_leaves_wake_rows_untouched() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let wake_row = queue_row(
         &pool,
@@ -528,7 +531,7 @@ async fn owner_wake_disabled_leaves_wake_rows_untouched() {
 
 #[tokio::test]
 async fn kick_5xx_retries_with_backoff_then_delivers() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -557,7 +560,7 @@ async fn kick_5xx_retries_with_backoff_then_delivers() {
 
 #[tokio::test]
 async fn kick_401_and_403_are_auth_failures_never_delivered() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -590,7 +593,7 @@ async fn kick_401_and_403_are_auth_failures_never_delivered() {
 
 #[tokio::test]
 async fn kick_409_is_retryable_per_contract() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -610,7 +613,7 @@ async fn kick_409_is_retryable_per_contract() {
 
 #[tokio::test]
 async fn kick_dead_letters_at_the_retry_cap_and_recovers_via_requeue() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -675,7 +678,7 @@ async fn kick_dead_letters_at_the_retry_cap_and_recovers_via_requeue() {
 
 #[tokio::test]
 async fn kick_400_dead_letters_immediately_with_payload_retained() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
     let payload_before: serde_json::Value =
@@ -710,7 +713,7 @@ async fn kick_400_dead_letters_immediately_with_payload_retained() {
 
 #[tokio::test]
 async fn concurrent_workers_never_double_deliver() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let mut rows = vec![outbox_first_row(&pool, instance, "EXECUTION_KICK").await];
     for i in 0..5 {
@@ -761,7 +764,7 @@ async fn concurrent_workers_never_double_deliver() {
 
 #[tokio::test]
 async fn claim_lock_released_by_crashed_worker_recovers() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -796,7 +799,7 @@ async fn claim_lock_released_by_crashed_worker_recovers() {
 
 #[tokio::test]
 async fn transport_unknown_result_schedules_retry_and_carries_stable_request_id() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -850,7 +853,7 @@ async fn transport_unknown_result_schedules_retry_and_carries_stable_request_id(
 
 #[tokio::test]
 async fn restart_does_not_lose_pending_rows() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
 
@@ -886,7 +889,7 @@ async fn restart_does_not_lose_pending_rows() {
 
 #[tokio::test]
 async fn all_three_channels_deliver_independently_in_one_pass() {
-    let (pool, _db_guard) = isolated_db().await;
+    let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
     let wake_row = queue_row(
         &pool,

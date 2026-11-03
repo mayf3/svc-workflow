@@ -14,5 +14,10 @@
 --
 -- FORUM_EVENT and OWNER_ASSISTANCE_WAKE rows keep the never-dead-lettered
 -- correctness-path discipline; the marker simply never becomes set for them.
+--
+-- Rollback note: after 0032 is applied, rolling the binary back to the
+-- previous release fails that build's strict migration-ledger readiness
+-- check (it expects exactly 1..=31); pair any binary rollback with the
+-- standard release-process ledger handling.
 ALTER TABLE workflow_outbox
     ADD COLUMN dead_lettered_at TIMESTAMPTZ;
