@@ -22,10 +22,11 @@
 //!     off.
 //!   - Delivery errors are isolated per row and per channel: one channel's
 //!     failure never blocks another enabled channel in the same pass. The
-//!     shared pass task is panic-contained (logged, loop continues); the
-//!     pool must have headroom for one extra connection while a FORUM_EVENT
-//!     delivery holds its claim transaction open across the thread-ensure
-//!     step.
+//!     shared pass task is panic-contained (logged, loop continues). All
+//!     pool-touching preparation (governance wake coordination, forum thread
+//!     ensure) happens BEFORE the claim; the claim transaction itself is
+//!     HTTP-only plus the row settlement, so even a one-connection pool can
+//!     deliver every channel (verified by a dedicated regression test).
 //!
 //! Delivery semantics:
 //!   - Delivery is at-least-once; rows are never deleted. The dedupe identity
@@ -920,20 +921,47 @@ async fn drain_channel(pool: &PgPool, forum: &ForumClient, kind: &str) -> usize 
                 Ok(false) => continue,
                 Err(error) => {
                     let message = error.to_string();
-                    let settled = async {
-                        let mut tx = pool.begin().await?;
-                        outbox::mark_attempt_failed(&mut tx, candidate.outbox_id, &message, None).await?;
-                        tx.commit().await
-                    }
-                    .await;
-                    if let Err(error) = settled {
-                        tracing::warn!(channel = kind, outbox_id = %candidate.outbox_id, error = %error, "wake prepare failure settle failed; row keeps its due state");
-                    }
+                    settle_attempt_failure(pool, candidate.outbox_id, &message, None).await;
                     continue;
                 }
             }
         }
-        match deliver_claimed(pool, forum, kind, candidate.outbox_id).await {
+        // Forum events resolve their canonical thread BEFORE claiming: the
+        // ensure steps take pool connections of their own and must never run
+        // nested inside the claim transaction (a one-connection pool would
+        // wait on itself and every delivery would time out). Thread ensure is
+        // idempotent and safe to run concurrently — a lost create race is
+        // re-resolved inside ensure_thread.
+        let mut forum_thread_id: Option<String> = None;
+        if kind == "FORUM_EVENT" {
+            if let Err(error) = ensure_thread(pool, forum, candidate.workflow_instance_id).await {
+                let message = format!("thread ensure failed: {error}");
+                settle_attempt_failure(pool, candidate.outbox_id, &message, None).await;
+                continue;
+            }
+            let binding = outbox::get_binding(pool, candidate.workflow_instance_id)
+                .await
+                .map_err(|e| e.to_string());
+            let thread_id = match binding {
+                Ok(Some(b)) if b.binding_state == "BOUND" => {
+                    b.forum_thread_id.ok_or_else(|| {
+                        "BOUND binding has no thread id".to_string()
+                    })
+                }
+                Ok(_) => Err("binding still pending — forum thread unavailable".to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            match thread_id {
+                Ok(thread_id) => forum_thread_id = Some(thread_id),
+                Err(message) => {
+                    settle_attempt_failure(pool, candidate.outbox_id, &message, None).await;
+                    continue;
+                }
+            }
+        }
+        match deliver_claimed(pool, forum, kind, candidate.outbox_id, forum_thread_id.as_deref())
+            .await
+        {
             Ok(true) => delivered += 1,
             Ok(false) => {}
             Err(error) => {
@@ -944,18 +972,42 @@ async fn drain_channel(pool: &PgPool, forum: &ForumClient, kind: &str) -> usize 
     delivered
 }
 
+/// Record one retryable attempt failure WITHOUT holding the claim: a short
+/// standalone transaction used by the pre-claim preparation steps (governance
+/// wake prepare, forum thread ensure). Bounded channels still dead-letter at
+/// their cap through the same statement.
+async fn settle_attempt_failure(
+    pool: &PgPool,
+    outbox_id: Uuid,
+    message: &str,
+    dead_letter_after_attempts: Option<i32>,
+) {
+    let settled = async {
+        let mut tx = pool.begin().await?;
+        outbox::mark_attempt_failed(&mut tx, outbox_id, message, dead_letter_after_attempts).await?;
+        tx.commit().await
+    }
+    .await;
+    if let Err(error) = settled {
+        tracing::warn!(outbox_id = %outbox_id, error = %error, "attempt failure settle failed; row keeps its due state");
+    }
+}
+
 /// Claim one row (`FOR UPDATE SKIP LOCKED` inside the delivery transaction),
 /// deliver it, and settle the outcome in the same transaction. Ok(true) =
 /// delivered by this worker; Ok(false) = another worker holds the claim or
 /// the row was settled between the batch query and the claim. The claim lock
 /// doubles as the lease: a crashed worker's transaction dies with its
-/// connection, releasing the row for the next pass. Governance review wakes
-/// are prepared (and approved) before claiming; plain wakes deliver directly.
+/// connection, releasing the row for the next pass. Everything inside the
+/// transaction is HTTP-only (plus the row settlement) — all pool-touching
+/// preparation happens before the claim, so even a one-connection pool can
+/// never wait on itself.
 async fn deliver_claimed(
     pool: &PgPool,
     forum: &ForumClient,
     kind: &str,
     outbox_id: Uuid,
+    forum_thread_id: Option<&str>,
 ) -> Result<bool, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let Some(row) = outbox::claim_row(&mut tx, outbox_id, kind)
@@ -967,9 +1019,14 @@ async fn deliver_claimed(
     };
     let started = Instant::now();
     let result: Result<(), ChannelFailure> = match kind {
-        "FORUM_EVENT" => deliver_forum_event(pool, forum, &row)
-            .await
-            .map_err(ChannelFailure::Retryable),
+        "FORUM_EVENT" => match forum_thread_id {
+            Some(thread_id) => deliver_forum_event(forum, &row, thread_id)
+                .await
+                .map_err(ChannelFailure::Retryable),
+            None => Err(ChannelFailure::Retryable(
+                "forum thread was not resolved before the claim".to_string(),
+            )),
+        },
         "EXECUTION_KICK" => deliver_kick(forum, &row).await,
         "OWNER_ASSISTANCE_WAKE" => deliver_owner_assistance_wake(forum, &row)
             .await
@@ -1025,27 +1082,18 @@ async fn deliver_claimed(
 
 type DeliverResult = Result<(), String>;
 
+/// Post one forum event to its canonical thread. HTTP-only: the binding and
+/// thread id were resolved before the claim, so this can never request a
+/// second pool connection while the claim transaction holds one.
 async fn deliver_forum_event(
-    pool: &PgPool,
     forum: &ForumClient,
     row: &outbox::OutboxRow,
+    thread_id: &str,
 ) -> DeliverResult {
-    // The binding must be BOUND before any event can post; ensure it now (the
-    // row's instance may not have been in this pass's pending batch).
-    ensure_thread(pool, forum, row.workflow_instance_id).await?;
-    let binding = outbox::get_binding(pool, row.workflow_instance_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let thread_id = match binding {
-        Some(b) if b.binding_state == "BOUND" => {
-            b.forum_thread_id.ok_or("BOUND binding has no thread id")?
-        }
-        _ => return Err("binding still pending — forum thread unavailable".to_string()),
-    };
     let content = forum_text(&row.payload);
     forum
         .post_message(
-            &thread_id,
+            thread_id,
             &content,
             serde_json::json!({
                 "workflowInstanceId": row.workflow_instance_id,
