@@ -153,7 +153,8 @@ documented recovery entry).
 ### Delta 4 — per-kind atomic claim
 
 AMENDS: V2 §3 first bullet ("take up to 20 rows … ordered by
-`created_at, outbox_id`").
+`created_at, outbox_id`") — which already requires per-instance oldest-first
+forum delivery — and makes that requirement hold under concurrent workers.
 
 Candidate batches are per-kind (each drain pass handles
 `EXECUTION_KICK`, then `FORUM_EVENT`, then `OWNER_ASSISTANCE_WAKE`; a
@@ -169,6 +170,24 @@ on retirement) and forum thread ensure (V2 §4) — runs BEFORE the claim, in
 short standalone transactions when it must record a failure, so the claim
 transaction is HTTP-only plus the row settlement and a one-connection pool
 can deliver every channel without waiting on itself (test-backed).
+
+Per-instance forum ordering under any number of workers is enforced by an
+anti-overtake predicate in the candidate query itself (carried from the V2
+implementation): a `FORUM_EVENT` row is selectable only while NO earlier
+undelivered `FORUM_EVENT` row exists for the same instance (ordering key
+`(created_at, outbox_id)`; the predicate ignores `next_attempt_at`, so a
+backed-off earlier event keeps holding later ones back; the predicate is
+evaluated per batch snapshot, so an earlier event that is in-flight — its
+delivery not yet committed — still counts as undelivered). A concurrent
+worker therefore never receives a later event while an earlier one is
+in-flight, backed off, or merely queued: its batch cannot contain the later
+row, and the only row it can re-derive is the earliest one, whose claim it
+loses to `SKIP LOCKED`. Oldest-first per instance is thereby preserved; the
+cost is bounded head-of-line blocking per instance, which the
+never-dead-lettered forum discipline already accepts. A lost claim (another
+worker settled the row between the batch and the claim) is a delay, never a
+disorder. (Test-backed: concurrent two-worker oldest-first delivery across a
+delayed failing first event, and pass-by-pass backoff hold-back.)
 
 ### Delta 5 — unknown outbox kinds
 
@@ -203,8 +222,13 @@ defines downgrade behavior only.
 - ACC-P0B-009: a one-connection pool delivers forum and kick rows (claim
   transaction is HTTP-only; no nested pool access), also under concurrent
   workers.
+- ACC-P0B-010: per-instance forum events deliver strictly oldest-first
+  under two concurrent workers — including when the oldest event's delivery
+  is delayed and fails into backoff; later events are never posted during
+  the in-flight or backoff window, and proceed in order only after the
+  earlier event commits as delivered.
 
-(Executable mappings for ACC-P0B-001..009 exist in branch
+(Executable mappings for ACC-P0B-001..010 exist in branch
 `feat/outbox-three-channel-kick-v1`: tests/48_outbox_three_channels.rs and
 the forum_sync unit tests; they route as REUSE evidence after acceptance.)
 
