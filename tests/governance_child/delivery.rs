@@ -37,12 +37,14 @@ async fn drain(
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-    let config = svc_workflow::forum_sync::ForumSyncConfig {
-        auth_base_url: url.clone(),
-        client_id: "unused".into(),
-        client_secret: "unused".into(),
-        forum_origin: url.clone(),
-        audience: "svc-forum".into(),
+    let config = svc_workflow::forum_sync::OutboxReconcilerConfig {
+        forum: Some(svc_workflow::forum_sync::ForumEventConfig {
+            auth_base_url: url.clone(),
+            client_id: "unused".into(),
+            client_secret: "unused".into(),
+            forum_origin: url.clone(),
+            audience: "svc-forum".into(),
+        }),
         poll_interval_ms: 10,
         kick: None,
         owner_assistance_wake: Ok(Some(svc_workflow::forum_sync::OwnerAssistanceWakeConfig {
