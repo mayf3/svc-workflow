@@ -250,7 +250,7 @@ pub(crate) async fn mark_attempt_failed(
                 dead_lettered_at = CASE
                     WHEN $3::int IS NOT NULL AND attempt_count + 1 >= $3 THEN now()
                     ELSE dead_lettered_at END
-          WHERE outbox_id = $1",
+          WHERE outbox_id = $1 AND delivered_at IS NULL",
     )
     .bind(outbox_id)
     .bind(sanitized)
