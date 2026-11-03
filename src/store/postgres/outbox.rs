@@ -217,7 +217,8 @@ pub(crate) async fn mark_delivered(
     outbox_id: Uuid,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE workflow_outbox SET delivered_at = now(), last_error = NULL WHERE outbox_id = $1",
+        "UPDATE workflow_outbox SET delivered_at = now(), last_error = NULL
+          WHERE outbox_id = $1 AND delivered_at IS NULL",
     )
     .bind(outbox_id)
     .execute(&mut **tx)
