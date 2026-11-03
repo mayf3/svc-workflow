@@ -67,16 +67,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = http::router(state, &config);
 
     // WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-002): the outbox reconciler
-    // runs alongside the HTTP server; dormant when forum sync is unconfigured.
-    if let Some(forum_config) = svc_workflow::forum_sync::ForumSyncConfig::from_env() {
+    // runs alongside the HTTP server. Its three channels (EXECUTION_KICK,
+    // FORUM_EVENT, OWNER_ASSISTANCE_WAKE) are configured independently — the
+    // loop starts when any channel is enabled and stays fully dormant (with
+    // an honest startup line) when none is.
+    let outbox_config = svc_workflow::forum_sync::OutboxReconcilerConfig::from_env();
+    if outbox_config.any_channel_enabled() {
+        tracing::info!(channels = ?outbox_config.enabled_channel_names(), "outbox reconciler starting");
         let reconciler_pool = pool.clone();
         tokio::spawn(async move {
-            svc_workflow::forum_sync::run_loop(reconciler_pool, forum_config).await;
+            svc_workflow::forum_sync::run_loop(reconciler_pool, outbox_config).await;
         });
-        tracing::info!("forum sync reconciler started");
     } else {
         tracing::info!(
-            "forum sync disabled (WORKFLOW_FORUM_SYNC_ENABLED unset) — outbox stays queued"
+            "outbox reconciler fully dormant (no channels enabled) — outbox stays queued"
         );
     }
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
