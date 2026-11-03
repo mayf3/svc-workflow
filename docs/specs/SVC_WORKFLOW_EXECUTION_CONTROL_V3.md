@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_EXECUTION_CONTROL_V3
 title: Accepted whole-authority successor to SVC_WORKFLOW_EXECUTION_CONTROL_V2 (outbox three-channel independence P0-B)
-status: proposed
+status: accepted
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -23,12 +23,18 @@ superseded_by: null
 owners:
   - mayf3
 acceptance_authority_basis: >-
-  Pending Owner acceptance (docs-first). Task basis: P0-B user-direct task
-  brief (2026-11-03, ZERO_HUMAN_OPERATIONS_V1 program) ordering the outbox
-  three-channel split with explicit reliability requirements. Independent
-  spec review delivered 2026-11-03 (verdict REVISE on the AMENDMENT-shaped
-  predecessor artifact; this V3 re-issue folds in all its findings). No
-  production apply authority; activation remains separately authorized.
+  Owner acceptance 2026-11-03, recorded verbatim in GitHub issue #125
+  (decision comment): the five technical semantics of this Spec — three
+  channel-independent enablement, kick failure classification, 12-attempt
+  dead-letter, controlled requeue, unknown-kind retention — are accepted;
+  scope explicitly limited to the Spec and governance-compliant source
+  merges; production deployment, migration 0032 execution, production
+  config changes, EXECUTION_KICK activation and historical backlog
+  consumption remain separately authorized. Independent spec review
+  delivered 2026-11-03 (the AMENDMENT-shaped predecessor artifact was
+  REVISE; this V3 re-issue folded in all findings); implementation branch
+  feat/outbox-three-channel-kick-v1 @ 544949e independently confirmed
+  clause-for-clause consistent with this document.
 ---
 
 # SVC_WORKFLOW_EXECUTION_CONTROL_V3 — proposed whole-authority successor
