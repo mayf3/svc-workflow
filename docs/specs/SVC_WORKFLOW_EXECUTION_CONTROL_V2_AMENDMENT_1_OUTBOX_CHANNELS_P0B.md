@@ -112,8 +112,10 @@ crashed worker's transaction dies with its connection — recovery is
 immediate, not timeout-bound). Delivery failures settle in the same
 transaction; every settlement statement carries a `delivered_at IS NULL`
 guard so a concurrently retired row is never rewritten. Governance review
-wakes (payload `phase` rows) run their pre-existing coordination transaction
-BEFORE claiming, because it settles the same outbox row on retirement.
+wakes (payload `phase` rows) and forum thread ensure run their
+pool-touching coordination BEFORE claiming — the claim transaction itself is
+HTTP-only plus the row settlement, so a one-connection pool can deliver
+every channel without waiting on itself.
 
 ### A.5 Unknown kinds
 

@@ -18,6 +18,8 @@
 //!   - forum API down → does not block the kick channel in the same pass
 //!   - kick disabled → kick rows untouched
 //!   - restart → no loss of pending rows
+//!   - one-connection pool → forum AND kick both delivered (claim transaction
+//!     is HTTP-only; no nested pool access), also under concurrent workers
 
 #![allow(clippy::needless_borrow)]
 #![allow(unused_imports, unused_variables)]
@@ -57,6 +59,13 @@ use svc_workflow::forum_sync::{
 /// Create a unique database on the TEST_DATABASE_URL server, apply all
 /// migrations, and return its pool. Mirrors tests/prerequisites/support.rs.
 async fn isolated_db() -> PgPool {
+    isolated_db_with_url().await.0
+}
+
+/// Same as `isolated_db`, additionally returning the database URL so a test
+/// can derive constrained pools (e.g. `max_connections(1)`) for regression
+/// coverage of pool-starvation scenarios.
+async fn isolated_db_with_url() -> (PgPool, String) {
     let url = common::test_database_url();
     let base = url
         .rsplit_once('/')
@@ -73,7 +82,8 @@ async fn isolated_db() -> PgPool {
         .expect("create per-test database");
     admin.close().await;
 
-    let pool = sqlx::PgPool::connect(&format!("{base}/{name}"))
+    let database_url = format!("{base}/{name}");
+    let pool = sqlx::PgPool::connect(&database_url)
         .await
         .expect("connect per-test database");
     let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("migrations"))
@@ -83,7 +93,7 @@ async fn isolated_db() -> PgPool {
         .run(&pool)
         .await
         .expect("apply migrations on per-test database");
-    pool
+    (pool, database_url)
 }
 
 // ============================================================================
@@ -881,6 +891,176 @@ async fn restart_does_not_lose_pending_rows() {
     let state = row_state(&pool, kick_row).await;
     assert!(state.delivered_at.is_some());
     server.abort();
+}
+
+// ============================================================================
+// One-connection pool regression (Codex P2): the claim transaction must never
+// wait on a second pool connection. Forum bindings/threads are resolved
+// BEFORE the claim, so even `max_connections(1)` delivers forum and kick rows.
+// ============================================================================
+
+/// Minimal forum fake: token + thread lookup (always empty) + thread create
+/// (unique id) + message post (counted per event key).
+async fn spawn_forum_fake(
+    message_keys: Arc<Mutex<HashMap<String, usize>>>,
+) -> (String, tokio::task::JoinHandle<()>) {
+    let app = Router::new()
+        .route(
+            "/oauth/token",
+            post(|| async {
+                Json(serde_json::json!({"access_token": "forum-token", "expires_in": 300}))
+            }),
+        )
+        .route(
+            "/api/threads",
+            get(|| async { Json(serde_json::json!({"items": []})) }).post(|| async {
+                Json(serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}))
+            }),
+        )
+        .route(
+            "/api/threads/{thread_id}/messages",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let message_keys = message_keys.clone();
+                async move {
+                    let key = body["metadata"]["eventKey"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    *message_keys.lock().unwrap().entry(key).or_insert(0) += 1;
+                    StatusCode::CREATED
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), server)
+}
+
+fn forum_and_kick_config(forum_base: &str, kick_base: &str) -> OutboxReconcilerConfig {
+    OutboxReconcilerConfig {
+        forum: Some(ForumEventConfig {
+            auth_base_url: forum_base.to_string(),
+            client_id: "forum-client".to_string(),
+            client_secret: "forum-secret".to_string(),
+            forum_origin: forum_base.to_string(),
+            audience: "svc-forum".to_string(),
+        }),
+        poll_interval_ms: 250,
+        kick: Some(ExecutionKickConfig {
+            url: format!("{kick_base}/workflow-execution/kicks"),
+            token: "kick-static-token".to_string(),
+        }),
+        owner_assistance_wake: Ok(None),
+    }
+}
+
+#[tokio::test]
+async fn forum_delivery_survives_a_one_connection_pool() {
+    let (pool, database_url) = isolated_db_with_url().await;
+    let (instance, _visit) = create_instance_with_kick(&pool).await;
+    let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
+    let forum_row = outbox_first_row(&pool, instance, "FORUM_EVENT").await;
+
+    let message_keys = Arc::new(Mutex::new(HashMap::new()));
+    let (forum_base, forum_server) = spawn_forum_fake(message_keys.clone()).await;
+    let kick_capture = GatewayCapture::default();
+    let (kick_base, kick_server) = spawn_kick_gateway(kick_capture.clone()).await;
+
+    // The constrained deployment: one connection total. Before the
+    // prepare-before-claim fix this pass deadlocked on itself (the claim
+    // transaction held the only connection while ensure_thread/get_binding
+    // waited for a second one) and the forum row timed out forever.
+    let one_conn = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .expect("connect one-connection pool");
+    let forum = ForumClient::new(forum_and_kick_config(&forum_base, &kick_base));
+    let delivered = svc_workflow::forum_sync::run_once(&one_conn, &forum).await;
+    assert_eq!(delivered, 2, "forum event AND kick delivered on one connection");
+
+    let kick_state = row_state(&pool, kick_row).await;
+    assert!(kick_state.delivered_at.is_some());
+    let forum_state = row_state(&pool, forum_row).await;
+    assert!(forum_state.delivered_at.is_some());
+    assert_eq!(forum_state.attempt_count, 0, "no hidden retry");
+    assert_eq!(kick_capture.calls.load(Ordering::SeqCst), 1);
+    let keys = message_keys.lock().unwrap();
+    assert_eq!(keys.len(), 1, "exactly one forum message");
+    assert_eq!(keys.values().sum::<usize>(), 1);
+
+    forum_server.abort();
+    kick_server.abort();
+}
+
+#[tokio::test]
+async fn concurrent_workers_on_a_one_connection_pool_deliver_both_kinds() {
+    let (pool, database_url) = isolated_db_with_url().await;
+    let (instance, _visit) = create_instance_with_kick(&pool).await;
+    let mut kick_rows = vec![outbox_first_row(&pool, instance, "EXECUTION_KICK").await];
+    for i in 0..2 {
+        kick_rows.push(
+            queue_row(
+                &pool,
+                instance,
+                "EXECUTION_KICK",
+                &format!("kick:pool1-{i}:{}", Uuid::new_v4()),
+                serde_json::json!({
+                    "dispatchIntentId": Uuid::new_v4(),
+                    "nodeVisitId": Uuid::new_v4(),
+                    "workflowInstanceId": instance,
+                }),
+            )
+            .await,
+        );
+    }
+
+    let message_keys = Arc::new(Mutex::new(HashMap::new()));
+    let (forum_base, forum_server) = spawn_forum_fake(message_keys.clone()).await;
+    let kick_capture = GatewayCapture::default();
+    let (kick_base, kick_server) = spawn_kick_gateway(kick_capture.clone()).await;
+
+    let one_conn = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .expect("connect one-connection pool");
+    let forum = Arc::new(ForumClient::new(forum_and_kick_config(
+        &forum_base,
+        &kick_base,
+    )));
+
+    // Two workers racing on ONE connection: no deadlock, no starvation, and
+    // every event delivered exactly once.
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let pool = one_conn.clone();
+        let forum = forum.clone();
+        workers.push(tokio::spawn(async move {
+            svc_workflow::forum_sync::run_once(&pool, &forum).await
+        }));
+    }
+    let mut total = 0usize;
+    for worker in workers {
+        total += worker.await.unwrap();
+    }
+    assert_eq!(total, 4, "3 kicks + 1 forum event, each delivered once");
+    assert_eq!(kick_capture.calls.load(Ordering::SeqCst), 3);
+    for (key, count) in kick_capture.per_key.lock().unwrap().iter() {
+        assert_eq!(*count, 1, "kick event {key} delivered more than once");
+    }
+    let forum_posts = {
+        let keys = message_keys.lock().unwrap();
+        (keys.len(), keys.values().sum::<usize>())
+    };
+    assert_eq!(forum_posts, (1, 1), "exactly one forum event, posted once");
+    for row in kick_rows {
+        let state = row_state(&pool, row).await;
+        assert!(state.delivered_at.is_some());
+    }
+    forum_server.abort();
+    kick_server.abort();
 }
 
 // ============================================================================
