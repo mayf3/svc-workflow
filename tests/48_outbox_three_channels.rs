@@ -1212,8 +1212,256 @@ async fn all_three_channels_deliver_independently_in_one_pass() {
 }
 
 // ============================================================================
+// Per-instance forum ordering under concurrency (V3 CTR-SWEC-002 retention;
+// Codex P2 on PR #124). The candidate query's anti-overtake predicate (a
+// FORUM_EVENT row is selectable only while no earlier undelivered FORUM_EVENT
+// row exists for the same instance) must hold under two racing workers,
+// delayed deliveries, and backoff windows.
+// ============================================================================
+
+/// Queue a FORUM_EVENT row with an explicit created_at offset (minutes after
+/// now), so ordering is deterministic relative to the creation-time
+/// `wf_created:*` row.
+async fn queue_forum_event_at(pool: &PgPool, instance_id: Uuid, key: &str, offset_min: i32) -> Uuid {
+    let outbox_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO workflow_outbox
+         (outbox_id, workflow_instance_id, outbox_kind, event_key, payload, created_at)
+         VALUES ($1, $2, 'FORUM_EVENT', $3, $4, now() + make_interval(mins => $5))",
+    )
+    .bind(outbox_id)
+    .bind(instance_id)
+    .bind(key)
+    .bind(serde_json::json!({"eventType": "transition_committed"}))
+    .bind(offset_min)
+    .execute(pool)
+    .await
+    .expect("queue forum event at");
+    outbox_id
+}
+
+/// Forum fake that records the arrival order of event keys. The FIRST `e1`
+/// attempt is delayed 200ms and returns 503 (widening the concurrency window
+/// AND starting a backoff); every other post succeeds immediately.
+async fn spawn_ordering_forum_fake(
+    arrivals: Arc<Mutex<Vec<String>>>,
+) -> (String, tokio::task::JoinHandle<()>) {
+    let e1_first_posted = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let app = Router::new()
+        .route(
+            "/oauth/token",
+            post(|| async {
+                Json(serde_json::json!({"access_token": "forum-token", "expires_in": 300}))
+            }),
+        )
+        .route(
+            "/api/threads",
+            get(|| async { Json(serde_json::json!({"items": []})) }).post(|| async {
+                Json(serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}))
+            }),
+        )
+        .route(
+            "/api/threads/{thread_id}/messages",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let arrivals = arrivals.clone();
+                let e1_first_posted = e1_first_posted.clone();
+                async move {
+                    let key = body["metadata"]["eventKey"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    let is_e1_first =
+                        key == "e1" && e1_first_posted.swap(false, Ordering::SeqCst);
+                    if is_e1_first {
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                    arrivals.lock().unwrap().push(key);
+                    if is_e1_first {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        StatusCode::CREATED
+                    }
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), server)
+}
+
+/// Drive `passes` reconciler passes, returning the total delivered count.
+async fn drive_passes(
+    pool: &PgPool,
+    forum: &ForumClient,
+    passes: usize,
+) -> usize {
+    let mut delivered = 0usize;
+    for _ in 0..passes {
+        delivered += svc_workflow::forum_sync::run_once(pool, forum).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    delivered
+}
+
+#[tokio::test]
+async fn forum_events_deliver_oldest_first_under_two_concurrent_workers() {
+    let (pool, _url) = isolated_db_with_url().await;
+    let (instance, _visit) = create_instance_with_kick(&pool).await;
+    // created_at ascending after the creation-time `wf_created:*` row, so the
+    // expected per-instance order is [wf_created, e1, e2, e3].
+    for (key, offset) in [("e1", 1), ("e2", 2), ("e3", 3)] {
+        queue_forum_event_at(&pool, instance, key, offset).await;
+    }
+
+    let arrivals = Arc::new(Mutex::new(Vec::new()));
+    let (forum_base, forum_server) = spawn_ordering_forum_fake(arrivals.clone()).await;
+    let kick_capture = GatewayCapture::default();
+    let (kick_base, kick_server) = spawn_kick_gateway(kick_capture.clone()).await;
+    let forum = Arc::new(ForumClient::new(forum_and_kick_config(
+        &forum_base,
+        &kick_base,
+    )));
+
+    // Phase 1: two workers race while e1's first delivery is delayed 200ms
+    // and then fails into backoff. Neither worker may post e2/e3 at any point
+    // in this window.
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let pool = pool.clone();
+        let forum = forum.clone();
+        workers.push(tokio::spawn(async move {
+            drive_passes(&pool, &forum, 5).await
+        }));
+    }
+    let mut total = 0usize;
+    for worker in workers {
+        total += worker.await.unwrap();
+    }
+    // wf_created + the kick delivered; the e1 503 attempt is not a delivery.
+    assert_eq!(
+        total, 2,
+        "only wf_created and the kick delivered while e1 is pending/backed off"
+    );
+    {
+        let order = arrivals.lock().unwrap().clone();
+        assert_eq!(
+            order.len(),
+            2,
+            "e2/e3 must never be posted while e1 is pending: {order:?}"
+        );
+        assert!(order[0].starts_with("wf_created:"), "{order:?}");
+        assert_eq!(order[1], "e1", "{order:?}");
+    }
+    let e1_state = row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await).await;
+    assert_eq!(e1_state.attempt_count, 1);
+    assert!(e1_state.delivered_at.is_none());
+    assert!(e1_state.next_attempt_future, "backoff window open");
+    for key in ["e2", "e3"] {
+        let state = row_state(&pool, outbox_row_by_key(&pool, instance, key).await).await;
+        assert_eq!(state.attempt_count, 0, "{key} never attempted");
+        assert!(state.delivered_at.is_none());
+    }
+
+    // Phase 2: the backoff elapses; e1 delivers; e2 still cannot overtake in
+    // the same pass (its row was held back when the batch was taken).
+    force_due(&pool, outbox_row_by_key(&pool, instance, "e1").await).await;
+    let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
+    assert_eq!(delivered, 1, "only e1 in this pass");
+    assert!(arrivals.lock().unwrap().last().unwrap() == "e1");
+    let e2_state = row_state(&pool, outbox_row_by_key(&pool, instance, "e2").await).await;
+    assert_eq!(e2_state.attempt_count, 0, "e2 untouched in e1's pass");
+
+    // Phase 3: with e1 committed-delivered, e2 and then e3 proceed in order.
+    let delivered = drive_passes(&pool, &forum, 4).await;
+    assert_eq!(delivered, 2, "e2 then e3");
+    let order = arrivals.lock().unwrap().clone();
+    assert_eq!(
+        order,
+        vec![
+            order[0].clone(), // wf_created:*
+            "e1".to_string(),
+            "e1".to_string(),
+            "e2".to_string(),
+            "e3".to_string(),
+        ],
+        "strict oldest-first per instance across concurrency and backoff"
+    );
+    forum_server.abort();
+    kick_server.abort();
+}
+
+#[tokio::test]
+async fn backed_off_first_forum_event_blocks_later_events_across_passes() {
+    let pool = isolated_db().await;
+    let (instance, _visit) = create_instance_with_kick(&pool).await;
+    for (key, offset) in [("e1", 1), ("e2", 2)] {
+        queue_forum_event_at(&pool, instance, key, offset).await;
+    }
+
+    let arrivals = Arc::new(Mutex::new(Vec::new()));
+    let (forum_base, forum_server) = spawn_ordering_forum_fake(arrivals.clone()).await;
+    let kick_capture = GatewayCapture::default();
+    let (kick_base, kick_server) = spawn_kick_gateway(kick_capture.clone()).await;
+    let forum = ForumClient::new(forum_and_kick_config(&forum_base, &kick_base));
+
+    // Pass 1: wf_created delivers; e1 is held back behind it.
+    let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
+    assert_eq!(delivered, 2, "kick + wf_created");
+    // Pass 2: e1's first attempt fails into backoff; e2 untouched.
+    let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
+    assert_eq!(delivered, 0, "e1 failed, nothing else deliverable");
+    let e2_state = row_state(&pool, outbox_row_by_key(&pool, instance, "e2").await).await;
+    assert_eq!(e2_state.attempt_count, 0, "e2 not attempted behind backed-off e1");
+    assert!(row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await)
+        .await
+        .next_attempt_future);
+
+    // Pass 3 (after the backoff): e1 delivers; e2 stays untouched in the same
+    // pass — the batch was taken while e1 was still undelivered.
+    force_due(&pool, outbox_row_by_key(&pool, instance, "e1").await).await;
+    let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
+    assert_eq!(delivered, 1, "e1 only");
+    assert_eq!(
+        row_state(&pool, outbox_row_by_key(&pool, instance, "e2").await)
+            .await
+            .attempt_count,
+        0,
+        "e2 not overtaken in e1's delivery pass"
+    );
+
+    // Pass 4: with e1 committed-delivered, e2 proceeds.
+    let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
+    assert_eq!(delivered, 1, "e2 follows");
+    let order = arrivals.lock().unwrap().clone();
+    assert_eq!(
+        order,
+        vec![
+            order[0].clone(), // wf_created:*
+            "e1".to_string(),
+            "e1".to_string(),
+            "e2".to_string(),
+        ],
+        "strict oldest-first across a backoff window"
+    );
+    forum_server.abort();
+    kick_server.abort();
+}
+
+// ============================================================================
 // helpers
 // ============================================================================
+
+async fn outbox_row_by_key(pool: &PgPool, instance_id: Uuid, event_key: &str) -> Uuid {
+    sqlx::query_scalar(
+        "SELECT outbox_id FROM workflow_outbox WHERE workflow_instance_id = $1 AND event_key = $2",
+    )
+    .bind(instance_id)
+    .bind(event_key)
+    .fetch_one(pool)
+    .await
+    .expect("outbox row by key")
+}
 
 async fn outbox_event_keys(
     pool: &PgPool,
