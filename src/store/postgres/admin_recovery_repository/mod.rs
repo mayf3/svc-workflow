@@ -4,6 +4,8 @@ mod authorization;
 mod event_fields;
 mod event_replay;
 mod import_event;
+#[doc(hidden)]
+pub mod migration_manifest;
 mod override_transaction;
 mod rebuild_transaction;
 mod receipt;
