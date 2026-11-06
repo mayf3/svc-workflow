@@ -1,0 +1,77 @@
+{
+  "root": "/private/tmp/svc-h06-manifest",
+  "data_directory": "/private/tmp/h06-tier2-pg",
+  "evidence_directory": "/private/tmp/h06-tier2-evidence",
+  "source_head": "5a7dc9ee2dde1dd730dae94afb39f116160aec2c",
+  "environment": {
+    "HOME": "/Users/yanfenma",
+    "USER": "yanfenma",
+    "LOGNAME": "yanfenma",
+    "PATH": "/opt/homebrew/opt/postgresql@16/bin/:/Users/yanfenma/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "TMPDIR": "/private/tmp",
+    "PSQLRC": "/dev/null",
+    "TRUSTED_FLEET_LOCAL_PG": "1"
+  },
+  "suite_rc": null,
+  "failure": "pg-start failed rc=1",
+  "postmaster_pid_absent": true,
+  "socket_absent": true,
+  "data_retained": true,
+  "records": [
+    {
+      "name": "git-before",
+      "command": "git status --short",
+      "start": "2026-11-06T00:31:17.576258+00:00",
+      "end": "2026-11-06T00:31:17.592351+00:00",
+      "rc": 0
+    },
+    {
+      "name": "runner-diff",
+      "command": "git diff HEAD -- scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh",
+      "start": "2026-11-06T00:31:17.592565+00:00",
+      "end": "2026-11-06T00:31:17.603939+00:00",
+      "rc": 0
+    },
+    {
+      "name": "tool-version",
+      "command": "/opt/homebrew/opt/postgresql@16/bin/postgres --version",
+      "start": "2026-11-06T00:31:17.604189+00:00",
+      "end": "2026-11-06T00:31:17.695921+00:00",
+      "rc": 0
+    },
+    {
+      "name": "initdb",
+      "command": "/opt/homebrew/opt/postgresql@16/bin/initdb -D /private/tmp/h06-tier2-pg -U postgres --auth-local=trust --auth-host=reject --encoding=UTF8 --locale=en_US.UTF-8",
+      "start": "2026-11-06T00:31:17.755789+00:00",
+      "end": "2026-11-06T00:31:18.140895+00:00",
+      "rc": 0
+    },
+    {
+      "name": "pg-start",
+      "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg -l /private/tmp/h06-tier2-evidence/postgres.log -w -t 30 -o '-p 55487 -h '\"'\"''\"'\"' -k /private/tmp/h06-tier2-pg -c unix_socket_permissions=0700 -c log_connections=on -c log_disconnections=on' start",
+      "start": "2026-11-06T00:31:18.141117+00:00",
+      "end": "2026-11-06T00:31:18.270238+00:00",
+      "rc": 1
+    },
+    {
+      "name": "pg-status-after",
+      "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg status",
+      "start": "2026-11-06T00:31:18.270580+00:00",
+      "end": "2026-11-06T00:31:18.279853+00:00",
+      "rc": 3
+    },
+    {
+      "name": "pg-stop",
+      "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg -m fast -w -t 30 stop",
+      "start": "2026-11-06T00:32:24.758050+00:00",
+      "end": "2026-11-06T00:32:24.767496+00:00",
+      "rc": 1,
+      "interpretation": "startup already shut down; no server to stop, no retry"
+    }
+  ],
+  "conformance_execution": "NOT_RUN",
+  "stop_requested_after_failure": true,
+  "stop_rc": 1,
+  "pid_absent_after_stop": true,
+  "socket_absent_after_stop": true
+}
