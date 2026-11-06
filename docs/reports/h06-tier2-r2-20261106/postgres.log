@@ -1,0 +1,112 @@
+2026-11-06 08:46:17.891 CST [18501] LOG:  starting PostgreSQL 16.15 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.1.1.101), 64-bit
+2026-11-06 08:46:17.891 CST [18501] LOG:  listening on Unix socket "/private/tmp/h06-tier2-pg/.s.PGSQL.55432"
+2026-11-06 08:46:17.894 CST [18504] LOG:  database system was shut down at 2026-11-06 08:42:31 CST
+2026-11-06 08:46:17.895 CST [18501] LOG:  database system is ready to accept connections
+2026-11-06 08:46:17.994 CST [18511] LOG:  connection received: host=[local]
+2026-11-06 08:46:17.994 CST [18511] LOG:  connection authorized: user=postgres database=postgres application_name=psql
+2026-11-06 08:46:18.005 CST [18511] LOG:  disconnection: session time: 0:00:00.010 user=postgres database=postgres host=[local]
+2026-11-06 08:46:18.019 CST [18517] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.020 CST [18517] LOG:  connection authorized: user=postgres database=postgres application_name=psql
+2026-11-06 08:46:18.021 CST [18517] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=postgres host=[local]
+2026-11-06 08:46:18.028 CST [18519] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.029 CST [18519] LOG:  connection authorized: user=postgres database=postgres application_name=psql
+2026-11-06 08:46:18.129 CST [18519] LOG:  disconnection: session time: 0:00:00.100 user=postgres database=postgres host=[local]
+2026-11-06 08:46:18.137 CST [18521] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.137 CST [18521] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.144 CST [18521] LOG:  disconnection: session time: 0:00:00.007 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.151 CST [18524] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.151 CST [18524] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.161 CST [18524] LOG:  disconnection: session time: 0:00:00.009 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.169 CST [18526] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.169 CST [18526] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.183 CST [18526] LOG:  disconnection: session time: 0:00:00.014 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.191 CST [18529] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.191 CST [18529] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.196 CST [18529] LOG:  disconnection: session time: 0:00:00.005 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.204 CST [18531] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.204 CST [18531] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.209 CST [18531] LOG:  disconnection: session time: 0:00:00.005 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.217 CST [18533] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.217 CST [18533] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.225 CST [18533] LOG:  disconnection: session time: 0:00:00.008 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.232 CST [18535] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.233 CST [18535] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.235 CST [18535] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.241 CST [18537] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.241 CST [18537] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.243 CST [18537] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.250 CST [18539] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.250 CST [18539] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.251 CST [18539] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.257 CST [18541] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.257 CST [18541] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.259 CST [18541] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.266 CST [18543] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.266 CST [18543] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.267 CST [18543] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.273 CST [18545] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.273 CST [18545] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.275 CST [18545] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.281 CST [18547] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.281 CST [18547] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.282 CST [18547] LOG:  disconnection: session time: 0:00:00.000 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.288 CST [18550] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.288 CST [18550] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.290 CST [18550] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.296 CST [18552] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.296 CST [18552] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.298 CST [18552] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.304 CST [18554] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.304 CST [18554] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.307 CST [18554] LOG:  disconnection: session time: 0:00:00.003 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.313 CST [18556] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.314 CST [18556] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.315 CST [18556] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.321 CST [18558] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.321 CST [18558] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.322 CST [18558] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.328 CST [18560] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.329 CST [18560] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.330 CST [18560] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.336 CST [18562] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.336 CST [18562] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.338 CST [18562] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.344 CST [18564] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.344 CST [18564] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.350 CST [18564] LOG:  disconnection: session time: 0:00:00.005 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.356 CST [18566] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.356 CST [18566] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.358 CST [18566] LOG:  disconnection: session time: 0:00:00.002 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.364 CST [18568] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.364 CST [18568] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.371 CST [18568] LOG:  disconnection: session time: 0:00:00.007 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.378 CST [18570] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.378 CST [18570] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.379 CST [18570] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.385 CST [18572] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.385 CST [18572] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.388 CST [18572] LOG:  disconnection: session time: 0:00:00.003 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.394 CST [18574] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.395 CST [18574] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.396 CST [18574] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.402 CST [18576] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.402 CST [18576] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.405 CST [18576] LOG:  disconnection: session time: 0:00:00.003 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.412 CST [18578] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.412 CST [18578] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.413 CST [18578] LOG:  disconnection: session time: 0:00:00.001 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.420 CST [18580] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.420 CST [18580] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.426 CST [18580] LOG:  disconnection: session time: 0:00:00.006 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.433 CST [18582] LOG:  connection received: host=[local]
+2026-11-06 08:46:18.433 CST [18582] LOG:  connection authorized: user=postgres database=svc_workflow_cutover_test application_name=psql
+2026-11-06 08:46:18.433 CST [18582] ERROR:  LOCK TABLE can only be used in transaction blocks
+2026-11-06 08:46:18.433 CST [18582] STATEMENT:  LOCK TABLE workflow_command_receipts IN ACCESS EXCLUSIVE MODE;
+2026-11-06 08:46:18.433 CST [18582] LOG:  disconnection: session time: 0:00:00.000 user=postgres database=svc_workflow_cutover_test host=[local]
+2026-11-06 08:46:18.438 CST [18501] LOG:  received fast shutdown request
+2026-11-06 08:46:18.439 CST [18501] LOG:  aborting any active transactions
+2026-11-06 08:46:18.439 CST [18501] LOG:  background worker "logical replication launcher" (PID 18507) exited with exit code 1
+2026-11-06 08:46:18.439 CST [18502] LOG:  shutting down
+2026-11-06 08:46:18.439 CST [18502] LOG:  checkpoint starting: shutdown immediate
+2026-11-06 08:46:18.519 CST [18502] LOG:  checkpoint complete: wrote 1974 buffers (12.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.066 s, sync=0.015 s, total=0.080 s; sync files=773, longest=0.001 s, average=0.001 s; distance=10104 kB, estimate=10104 kB; lsn=0/1EFBEC8, redo lsn=0/1EFBEC8
+2026-11-06 08:46:18.522 CST [18501] LOG:  database system is shut down

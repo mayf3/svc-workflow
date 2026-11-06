@@ -17,11 +17,11 @@ trap cleanup EXIT
 SUFFIX=""
 if [[ "${TRUSTED_FLEET_LOCAL_PG:-0}" == 1 ]]; then
   # Owner-authorized H06 Tier-2 alternative; lifecycle is owned by the runbook.
-  BASE="postgres://postgres@localhost:55487"
+  BASE="postgres://postgres@localhost:55432"
   SUFFIX="?host=/private/tmp/h06-tier2-pg"
   IDENTITY="$(psql "${BASE}/postgres${SUFFIX}" -XAt -v ON_ERROR_STOP=1 -c \
     "SELECT current_setting('data_directory') = '/private/tmp/h06-tier2-pg'
-       AND current_setting('port') = '55487'
+       AND current_setting('port') = '55432'
        AND current_setting('unix_socket_directories') = '/private/tmp/h06-tier2-pg'
        AND current_setting('listen_addresses') = ''
        AND current_setting('server_version_num')::int BETWEEN 160000 AND 169999
