@@ -45,7 +45,7 @@ docker exec "$NAME" createdb -U postgres svc_workflow_cutover_test
 docker exec "$NAME" createdb -U postgres auth_cutover_test
 fi
 for migration in "$ROOT"/migrations/*.sql; do
-  psql "${BASE}/svc_workflow_cutover_test${SUFFIX}" -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+  psql "${BASE}/svc_workflow_cutover_test${SUFFIX}" -1 -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
 
 export TEST_WORKFLOW_DATABASE_URL="${BASE}/svc_workflow_cutover_test${SUFFIX}"
