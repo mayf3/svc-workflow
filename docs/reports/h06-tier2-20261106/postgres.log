@@ -1,0 +1,5 @@
+2026-11-06 08:31:18.170 CST [10192] LOG:  starting PostgreSQL 16.15 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.1.1.101), 64-bit
+2026-11-06 08:31:18.170 CST [10192] LOG:  listening on Unix socket "/private/tmp/h06-tier2-pg/.s.PGSQL.55487"
+2026-11-06 08:31:18.170 CST [10192] FATAL:  postmaster became multithreaded during startup
+2026-11-06 08:31:18.170 CST [10192] HINT:  Set the LC_ALL environment variable to a valid locale.
+2026-11-06 08:31:18.170 CST [10192] LOG:  database system is shut down

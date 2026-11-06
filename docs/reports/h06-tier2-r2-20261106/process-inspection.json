@@ -1,0 +1,6 @@
+{
+  "method": "ps -axo pid=,command=; retain only postgres processes for the exact data directory",
+  "matches": [],
+  "rc": 0,
+  "observed_at": "2026-11-06T00:46:18.573314+00:00"
+}
