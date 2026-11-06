@@ -1,0 +1,1 @@
+{"data_directory" : "/private/tmp/h06-tier2-pg", "port" : "55432", "socket" : "/private/tmp/h06-tier2-pg", "listen_addresses" : "", "server_version_num" : "160015", "user" : "postgres", "is_superuser" : "on", "server_ip" : null, "database" : "postgres", "databases" : ["postgres", "template0", "template1"]}

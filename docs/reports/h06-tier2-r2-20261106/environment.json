@@ -1,0 +1,11 @@
+{
+  "HOME": "/Users/yanfenma",
+  "USER": "yanfenma",
+  "LOGNAME": "yanfenma",
+  "PATH": "/opt/homebrew/opt/postgresql@16/bin/:/Users/yanfenma/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+  "TMPDIR": "/private/tmp",
+  "PSQLRC": "/dev/null",
+  "LC_ALL": "C",
+  "LANG": "C",
+  "TRUSTED_FLEET_LOCAL_PG": "1"
+}

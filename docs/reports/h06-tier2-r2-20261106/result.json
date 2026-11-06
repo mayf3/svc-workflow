@@ -1,0 +1,64 @@
+{
+  "source_head": "bcd8950466091f4cb4e0133c431186d9267ac2c2",
+  "base_head": "59daec042786f0416a6a9061c0b638ba56c0d83e",
+  "environment": {
+    "HOME": "/Users/yanfenma",
+    "USER": "yanfenma",
+    "LOGNAME": "yanfenma",
+    "PATH": "/opt/homebrew/opt/postgresql@16/bin/:/Users/yanfenma/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    "TMPDIR": "/private/tmp",
+    "PSQLRC": "/dev/null",
+    "LC_ALL": "C",
+    "LANG": "C",
+    "TRUSTED_FLEET_LOCAL_PG": "1"
+  },
+  "suite_rc": 3,
+  "conformance_execution": "EXECUTED",
+  "start_rc": 0,
+  "stop_rc": 0,
+  "attempts": 1,
+  "production_db_connections": 0,
+  "production_db_or_service_writes": 0,
+  "system_service_registration": "NONE",
+  "error": "conformance failed rc=3",
+  "runner_sha256": "2264bebc411e191a16433ed4cba66f8a97635c23f7be023689af2664bd438947",
+  "fixture_bindings": [
+    {
+      "path": "/private/tmp/svc-h06-manifest/workflow_trusted_fleet_successor_plan_v2.json",
+      "size": 540472,
+      "sha256": "0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606"
+    },
+    {
+      "path": "/Users/yanfenma/workspace/project/svc-workflow/workflow_trusted_fleet_successor_plan_v2.json",
+      "size": 540472,
+      "sha256": "0a05ed2d6099601a567d0ebf652e9adc737e8dd7c4c9dfc1260a6037c49f3606"
+    }
+  ],
+  "regulator_start_log_sha256": "f650ce809c87264e3868d0bd7c31d75d402a22a4fc7a50c0ca4e5f4e51cd3eb8",
+  "identity": {
+    "data_directory": "/private/tmp/h06-tier2-pg",
+    "port": "55432",
+    "socket": "/private/tmp/h06-tier2-pg",
+    "listen_addresses": "",
+    "server_version_num": "160015",
+    "user": "postgres",
+    "is_superuser": "on",
+    "server_ip": null,
+    "database": "postgres",
+    "databases": [
+      "postgres",
+      "template0",
+      "template1"
+    ]
+  },
+  "status_after_rc": 3,
+  "postmaster_pid_exists": false,
+  "socket_paths_after": [],
+  "data_mode_after": "0o700",
+  "data_retained": true,
+  "postgres_processes_after": [],
+  "source_hashes_unchanged": true,
+  "regulator_start_log_unchanged": true,
+  "result": "STOPPED",
+  "completed_at": "2026-11-06T00:46:18.594869+00:00"
+}

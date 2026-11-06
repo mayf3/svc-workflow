@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/private/tmp/h06-tier2-r2-evidence/supervisor.py", line 86, in <module>
+    if result['suite_rc'] != 0: raise RuntimeError('conformance failed rc=' + str(result['suite_rc']))
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: conformance failed rc=3
