@@ -1,7 +1,7 @@
 ---
 spec_id: SVC_WORKFLOW_EXECUTION_CONTROL_V2
 title: Accepted whole-authority successor to SVC_WORKFLOW_EXECUTION_CONTROL_V1
-status: accepted
+status: superseded
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
@@ -18,7 +18,7 @@ paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
 external_authorities: []
 supersedes:
   - SVC_WORKFLOW_EXECUTION_CONTROL_V1
-superseded_by: null
+superseded_by: SVC_WORKFLOW_EXECUTION_CONTROL_V3
 owners:
   - mayf3
 acceptance_authority_basis: >-
