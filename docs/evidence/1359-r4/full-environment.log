@@ -1,0 +1,361 @@
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/initdb", "-D", "/private/tmp/h1359-r4-pg/data", "-U", "postgres", "--auth=trust", "--no-locale", "-E", "UTF8"]
+The files belonging to this database system will be owned by user "yanfenma".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "C".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /private/tmp/h1359-r4-pg/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Shanghai
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    '/opt/homebrew/opt/postgresql@16/bin/pg_ctl' -D /private/tmp/h1359-r4-pg/data -l logfile start
+
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/pg_ctl", "-D", "/private/tmp/h1359-r4-pg/data", "-l", "/private/tmp/h1359-r4-pg/server.log", "-o", "-h 127.0.0.1 -p 56589 -k /private/tmp/h1359-r4-pg", "-w", "start"]
+waiting for server to start.... done
+server started
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "postgres", "-XAt", "-v", "ON_ERROR_STOP=1", "-c", "SELECT current_setting('data_directory') || '|' || current_setting('port') || '|' || current_setting('listen_addresses')"]
+/private/tmp/h1359-r4-pg/data|56589|127.0.0.1
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/initdb", "-D", "/private/tmp/h1359-r4-pg-55432/data", "-U", "postgres", "--auth=trust", "--no-locale", "-E", "UTF8"]
+The files belonging to this database system will be owned by user "yanfenma".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "C".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /private/tmp/h1359-r4-pg-55432/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Shanghai
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    '/opt/homebrew/opt/postgresql@16/bin/pg_ctl' -D /private/tmp/h1359-r4-pg-55432/data -l logfile start
+
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/pg_ctl", "-D", "/private/tmp/h1359-r4-pg-55432/data", "-l", "/private/tmp/h1359-r4-pg-55432/server.log", "-o", "-h 127.0.0.1 -p 55432 -k /private/tmp/h1359-r4-pg-55432", "-w", "start"]
+waiting for server to start.... done
+server started
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "55432", "-U", "postgres", "-d", "postgres", "-XAt", "-v", "ON_ERROR_STOP=1", "-c", "SELECT current_setting('data_directory') || '|' || current_setting('port') || '|' || current_setting('listen_addresses')"]
+/private/tmp/h1359-r4-pg-55432/data|55432|127.0.0.1
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/initdb", "-D", "/private/tmp/h1359-r4-pg-55483/data", "-U", "postgres", "--auth=trust", "--no-locale", "-E", "UTF8"]
+The files belonging to this database system will be owned by user "yanfenma".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "C".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /private/tmp/h1359-r4-pg-55483/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Shanghai
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    '/opt/homebrew/opt/postgresql@16/bin/pg_ctl' -D /private/tmp/h1359-r4-pg-55483/data -l logfile start
+
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/pg_ctl", "-D", "/private/tmp/h1359-r4-pg-55483/data", "-l", "/private/tmp/h1359-r4-pg-55483/server.log", "-o", "-h 127.0.0.1 -p 55483 -k /private/tmp/h1359-r4-pg-55483", "-w", "start"]
+waiting for server to start.... done
+server started
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "55483", "-U", "postgres", "-d", "postgres", "-XAt", "-v", "ON_ERROR_STOP=1", "-c", "SELECT current_setting('data_directory') || '|' || current_setting('port') || '|' || current_setting('listen_addresses')"]
+/private/tmp/h1359-r4-pg-55483/data|55483|127.0.0.1
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "55483", "-U", "postgres", "-d", "postgres", "-XAt", "-v", "ON_ERROR_STOP=1", "-c", "CREATE ROLE swaar4 LOGIN SUPERUSER"]
+CREATE ROLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/createdb", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "svc_workflow_test"]
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/createdb", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "svc_workflow_cutover_test"]
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/createdb", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "auth_cutover_test"]
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0001_identity_domain.sql"]
+CREATE TYPE
+CREATE TYPE
+CREATE TYPE
+CREATE TYPE
+CREATE TYPE
+CREATE TYPE
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0002_workflow_definition.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0003_runtime.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0004_workflow_events.sql"]
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0005_command_audit.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0006_triggers_constraints.sql"]
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0007_definition_graph_immutability.sql"]
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0008_fix_graph_definition_version_escape.sql"]
+CREATE FUNCTION
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0009_add_instance_external_reference.sql"]
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0010_terminal_assignee_nullable.sql"]
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0011_add_definition_archived.sql"]
+ALTER TABLE
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0012_restore_workflow_state_version_constraint.sql"]
+DO
+DO
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0013_instance_input_principal_assignee.sql"]
+ALTER TYPE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0014_instance_input_principal_schema.sql"]
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0015_add_instance_cancel_archive.sql"]
+ALTER TABLE
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0016_instance_assignees_and_artifact.sql"]
+CREATE TABLE
+CREATE INDEX
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0017_reconcile_assignee_artifact_constraints.sql"]
+DO
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0018_reconcile_node_assignees_unique_name.sql"]
+DO
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0019_add_definition_semantic_model_version.sql"]
+ALTER TABLE
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0020_global_role_bindings.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0021_workflow_assistance_v1.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0022_assistance_v1_db_invariants.sql"]
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0023_visit_activation_v1.sql"]
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+UPDATE 0
+ALTER TABLE
+ALTER TABLE
+CREATE FUNCTION
+CREATE TRIGGER
+ALTER TYPE
+CREATE TYPE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0024_deprecation_reason.sql"]
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0025_workflow_identity_successor_lines.sql"]
+CREATE TABLE
+CREATE INDEX
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0026_work_execution_class.sql"]
+CREATE TYPE
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0027_execution_control_v1.sql"]
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0028_owner_assistance_wake_outbox.sql"]
+ALTER TABLE
+ALTER TABLE
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0029_governance_child_return.sql"]
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0030_composite_command_event_integrity.sql"]
+LOCK TABLE
+LOCK TABLE
+ALTER TABLE
+CREATE FUNCTION
+DO
+CREATE FUNCTION
+CREATE TRIGGER
+DROP INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0031_owner_obligation_workflows.sql"]
+LOCK TABLE
+CREATE TABLE
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE TABLE
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+CREATE TRIGGER
+COMMAND ["/opt/homebrew/opt/postgresql@16/bin/psql", "-h", "127.0.0.1", "-p", "56589", "-U", "postgres", "-d", "svc_workflow_cutover_test", "-XAt", "-v", "ON_ERROR_STOP=1", "-1", "-f", "/private/tmp/h1359-outbox/migrations/0032_outbox_dead_letter.sql"]
+ALTER TABLE

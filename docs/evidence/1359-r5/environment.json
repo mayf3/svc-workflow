@@ -1,0 +1,12 @@
+[
+  {
+    "port": 55483,
+    "base": "/private/tmp/h1359-r5-pg-55483",
+    "identity": "/private/tmp/h1359-r5-pg-55483/data|55483|127.0.0.1"
+  },
+  {
+    "port": 56591,
+    "base": "/private/tmp/h1359-r5-pg-56591",
+    "identity": "/private/tmp/h1359-r5-pg-56591/data|56591|127.0.0.1"
+  }
+]

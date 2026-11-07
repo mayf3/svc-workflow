@@ -1,0 +1,9 @@
+{
+  "body": {
+    "error": {
+      "code": "workflow_instance_not_found_or_not_visible",
+      "message": "workflow instance not found or not visible"
+    }
+  },
+  "status": 404
+}

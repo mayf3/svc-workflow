@@ -1,0 +1,21 @@
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-outbox)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.92s
+     Running tests/48_outbox_three_channels.rs (target/debug/deps/48_outbox_three_channels-8aff9b380632eabb)
+
+running 1 test
+test forum_timeouts_do_not_delay_healthy_background_channels has been running for over 60 seconds
+H1359_TIMING pending_bindings=20 forum_http_timeout_ms=10000 lookup_calls=20 kick_received_ms=Some(200052) wake_received_ms=Some(200068) kick_settled_ms=Some(200063) wake_settled_ms=Some(200086)
+
+thread 'forum_timeouts_do_not_delay_healthy_background_channels' (70253597) panicked at tests/48_outbox_three_channels.rs:422:5:
+healthy channels waited for Forum timeouts: kick=Some(200.0634385s), wake=Some(200.086695292s)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test forum_timeouts_do_not_delay_healthy_background_channels ... FAILED
+
+failures:
+
+failures:
+    forum_timeouts_do_not_delay_healthy_background_channels
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 18 filtered out; finished in 200.37s
+
+error: test failed, to rerun pass `--test 48_outbox_three_channels`

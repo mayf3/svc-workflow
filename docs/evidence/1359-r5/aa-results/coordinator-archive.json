@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/a494280f-5839-4656-a8d4-e700204e36f0/archive",
+  "request": {
+    "reason": "independent Coordinator archive"
+  },
+  "response": {
+    "eventSequence": 3,
+    "replayed": false,
+    "workflowInstanceId": "a494280f-5839-4656-a8d4-e700204e36f0",
+    "workflowStateVersion": 3
+  },
+  "status": 200
+}

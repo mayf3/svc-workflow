@@ -1,0 +1,6 @@
+{
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "status": "M REVIEW-1359-OUTBOX.md\n M STOPPED-1359-OUTBOX.md\n M tests/48_outbox_three_channels.rs\n?? RECEIPT-1359-OUTBOX.md\n?? docs/evidence/1359-r3/\n?? docs/evidence/1359-r4/",
+  "stash_list": "stash@{0}: On feat/artifact-bound-completion-receipt-v1: wip\nstash@{1}: WIP on feat/assignee-artifact-receipt-v1: 3d364bf feat(contract): V1.1 final - policy validation, receipt endpoint, SDK, migration tests\nstash@{2}: WIP on feat/instance-input-principal-assignee-v1: c1a3353 fix(workflow): split migration 0013 into 0013+0014 and update readiness to v14\nstash@{3}: On integrate/domain-owner-definition-governance-v1: pre-integration-worktree-save\nstash@{4}: WIP on main: bbc301b fix(auth): add agent_id to V1DirectMachineClaims for contract conformance\nstash@{5}: WIP on main: 08097b9 chore: fix seed SQL order (DRAFT before PUBLISHED)",
+  "at": "2026-11-07T21:00:09.719879+00:00"
+}

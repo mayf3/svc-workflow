@@ -1,0 +1,53 @@
+[
+  {
+    "port": 56589,
+    "data_directory": "/private/tmp/h1359-r4-pg/data",
+    "identity": "/private/tmp/h1359-r4-pg/data|56589|127.0.0.1",
+    "identity_before_stop": "/private/tmp/h1359-r4-pg/data|56589|127.0.0.1",
+    "command": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h1359-r4-pg/data",
+      "-m",
+      "fast",
+      "-w",
+      "stop"
+    ],
+    "rc": 0,
+    "stopped_at": "2026-11-07T20:51:30.224490+00:00"
+  },
+  {
+    "port": 55432,
+    "data_directory": "/private/tmp/h1359-r4-pg-55432/data",
+    "identity": "/private/tmp/h1359-r4-pg-55432/data|55432|127.0.0.1",
+    "identity_before_stop": "/private/tmp/h1359-r4-pg-55432/data|55432|127.0.0.1",
+    "command": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h1359-r4-pg-55432/data",
+      "-m",
+      "fast",
+      "-w",
+      "stop"
+    ],
+    "rc": 0,
+    "stopped_at": "2026-11-07T20:51:30.969620+00:00"
+  },
+  {
+    "port": 55483,
+    "data_directory": "/private/tmp/h1359-r4-pg-55483/data",
+    "identity": "/private/tmp/h1359-r4-pg-55483/data|55483|127.0.0.1",
+    "identity_before_stop": "/private/tmp/h1359-r4-pg-55483/data|55483|127.0.0.1",
+    "command": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h1359-r4-pg-55483/data",
+      "-m",
+      "fast",
+      "-w",
+      "stop"
+    ],
+    "rc": 0,
+    "stopped_at": "2026-11-07T20:51:31.634469+00:00"
+  }
+]
