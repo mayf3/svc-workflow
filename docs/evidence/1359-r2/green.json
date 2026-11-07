@@ -1,0 +1,22 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--test",
+    "48_outbox_three_channels",
+    "forum_timeouts_do_not_delay_healthy_background_channels",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "started_at": "2026-11-07T18:24:46.480306+00:00",
+  "parent_head": "0cbb7f6cc2c68b114cc493712eb98699ad660393",
+  "source_sha256": "e4bfb8e75f73f1ec6100bd9695b8db9507bb6cdf98a90e91b77694cd73b35bb1",
+  "test_sha256": "2fc75625cc81fca95e62cd5e5548793d8915a2b1497cb01786ad26773a0d15f7",
+  "database": "postgres://postgres@127.0.0.1:56485/svc_workflow_test",
+  "scope": "disposable local PostgreSQL and loopback-only fakes",
+  "rc": 0,
+  "elapsed_seconds": 9.667,
+  "ended_at": "2026-11-07T18:24:56.158465+00:00"
+}

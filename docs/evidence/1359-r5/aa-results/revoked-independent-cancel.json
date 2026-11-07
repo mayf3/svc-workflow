@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/1231b8ae-186a-4c09-a508-a3953326ad2c/cancel",
+  "request": {
+    "reason": "independent governance lifecycle"
+  },
+  "response": {
+    "eventSequence": 3,
+    "replayed": false,
+    "workflowInstanceId": "1231b8ae-186a-4c09-a508-a3953326ad2c",
+    "workflowStateVersion": 3
+  },
+  "status": 200
+}

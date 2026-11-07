@@ -1,0 +1,12 @@
+{
+  "started_at": "2026-11-07T20:29:58.275412+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "remote_refs": "8da8dbcb70e700d9e35970e8b662b1be2c29afdc\trefs/heads/main\n",
+  "hashes": {
+    "src/forum_sync.rs": "d78eb6f6c09c4a7849f2fc218c48543bddf476e767d3623fd7df04c54a56ab7a",
+    "src/store/postgres/outbox.rs": "4531f1e2b9cd57a19236c7f27cc3632e5ea234b0a1cc3af0ffa979f53a23d7b3",
+    "tests/48_outbox_three_channels.rs": "3328d6710e80cc404d28fc902cd7983c6747752ed3a7da7bbe60b6adffb252c7",
+    "docs/evidence/1359-r3/cargo-test-runner.py": "de0f1564c7fb35b46eb976ff95db4efa7748a20d9d5c953448c7b0113608af88",
+    "docs/evidence/1359-r4/cargo-test-runner.py": "a4de83a85db39aa9ba3d56056fd3403367d894e84f17b43e17a5980cfa4e36e1"
+  }
+}

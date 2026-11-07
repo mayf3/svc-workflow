@@ -1,0 +1,30 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--test",
+    "48_outbox_three_channels",
+    "sustained_",
+    "--",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/private/tmp/h1359-r3-base",
+  "head": "8da8dbcb70e700d9e35970e8b662b1be2c29afdc",
+  "started_at": "2026-11-07T20:01:10.834500+00:00",
+  "scope": "task-owned disposable PostgreSQL; loopback fakes; no production access",
+  "environment": {
+    "TEST_DATABASE_URL": "postgres://postgres@127.0.0.1:56589/svc_workflow_test",
+    "CARGO_TARGET_DIR": "/private/tmp/h1359-outbox/target",
+    "H1359_BACKOFF_ATTRIBUTION": "1"
+  },
+  "hashes": {
+    "src/forum_sync.rs": "cad3a653abe40ca0fac122112891230a12abf22a5fba9e24dd1f6786ca8e9f95",
+    "src/store/postgres/outbox.rs": "4531f1e2b9cd57a19236c7f27cc3632e5ea234b0a1cc3af0ffa979f53a23d7b3",
+    "tests/48_outbox_three_channels.rs": "03ee3de4e24c43369d5efd1a77a39ae2ec44d527a003a36502d180b321b80bef"
+  },
+  "rc": 101,
+  "elapsed_seconds": 28.91,
+  "ended_at": "2026-11-07T20:01:39.745571+00:00"
+}

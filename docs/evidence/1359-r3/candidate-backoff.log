@@ -1,0 +1,32 @@
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-r3-candidate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.21s
+     Running tests/48_outbox_three_channels.rs (/private/tmp/h1359-outbox/target/debug/deps/48_outbox_three_channels-8aff9b380632eabb)
+
+running 3 tests
+test sustained_forum_timeout_keeps_other_channels_polling ... H1359_BACKOFF_ATTRIBUTION slow=FORUM_EVENT elapsed_ms=10008 attempts=1 next_attempt_at=2026-11-07 20:02:41.552941 UTC remaining_seconds=-8.006 next_attempt_future=false
+
+thread 'sustained_forum_timeout_keeps_other_channels_polling' (70446534) panicked at tests/48_outbox_three_channels.rs:611:9:
+original backoff is retained
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sustained_kick_timeout_keeps_other_channels_polling ... H1359_BACKOFF_ATTRIBUTION slow=EXECUTION_KICK elapsed_ms=5004 attempts=1 next_attempt_at=2026-11-07 20:02:51.683774 UTC remaining_seconds=-3.004 next_attempt_future=false
+
+thread 'sustained_kick_timeout_keeps_other_channels_polling' (70446786) panicked at tests/48_outbox_three_channels.rs:611:9:
+original backoff is retained
+FAILED
+test sustained_wake_timeout_keeps_other_channels_polling ... H1359_BACKOFF_ATTRIBUTION slow=OWNER_ASSISTANCE_WAKE elapsed_ms=5004 attempts=1 next_attempt_at=2026-11-07 20:02:56.824013 UTC remaining_seconds=-3.004 next_attempt_future=false
+
+thread 'sustained_wake_timeout_keeps_other_channels_polling' (70446858) panicked at tests/48_outbox_three_channels.rs:611:9:
+original backoff is retained
+FAILED
+
+failures:
+
+failures:
+    sustained_forum_timeout_keeps_other_channels_polling
+    sustained_kick_timeout_keeps_other_channels_polling
+    sustained_wake_timeout_keeps_other_channels_polling
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 19 filtered out; finished in 20.42s
+
+error: test failed, to rerun pass `--test 48_outbox_three_channels`

@@ -239,6 +239,7 @@ struct RowState {
     dead_lettered_at: Option<Timestamp>,
     attempt_count: i32,
     last_error: Option<String>,
+    next_attempt_at: Timestamp,
     next_attempt_future: bool,
 }
 
@@ -264,6 +265,7 @@ async fn row_state(pool: &PgPool, outbox_id: Uuid) -> RowState {
         dead_lettered_at,
         attempt_count,
         last_error,
+        next_attempt_at,
         next_attempt_future: next_attempt_at > sqlx::types::chrono::Utc::now(),
     }
 }
@@ -276,7 +278,407 @@ async fn force_due(pool: &PgPool, outbox_id: Uuid) {
         .expect("force due");
 }
 
+// #1359: exercise the actual background loop with twenty real 10s Forum
+// timeouts. On the serial baseline this takes about 200s; on the isolated
+// loop the healthy receivers settle immediately and release the fake's wait.
+// The endpoint timings and durable-row timings are both printed for RED/GREEN.
+#[tokio::test]
+async fn forum_timeouts_do_not_delay_healthy_background_channels() {
+    use std::sync::atomic::AtomicBool;
+    use std::time::Instant;
+
+    let pool = isolated_db().await;
+    let mut first_instance = None;
+    for _ in 0..20 {
+        let (instance, _) = create_instance_with_kick(&pool).await;
+        first_instance.get_or_insert(instance);
+    }
+    let instance = first_instance.unwrap();
+    // Preserve fixture history but isolate the twenty binding timeouts from
+    // the separate event-post phase; these rows are simply not due yet.
+    sqlx::query("UPDATE workflow_outbox SET next_attempt_at = now() + interval '1 hour' WHERE outbox_kind = 'FORUM_EVENT'")
+        .execute(&pool).await.unwrap();
+    let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
+    let wake_row = queue_row(
+        &pool,
+        instance,
+        "OWNER_ASSISTANCE_WAKE",
+        "owner-assistance:1359-timing",
+        serde_json::json!({
+            "workflowInstanceId": instance, "nodeVisitId": Uuid::new_v4(),
+            "assistanceCaseId": Uuid::new_v4(), "ownerPrincipalId": Uuid::new_v4(),
+            "reason": "RETURN_POLICY_EXHAUSTED"
+        }),
+    )
+    .await;
+
+    let released = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(tokio::sync::Notify::new());
+    let lookups = Arc::new(AtomicUsize::new(0));
+    let lookup_released = released.clone();
+    let lookup_release = release.clone();
+    let lookup_calls = lookups.clone();
+    let forum_app = Router::new()
+        .route(
+            "/oauth/token",
+            post(|| async {
+                Json(serde_json::json!({"access_token": "forum-token", "expires_in": 600}))
+            }),
+        )
+        .route(
+            "/api/threads",
+            get(move || {
+                let released = lookup_released.clone();
+                let release = lookup_release.clone();
+                let calls = lookup_calls.clone();
+                async move {
+                    // Register before checking the flag so teardown cannot miss
+                    // a waiter between checking and waiting.
+                    let notified = release.notified();
+                    tokio::pin!(notified);
+                    notified.as_mut().enable();
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    if !released.load(Ordering::SeqCst) {
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(11)) => {},
+                            _ = notified => {},
+                        }
+                    }
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let forum_base = format!("http://{}", listener.local_addr().unwrap());
+    let forum_server = tokio::spawn(async move { axum::serve(listener, forum_app).await.unwrap() });
+
+    let started = Instant::now();
+    let kick_received = Arc::new(Mutex::new(None));
+    let wake_received = Arc::new(Mutex::new(None));
+    let kick_record = kick_received.clone();
+    let wake_record = wake_received.clone();
+    let healthy_app = Router::new()
+        .route(
+            "/oauth/token",
+            post(|| async {
+                Json(
+                    serde_json::json!({"access_token": "wake-token", "token_type": "Bearer",
+                "expires_in": 600, "scope": "workflow.execute"}),
+                )
+            }),
+        )
+        .route(
+            "/workflow-execution/kicks",
+            post(move || {
+                let record = kick_record.clone();
+                async move {
+                    record.lock().unwrap().get_or_insert(started.elapsed());
+                    StatusCode::OK
+                }
+            }),
+        )
+        .route(
+            "/workflow-execution/owner-assistance-wakes",
+            post(move || {
+                let record = wake_record.clone();
+                async move {
+                    record.lock().unwrap().get_or_insert(started.elapsed());
+                    StatusCode::OK
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let healthy_base = format!("http://{}", listener.local_addr().unwrap());
+    let healthy_server =
+        tokio::spawn(async move { axum::serve(listener, healthy_app).await.unwrap() });
+    let mut config = forum_and_kick_config(&forum_base, &healthy_base);
+    // Only one pass: the immediate first tick, then ten minutes. This keeps
+    // test teardown from racing a second baseline pass.
+    config.poll_interval_ms = 600_000;
+    config.owner_assistance_wake = Ok(Some(OwnerAssistanceWakeConfig {
+        url: format!("{healthy_base}/workflow-execution/owner-assistance-wakes"),
+        auth_base_url: healthy_base,
+        client_id: "wake-client".into(),
+        client_secret: "wake-secret".into(),
+        audience: "svc-workflow".into(),
+    }));
+    let background_pool = pool.clone();
+    let background = tokio::spawn(async move {
+        svc_workflow::forum_sync::run_loop(background_pool, config).await;
+    });
+
+    let mut kick_settled = None;
+    let mut wake_settled = None;
+    let observation = tokio::time::timeout(Duration::from_secs(230), async {
+        loop {
+            if kick_settled.is_none() && row_state(&pool, kick_row).await.delivered_at.is_some() {
+                kick_settled = Some(started.elapsed());
+            }
+            if wake_settled.is_none() && row_state(&pool, wake_row).await.delivered_at.is_some() {
+                wake_settled = Some(started.elapsed());
+            }
+            if kick_settled.is_some() && wake_settled.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    let lookup_count_at_settlement = lookups.load(Ordering::SeqCst);
+    let kick_at = *kick_received.lock().unwrap();
+    let wake_at = *wake_received.lock().unwrap();
+    println!("H1359_TIMING pending_bindings=20 forum_http_timeout_ms=10000 lookup_calls={lookup_count_at_settlement} kick_received_ms={:?} wake_received_ms={:?} kick_settled_ms={:?} wake_settled_ms={:?}",
+        kick_at.map(|d| d.as_millis()), wake_at.map(|d| d.as_millis()),
+        kick_settled.map(|d| d.as_millis()), wake_settled.map(|d| d.as_millis()));
+
+    // Release only the test receiver. No product timeout, claim or retry
+    // semantics are altered to make the timing assertion pass.
+    released.store(true, Ordering::SeqCst);
+    release.notify_waiters();
+    let cleanup = tokio::time::timeout(Duration::from_secs(5), async {
+        while lookups.load(Ordering::SeqCst) < 20 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    })
+    .await;
+    background.abort();
+    let _ = background.await;
+    forum_server.abort();
+    healthy_server.abort();
+    pool.close().await;
+    assert!(
+        cleanup.is_ok(),
+        "fixture binding preparation must finish before teardown"
+    );
+    assert!(
+        observation.is_ok(),
+        "healthy channels did not settle within the observation window"
+    );
+    assert!(
+        kick_settled.unwrap() < Duration::from_secs(2)
+            && wake_settled.unwrap() < Duration::from_secs(2),
+        "healthy channels waited for Forum timeouts: kick={kick_settled:?}, wake={wake_settled:?}"
+    );
+}
+
 // ── fake HTTP servers ───────────────────────────────────────────────────────
+
+#[derive(Clone)]
+struct TimeoutChannelFake {
+    slow_kind: &'static str,
+    started: Arc<AtomicUsize>,
+}
+
+impl TimeoutChannelFake {
+    async fn deliver(&self, kind: &str) -> StatusCode {
+        if kind == self.slow_kind {
+            self.started.fetch_add(1, Ordering::SeqCst);
+            // Exceeds every unchanged product HTTP timeout (5s or 10s).
+            tokio::time::sleep(Duration::from_secs(11)).await;
+            StatusCode::SERVICE_UNAVAILABLE
+        } else {
+            StatusCode::OK
+        }
+    }
+}
+
+async fn wait_for_delivered_rows(pool: &PgPool, rows: &[Uuid]) {
+    loop {
+        let mut all_delivered = true;
+        for row in rows {
+            all_delivered &= row_state(pool, *row).await.delivered_at.is_some();
+        }
+        if all_delivered {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// A slow receiver stays slow through its REAL HTTP timeout and retry
+/// settlement. Healthy channels must deliver both before and after it, on
+/// subsequent ticks, while the slow row keeps its original retry semantics.
+async fn assert_sustained_channel_isolation(slow_kind: &'static str) {
+    use std::time::Instant;
+    let pool = isolated_db().await;
+    let (instance, visit) = create_instance_with_kick(&pool).await;
+    let payload = serde_json::json!({
+        "workflowInstanceId": instance, "nodeVisitId": visit,
+        "dispatchIntentId": Uuid::new_v4(), "assistanceCaseId": Uuid::new_v4(),
+        "ownerPrincipalId": Uuid::new_v4(), "reason": "RETURN_POLICY_EXHAUSTED",
+        "eventType": "assistance_requested"
+    });
+    let wake_row = queue_row(
+        &pool,
+        instance,
+        "OWNER_ASSISTANCE_WAKE",
+        "owner-assistance:1359-sustained",
+        payload.clone(),
+    )
+    .await;
+    let original = [
+        (
+            "EXECUTION_KICK",
+            outbox_first_row(&pool, instance, "EXECUTION_KICK").await,
+        ),
+        (
+            "FORUM_EVENT",
+            outbox_first_row(&pool, instance, "FORUM_EVENT").await,
+        ),
+        ("OWNER_ASSISTANCE_WAKE", wake_row),
+    ];
+    let slow_row = original
+        .iter()
+        .find(|(kind, _)| *kind == slow_kind)
+        .unwrap()
+        .1;
+    let initial_next_attempt_at = row_state(&pool, slow_row).await.next_attempt_at;
+    let healthy: Vec<_> = original
+        .iter()
+        .filter(|(kind, _)| *kind != slow_kind)
+        .map(|(_, row)| *row)
+        .collect();
+    let fake = TimeoutChannelFake {
+        slow_kind,
+        started: Arc::new(AtomicUsize::new(0)),
+    };
+    let app = Router::new()
+        .route(
+            "/oauth/token",
+            post(|| async {
+                Json(
+                    serde_json::json!({"access_token": "test-token", "token_type": "Bearer",
+                "expires_in": 600, "scope": "workflow.execute"}),
+                )
+            }),
+        )
+        .route(
+            "/api/threads",
+            get(|| async { Json(serde_json::json!({"items": []})) }).post(|| async {
+                Json(serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}))
+            }),
+        )
+        .route(
+            "/api/threads/{thread_id}/messages",
+            post(|State(fake): State<TimeoutChannelFake>| async move {
+                fake.deliver("FORUM_EVENT").await
+            }),
+        )
+        .route(
+            "/workflow-execution/kicks",
+            post(|State(fake): State<TimeoutChannelFake>| async move {
+                fake.deliver("EXECUTION_KICK").await
+            }),
+        )
+        .route(
+            "/workflow-execution/owner-assistance-wakes",
+            post(|State(fake): State<TimeoutChannelFake>| async move {
+                fake.deliver("OWNER_ASSISTANCE_WAKE").await
+            }),
+        )
+        .with_state(fake.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let mut config = forum_and_kick_config(&base, &base);
+    config.poll_interval_ms = 20;
+    config.owner_assistance_wake = Ok(Some(OwnerAssistanceWakeConfig {
+        url: format!("{base}/workflow-execution/owner-assistance-wakes"),
+        auth_base_url: base,
+        client_id: "wake-client".into(),
+        client_secret: "wake-secret".into(),
+        audience: "svc-workflow".into(),
+    }));
+    let background_pool = pool.clone();
+    let started = Instant::now();
+    let background = tokio::spawn(async move {
+        svc_workflow::forum_sync::run_loop(background_pool, config).await;
+    });
+    let observation = tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            wait_for_delivered_rows(&pool, &healthy),
+        )
+        .await
+        .expect("healthy initial rows must not wait for the slow channel");
+        let first_ms = started.elapsed().as_millis();
+        while row_state(&pool, slow_row).await.attempt_count == 0 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let after_timeout_ms = started.elapsed().as_millis();
+        let mut later_rows = Vec::new();
+        for (kind, _) in original {
+            if kind != slow_kind {
+                later_rows.push(
+                    queue_row(
+                        &pool,
+                        instance,
+                        kind,
+                        &format!("1359-later-{kind}"),
+                        payload.clone(),
+                    )
+                    .await,
+                );
+            }
+        }
+        let later_started = Instant::now();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            wait_for_delivered_rows(&pool, &later_rows),
+        )
+        .await
+        .expect("healthy later ticks must progress after the peer times out");
+        let slow_state = row_state(&pool, slow_row).await;
+        (
+            first_ms,
+            after_timeout_ms,
+            later_started.elapsed().as_millis(),
+            slow_state,
+        )
+    })
+    .await;
+    background.abort();
+    let _ = background.await;
+    server.abort();
+    let _ = server.await;
+    pool.close().await;
+    let (first_ms, after_timeout_ms, later_ms, slow_state) =
+        observation.expect("slow channel did not complete its original bounded HTTP attempt");
+    println!("H1359_SUSTAINED slow={slow_kind} first_healthy_ms={first_ms} slow_timeout_settled_ms={after_timeout_ms} later_healthy_ms={later_ms} slow_attempts={} slow_http_started={}",
+        slow_state.attempt_count, fake.started.load(Ordering::SeqCst));
+    println!("H1359_RETRY slow={slow_kind} initial_due={initial_next_attempt_at} next_attempt_at={} advance_ms={}",
+        slow_state.next_attempt_at,
+        (slow_state.next_attempt_at - initial_next_attempt_at).num_milliseconds());
+    assert!(fake.started.load(Ordering::SeqCst) > 0);
+    assert!(slow_state.delivered_at.is_none());
+    assert!(slow_state.dead_lettered_at.is_none());
+    assert!(slow_state.attempt_count >= 1);
+    assert!(slow_state.last_error.is_some());
+    // The original SQL uses transaction-start now(), before the real 5s/10s
+    // HTTP timeout. Its first 2s backoff can already be past at settlement.
+    // Check the persisted advance from the original due time; the existing
+    // fast-error tests separately check that an unexpired backoff holds.
+    assert!(
+        slow_state.next_attempt_at >= initial_next_attempt_at + chrono::Duration::seconds(2),
+        "retry timestamp advances by at least the first backoff from the original due time"
+    );
+}
+
+#[tokio::test]
+async fn sustained_forum_timeout_keeps_other_channels_polling() {
+    assert_sustained_channel_isolation("FORUM_EVENT").await;
+}
+
+#[tokio::test]
+async fn sustained_kick_timeout_keeps_other_channels_polling() {
+    assert_sustained_channel_isolation("EXECUTION_KICK").await;
+}
+
+#[tokio::test]
+async fn sustained_wake_timeout_keeps_other_channels_polling() {
+    assert_sustained_channel_isolation("OWNER_ASSISTANCE_WAKE").await;
+}
 
 #[derive(Clone, Default)]
 struct GatewayCapture {
@@ -978,7 +1380,10 @@ async fn forum_delivery_survives_a_one_connection_pool() {
         .expect("connect one-connection pool");
     let forum = ForumClient::new(forum_and_kick_config(&forum_base, &kick_base));
     let delivered = svc_workflow::forum_sync::run_once(&one_conn, &forum).await;
-    assert_eq!(delivered, 2, "forum event AND kick delivered on one connection");
+    assert_eq!(
+        delivered, 2,
+        "forum event AND kick delivered on one connection"
+    );
 
     let kick_state = row_state(&pool, kick_row).await;
     assert!(kick_state.delivered_at.is_some());
@@ -1116,7 +1521,9 @@ async fn all_three_channels_deliver_independently_in_one_pass() {
                     calls.fetch_add(1, Ordering::SeqCst);
                     // Unique per creation: the canonical binding table enforces
                     // one thread per instance across the whole database.
-                    Json(serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}))
+                    Json(
+                        serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}),
+                    )
                 }
             }),
         )
@@ -1222,7 +1629,12 @@ async fn all_three_channels_deliver_independently_in_one_pass() {
 /// Queue a FORUM_EVENT row with an explicit created_at offset (minutes after
 /// now), so ordering is deterministic relative to the creation-time
 /// `wf_created:*` row.
-async fn queue_forum_event_at(pool: &PgPool, instance_id: Uuid, key: &str, offset_min: i32) -> Uuid {
+async fn queue_forum_event_at(
+    pool: &PgPool,
+    instance_id: Uuid,
+    key: &str,
+    offset_min: i32,
+) -> Uuid {
     let outbox_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_outbox
@@ -1270,8 +1682,7 @@ async fn spawn_ordering_forum_fake(
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
-                    let is_e1_first =
-                        key == "e1" && e1_first_posted.swap(false, Ordering::SeqCst);
+                    let is_e1_first = key == "e1" && e1_first_posted.swap(false, Ordering::SeqCst);
                     if is_e1_first {
                         tokio::time::sleep(Duration::from_millis(200)).await;
                     }
@@ -1291,11 +1702,7 @@ async fn spawn_ordering_forum_fake(
 }
 
 /// Drive `passes` reconciler passes, returning the total delivered count.
-async fn drive_passes(
-    pool: &PgPool,
-    forum: &ForumClient,
-    passes: usize,
-) -> usize {
+async fn drive_passes(pool: &PgPool, forum: &ForumClient, passes: usize) -> usize {
     let mut delivered = 0usize;
     for _ in 0..passes {
         delivered += svc_workflow::forum_sync::run_once(pool, forum).await;
@@ -1330,9 +1737,9 @@ async fn forum_events_deliver_oldest_first_under_two_concurrent_workers() {
     for _ in 0..2 {
         let pool = pool.clone();
         let forum = forum.clone();
-        workers.push(tokio::spawn(async move {
-            drive_passes(&pool, &forum, 5).await
-        }));
+        workers.push(tokio::spawn(
+            async move { drive_passes(&pool, &forum, 5).await },
+        ));
     }
     let mut total = 0usize;
     for worker in workers {
@@ -1412,10 +1819,15 @@ async fn backed_off_first_forum_event_blocks_later_events_across_passes() {
     let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
     assert_eq!(delivered, 0, "e1 failed, nothing else deliverable");
     let e2_state = row_state(&pool, outbox_row_by_key(&pool, instance, "e2").await).await;
-    assert_eq!(e2_state.attempt_count, 0, "e2 not attempted behind backed-off e1");
-    assert!(row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await)
-        .await
-        .next_attempt_future);
+    assert_eq!(
+        e2_state.attempt_count, 0,
+        "e2 not attempted behind backed-off e1"
+    );
+    assert!(
+        row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await)
+            .await
+            .next_attempt_future
+    );
 
     // Pass 3 (after the backoff): e1 delivers; e2 stays untouched in the same
     // pass — the batch was taken while e1 was still undelivered.

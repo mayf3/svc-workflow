@@ -1,0 +1,125 @@
+{
+  "model": 3,
+  "nodes": [
+    {
+      "assignee_ref": {
+        "assignee_input_key": null,
+        "fixed_principal_id": null,
+        "ref_type": "WORKFLOW_CREATOR"
+      },
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "start",
+      "instructions": null,
+      "metadata": null,
+      "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+      "node_key": "start",
+      "node_type": "TASK",
+      "order_index": 0,
+      "primary_advance_transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b"
+    },
+    {
+      "assignee_ref": {
+        "assignee_input_key": null,
+        "fixed_principal_id": null,
+        "ref_type": "WORKFLOW_CREATOR"
+      },
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "work",
+      "instructions": null,
+      "metadata": null,
+      "node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+      "node_key": "work",
+      "node_type": "TASK",
+      "order_index": 1,
+      "primary_advance_transition_id": "3ee104db-8407-4795-914a-61564cf0b309"
+    },
+    {
+      "assignee_ref": null,
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "done",
+      "instructions": null,
+      "metadata": null,
+      "node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+      "node_key": "done",
+      "node_type": "TERMINAL",
+      "order_index": 2,
+      "primary_advance_transition_id": null
+    }
+  ],
+  "publication": {
+    "context_schema": {
+      "type": "object"
+    },
+    "created_at": "2026-11-07T21:01:27.411894Z",
+    "definition_digest": "771006dcf420f3f81333333e6104cae06b76a7da3fbdb14f33773ad0d460d74b",
+    "deprecated_at": null,
+    "deprecated_by_principal_id": null,
+    "id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+    "json_schema_dialect": null,
+    "metadata": null,
+    "published_at": "2026-11-07T21:01:27.418415Z",
+    "published_by_principal_id": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244",
+    "revoked_at": null,
+    "revoked_by_principal_id": null,
+    "semantic_model_version": 3,
+    "submission_schema": null,
+    "updated_at": "2026-11-07T21:01:27.418415Z",
+    "validator_version": null,
+    "version_number": 1,
+    "version_status": "PUBLISHED",
+    "workflow_definition_id": "01a94d81-3b8c-4c7f-adb8-3b71d1dda059"
+  },
+  "transitions": [
+    {
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "start_work",
+      "metadata": null,
+      "source_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+      "submission_schema": null,
+      "target_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+      "transition_effect": "ADVANCE",
+      "transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b",
+      "transition_key": "start_work"
+    },
+    {
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "work_done",
+      "metadata": null,
+      "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+      "submission_schema": null,
+      "target_node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+      "transition_effect": "ADVANCE",
+      "transition_id": "3ee104db-8407-4795-914a-61564cf0b309",
+      "transition_key": "work_done"
+    },
+    {
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "work_return",
+      "metadata": null,
+      "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+      "submission_schema": null,
+      "target_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+      "transition_effect": "RETURN",
+      "transition_id": "50d98e5b-b3f7-4e06-9417-f8c75dbcf971",
+      "transition_key": "work_return"
+    },
+    {
+      "created_at": "2026-11-07T21:01:27.413589Z",
+      "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+      "display_name": "work_terminate",
+      "metadata": null,
+      "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+      "submission_schema": null,
+      "target_node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+      "transition_effect": "TERMINATE",
+      "transition_id": "572498b3-71a6-470a-834a-ba5bcecebf92",
+      "transition_key": "work_terminate"
+    }
+  ]
+}

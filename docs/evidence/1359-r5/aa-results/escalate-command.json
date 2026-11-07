@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/assistance-cases/bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba/escalate-to-human",
+  "request": {
+    "escalation": {
+      "message": "ordinary escalation"
+    },
+    "expectedWorkflowStateVersion": 2
+  },
+  "response": {
+    "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+    "createdAt": "2026-11-07T21:01:13.333724Z",
+    "eventSequence": 3,
+    "nodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+    "status": "HUMAN_REQUIRED",
+    "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+    "workflowStateVersion": 3
+  },
+  "status": 200
+}

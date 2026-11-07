@@ -1,0 +1,50 @@
+{
+  "clean_head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "clean_status": "",
+  "same_failure_names_coordinates_errors": true,
+  "failures": {
+    "coverage_cleanup::retired_managed_cleanup_actor_is_projected_only_with_existing_full_visibility": {
+      "coordinate": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "guards::disabled_target_and_disabled_caller_fail_closed": {
+      "coordinate": "tests/authorized_actions_r4/fixture.rs:39:170",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "guards::replaced_owner_loses_cancel_while_new_owner_gets_current_authority": {
+      "coordinate": "tests/authorized_actions_r4/fixture.rs:39:170",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "linked::linked_child_resolve_requires_actual_accepted_terminal_proof": {
+      "coordinate": "tests/authorized_actions_r4/linked.rs:11:140",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "managed::managed_required_effect_and_real_waiting_producer_preserve_non_gate_return": {
+      "coordinate": "tests/authorized_actions_r4/managed_context.rs:43:57",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "managed::opted_in_source_ordinary_owner_actions_are_excluded_and_refused": {
+      "coordinate": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "matrix::scope_gate_priority_full_restricted_hidden_and_minimal2": {
+      "coordinate": "tests/authorized_actions_r4/fixture.rs:39:170",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "preservation::successor_transition_permission_does_not_grant_raw_assignee_assistance": {
+      "coordinate": "tests/authorized_actions_r4/support.rs:186:5",
+      "error": "HTTP422 admission_legacy_input vs200"
+    },
+    "review::managed_review_nonterminal_and_terminal_preserve_effect_and_payload_boundaries": {
+      "coordinate": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+      "error": "AdmissionFailed(Unavailable)"
+    },
+    "snapshot::repeatable_read_authority_snapshot_is_pre_owner_replacement_then_rechecks": {
+      "coordinate": "tests/authorized_actions_r4/fixture.rs:39:170",
+      "error": "AdmissionFailed(Unavailable)"
+    }
+  },
+  "unavailable": 9,
+  "legacy_input": 1,
+  "result": "13 passed / 10 failed / rc101; expected diagnostic RED"
+}

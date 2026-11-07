@@ -1,0 +1,25 @@
+{
+  "command": [
+    "gh",
+    "pr",
+    "create",
+    "--repo",
+    "mayf3/svc-workflow",
+    "--base",
+    "main",
+    "--head",
+    "fix/outbox-channel-isolation",
+    "--title",
+    "fix(outbox): isolate polling across delivery channels",
+    "--body-file",
+    "/private/tmp/h1359-r5-pr-body.md"
+  ],
+  "cwd": "/private/tmp/h1359-outbox",
+  "started_at": "2026-11-07T21:08:02.492948+00:00",
+  "head": "596aaa56a811f70b6c921006ca7c83885ff710cd",
+  "rc": 0,
+  "ended_at": "2026-11-07T21:08:05.231372+00:00",
+  "elapsed_seconds": 2.727,
+  "stdout_sha256": "14631afbf16709aa3f01c841e3925ab8b4925e8a977123ec32f8939588f2ba5b",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

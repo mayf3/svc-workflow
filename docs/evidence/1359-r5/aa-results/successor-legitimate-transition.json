@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/d171a887-f5e7-4796-814b-f36ab0b60a92/transitions",
+  "request": {
+    "expectedWorkflowStateVersion": 1,
+    "submissionPayload": {},
+    "transitionDefinitionId": "dea78815-9546-4737-a631-da2b1f723c41"
+  },
+  "response": {
+    "error": {
+      "code": "admission_legacy_input",
+      "message": "workflow assignment was not admitted"
+    }
+  },
+  "status": 422
+}
