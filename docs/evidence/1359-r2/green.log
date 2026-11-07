@@ -1,0 +1,10 @@
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-outbox)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.56s
+     Running tests/48_outbox_three_channels.rs (target/debug/deps/48_outbox_three_channels-8aff9b380632eabb)
+
+running 1 test
+H1359_TIMING pending_bindings=20 forum_http_timeout_ms=10000 lookup_calls=1 kick_received_ms=Some(5) wake_received_ms=Some(5) kick_settled_ms=Some(23) wake_settled_ms=Some(23)
+test forum_timeouts_do_not_delay_healthy_background_channels ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 0.37s
+
