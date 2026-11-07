@@ -1,0 +1,103 @@
+{
+  "recorded_at": "2026-11-07T18:30:20.802830+00:00",
+  "implementation_head": "062fe82301eadbf23b5b6279643355c20ca4218c",
+  "base_head": "8da8dbcb70e700d9e35970e8b662b1be2c29afdc",
+  "state": "STOPPED_REQUIRED_GATE_FAILURE",
+  "files": [
+    {
+      "path": "BRIEF-1359-OUTBOX.md",
+      "size": 5461,
+      "sha256": "cb14c470d022894a8ac222dd33b0fef0acdb766cd64d7c67ca401cad831c2537"
+    },
+    {
+      "path": "STOPPED-1359-OUTBOX.md",
+      "size": 8274,
+      "sha256": "08c4a2c3eca61c77dfb0256094c97030309f28402edaf33c3abb0788f429a194"
+    },
+    {
+      "path": "REVIEW-1359-OUTBOX.md",
+      "size": 3609,
+      "sha256": "6259df988ceab4fea4ba7d0f0bfcc83e5f9b363b576617748be3851759245cb4"
+    },
+    {
+      "path": "src/forum_sync.rs",
+      "size": 93812,
+      "sha256": "d78eb6f6c09c4a7849f2fc218c48543bddf476e767d3623fd7df04c54a56ab7a"
+    },
+    {
+      "path": "src/store/postgres/outbox.rs",
+      "size": 26783,
+      "sha256": "4531f1e2b9cd57a19236c7f27cc3632e5ea234b0a1cc3af0ffa979f53a23d7b3"
+    },
+    {
+      "path": "tests/48_outbox_three_channels.rs",
+      "size": 74716,
+      "sha256": "9f39ea56e7c65d0f79829cc739980d93f98dbe265dca69ff78588773c1460941"
+    },
+    {
+      "path": "docs/evidence/1359-r2/cleanup.json",
+      "size": 730,
+      "sha256": "92c9b439364c161c3b47432d5326dc68874110738bf5a58143b977af099d1a65"
+    },
+    {
+      "path": "docs/evidence/1359-r2/focused.json",
+      "size": 1063,
+      "sha256": "4a78f3eb5aa5846ddf878503c9736e3785f6a6fe5ca4df652d8247a32f665fee"
+    },
+    {
+      "path": "docs/evidence/1359-r2/focused.log",
+      "size": 3299,
+      "sha256": "3ce0644b364d32e80bc599012c6b2e3ef5858204877e9518b1fbf2efcc8a4302"
+    },
+    {
+      "path": "docs/evidence/1359-r2/green.json",
+      "size": 727,
+      "sha256": "5db25efe833ebbb6bc1865d46a200144551461e126095410294241b20f4477bf"
+    },
+    {
+      "path": "docs/evidence/1359-r2/green.log",
+      "size": 600,
+      "sha256": "68327cc827180ccd640d3548edca871a5d45adb29281810611753494cf6f4cb9"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-setup-55432.log",
+      "size": 1109,
+      "sha256": "5e0af801ab1f242f86fbbc0fa527f3f9600ab2e5e2d745c05f7b7583d1a5df44"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-setup-55483.log",
+      "size": 1109,
+      "sha256": "c250081be5635c78617ad7f3d01ac367ed30325fb39ecd837396bcbc07d0192c"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-setup.log",
+      "size": 923,
+      "sha256": "775d6fa001cb95eebe0b75481078c876d5e3730e5a28b7e714a5e86cb4803e0e"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-stop-55432.log",
+      "size": 129,
+      "sha256": "4aa7a2503025713a50860d206aedad2a0f1b850d9f99dbfb933f02fb4a2d2acc"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-stop-55483.log",
+      "size": 129,
+      "sha256": "9a6d33bf4c8a6f81b62ddaa7de001e4a1cf69dba4d8a84e86b99780b33d43c28"
+    },
+    {
+      "path": "docs/evidence/1359-r2/pg-stop-56485.log",
+      "size": 123,
+      "sha256": "e8d706414774596e776bd8c117509ca8fbc07152dd68c24fe3263113503c0fe1"
+    },
+    {
+      "path": "docs/evidence/1359-r2/red.json",
+      "size": 729,
+      "sha256": "4fd450d8cca3ab92707aec152abf4739d43ffedbaa06b7f0717fc6432792d5e0"
+    },
+    {
+      "path": "docs/evidence/1359-r2/red.log",
+      "size": 1181,
+      "sha256": "7d6d71626014c8fd31c88c0ba8211cce03ff1a61f3e32755a04b289f0e97276c"
+    }
+  ]
+}
