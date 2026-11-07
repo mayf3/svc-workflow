@@ -1,0 +1,231 @@
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-outbox)
+warning: unused import: `tokio::net::TcpListener`
+  --> tests/common/mod.rs:30:5
+   |
+30 | use tokio::net::TcpListener;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `tokio::io::AsyncWriteExt`
+  --> tests/common/mod.rs:29:5
+   |
+29 | use tokio::io::AsyncWriteExt;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `svc-workflow` (test "67_authorized_actions_r4") generated 2 warnings (run `cargo fix --test "67_authorized_actions_r4" -p svc-workflow` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.07s
+     Running tests/67_authorized_actions_r4.rs (target/debug/deps/67_authorized_actions_r4-9e464db7e6ab626f)
+
+running 23 tests
+test coverage::draft_definition_defensive_detail_omits_transition_and_writer_still_refuses ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_draftdef_c73f6f09200a4b649d005086d22a7071.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-58daa6d3-09a0-42c8-ba25-e82acac3bff8.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/draft-published-control.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/draft-agent-detail.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/draft-owner-detail.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/draft-original-writer-refusal.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/draft-failure-receipt.json
+ok
+test coverage::persisted_future_eligibility_does_not_add_a_transition_time_gate ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_waitingtime_2aba37e94b594b75b6b268262d43ad97.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-2fd08014-615c-4344-98e0-9ead5d671904.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/time-before-future-fact.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/time-real-waiting-detail.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/time-independent-transition-allowed.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/time-persisted-fact-and-transition.json
+ok
+test coverage::repeatable_read_case_and_return_changes_use_one_snapshot_then_execution_rechecks ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_snapshotcase_e53a09b57f5b46c381966deba2ac92b8.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-59ac343c-f819-4200-9fb6-437f8272e76c.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-case-enter.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-case-before.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-case-fresh.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-case-result.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_snapshotreturn_96b4d4e757c34b14a83dfc47d95ba567.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-bd0a8ea4-00b0-4163-9522-44f6fa66e588.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-enter.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-before-0.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-prior-0.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-reenter-0.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-before-1.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-prior-1.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-reenter-1.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-before.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-fresh.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-resolve.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-final-reentry.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-cap-after-resolution.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/snapshot-return-result.json
+ok
+test coverage_cleanup::retired_managed_cleanup_actor_is_projected_only_with_existing_full_visibility ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_cleanupactor_df80c435f44246609092295fc13e73b1.json
+
+thread 'coverage_cleanup::retired_managed_cleanup_actor_is_projected_only_with_existing_full_visibility' (70621156) panicked at tests/authorized_actions_r4/managed_fixture.rs:194:57:
+called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test faults::missing_activation_is_consistency_error_even_without_execute_scope ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_activationfault_fb537158bafd41888cf0bb693cc74024.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-7bfed93e-5f12-453c-975e-d1dfd7543956.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/fault-activation-execute.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/fault-activation-readonly.json
+ok
+test faults::missing_required_storage_table_is_503_not_empty_success ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_storagefault_d1de75d771f84a089b65fb17b07155ce.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-a724c0e5-f9d3-4dc4-8356-db920a613fe0.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/fault-storage.json
+ok
+test guards::disabled_target_and_disabled_caller_fail_closed ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_disabled_dd01337c07364df48a319dd882aa87f0.json
+
+thread 'guards::disabled_target_and_disabled_caller_fail_closed' (70621429) panicked at tests/authorized_actions_r4/fixture.rs:39:170:
+real publication of legitimate graph: AdmissionFailed(Unavailable)
+FAILED
+test guards::model3_legitimate_edges_payload_cas_and_replay_keep_original_rules ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_model3payload_03ef09e992db404c953200e8196ea9e6.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-29d9a82a-4a4b-405f-98db-7aa55455a812.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-initial.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-legitimate-advance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-work.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-return-invalid-payload.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-cas-stale.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-legitimate-return.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-reenter.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-before-terminate.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/model3-replay-conflict.json
+ok
+test guards::replaced_owner_loses_cancel_while_new_owner_gets_current_authority ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_replacement_a8f4e1309bfe4a498935e8a13620bdf2.json
+
+thread 'guards::replaced_owner_loses_cancel_while_new_owner_gets_current_authority' (70621460) panicked at tests/authorized_actions_r4/fixture.rs:39:170:
+real publication of legitimate graph: AdmissionFailed(Unavailable)
+FAILED
+test guards::revoked_definition_disables_transitions_but_keeps_independent_assistance_cancel ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_revoked_f3361c9687264551b270c7a5c696bef9.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-f1968655-58d8-458d-a10c-151fe0d1e07b.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/revoked-agent.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/revoked-owner.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/revoked-independent-assistance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/revoked-independent-cancel.json
+ok
+test http::cancelled_true_edge_has_no_action_after_independent_allow_and_refuse ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-e591e8fa-4dea-4bfc-8fd1-4e9c8167a4d1.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/red-allow.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/red-cancel.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/red-result.json
+LEGITIMATE_HTTP_CONTROL instance=4050d141-d9b2-4ac0-a0e4-87c9c6792b08 advance=200 cancel=200 cancelled_transition=409 old_true=true before_version=3 after_version=3 before_events=3 after_events=3
+ok
+test linked::linked_child_resolve_requires_actual_accepted_terminal_proof ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_linkedaccepted_291418cfb786488385fdb16392d672ba.json
+
+thread 'linked::linked_child_resolve_requires_actual_accepted_terminal_proof' (70622323) panicked at tests/authorized_actions_r4/linked.rs:11:140:
+called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)
+FAILED
+test managed::managed_required_effect_and_real_waiting_producer_preserve_non_gate_return ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_managedgate_812544fa3aeb4f74adb8e317370bda1e.json
+
+thread 'managed::managed_required_effect_and_real_waiting_producer_preserve_non_gate_return' (70622331) panicked at tests/authorized_actions_r4/managed_context.rs:43:57:
+called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)
+FAILED
+test managed::opted_in_source_ordinary_owner_actions_are_excluded_and_refused ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_managedsource_b55d1b423fd14742b2717ef2fb4ae1ff.json
+
+thread 'managed::opted_in_source_ordinary_owner_actions_are_excluded_and_refused' (70622337) panicked at tests/authorized_actions_r4/managed_fixture.rs:194:57:
+called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)
+FAILED
+test matrix::assistance_open_escalate_resolve_matches_each_original_writer ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_assistance_650d71fd4f624230bc5a6310a32d9e93.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-bc377806-8785-4822-8380-e57a40cf055b.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/assistance-unopened.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/request-assistance-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/assistance-agent-open.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/assistance-owner-open.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/open-case-transition-refusal.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/open-case-refusal-facts.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/escalate-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/assistance-human-required.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/resolve-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/assistance-resolved.json
+ok
+test matrix::legal_edges_sort_complete_and_each_effect_executes_independently ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_edges_25f6736a33e046fda465c2252d6181ab.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-4d05d761-8eb4-4ad3-8567-217fdaf5f0c6.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-draft-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-setup.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-normal-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-durable-facts.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/advance-terminal-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/return-draft-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/return-setup.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/return-normal-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/return-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/return-durable-facts.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-draft-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-setup.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-normal-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-command.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-durable-facts.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/terminate-terminal-read.json
+ok
+test matrix::lifecycle_owner_coordinator_archive_and_repeated_archive ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_lifecycle_c25b719ab9434cc58baa9b450c56488f.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-4214e6ac-ba56-4f83-9633-7813b9425db9.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/lifecycle-before.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/coordinator-detail-hidden.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/coordinator-cancel.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/lifecycle-cancelled.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/lifecycle-actor-cancelled.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/coordinator-archive.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/lifecycle-archived.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/repeat-archive.json
+ok
+test matrix::return_zero_penultimate_and_cap_use_events_and_read_never_opens_case ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_returncap_2b35428652fd4bb49c34c352c32a1ac9.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-55295819-08ee-4363-b562-a4a35da66a94.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-0-advance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-0-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-0-return.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-1-advance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-1-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-1-return.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-2-advance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-2-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-2-return.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-target-resolve.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-final-advance.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-exhausted-read.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/cap-exhausted-refusal.json
+ok
+test matrix::scope_gate_priority_full_restricted_hidden_and_minimal2 ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_status_1f6172e8e9ff459dbe12eeb6ab204739.json
+
+thread 'matrix::scope_gate_priority_full_restricted_hidden_and_minimal2' (70623170) panicked at tests/authorized_actions_r4/fixture.rs:39:170:
+real publication of legitimate graph: AdmissionFailed(Unavailable)
+FAILED
+test preservation::exact_fixture_shared_reads_and_cti_bytes_remain_unchanged ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_shared_258af8e63a454f8792bc7c0e132633b1.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-970bd239-4bc7-42f6-9a06-d1958c800791.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/shared-read-record.json
+ok
+test preservation::successor_transition_permission_does_not_grant_raw_assignee_assistance ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_successor_35e8f5d24c264b4f9929b10eaa8cd557.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/graph-87884e5f-3b80-4139-8fe7-6cdd13818968.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/successor-full.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/successor-assistance-refusal.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/successor-assistance-facts.json
+RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/successor-legitimate-transition.json
+
+thread 'preservation::successor_transition_permission_does_not_grant_raw_assignee_assistance' (70623270) panicked at tests/authorized_actions_r4/support.rs:186:5:
+assertion `left == right` failed: SEMANTIC_STOP: independent writer result differs in successor-legitimate-transition: {"error":{"code":"admission_legacy_input","message":"workflow assignment was not admitted"}}
+  left: 422
+ right: 200
+FAILED
+test review::managed_review_nonterminal_and_terminal_preserve_effect_and_payload_boundaries ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_reviewaccepted_a43a9eb074154ec9921143529909e924.json
+
+thread 'review::managed_review_nonterminal_and_terminal_preserve_effect_and_payload_boundaries' (70623340) panicked at tests/authorized_actions_r4/managed_fixture.rs:194:57:
+called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)
+FAILED
+test snapshot::repeatable_read_authority_snapshot_is_pre_owner_replacement_then_rechecks ... RAW_PROBE_RECORD path=/private/tmp/h1359-r5-control/aa-results/database-aa_r4_snapshot_0c9f8a5953eb4069b22aca2775d2e98b.json
+
+thread 'snapshot::repeatable_read_authority_snapshot_is_pre_owner_replacement_then_rechecks' (70623346) panicked at tests/authorized_actions_r4/fixture.rs:39:170:
+real publication of legitimate graph: AdmissionFailed(Unavailable)
+FAILED
+
+failures:
+
+failures:
+    coverage_cleanup::retired_managed_cleanup_actor_is_projected_only_with_existing_full_visibility
+    guards::disabled_target_and_disabled_caller_fail_closed
+    guards::replaced_owner_loses_cancel_while_new_owner_gets_current_authority
+    linked::linked_child_resolve_requires_actual_accepted_terminal_proof
+    managed::managed_required_effect_and_real_waiting_producer_preserve_non_gate_return
+    managed::opted_in_source_ordinary_owner_actions_are_excluded_and_refused
+    matrix::scope_gate_priority_full_restricted_hidden_and_minimal2
+    preservation::successor_transition_permission_does_not_grant_raw_assignee_assistance
+    review::managed_review_nonterminal_and_terminal_preserve_effect_and_payload_boundaries
+    snapshot::repeatable_read_authority_snapshot_is_pre_owner_replacement_then_rechecks
+
+test result: FAILED. 13 passed; 10 failed; 0 ignored; 0 measured; 0 filtered out; finished in 62.88s
+
+error: test failed, to rerun pass `--test 67_authorized_actions_r4`

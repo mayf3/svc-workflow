@@ -1,0 +1,62 @@
+[
+  {
+    "test": "coverage_cleanup::retired_managed_cleanup_actor_is_projected_only_with_existing_full_visibility",
+    "site": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+    "message": "called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "guards::disabled_target_and_disabled_caller_fail_closed",
+    "site": "tests/authorized_actions_r4/fixture.rs:39:170",
+    "message": "real publication of legitimate graph: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "guards::replaced_owner_loses_cancel_while_new_owner_gets_current_authority",
+    "site": "tests/authorized_actions_r4/fixture.rs:39:170",
+    "message": "real publication of legitimate graph: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "linked::linked_child_resolve_requires_actual_accepted_terminal_proof",
+    "site": "tests/authorized_actions_r4/linked.rs:11:140",
+    "message": "called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "managed::managed_required_effect_and_real_waiting_producer_preserve_non_gate_return",
+    "site": "tests/authorized_actions_r4/managed_context.rs:43:57",
+    "message": "called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "managed::opted_in_source_ordinary_owner_actions_are_excluded_and_refused",
+    "site": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+    "message": "called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "matrix::scope_gate_priority_full_restricted_hidden_and_minimal2",
+    "site": "tests/authorized_actions_r4/fixture.rs:39:170",
+    "message": "real publication of legitimate graph: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "preservation::successor_transition_permission_does_not_grant_raw_assignee_assistance",
+    "site": "tests/authorized_actions_r4/support.rs:186:5",
+    "message": "assertion `left == right` failed: SEMANTIC_STOP: independent writer result differs in successor-legitimate-transition: {\"error\":{\"code\":\"admission_legacy_input\",\"message\":\"workflow assignment was not admitted\"}}",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "review::managed_review_nonterminal_and_terminal_preserve_effect_and_payload_boundaries",
+    "site": "tests/authorized_actions_r4/managed_fixture.rs:194:57",
+    "message": "called `Result::unwrap()` on an `Err` value: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  },
+  {
+    "test": "snapshot::repeatable_read_authority_snapshot_is_pre_owner_replacement_then_rechecks",
+    "site": "tests/authorized_actions_r4/fixture.rs:39:170",
+    "message": "real publication of legitimate graph: AdmissionFailed(Unavailable)",
+    "classification": "UNKNOWN: not base-compared; no candidate regression or pre-existing claim"
+  }
+]

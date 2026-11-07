@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/418ae862-99cf-4bf7-9cd1-b4b4c8c22297/transitions",
+  "request": {
+    "expectedWorkflowStateVersion": 2,
+    "submissionPayload": {},
+    "transitionDefinitionId": "c873807f-9ea2-4847-bd34-e3929ea1a4f3"
+  },
+  "response": {
+    "error": {
+      "code": "assistance_open",
+      "message": "current visit has an unresolved assistance case"
+    }
+  },
+  "status": 409
+}

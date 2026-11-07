@@ -1,3 +1,138 @@
+# #1359 R5 — previous stop resumed, no active R5 failure
+
+The current user's R5 continuation explicitly reopened the R4 stop for clean8aa
+attribution and bounded delivery. That control returned the exact same ten
+failures; candidate48=22/22rc0 and lib=269pass/1existing ignored/rc0. The full
+R4 result remains1324/10/1rc101, not green. R5 excludes only the attributed67
+set from its delivery gate. Exact stash pop/restoration and owned fixture
+closure passed. Commit/push/PR publication is pending at this checkpoint.
+
+Current [receipt](RECEIPT-1359-OUTBOX.md), [R5 attribution](docs/evidence/1359-r5/ATTRIBUTION.md),
+[independent affected review](docs/evidence/1359-r5/REVIEW-AFFECTED.md).
+The following R4/R3/R2 stops are preserved historical records, superseded
+only within the exact later continuation scope; they are not current R5 stops.
+
+---
+
+# STOPPED-1359-OUTBOX — R4
+
+**STOPPED / REQUIRED_GATE_FAILURE / DELIVERY_INCOMPLETE. No R4 commit,
+push, PR or merge. No repair or retry after this failure.** R3/R2 checkpoints below remain historical.
+
+Stop source: current R4 user's final “红线照旧; 失败即停”, with full cargo
+rc0 required before commit/push/PR. The45 fixed-name correction passed;
+the newly reached67 failures activate a new stop, not an authorization to
+repair admission, weaken tests or rerun.
+
+- Surface `/private/tmp/h1359-outbox`, branch `fix/outbox-channel-isolation`.
+- HEAD unchanged `8aa864ab9ff70107faf8e016a04d32f4e78ad141`.
+- Base/fresh main `8da8dbcb70e700d9e35970e8b662b1be2c29afdc`; remote fix branch absent.
+- Runner fix `docs/evidence/1359-r4/cargo-test-runner.py:19-20`;45=28/28rc0.
+- Outbox48=22/22rc0. Product/test/store hashes unchanged from R3.
+- Full command actualrc101,1224.678s;1324pass/10fail/1ignored.
+- Only binary67 fails:13pass/10fail. Nine AdmissionFailed(Unavailable), one
+  HTTP422 admission_legacy_input vs200. Causality UNKNOWN; no base control.
+- All468 source/build-input hashes still match; R3 original evidence preserved.
+- All3 R4-owned PG clusters identity-checked and stopped, actualrc0; data retained.
+
+[Receipt](RECEIPT-1359-OUTBOX.md), [raw full log](docs/evidence/1359-r4/full.log),
+[command/rc/hashes](docs/evidence/1359-r4/full.json),
+[summary](docs/evidence/1359-r4/summary.json),
+[ten failure observations](docs/evidence/1359-r4/FAILURE-67.md),
+[independent review](docs/evidence/1359-r4/REVIEW-R4.md),
+[cleanup](docs/evidence/1359-r4/cleanup.json).
+
+**No full-green original exists.** Dependent delivery remains forbidden under
+this mandate. No production access, deployment, loaded configuration change,
+backlog operation, governance edit, rebase or merge occurred. A later explicit
+continuation must first attribute67 without reopening passed45/backoff work.
+
+---
+
+# STOPPED-1359-OUTBOX — R3
+
+**STOPPED / REQUIRED_GATE_FAILURE / DELIVERY_INCOMPLETE. No R3 commit,
+push, PR or merge.** The R2 stop below is retained verbatim as history;
+this R3 checkpoint is current.
+
+Stop authority: current user's final “红线照旧; 失败即停”, and full cargo
+rc0 as the required gate before commit/push/PR. The user expressly reopened
+R2 for attribution; its expected diagnostic rc101 results do not trigger
+this stop. The later full-suite rc101 is an unexpected gate failure.
+
+## Exact checkpoint
+
+- Surface: mayf3/svc-workflow, `/private/tmp/h1359-outbox`.
+- Branch / HEAD: `fix/outbox-channel-isolation` /
+  `8aa864ab9ff70107faf8e016a04d32f4e78ad141` (unchanged R2 checkpoint).
+- Integration base: `8da8dbcb70e700d9e35970e8b662b1be2c29afdc`.
+- Product implementation remains `062fe82301eadbf23b5b6279643355c20ca4218c`;
+  product source SHA `d78eb6f6c09c4a7849f2fc218c48543bddf476e767d3623fd7df04c54a56ab7a`.
+- R3 test correction is uncommitted; SHA
+  `3328d6710e80cc404d28fc902cd7983c6747752ed3a7da7bbe60b6adffb252c7`.
+- Outbox store unchanged, SHA
+  `4531f1e2b9cd57a19236c7f27cc3632e5ea234b0a1cc3af0ffa979f53a23d7b3`.
+- Raw R2 evidence, failed assertions and prior records remain preserved.
+
+## Achieved before the new stop
+
+1. Clean base with original R2 fixture: three failures at healthy latency
+   checks (Forum/Kick initial, Wake later). They were not falsely used as
+   proof of backoff attribution.
+2. Same-byte single-channel single-pass probe: all three hit the original
+   backoff assertion on both base and candidate, rc101 as expected.
+   Real 5s/10s HTTP timeout exceeds the first transaction-start now()+2s
+   retry timestamp on both versions. No candidate backoff regression shown.
+3. Permanent test-only correction: assert persisted retry timestamp advance
+   from original due time; preserve both healthy2s gates, original timeouts,
+   retention checks and existing quick-error future-backoff assertions.
+4. Outbox focused suite: **22 passed / 0 failed / rc0**.
+
+See [receipt, explicitly incomplete](RECEIPT-1359-OUTBOX.md), its attribution
+table, and [R3 raw evidence](docs/evidence/1359-r3/ATTRIBUTION.md).
+
+## New failure and attribution
+
+Full command `cargo test --locked --jobs 4 -- --test-threads=1 --nocapture`
+returned **rc101**, after 1111.197s. Aggregate before stop:
+**1221 passed / 18 failed / 1 ignored**. Of61 completed binaries,60 rc0 and
+only `45_workflow_prerequisites` rc101 (10 passed /18 failed).
+
+Every actual failure is the existing pre-connection guard at
+`tests/prerequisites/support.rs:6`: URL must end with
+`/svc_prereq_20261029_impl`. The new runner omitted that database-name
+route and supplied
+`postgres://postgres@127.0.0.1:56589/h1359_r3_45_workflow_prerequisites`.
+This is a confirmed runner setup omission. It is not proof of outbox
+regression and was not base-tested as a pre-existing suite failure.
+The runner has not been repaired, no suite rerun occurred, and later test
+binaries did not execute. Tests/42 caught guard panics are expected; its
+binary is3 passed/rc0, with optional old-binary leg NOT_RUN.
+
+[Full raw log](docs/evidence/1359-r3/full.log),
+[actual command/rc/hash](docs/evidence/1359-r3/full.json),
+[binary results](docs/evidence/1359-r3/full-binary-results.jsonl),
+[independent failure review](docs/evidence/1359-r3/REVIEW-R3.md).
+
+**Minimal next step after an explicit continuation:** correct the
+runner's fixture database-name route, reopen and complete required cargo
+validation, then commit/push/main-base PR and complete the delivery receipt.
+Do not rerun the already passed RED reproduction. No Product Authority
+change or product backoff repair is indicated by the observed failure.
+
+## Closure
+
+All three newly owned clusters were identity-checked by exact data directory,
+port and loopback listen address, then pg_ctl stopped with rc0: ports56589,
+55432,55483. Data/logs remain; no existing PostgreSQL service was changed.
+See [cleanup.json](docs/evidence/1359-r3/cleanup.json). Scratch attribution
+worktrees and uncommitted R3 correction/evidence remain resumable.
+
+No production writes, deployment, config change, backlog consumption,
+governance edits, rebase, push, PR or merge were performed in R3.
+
+---
+
 # STOPPED-1359-OUTBOX — R2
 
 **STOPPED / REQUIRED_GATE_FAILURE. Task incomplete; do not merge or activate.**
