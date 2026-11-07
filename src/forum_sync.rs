@@ -1,5 +1,5 @@
 //! The durable outbox reconciler — three independent delivery channels over
-//! one shared polling loop:
+//! one reconciler with channel-local polling loops:
 //!
 //!   - `EXECUTION_KICK` push-first poll trigger for freshly created dispatch
 //!     intents (latency-only; the Agent Core due-poll loop stays the
@@ -1205,30 +1205,87 @@ async fn deliver_owner_assistance_wake(
 /// The background loop. Spawned by main when any channel is enabled.
 pub async fn run_loop(pool: PgPool, config: OutboxReconcilerConfig) {
     tracing::info!(channels = ?config.enabled_channel_names(), interval_ms = config.poll_interval_ms, "outbox reconciler loop started");
+    // Each worker still drives the same ordered pass, with only its own
+    // channel enabled. A slow binding ensure or delivery therefore delays
+    // only that channel's next tick. Do not time out an entire pass: claimed
+    // rows must keep their original HTTP + settlement transaction semantics.
+    let OutboxReconcilerConfig {
+        forum,
+        kick,
+        owner_assistance_wake,
+        poll_interval_ms,
+    } = config;
+    let channels = [
+        (
+            "EXECUTION_KICK",
+            OutboxReconcilerConfig {
+                forum: None,
+                kick,
+                owner_assistance_wake: Ok(None),
+                poll_interval_ms,
+            },
+        ),
+        (
+            "FORUM_EVENT",
+            OutboxReconcilerConfig {
+                forum,
+                kick: None,
+                owner_assistance_wake: Ok(None),
+                poll_interval_ms,
+            },
+        ),
+        (
+            "OWNER_ASSISTANCE_WAKE",
+            OutboxReconcilerConfig {
+                forum: None,
+                kick: None,
+                owner_assistance_wake,
+                poll_interval_ms,
+            },
+        ),
+    ];
+    // JoinSet owns worker lifetimes: cancelling this reconciler aborts its
+    // workers, whose own JoinSets also abort any in-flight pass. Ordinary
+    // operation never cancels a delivery to enforce a channel time budget.
+    let mut workers = tokio::task::JoinSet::new();
+    for (channel, config) in channels {
+        if config.any_channel_enabled() {
+            workers.spawn(run_channel_loop(pool.clone(), channel, config));
+        }
+    }
+    while let Some(result) = workers.join_next().await {
+        if let Err(error) = result {
+            tracing::error!(error = %error, "outbox channel worker stopped; other channels continue");
+        }
+    }
+}
+
+async fn run_channel_loop(pool: PgPool, channel: &'static str, config: OutboxReconcilerConfig) {
     let forum = std::sync::Arc::new(ForumClient::new(config));
     let mut ticker = tokio::time::interval(Duration::from_millis(forum.config.poll_interval_ms));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut passes = tokio::task::JoinSet::new();
     loop {
         ticker.tick().await;
         // Each pass runs in its own supervised task: an unexpected panic in
         // one pass is contained, logged, and the loop continues with the
-        // next tick instead of silently killing every channel until process
-        // restart. (Errors are always isolated per row/channel; only a panic
-        // would take the whole pass down, so it is contained here.)
-        let pass = {
+        // next tick instead of silently killing this channel until process
+        // restart. Errors are isolated per row; a panic ends only this pass.
+        {
             let pass_pool = pool.clone();
             let pass_forum = forum.clone();
-            tokio::spawn(async move { run_once(&pass_pool, &pass_forum).await })
-        };
-        match pass.await {
-            Ok(delivered) => {
+            passes.spawn(async move { run_once(&pass_pool, &pass_forum).await });
+        }
+        match passes.join_next().await {
+            Some(Ok(delivered)) => {
                 if delivered > 0 {
-                    tracing::info!(delivered, "outbox reconciler delivered rows");
+                    tracing::info!(channel, delivered, "outbox reconciler delivered rows");
                 }
             }
-            Err(join_error) => {
-                tracing::error!(error = %join_error, "outbox reconciler pass panicked — contained; the loop continues with the next tick");
+            Some(Err(join_error)) => {
+                tracing::error!(channel, error = %join_error, "outbox reconciler pass panicked — contained; the channel continues with the next tick");
             }
+            None => unreachable!("the channel owns exactly one supervised pass"),
         }
     }
 }
