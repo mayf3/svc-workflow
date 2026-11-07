@@ -276,6 +276,154 @@ async fn force_due(pool: &PgPool, outbox_id: Uuid) {
         .expect("force due");
 }
 
+// #1359: exercise the actual background loop with twenty real 10s Forum
+// timeouts. On the serial baseline this takes about 200s; on the isolated
+// loop the healthy receivers settle immediately and release the fake's wait.
+// The endpoint timings and durable-row timings are both printed for RED/GREEN.
+#[tokio::test]
+async fn forum_timeouts_do_not_delay_healthy_background_channels() {
+    use std::sync::atomic::AtomicBool;
+    use std::time::Instant;
+
+    let pool = isolated_db().await;
+    let mut first_instance = None;
+    for _ in 0..20 {
+        let (instance, _) = create_instance_with_kick(&pool).await;
+        first_instance.get_or_insert(instance);
+    }
+    let instance = first_instance.unwrap();
+    // Preserve fixture history but isolate the twenty binding timeouts from
+    // the separate event-post phase; these rows are simply not due yet.
+    sqlx::query("UPDATE workflow_outbox SET next_attempt_at = now() + interval '1 hour' WHERE outbox_kind = 'FORUM_EVENT'")
+        .execute(&pool).await.unwrap();
+    let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
+    let wake_row = queue_row(
+        &pool, instance, "OWNER_ASSISTANCE_WAKE", "owner-assistance:1359-timing",
+        serde_json::json!({
+            "workflowInstanceId": instance, "nodeVisitId": Uuid::new_v4(),
+            "assistanceCaseId": Uuid::new_v4(), "ownerPrincipalId": Uuid::new_v4(),
+            "reason": "RETURN_POLICY_EXHAUSTED"
+        }),
+    ).await;
+
+    let released = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(tokio::sync::Notify::new());
+    let lookups = Arc::new(AtomicUsize::new(0));
+    let lookup_released = released.clone();
+    let lookup_release = release.clone();
+    let lookup_calls = lookups.clone();
+    let forum_app = Router::new()
+        .route("/oauth/token", post(|| async {
+            Json(serde_json::json!({"access_token": "forum-token", "expires_in": 600}))
+        }))
+        .route("/api/threads", get(move || {
+            let released = lookup_released.clone();
+            let release = lookup_release.clone();
+            let calls = lookup_calls.clone();
+            async move {
+                // Register before checking the flag so teardown cannot miss
+                // a waiter between checking and waiting.
+                let notified = release.notified();
+                tokio::pin!(notified);
+                notified.as_mut().enable();
+                calls.fetch_add(1, Ordering::SeqCst);
+                if !released.load(Ordering::SeqCst) {
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(11)) => {},
+                        _ = notified => {},
+                    }
+                }
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let forum_base = format!("http://{}", listener.local_addr().unwrap());
+    let forum_server = tokio::spawn(async move { axum::serve(listener, forum_app).await.unwrap() });
+
+    let started = Instant::now();
+    let kick_received = Arc::new(Mutex::new(None));
+    let wake_received = Arc::new(Mutex::new(None));
+    let kick_record = kick_received.clone();
+    let wake_record = wake_received.clone();
+    let healthy_app = Router::new()
+        .route("/oauth/token", post(|| async {
+            Json(serde_json::json!({"access_token": "wake-token", "token_type": "Bearer",
+                "expires_in": 600, "scope": "workflow.execute"}))
+        }))
+        .route("/workflow-execution/kicks", post(move || {
+            let record = kick_record.clone();
+            async move {
+                record.lock().unwrap().get_or_insert(started.elapsed());
+                StatusCode::OK
+            }
+        }))
+        .route("/workflow-execution/owner-assistance-wakes", post(move || {
+            let record = wake_record.clone();
+            async move {
+                record.lock().unwrap().get_or_insert(started.elapsed());
+                StatusCode::OK
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let healthy_base = format!("http://{}", listener.local_addr().unwrap());
+    let healthy_server = tokio::spawn(async move { axum::serve(listener, healthy_app).await.unwrap() });
+    let mut config = forum_and_kick_config(&forum_base, &healthy_base);
+    // Only one pass: the immediate first tick, then ten minutes. This keeps
+    // test teardown from racing a second baseline pass.
+    config.poll_interval_ms = 600_000;
+    config.owner_assistance_wake = Ok(Some(OwnerAssistanceWakeConfig {
+        url: format!("{healthy_base}/workflow-execution/owner-assistance-wakes"),
+        auth_base_url: healthy_base, client_id: "wake-client".into(),
+        client_secret: "wake-secret".into(), audience: "svc-workflow".into(),
+    }));
+    let background_pool = pool.clone();
+    let background = tokio::spawn(async move {
+        svc_workflow::forum_sync::run_loop(background_pool, config).await;
+    });
+
+    let mut kick_settled = None;
+    let mut wake_settled = None;
+    let observation = tokio::time::timeout(Duration::from_secs(230), async {
+        loop {
+            if kick_settled.is_none() && row_state(&pool, kick_row).await.delivered_at.is_some() {
+                kick_settled = Some(started.elapsed());
+            }
+            if wake_settled.is_none() && row_state(&pool, wake_row).await.delivered_at.is_some() {
+                wake_settled = Some(started.elapsed());
+            }
+            if kick_settled.is_some() && wake_settled.is_some() { break; }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await;
+    let lookup_count_at_settlement = lookups.load(Ordering::SeqCst);
+    let kick_at = *kick_received.lock().unwrap();
+    let wake_at = *wake_received.lock().unwrap();
+    println!("H1359_TIMING pending_bindings=20 forum_http_timeout_ms=10000 lookup_calls={lookup_count_at_settlement} kick_received_ms={:?} wake_received_ms={:?} kick_settled_ms={:?} wake_settled_ms={:?}",
+        kick_at.map(|d| d.as_millis()), wake_at.map(|d| d.as_millis()),
+        kick_settled.map(|d| d.as_millis()), wake_settled.map(|d| d.as_millis()));
+
+    // Release only the test receiver. No product timeout, claim or retry
+    // semantics are altered to make the timing assertion pass.
+    released.store(true, Ordering::SeqCst);
+    release.notify_waiters();
+    let cleanup = tokio::time::timeout(Duration::from_secs(5), async {
+        while lookups.load(Ordering::SeqCst) < 20 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }).await;
+    background.abort();
+    let _ = background.await;
+    forum_server.abort();
+    healthy_server.abort();
+    pool.close().await;
+    assert!(cleanup.is_ok(), "fixture binding preparation must finish before teardown");
+    assert!(observation.is_ok(), "healthy channels did not settle within the observation window");
+    assert!(kick_settled.unwrap() < Duration::from_secs(2)
+        && wake_settled.unwrap() < Duration::from_secs(2),
+        "healthy channels waited for Forum timeouts: kick={kick_settled:?}, wake={wake_settled:?}");
+}
+
 // ── fake HTTP servers ───────────────────────────────────────────────────────
 
 #[derive(Clone, Default)]
