@@ -1,9 +1,13 @@
 # #1359 outbox channel isolation — R5 receipt
 
-STATUS: **CANDIDATE_VALIDATED / PUBLICATION_PENDING**. R5 resumes the prior
-stop under the current user's exact clean-control/pre-existing disposition.
-No R5 unexpected validation failure occurred. Commit, push and unmerged PR
-publication remain pending at this prepublication checkpoint.
+STATUS: **DELIVERED / PR_OPEN_UNMERGED**. R5 resumes the prior stop under the
+current user's exact clean-control/pre-existing disposition. No R5 unexpected
+validation failure occurred. Actual commit and ordinary push rc0, followed by
+fresh GitHub readback, confirm [PR #132](https://github.com/mayf3/svc-workflow/pull/132)
+is OPEN, not draft, unmerged, base main at the publication coordinates below.
+This receipt closes that observed publication; its containing documentation
+commit and follow-up push/final-head recheck are bound in the PR body and
+final handoff after they occur.
 
 ## Coordinates and authorized delivery gate
 
@@ -111,8 +115,9 @@ and records only. No new product/admission/config semantics are introduced.
 [Independent affected review](docs/evidence/1359-r5/REVIEW-AFFECTED.md) by
 `/root/r5_review`: authority, Contracts, exact ten-failure attribution,
 restoration, input reuse and R5 bounded acceptance coverage PASS; blockers0,
-proven Spec gaps0. Final committed-Head/publication review is still pending
-at this checkpoint. [Historical R4 receipt](docs/evidence/1359-r5/RECEIPT-R4-CHECKPOINT.md)
+proven Spec gaps0. [Exact committed-head review](docs/evidence/1359-r5/REVIEW-FINAL-HEAD.md)
+passed at `596aaa56a811f70b6c921006ca7c83885ff710cd`, before publication.
+The subsequent receipt-only delta is reviewed separately at its exact Head. [Historical R4 receipt](docs/evidence/1359-r5/RECEIPT-R4-CHECKPOINT.md)
 preserves the previous incomplete state verbatim.
 
 Both new task PG16 clusters were checked against exact data-directory/port/
@@ -131,10 +136,36 @@ Source/isolated validation does not establish production or business acceptance.
 | Exact stash pop / preserve original evidence | DONE,814 restored/70 evidence files match |
 | Candidate gates and R4 passed-results reuse | DONE,22/22 +269/1ignored rc0;468 inputs match |
 | Independent affected review | DONE, bounded PASS |
-| Commit / push / base-main PR, no merge | PENDING publication |
-| Completed publication receipt/final-head review | PENDING actual publication |
+| Commit / push / base-main PR, no merge | DONE,596aaa5 pushrc0, PR132 OPEN/unmerged/main |
+| Completed publication receipt/exact candidate-head review | DONE, actual readbacks below; containing receipt-only Head rebound in PR/final handoff |
 
-`PR_DELIVERY_READY=YES` for publication preparation; `MERGE_READY=NO`
-(self-merge forbidden); `OPERATION_ALLOWED=NO`. The containing commit hash,
-ordinary push and fresh open/unmerged PR readback will be recorded after
-those actions occur, avoiding self-referential commit claims.
+`PR_DELIVERY_COMPLETE=YES` at the observed source/evidence publication;
+`MERGE_READY=NO` (self-merge forbidden); `OPERATION_ALLOWED=NO`.
+
+## Actual publication observations
+
+- Candidate correction/evidence commit:
+  `596aaa56a811f70b6c921006ca7c83885ff710cd`, parent exact8aa; actual commitrc0.
+  [Command/rc](docs/evidence/1359-r5/candidate-commit.json),
+  [unaltered output](docs/evidence/1359-r5/candidate-commit.stdout).
+- Independent exact committed-head review: PASS, no blockers/proven Spec gaps;
+  [review](docs/evidence/1359-r5/REVIEW-FINAL-HEAD.md). All240 evidence snapshot
+  hashes,468 build inputs and70 historical evidence hashes match Git objects.
+- Ordinary `git push -u origin fix/outbox-channel-isolation` actualrc0,
+  `2026-11-07T21:07:46Z` (2026-11-08 Asia/Shanghai), creating the branch at596aaa5.
+  [Command/rc](docs/evidence/1359-r5/initial-push.json),
+  [raw output](docs/evidence/1359-r5/initial-push.stderr).
+- `gh pr create` actualrc0; [PR132](https://github.com/mayf3/svc-workflow/pull/132).
+  [Command/rc](docs/evidence/1359-r5/create-pr.json),
+  [actual URL](docs/evidence/1359-r5/create-pr.stdout).
+- Fresh `gh pr view` actualrc0 at `2026-11-07T21:08:14Z`: stateOPEN,
+  isDraftfalse, mergedAtnull, base main/8da8dbc, head596aaa5.
+  [Full readback](docs/evidence/1359-r5/pr-created-readback.stdout),
+  [command/time/rc](docs/evidence/1359-r5/pr-created-readback.json).
+
+This receipt-completion edit contains only documentation and actual publication
+observations, preserving tested source bytes. Its containing commit cannot
+name its own hash; the later independent final delta result, ordinary follow-up
+push and fresh remote PR Head are recorded in the PR body and final handoff
+once performed. That final readback is the authority for the latest branch Head.
+No unchanged product tests are rerun for this documentation delta.

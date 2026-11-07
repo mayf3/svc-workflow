@@ -5,7 +5,10 @@ attribution and bounded delivery. That control returned the exact same ten
 failures; candidate48=22/22rc0 and lib=269pass/1existing ignored/rc0. The full
 R4 result remains1324/10/1rc101, not green. R5 excludes only the attributed67
 set from its delivery gate. Exact stash pop/restoration and owned fixture
-closure passed. Commit/push/PR publication is pending at this checkpoint.
+closure passed. Actual commit596aaa5 and ordinary pushrc0 created
+[PR132](https://github.com/mayf3/svc-workflow/pull/132), OPEN/unmerged/base main.
+The completed receipt records actual publication; its containing documentation
+Head and final remote binding are recorded in the PR body/final handoff.
 
 Current [receipt](RECEIPT-1359-OUTBOX.md), [R5 attribution](docs/evidence/1359-r5/ATTRIBUTION.md),
 [independent affected review](docs/evidence/1359-r5/REVIEW-AFFECTED.md).
