@@ -1,0 +1,78 @@
+{
+  "full_rc": 101,
+  "elapsed_seconds": 1224.678,
+  "completed_binary_count": 65,
+  "test_summary_count": 65,
+  "totals": {
+    "passed": 1324,
+    "failed": 10,
+    "ignored": 1,
+    "measured": 0,
+    "filtered_out": 0
+  },
+  "failed_binaries": [
+    {
+      "binary": "67_authorized_actions_r4",
+      "database": "postgres://swaar4@127.0.0.1:55483/h1359_r4_authorized_actions",
+      "command": [
+        "/private/tmp/h1359-outbox/target/debug/deps/67_authorized_actions_r4-9e464db7e6ab626f",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "started_at": "2026-11-07T20:50:20.512362+00:00",
+      "rc": 101
+    }
+  ],
+  "binary45": [
+    {
+      "binary": "45_workflow_prerequisites",
+      "database": "postgres://postgres@127.0.0.1:56589/svc_prereq_20261029_impl",
+      "command": [
+        "/private/tmp/h1359-outbox/target/debug/deps/45_workflow_prerequisites-33dda71013b34956",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "started_at": "2026-11-07T20:48:02.356477+00:00",
+      "rc": 0
+    }
+  ],
+  "binary48": [
+    {
+      "binary": "48_outbox_three_channels",
+      "database": "postgres://postgres@127.0.0.1:56589/h1359_r4_48_outbox_three_channels",
+      "command": [
+        "/private/tmp/h1359-outbox/target/debug/deps/48_outbox_three_channels-302ecb00ba5b7c4b",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "started_at": "2026-11-07T20:49:54.483432+00:00",
+      "rc": 0
+    }
+  ],
+  "r3_fixed_name_guard_failed_tests": [
+    "admission::ordinary_admission_rejects_invalid_and_unauthorized_without_facts",
+    "atomic::create_bind_http_atomic_replay_and_rollback",
+    "atomic::deterministic_rejection_preserves_receipt_and_zero_business_facts",
+    "concurrency::composite_partial_and_extra_pair_races_fail_in_all_isolations",
+    "concurrency::duplicate_atomic_commands_have_one_child_pair_and_one_receipt",
+    "concurrency::event_guard_waits_for_the_actual_receipt_row",
+    "concurrency::ordinary_global_cardinality_survives_stale_snapshots_and_forged_slots",
+    "disabled_scheduler::disabled_scheduler_with_valid_jwt_and_enabled_binding_is_rejected",
+    "integrity::completed_composite_null_status_is_not_a_success_or_rejection",
+    "integrity::completed_pair_negative_shapes_rollback_without_touching_history",
+    "integrity::receipt_completion_and_event_mutation_independently_enforce_matrix",
+    "lineage::closed_and_corrupt_lineage_never_dispatch_and_current_task_is_bounded",
+    "poll::ready_poll_filters_blocked_prefix_before_page_and_restarts",
+    "publication::publication_checks_context_root_marker_and_immutable_digest",
+    "race::source_terminal_and_dependent_create_have_one_serial_order",
+    "readback::lost_reply_case_readback_recovers_exact_child_prerequisite_and_receipt",
+    "readiness::readiness_http_waiting_then_exact_submission_and_archive",
+    "unidentified::unidentifiable_context_is_closed_unknown_after_real_authorization"
+  ],
+  "optional_messages": [
+    "test canonical_principal_create_chain ... skipped: set CANONICAL_CREATE_TEST_PRINCIPAL_ID to a seeded canonical principal UUID to prove the real-identity create chain",
+    "test ctr6_revoked_optin_version_rejected_by_new_and_old_binary ... NOT_RUN: ACB_OLD_BINARY is not set; the old-binary downgrade leg did not execute. Provide the base-commit server binary path to run it."
+  ],
+  "full_log_sha256": "f697d768dc568fced0b04b9280f8ed81544768a14d2c325bf31abd724b587681",
+  "source_hashes_still_match": true
+}

@@ -1,0 +1,357 @@
+{
+  "after": {
+    "events": [
+      {
+        "actor_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "fb46d4de-2f51-4fb8-90ba-9383eae90344",
+        "context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "event_data": {
+          "assignee_resolution_type": "WORKFLOW_CREATOR",
+          "definition_digest": "9e21e2b3f95c0ba60ebc8344ce50118c2995356a5fbcad3221065ae2184af9e2",
+          "definition_version_id": "bc377806-8785-4822-8380-e57a40cf055b",
+          "initial_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291"
+        },
+        "event_data_digest": "b8da71bb341a974683d3bc89fb377f5cac4345d36cbd7d45b997c6951d38d193",
+        "event_id": "78cee993-51b4-42b4-86d8-2b4112a398f8",
+        "event_schema_version": "v1",
+        "event_sequence": 1,
+        "event_type": "INSTANCE_CREATED",
+        "from_node_id": null,
+        "new_workflow_state_version": 1,
+        "old_workflow_state_version": 0,
+        "source_node_visit_id": null,
+        "submission_id": null,
+        "target_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "to_node_id": null,
+        "transition_effect": null,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      },
+      {
+        "actor_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "54463c70-c6eb-4cd2-937f-c31f1aa51f1f",
+        "context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:01:13.333724+00:00",
+        "event_data": {
+          "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+          "newStatus": "OWNER_PENDING",
+          "payloadDigest": "b1b4484fc6cd9f80320c3bbd5873e02e39ed3d87dd9bbc5f1d7a636524ce388c",
+          "previousStatus": null
+        },
+        "event_data_digest": "13d23a499f70d9a41082f9f8dad1dd8cf3674ca4154bfc65ebba85256a826dc0",
+        "event_id": "4992accd-d988-46cd-aa5c-829663039823",
+        "event_schema_version": "v1",
+        "event_sequence": 2,
+        "event_type": "ASSISTANCE_REQUESTED",
+        "from_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "new_workflow_state_version": 2,
+        "old_workflow_state_version": 1,
+        "source_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "submission_id": null,
+        "target_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "to_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "transition_effect": null,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      }
+    ],
+    "instance": {
+      "archive_reason": null,
+      "archived_at": null,
+      "archived_by_principal_id": null,
+      "artifact_digest": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "cancel_reason": null,
+      "cancelled": false,
+      "cancelled_at": null,
+      "cancelled_by_principal_id": null,
+      "created_at": "2026-11-07T21:01:09.253714+00:00",
+      "created_by_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+      "current_context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+      "current_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+      "definition_version_id": "bc377806-8785-4822-8380-e57a40cf055b",
+      "domain_id": "f168dcfe-4155-4647-974b-408b9138ab20",
+      "execution_class": "BUSINESS",
+      "external_reference": null,
+      "external_url": null,
+      "metadata": {},
+      "require_artifact_binding": false,
+      "require_explicit_node_assignees": false,
+      "semantic_model_version": 1,
+      "subject_id": null,
+      "updated_at": "2026-11-07T21:01:13.333724+00:00",
+      "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+      "workflow_state_version": 2
+    },
+    "principals": [
+      {
+        "created_at": "2026-11-07T21:01:09.237348+00:00",
+        "display_name": "agent",
+        "email": "a4eba05e-acd2-4438-adda-029e3fb4b526@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:09.237348+00:00"
+      },
+      {
+        "created_at": "2026-11-07T21:01:09.238107+00:00",
+        "display_name": "owner",
+        "email": "111b469a-25ae-45c5-89bb-b339aa8a5c1c@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "111b469a-25ae-45c5-89bb-b339aa8a5c1c",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:09.238107+00:00"
+      }
+    ],
+    "receipts": [
+      {
+        "command_id": "fb46d4de-2f51-4fb8-90ba-9383eae90344",
+        "command_type": "CREATE_WORKFLOW_INSTANCE",
+        "completed_at": "2026-11-07T21:01:09.253714+00:00",
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "idempotency_key": "fe4a065c-90ae-4c55-9fff-b4827af73d58",
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "receipt_status": "COMPLETED",
+        "request_hash": "5fb61949152e078d8901d579ec66d0faeb158a748a7215d2a7ff0d78c6eb5545",
+        "response_body": {
+          "currentContextRevisionId": "578bf877-66d9-4c78-bd12-5c919195a622",
+          "currentNodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+          "eventSequence": 1,
+          "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+          "workflowStateVersion": 1
+        },
+        "response_digest": "8fd2e3d1265e5dbc12b2dc0421cd9ae21d7044d89efa9225192e3d3aed1af724",
+        "response_status": 200
+      },
+      {
+        "command_id": "54463c70-c6eb-4cd2-937f-c31f1aa51f1f",
+        "command_type": "REQUEST_WORKFLOW_ASSISTANCE",
+        "completed_at": "2026-11-07T21:01:13.333724+00:00",
+        "created_at": "2026-11-07T21:01:13.333724+00:00",
+        "idempotency_key": "f54bf1ea-adca-48ea-9494-d0043ac979bf",
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "receipt_status": "COMPLETED",
+        "request_hash": "ada0c439b9d7ed1517f8481d73bee1eac44348b30e5c4dff07d548858bfe6ecd",
+        "response_body": {
+          "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+          "createdAt": "2026-11-07T21:01:13.333724Z",
+          "eventSequence": 2,
+          "nodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+          "status": "OWNER_PENDING",
+          "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+          "workflowStateVersion": 2
+        },
+        "response_digest": "a23106e6fa83f83c97c06750140172b7f7146f9b4e5e50dbe3b7346a95bf3107",
+        "response_status": 201
+      },
+      {
+        "command_id": "3d51d3ca-5967-4e88-9f35-6ab1cbef83c9",
+        "command_type": "EXECUTE_WORKFLOW_TRANSITION",
+        "completed_at": "2026-11-07T21:01:13.372019+00:00",
+        "created_at": "2026-11-07T21:01:13.372019+00:00",
+        "idempotency_key": "794e6cf7-b07a-4567-b952-52253e31e03c",
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "receipt_status": "COMPLETED",
+        "request_hash": "28880723ff4e1bf07cd8fe317665eebf644b582fa4c7dd2a771253e18aa9b442",
+        "response_body": {
+          "error": "assistance_open"
+        },
+        "response_digest": "a379afb0d8e0825c5271eb71e6249b62db7a068e6e33850d8eddfb1474461815",
+        "response_status": 409
+      }
+    ],
+    "submissions": [],
+    "visits": [
+      {
+        "assignee_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "entered_by_transition_id": null,
+        "node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "visit_number": 1,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      }
+    ]
+  },
+  "before": {
+    "events": [
+      {
+        "actor_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "fb46d4de-2f51-4fb8-90ba-9383eae90344",
+        "context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "event_data": {
+          "assignee_resolution_type": "WORKFLOW_CREATOR",
+          "definition_digest": "9e21e2b3f95c0ba60ebc8344ce50118c2995356a5fbcad3221065ae2184af9e2",
+          "definition_version_id": "bc377806-8785-4822-8380-e57a40cf055b",
+          "initial_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291"
+        },
+        "event_data_digest": "b8da71bb341a974683d3bc89fb377f5cac4345d36cbd7d45b997c6951d38d193",
+        "event_id": "78cee993-51b4-42b4-86d8-2b4112a398f8",
+        "event_schema_version": "v1",
+        "event_sequence": 1,
+        "event_type": "INSTANCE_CREATED",
+        "from_node_id": null,
+        "new_workflow_state_version": 1,
+        "old_workflow_state_version": 0,
+        "source_node_visit_id": null,
+        "submission_id": null,
+        "target_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "to_node_id": null,
+        "transition_effect": null,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      },
+      {
+        "actor_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "54463c70-c6eb-4cd2-937f-c31f1aa51f1f",
+        "context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:01:13.333724+00:00",
+        "event_data": {
+          "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+          "newStatus": "OWNER_PENDING",
+          "payloadDigest": "b1b4484fc6cd9f80320c3bbd5873e02e39ed3d87dd9bbc5f1d7a636524ce388c",
+          "previousStatus": null
+        },
+        "event_data_digest": "13d23a499f70d9a41082f9f8dad1dd8cf3674ca4154bfc65ebba85256a826dc0",
+        "event_id": "4992accd-d988-46cd-aa5c-829663039823",
+        "event_schema_version": "v1",
+        "event_sequence": 2,
+        "event_type": "ASSISTANCE_REQUESTED",
+        "from_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "new_workflow_state_version": 2,
+        "old_workflow_state_version": 1,
+        "source_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "submission_id": null,
+        "target_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "to_node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "transition_effect": null,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      }
+    ],
+    "instance": {
+      "archive_reason": null,
+      "archived_at": null,
+      "archived_by_principal_id": null,
+      "artifact_digest": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "cancel_reason": null,
+      "cancelled": false,
+      "cancelled_at": null,
+      "cancelled_by_principal_id": null,
+      "created_at": "2026-11-07T21:01:09.253714+00:00",
+      "created_by_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+      "current_context_revision_id": "578bf877-66d9-4c78-bd12-5c919195a622",
+      "current_node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+      "definition_version_id": "bc377806-8785-4822-8380-e57a40cf055b",
+      "domain_id": "f168dcfe-4155-4647-974b-408b9138ab20",
+      "execution_class": "BUSINESS",
+      "external_reference": null,
+      "external_url": null,
+      "metadata": {},
+      "require_artifact_binding": false,
+      "require_explicit_node_assignees": false,
+      "semantic_model_version": 1,
+      "subject_id": null,
+      "updated_at": "2026-11-07T21:01:13.333724+00:00",
+      "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+      "workflow_state_version": 2
+    },
+    "principals": [
+      {
+        "created_at": "2026-11-07T21:01:09.237348+00:00",
+        "display_name": "agent",
+        "email": "a4eba05e-acd2-4438-adda-029e3fb4b526@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:09.237348+00:00"
+      },
+      {
+        "created_at": "2026-11-07T21:01:09.238107+00:00",
+        "display_name": "owner",
+        "email": "111b469a-25ae-45c5-89bb-b339aa8a5c1c@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "111b469a-25ae-45c5-89bb-b339aa8a5c1c",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:09.238107+00:00"
+      }
+    ],
+    "receipts": [
+      {
+        "command_id": "fb46d4de-2f51-4fb8-90ba-9383eae90344",
+        "command_type": "CREATE_WORKFLOW_INSTANCE",
+        "completed_at": "2026-11-07T21:01:09.253714+00:00",
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "idempotency_key": "fe4a065c-90ae-4c55-9fff-b4827af73d58",
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "receipt_status": "COMPLETED",
+        "request_hash": "5fb61949152e078d8901d579ec66d0faeb158a748a7215d2a7ff0d78c6eb5545",
+        "response_body": {
+          "currentContextRevisionId": "578bf877-66d9-4c78-bd12-5c919195a622",
+          "currentNodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+          "eventSequence": 1,
+          "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+          "workflowStateVersion": 1
+        },
+        "response_digest": "8fd2e3d1265e5dbc12b2dc0421cd9ae21d7044d89efa9225192e3d3aed1af724",
+        "response_status": 200
+      },
+      {
+        "command_id": "54463c70-c6eb-4cd2-937f-c31f1aa51f1f",
+        "command_type": "REQUEST_WORKFLOW_ASSISTANCE",
+        "completed_at": "2026-11-07T21:01:13.333724+00:00",
+        "created_at": "2026-11-07T21:01:13.333724+00:00",
+        "idempotency_key": "f54bf1ea-adca-48ea-9494-d0043ac979bf",
+        "principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "receipt_status": "COMPLETED",
+        "request_hash": "ada0c439b9d7ed1517f8481d73bee1eac44348b30e5c4dff07d548858bfe6ecd",
+        "response_body": {
+          "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+          "createdAt": "2026-11-07T21:01:13.333724Z",
+          "eventSequence": 2,
+          "nodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+          "status": "OWNER_PENDING",
+          "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+          "workflowStateVersion": 2
+        },
+        "response_digest": "a23106e6fa83f83c97c06750140172b7f7146f9b4e5e50dbe3b7346a95bf3107",
+        "response_status": 201
+      }
+    ],
+    "submissions": [],
+    "visits": [
+      {
+        "assignee_principal_id": "a4eba05e-acd2-4438-adda-029e3fb4b526",
+        "created_at": "2026-11-07T21:01:09.253714+00:00",
+        "entered_by_transition_id": null,
+        "node_id": "e942c9df-11a6-478a-b6cb-f7aaf7f3e291",
+        "node_visit_id": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+        "visit_number": 1,
+        "workflow_instance_id": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297"
+      }
+    ]
+  },
+  "denial": {
+    "error": {
+      "code": "assistance_open",
+      "message": "current visit has an unresolved assistance case"
+    }
+  }
+}

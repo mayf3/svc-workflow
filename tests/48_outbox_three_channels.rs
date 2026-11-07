@@ -239,6 +239,7 @@ struct RowState {
     dead_lettered_at: Option<Timestamp>,
     attempt_count: i32,
     last_error: Option<String>,
+    next_attempt_at: Timestamp,
     next_attempt_future: bool,
 }
 
@@ -264,6 +265,7 @@ async fn row_state(pool: &PgPool, outbox_id: Uuid) -> RowState {
         dead_lettered_at,
         attempt_count,
         last_error,
+        next_attempt_at,
         next_attempt_future: next_attempt_at > sqlx::types::chrono::Utc::now(),
     }
 }
@@ -531,6 +533,7 @@ async fn assert_sustained_channel_isolation(slow_kind: &'static str) {
         .find(|(kind, _)| *kind == slow_kind)
         .unwrap()
         .1;
+    let initial_next_attempt_at = row_state(&pool, slow_row).await.next_attempt_at;
     let healthy: Vec<_> = original
         .iter()
         .filter(|(kind, _)| *kind != slow_kind)
@@ -644,14 +647,21 @@ async fn assert_sustained_channel_isolation(slow_kind: &'static str) {
         observation.expect("slow channel did not complete its original bounded HTTP attempt");
     println!("H1359_SUSTAINED slow={slow_kind} first_healthy_ms={first_ms} slow_timeout_settled_ms={after_timeout_ms} later_healthy_ms={later_ms} slow_attempts={} slow_http_started={}",
         slow_state.attempt_count, fake.started.load(Ordering::SeqCst));
+    println!("H1359_RETRY slow={slow_kind} initial_due={initial_next_attempt_at} next_attempt_at={} advance_ms={}",
+        slow_state.next_attempt_at,
+        (slow_state.next_attempt_at - initial_next_attempt_at).num_milliseconds());
     assert!(fake.started.load(Ordering::SeqCst) > 0);
     assert!(slow_state.delivered_at.is_none());
     assert!(slow_state.dead_lettered_at.is_none());
     assert!(slow_state.attempt_count >= 1);
     assert!(slow_state.last_error.is_some());
+    // The original SQL uses transaction-start now(), before the real 5s/10s
+    // HTTP timeout. Its first 2s backoff can already be past at settlement.
+    // Check the persisted advance from the original due time; the existing
+    // fast-error tests separately check that an unexpired backoff holds.
     assert!(
-        slow_state.next_attempt_future,
-        "original backoff is retained"
+        slow_state.next_attempt_at >= initial_next_attempt_at + chrono::Duration::seconds(2),
+        "retry timestamp advances by at least the first backoff from the original due time"
     );
 }
 
@@ -1370,7 +1380,10 @@ async fn forum_delivery_survives_a_one_connection_pool() {
         .expect("connect one-connection pool");
     let forum = ForumClient::new(forum_and_kick_config(&forum_base, &kick_base));
     let delivered = svc_workflow::forum_sync::run_once(&one_conn, &forum).await;
-    assert_eq!(delivered, 2, "forum event AND kick delivered on one connection");
+    assert_eq!(
+        delivered, 2,
+        "forum event AND kick delivered on one connection"
+    );
 
     let kick_state = row_state(&pool, kick_row).await;
     assert!(kick_state.delivered_at.is_some());
@@ -1508,7 +1521,9 @@ async fn all_three_channels_deliver_independently_in_one_pass() {
                     calls.fetch_add(1, Ordering::SeqCst);
                     // Unique per creation: the canonical binding table enforces
                     // one thread per instance across the whole database.
-                    Json(serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}))
+                    Json(
+                        serde_json::json!({"thread": {"id": format!("thread-{}", Uuid::new_v4())}}),
+                    )
                 }
             }),
         )
@@ -1614,7 +1629,12 @@ async fn all_three_channels_deliver_independently_in_one_pass() {
 /// Queue a FORUM_EVENT row with an explicit created_at offset (minutes after
 /// now), so ordering is deterministic relative to the creation-time
 /// `wf_created:*` row.
-async fn queue_forum_event_at(pool: &PgPool, instance_id: Uuid, key: &str, offset_min: i32) -> Uuid {
+async fn queue_forum_event_at(
+    pool: &PgPool,
+    instance_id: Uuid,
+    key: &str,
+    offset_min: i32,
+) -> Uuid {
     let outbox_id = Uuid::new_v4();
     sqlx::query(
         "INSERT INTO workflow_outbox
@@ -1662,8 +1682,7 @@ async fn spawn_ordering_forum_fake(
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
-                    let is_e1_first =
-                        key == "e1" && e1_first_posted.swap(false, Ordering::SeqCst);
+                    let is_e1_first = key == "e1" && e1_first_posted.swap(false, Ordering::SeqCst);
                     if is_e1_first {
                         tokio::time::sleep(Duration::from_millis(200)).await;
                     }
@@ -1683,11 +1702,7 @@ async fn spawn_ordering_forum_fake(
 }
 
 /// Drive `passes` reconciler passes, returning the total delivered count.
-async fn drive_passes(
-    pool: &PgPool,
-    forum: &ForumClient,
-    passes: usize,
-) -> usize {
+async fn drive_passes(pool: &PgPool, forum: &ForumClient, passes: usize) -> usize {
     let mut delivered = 0usize;
     for _ in 0..passes {
         delivered += svc_workflow::forum_sync::run_once(pool, forum).await;
@@ -1722,9 +1737,9 @@ async fn forum_events_deliver_oldest_first_under_two_concurrent_workers() {
     for _ in 0..2 {
         let pool = pool.clone();
         let forum = forum.clone();
-        workers.push(tokio::spawn(async move {
-            drive_passes(&pool, &forum, 5).await
-        }));
+        workers.push(tokio::spawn(
+            async move { drive_passes(&pool, &forum, 5).await },
+        ));
     }
     let mut total = 0usize;
     for worker in workers {
@@ -1804,10 +1819,15 @@ async fn backed_off_first_forum_event_blocks_later_events_across_passes() {
     let delivered = svc_workflow::forum_sync::run_once(&pool, &forum).await;
     assert_eq!(delivered, 0, "e1 failed, nothing else deliverable");
     let e2_state = row_state(&pool, outbox_row_by_key(&pool, instance, "e2").await).await;
-    assert_eq!(e2_state.attempt_count, 0, "e2 not attempted behind backed-off e1");
-    assert!(row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await)
-        .await
-        .next_attempt_future);
+    assert_eq!(
+        e2_state.attempt_count, 0,
+        "e2 not attempted behind backed-off e1"
+    );
+    assert!(
+        row_state(&pool, outbox_row_by_key(&pool, instance, "e1").await)
+            .await
+            .next_attempt_future
+    );
 
     // Pass 3 (after the backoff): e1 delivers; e2 stays untouched in the same
     // pass — the batch was taken while e1 was still undelivered.

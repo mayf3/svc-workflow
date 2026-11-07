@@ -1,0 +1,11 @@
+{
+  "activation_id": "71860877-1bd7-4102-992f-d486edf205e9",
+  "closure_count": 1,
+  "eligibility_event_id": "81eb7289-d016-4d8a-8442-dc800ff6c7ce",
+  "eligibility_fact_retained": true,
+  "future": "2026-11-07T22:00:34.754975Z",
+  "projected": {
+    "classification": "WAITING_FOR_TIME",
+    "nextEligibleAt": "2026-11-07T22:00:34.754975Z"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-07T20:54:31.944571+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "git_status": "## fix/outbox-channel-isolation\n M REVIEW-1359-OUTBOX.md\n M STOPPED-1359-OUTBOX.md\n M tests/48_outbox_three_channels.rs\n?? RECEIPT-1359-OUTBOX.md\n?? docs/evidence/1359-r3/\n?? docs/evidence/1359-r4/\n",
+  "remote_refs": "8da8dbcb70e700d9e35970e8b662b1be2c29afdc\trefs/heads/main\n",
+  "clusters": [
+    {
+      "data_directory": "/private/tmp/h1359-r4-pg/data",
+      "port": 56589,
+      "status_rc": 3,
+      "expected_status_rc": 3,
+      "status_output": "pg_ctl: no server running\n",
+      "loopback_connect_ex": 61,
+      "postmaster_pid_exists": false
+    },
+    {
+      "data_directory": "/private/tmp/h1359-r4-pg-55432/data",
+      "port": 55432,
+      "status_rc": 3,
+      "expected_status_rc": 3,
+      "status_output": "pg_ctl: no server running\n",
+      "loopback_connect_ex": 61,
+      "postmaster_pid_exists": false
+    },
+    {
+      "data_directory": "/private/tmp/h1359-r4-pg-55483/data",
+      "port": 55483,
+      "status_rc": 3,
+      "expected_status_rc": 3,
+      "status_output": "pg_ctl: no server running\n",
+      "loopback_connect_ex": 61,
+      "postmaster_pid_exists": false
+    }
+  ]
+}

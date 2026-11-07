@@ -1,0 +1,16 @@
+On branch fix/outbox-channel-isolation
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   REVIEW-1359-OUTBOX.md
+	modified:   STOPPED-1359-OUTBOX.md
+	modified:   tests/48_outbox_three_channels.rs
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	RECEIPT-1359-OUTBOX.md
+	docs/evidence/1359-r3/
+	docs/evidence/1359-r4/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped stash@{0} (e152fd6acbd0279c2f0ee2132cd67848e0469853)

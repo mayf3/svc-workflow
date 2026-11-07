@@ -1,0 +1,36 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--jobs",
+    "4",
+    "--lib",
+    "--",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "/private/tmp/h1359-outbox",
+  "started_at": "2026-11-07T21:02:30.154440+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "status": "M REVIEW-1359-OUTBOX.md\n M STOPPED-1359-OUTBOX.md\n M tests/48_outbox_three_channels.rs\n?? RECEIPT-1359-OUTBOX.md\n?? docs/evidence/1359-r3/\n?? docs/evidence/1359-r4/",
+  "scope": "task-owned disposable PostgreSQL and loopback fixtures only",
+  "environment": {
+    "TEST_DATABASE_URL": "postgres://postgres@127.0.0.1:56591/h1359_r5_outbox",
+    "DATABASE_URL": "postgres://postgres@127.0.0.1:56591/h1359_r5_outbox",
+    "AA_RESULT_DIR": "/private/tmp/h1359-r5-control/aa-results",
+    "RUSTFLAGS": "--cfg trusted_fleet_cutover_conformance --check-cfg=cfg(trusted_fleet_cutover_conformance)",
+    "CARGO_TARGET_DIR": "/private/tmp/h1359-outbox/target"
+  },
+  "hashes": {
+    "src/forum_sync.rs": "d78eb6f6c09c4a7849f2fc218c48543bddf476e767d3623fd7df04c54a56ab7a",
+    "src/store/postgres/outbox.rs": "4531f1e2b9cd57a19236c7f27cc3632e5ea234b0a1cc3af0ffa979f53a23d7b3",
+    "tests/48_outbox_three_channels.rs": "3328d6710e80cc404d28fc902cd7983c6747752ed3a7da7bbe60b6adffb252c7",
+    "tests/67_authorized_actions_r4.rs": "cd1b24f26a6ae7978b439bc6a723f9ccbf0e3ff9803c085fa56bf4ac850d44c8",
+    "tests/common/admission.rs": "3c3925bb6c773206845d490bda60e729ea39302c11df1da58a5ca0c362f84a93"
+  },
+  "rc": 0,
+  "ended_at": "2026-11-07T21:02:35.355073+00:00",
+  "elapsed_seconds": 5.175,
+  "log_sha256": "faddde0d02d1f2fa23eadee770147c22b0dc5ea5bde46e2a3c254f17fd69db18"
+}

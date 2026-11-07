@@ -1,0 +1,29 @@
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-r3-base)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.85s
+     Running tests/48_outbox_three_channels.rs (/private/tmp/h1359-outbox/target/debug/deps/48_outbox_three_channels-8aff9b380632eabb)
+
+running 3 tests
+test sustained_forum_timeout_keeps_other_channels_polling ... 
+thread 'sustained_forum_timeout_keeps_other_channels_polling' (70438792) panicked at tests/48_outbox_three_channels.rs:601:10:
+healthy initial rows must not wait for the slow channel: Elapsed(())
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sustained_kick_timeout_keeps_other_channels_polling ... 
+thread 'sustained_kick_timeout_keeps_other_channels_polling' (70438834) panicked at tests/48_outbox_three_channels.rs:601:10:
+healthy initial rows must not wait for the slow channel: Elapsed(())
+FAILED
+test sustained_wake_timeout_keeps_other_channels_polling ... 
+thread 'sustained_wake_timeout_keeps_other_channels_polling' (70438952) panicked at tests/48_outbox_three_channels.rs:628:10:
+healthy later ticks must progress after the peer times out: Elapsed(())
+FAILED
+
+failures:
+
+failures:
+    sustained_forum_timeout_keeps_other_channels_polling
+    sustained_kick_timeout_keeps_other_channels_polling
+    sustained_wake_timeout_keeps_other_channels_polling
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 19 filtered out; finished in 11.47s
+
+error: test failed, to rerun pass `--test 48_outbox_three_channels`

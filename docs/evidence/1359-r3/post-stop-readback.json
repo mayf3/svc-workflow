@@ -1,0 +1,17 @@
+[
+  {
+    "port": 56589,
+    "postmaster_pid_exists": false,
+    "loopback_connect_errno": 61
+  },
+  {
+    "port": 55432,
+    "postmaster_pid_exists": false,
+    "loopback_connect_errno": 61
+  },
+  {
+    "port": 55483,
+    "postmaster_pid_exists": false,
+    "loopback_connect_errno": 61
+  }
+]

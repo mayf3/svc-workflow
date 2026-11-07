@@ -1,0 +1,22 @@
+[
+  {
+    "port": 55483,
+    "base": "/private/tmp/h1359-r5-pg-55483",
+    "identity": "/private/tmp/h1359-r5-pg-55483/data|55483|127.0.0.1",
+    "identity_before_stop": "/private/tmp/h1359-r5-pg-55483/data|55483|127.0.0.1",
+    "stop_rc": 0,
+    "stopped_at": "2026-11-07T21:02:55.672214+00:00",
+    "postmaster_pid_exists": false,
+    "port_accepting": false
+  },
+  {
+    "port": 56591,
+    "base": "/private/tmp/h1359-r5-pg-56591",
+    "identity": "/private/tmp/h1359-r5-pg-56591/data|56591|127.0.0.1",
+    "identity_before_stop": "/private/tmp/h1359-r5-pg-56591/data|56591|127.0.0.1",
+    "stop_rc": 0,
+    "stopped_at": "2026-11-07T21:02:56.566663+00:00",
+    "postmaster_pid_exists": false,
+    "port_accepting": false
+  }
+]
