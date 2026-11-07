@@ -140,7 +140,29 @@ POSTGRES_STORAGE_CONTRACT_V0_3
   status: accepted under ROOT_OWNER_ACCEPTANCE.json; effective after paired lifecycle commit pair is merged to main
   supersedes: POSTGRES_STORAGE_CONTRACT_V0_2
 
-SVC_WORKFLOW_EXECUTION_CONTROL_V2 / GOVERNANCE_CHILD_RETURN_V2 / PREREQUISITE_ORCHESTRATION_V4
+SVC_WORKFLOW_EXECUTION_CONTROL_V1
+  path: docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V1.md
+  kind: implementation_spec
+  status: superseded; historical acceptance retained
+  superseded_by: SVC_WORKFLOW_EXECUTION_CONTROL_V2
+
+SVC_WORKFLOW_EXECUTION_CONTROL_V2
+  path: docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V2.md
+  kind: implementation_spec
+  status: superseded; historical acceptance retained
+  supersedes: SVC_WORKFLOW_EXECUTION_CONTROL_V1
+  superseded_by: SVC_WORKFLOW_EXECUTION_CONTROL_V3
+
+SVC_WORKFLOW_EXECUTION_CONTROL_V3
+  path: docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V3.md
+  kind: implementation_spec
+  status: accepted under Owner decision #125; implementation_authority: contracts; production_apply_authority: none
+  paired_authority: AGENT_CORE_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V1
+  supersedes: SVC_WORKFLOW_EXECUTION_CONTROL_V2 and SVC_WORKFLOW_EXECUTION_CONTROL_V1
+  acceptance_record: https://github.com/mayf3/svc-workflow/issues/125#issuecomment-6600869500
+  historical_retirement_path: V1 -> V2 -> V3 (existing V1 -> V2 backlink retained)
+
+SVC_WORKFLOW_GOVERNANCE_CHILD_RETURN_V2 / PREREQUISITE_ORCHESTRATION_V4
   path: docs/specs/ (exact filenames above)
   kind: implementation_spec
   status: accepted; implementation_authority: contracts; production_apply_authority: none
