@@ -70,8 +70,8 @@ active-agent/global-reader 与 self-projection 范围。未改 vendored grammar�
 | Reconcile | `application/coordinator_control_plane.rs::reconcile_apply:631,894` → `domain_role_repository.rs::insert_role_binding:626` | exact preimage/CAS、source不要求enabled、目标active、原子迁移和冻结错误 |
 | Principal restore | `provisioning_repository/mod.rs::upsert_principal:134` | false→true可使旧enabled roles重新可用，须检查受影响Agent；self-projection `domain_role_repository.rs::upsert_principal_projection:44` 目前拒绝disabled恢复，不应误说可恢复 |
 | 离线同效写点 | `src/bin/trusted_fleet_principal_cutover_v1.rs:944,1078–1080` | 直接enabled role upsert与新assignment须列边界；旧有限授权不被本提案扩大 |
-| Assignment已有admission | `src/store/postgres/admission_gate.rs`、`src/auth/admission.rs`；create/transition/combined/admin recovery/import/rebuild及有界migration | REUSE CIR新鲜观测；反例要覆盖所有责任产生入口；不是增加普通reassign API |
-| Assignment具体事实写点 | `workflow_instance_repository/create_transaction/facts.rs:310`、`transition_helpers.rs:220,253`、`combined_helpers.rs:120`；`admin_recovery_repository/override_transaction.rs:456,502`、`rebuild_transaction.rs:232`；`legacy_import_repository/transaction.rs:119` | 既有命令/Visit不可变/Event/CAS规则保留，未来实测确认各入口保护不可绕过 |
+| Assignment admission与同效责任入口 | `src/store/postgres/admission_gate.rs`、`src/auth/admission.rs`；create/transition/combined/override/import有目录admission；rebuild从历史重建projection；有限offline migration沿其冻结canary/身份校验 | 后两类不能称已接入同一新鲜Core目录client；均须纳入未来ordering/覆盖审查。REUSE CIR不增加普通reassign API |
+| Assignment事实/投影定位 | `workflow_instance_repository/create_transaction/facts.rs:310`、`transition_helpers.rs:220,253`、`combined_helpers.rs:120`；`admin_recovery_repository/override_transaction.rs:456,502`、`rebuild_transaction.rs:232`；`legacy_import_repository/transaction.rs:119` | rebuild为既有事实投影恢复，不据此宣称新建Visit或已有目录保护；未来分别核验责任恢复/迁移的合法边界，保留既有Visit/Event/CAS规则 |
 | DTO/错误/事务 | `src/http/dto.rs`、`src/http/error.rs:637`、`src/domain/provisioning/mod.rs:229–244`、`src/auth/admission.rs:206–240`、provisioning receipt模块 | 新读payload、新role admission映射、原错误和历史replay、commit unknown须正式接受后实现 |
 
 Core `workflow-admission.js` 同固定 head 的事实：前缀 `/v1/directory/agents`，真正精确查询是
