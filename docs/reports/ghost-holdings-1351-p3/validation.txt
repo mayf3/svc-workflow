@@ -15,3 +15,4 @@ Exploration diagnostics: guessed template rc=1; guessed source paths and absent 
 Full syntax gate / semantic review / formal acceptance / product verification are not implied by these checks.
 affected-only lifecycle validator (base=[], candidate=[new proposed Spec]; prior authorities unchanged): PASS rc=0
 staged scope: six added documentation artifacts only; accepted authority/code/schema/config changes=0; product tests NOT_EXECUTED
+Independent source review found imprecise report grouping: rebuild projection/frozen offline migration are not all wired to fresh directory client. Report corrected; Spec unchanged (SHA above), local links and diff check PASS rc=0.
