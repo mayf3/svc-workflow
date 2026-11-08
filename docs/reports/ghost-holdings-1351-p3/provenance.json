@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "recorded_at_utc": "2026-11-08T13:06:56.764811+00:00",
+  "time_semantics": "Evidence sealing time; per-read exact timestamps were not sampled",
+  "authoring_base": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+  "core_input_head": "527d641518bdde61267cde56000bfb8299780667",
+  "core_proposal_status": "proposed/none",
+  "source_input_snapshot_sha256": "75ba93ac980be8243188bf39201ce1b08eee27a53cf40d2fda2983854a2531f2",
+  "production_observation": "NOT_EXECUTED",
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "d5bb50749f9b5e3de1453502fa57e4e794443116f9dac0130251a3378e658e04"
+    },
+    {
+      "path": ".agents/README.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "1f9f00a3692ac8a191384feb768f8accb4276039b688828c7db22c50efd02d22"
+    },
+    {
+      "path": ".agents/local/README.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "1868f6033834622cb25672ece8abeeafb864d571859c109a39a4affe1f141c8c"
+    },
+    {
+      "path": ".agents/governance.lock.json",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "5f5e04118f24c617afa832a4c24d357c5aa7a95692290ec6946c320cddb40511"
+    },
+    {
+      "path": ".agents/skills/spec-governance/SKILL.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "a26f27a6f37a40984d8f80be0eea67bcf99d5055b96d840a3116a58e9603be4f"
+    },
+    {
+      "path": ".agents/skills/spec-governance/modes/AUTHOR.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "317b28afb24b4dd657671215de705bf9f631842c38b1add60c7847ff4d986327"
+    },
+    {
+      "path": ".agents/templates/SPEC_TEMPLATE.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "fbc45e2996065f3ad9db266d7bf8fad6b0adc3866bbacc6a0e32df9104e5c1e2"
+    },
+    {
+      "path": ".agents/protocol/SPEC_FORMAT_V0.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "027b7600e240d33602e3e75ece381e82d097fdf3d5aa6f907fe46ccfff249ec4"
+    },
+    {
+      "path": "PRODUCT-BOUNDARY.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "8a053cec86e05907331a7fa5f433cb76cac8a1359c975bef1baa321226947c45"
+    },
+    {
+      "path": "docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V13.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "646271316ac20804d0b1375b7a7bd1e35eff8c545bc2fd71e60eaa477a99726b"
+    },
+    {
+      "path": "docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_7.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "59ea63c105c04ac314c63bf2ede774455c33040ada80f728afe9b60a50bb9024"
+    },
+    {
+      "path": "docs/contracts/IDENTITY_PROVISIONING_API_V0.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "9abed5c87fbf626aaaf34fb1bbcd7f41f8962bb2f10eae4363fd8af2a7dbb7d5"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_COORDINATOR_CONTROL_PLANE_V1.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "b0177e2bbcb507d86476f0ee6a011133245623fbfc7c614c87b9c1032616a965"
+    },
+    {
+      "path": "docs/architecture/AUTH_PRINCIPAL_SELF_PROJECTION_AND_DOMAIN_MEMBERSHIP_V1.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "7f87610c10a765a5bc8bf57413acfd38221387ad6f7318afb62df79ba7748695"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "4ccc1e87c08a8cbe080c8e1f7dc704e5c1ae0ca6b49565ad3e150ee50ded716f"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_PRINCIPAL_SUCCESSOR_MIGRATION_V1.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "58039abfc3f4f0df06ef3d0a96d2642b02f19259ab078bdecbcbe8f9cbcd1d3d"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_OWNER_OBLIGATION_WORKFLOWS_V3.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "657848a9c255033246919adcb656503ca3713acc2780e058e7539d0807faa1e1"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_ACTIVE_AGENT_LIST_V2.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "602a6a255d2467cb4c48526467952720a791dad326c39689838b338e359b8ee8"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "15df8e6588be786431fcede1f9380a413eb2f8247c7b1c9bfc90807782140007"
+    },
+    {
+      "path": "docs/specs/SVC_WORKFLOW_DOMAIN_CREATE_CANONICAL_CONTRACT_V1.md",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "1bb0bb7c169cc2be5008d6e4613813e25c76a9cd07a5150a7fb7d751f5884e0d"
+    },
+    {
+      "path": "src/store/postgres/provisioning_repository/mod.rs",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "01bef2ce153df7767a654fd785b069cecb5897dcaa26774c7c8c3ba317de6c14"
+    },
+    {
+      "path": "src/store/postgres/domain_role_repository.rs",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "1f6b44e3cf5a568f21c8fdafbe0a31fc84baf0d0f125420c38d242b8795510ad"
+    },
+    {
+      "path": "src/store/postgres/admission_gate.rs",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "c486b0ce559bd11abd916a277e174d13af21e682f21f11cea6556f78e617b6c4"
+    },
+    {
+      "path": "src/auth/admission.rs",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "3abd42d8b0683ef387c62782605ba0347ac4cd7b1381368252fa9ff9861aeb49"
+    },
+    {
+      "path": "src/store/postgres/workflow_instance_repository/query_global_instances.rs",
+      "revision": "b5096782f666ad22aa3508fdbf9562278a977c0f",
+      "sha256": "5343f414d1428930ff997e943b6d0414bc129f5551471b7660de7bb889cb2684"
+    },
+    {
+      "repository": "mayf3/dsh-agent-core",
+      "path": "docs/specs/AGENT_CORE_GHOST_HOLDINGS_PROTECTION_V1.md",
+      "revision": "527d641518bdde61267cde56000bfb8299780667",
+      "git_blob_sha": "6f502cc3d8337574c25767846270f7da81e85194",
+      "sha256_utf8_content": "ca555419c071c28437adafbcd59b5f17352dc6d94fc29f6fc510be1281920aa6",
+      "snapshot": "source-inputs.json#core_spec"
+    },
+    {
+      "repository": "mayf3/dsh-agent-core",
+      "path": "packages/product-api/src/workflow-admission.js",
+      "revision": "527d641518bdde61267cde56000bfb8299780667",
+      "git_blob_sha": "3d819e4439e362b2419dc15eea367893f7095923",
+      "sha256_utf8_content": "e75364a338514e746797a640c55150f8dc21021def60f9d5da35380c4b9bee73",
+      "snapshot": "source-inputs.json#core_directory"
+    },
+    {
+      "path": "BRIEF-SVC-1351-P3-COMPANION.md",
+      "sha256": "c798c8e599ebf0653da2ac71b5b1c4be48cf826737823db6545a99bf6c61caa8",
+      "copy": "BRIEF-SVC-1351-P3-COMPANION.md"
+    }
+  ]
+}
