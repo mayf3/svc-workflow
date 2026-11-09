@@ -41,12 +41,53 @@ BASE_URL="http://127.0.0.1:$PORT"
 GIT=$(command -v git)
 SHASUM=$(command -v shasum)
 RELEASE_WT=""
+RELEASE_LOCK_DIR="$SERVICE_DIR/.release.lock"
+RELEASE_LOCK_HELD=0
 RELEASE_ATTRIBUTION=""
 
 log() { printf '[release] %s\n' "$*"; }
 fail() { printf '[release] ERROR: %s\n' "$*" >&2; exit 1; }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# 所有正式发布入口共用同一锁；不依赖 macOS 默认不提供的 flock。
+# 残锁只会 fail closed，不能按时间/PID 推断并抢占另一个发布。
+acquire_release_lock() {
+  mkdir -p "$SERVICE_DIR"
+  local attempt
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    if mkdir "$RELEASE_LOCK_DIR" 2>/dev/null; then
+      RELEASE_LOCK_HELD=1
+      printf '%s\n' "$$" > "$RELEASE_LOCK_DIR/owner"
+      return 0
+    fi
+    sleep 1
+  done
+  # ${...} 大括号必须封闭变量名：bash 3.2 会把紧随的多字节字符并入变量名，
+  # set -u 中止后 EXIT trap 会把状态归零，锁竞争会被误报为成功。
+  fail "发布锁在 30s 内未释放: ${RELEASE_LOCK_DIR} (确认无发布运行后再恢复残锁)"
+}
+
+release_cleanup() {
+  local status=$? lock_owner
+  trap - EXIT
+  trap '' INT TERM
+  if [[ -n "$RELEASE_WT" ]]; then
+    "$GIT" -C "$REPO_ROOT" worktree remove --force "$RELEASE_WT" >/dev/null 2>&1 \
+      || { rm -rf "$RELEASE_WT" || { log "ERROR: 无法清理 release worktree: $RELEASE_WT" >&2; [[ "$status" != 0 ]] || status=1; }; }
+  fi
+  if [[ "$RELEASE_LOCK_HELD" == 1 ]]; then
+    lock_owner="$(cat "$RELEASE_LOCK_DIR/owner" 2>/dev/null || true)"
+    if [[ "$lock_owner" == "$$" ]]; then
+      rm "$RELEASE_LOCK_DIR/owner" && rmdir "$RELEASE_LOCK_DIR" \
+        || { log "ERROR: 无法清理发布锁: $RELEASE_LOCK_DIR" >&2; [[ "$status" != 0 ]] || status=1; }
+    else
+      log "ERROR: 发布锁 owner 不匹配，保留锁: $RELEASE_LOCK_DIR" >&2
+      [[ "$status" != 0 ]] || status=1
+    fi
+  fi
+  exit "$status"
+}
 
 # 只为 build/deploy/all 初始化一次；verify/archive 不补造历史归因。
 init_release_attribution() {
@@ -358,8 +399,7 @@ build() {
   RELEASE_WT="$(mktemp -d "${TMPDIR:-/tmp}/svc-workflow-release.XXXXXX")"
   log "创建 clean worktree: $RELEASE_WT (commit $sha)"
   "$GIT" -C "$REPO_ROOT" worktree add --detach "$RELEASE_WT" "$sha" >/dev/null
-  # 全局变量 + EXIT trap：无论成功失败都清理 worktree（local 变量在函数返回后不可用）
-  trap 'git -C "$REPO_ROOT" worktree remove --force "$RELEASE_WT" >/dev/null 2>&1 || rm -rf "$RELEASE_WT"' EXIT
+  # main 的统一 EXIT cleanup 同时清理 worktree 和发布锁。
 
   log "release build（独立 CARGO_TARGET_DIR，确保产物只来自该 commit 的干净源码）"
   (cd "$RELEASE_WT" && cargo build --release --locked)
@@ -617,30 +657,65 @@ verify() {
   log "migration bundle max=$deployed_max, digest=$deployed_digest == provenance ✓"
 
   # 8) 基础只读 HTTP smoke + 记录
-  local healthz readyz auth_code
+  local healthz readyz unauth_code auth_code expected_auth_code
   healthz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/healthz" || echo 000)"
   readyz="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/readyz" || echo 000)"
   # 只读认证端点：无 token 应 401；有 AUTH_TOKEN 则期望 200
-  auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
+  expected_auth_code="401"
+  unauth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
+  auth_code="$unauth_code"
   if [[ -n "${AUTH_TOKEN:-}" ]]; then
+    expected_auth_code="200"
     auth_code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL/internal/v1/worklists/assigned-to-me" || echo 000)"
   fi
-  log "smoke: healthz=$healthz readyz=$readyz auth(domains)=$auth_code"
+  log "smoke: healthz=$healthz readyz=$readyz unauth=$unauth_code auth(domains)=$auth_code"
   [[ "$healthz" == "200" ]] || fail "VERIFY FAIL: healthz=$healthz"
-  if [[ "$readyz" != "200" ]]; then
-    log "注意: readyz=${readyz}（已知独立问题：JWKS/auth 缓存，本轮只记录不修）"
-  fi
+  [[ "$readyz" == "200" ]] || fail "VERIFY FAIL: readyz=$readyz"
+  [[ "$unauth_code" == "401" ]] || fail "VERIFY FAIL: unauthHttpStatus=$unauth_code expected=401"
+  [[ "$auth_code" == "$expected_auth_code" ]] \
+    || fail "VERIFY FAIL: authHttpStatus=$auth_code expected=$expected_auth_code"
 
-  # 验收结果只并入本次最新事件：历史前缀逐字节保持，不重写其他任何记录；
-  # 若 ledger 最新事件不是本次部署（另一 sourceSha 在后），拒绝注释旧事件——
-  # 不凭相同 sourceSha 改错记录。
-  local split_at last_orig new_last last_sha
-  split_at="$(LC_ALL=C awk 'BEGIN{b=0; s=0} { if ($0 == "{") s=b; b += length($0) + 1 } END{ print s+0 }' "$LEDGER")"
-  last_orig="$(tail -c +$((split_at + 1)) "$LEDGER")"
-  last_sha="$(jq -r '.sourceSha // empty' <<<"$last_orig")"
-  [[ "$last_sha" == "$sha" ]] \
-    || fail "VERIFY FAIL: ledger's latest event is sourceSha=$last_sha, not this deployment ($sha); refusing to annotate a stale record"
-  new_last="$(jq     --arg healthz "$healthz"     --arg readyz "$readyz"     --arg authHttpStatus "$auth_code"     --arg runningBinaryPath "$bin_path"     '.verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}' <<<"$last_orig")"
+  # 精确匹配最新 receipt；只重写该对象，历史前缀逐字节保留。
+  # 先由 jq 验证完整 JSON 流，再按字节定位最后一个顶层对象，兼容
+  # pretty/compact 记录及字符串内的花括号，不把历史归因改成本次调用者。
+  local split_at new_last
+  new_last="$(jq -es \
+    --arg sourceSha "$sha" \
+    --arg artifactSha256 "$artifact_sha256" \
+    --arg migrationMaxVersion "$migration_max" \
+    --arg migrationBundleDigest "$migration_digest" \
+    --arg healthz "$healthz" \
+    --arg readyz "$readyz" \
+    --arg authHttpStatus "$auth_code" \
+    --arg runningBinaryPath "$bin_path" \
+    'if length == 0 then error("deployment ledger is empty")
+     elif .[-1].sourceSha != $sourceSha
+     then error("ledger latest event is sourceSha=\(.[-1].sourceSha), not this deployment (\($sourceSha)); refusing to annotate a stale record")
+     elif .[-1].artifactSha256 != $artifactSha256 or
+          .[-1].migrationMaxVersion != $migrationMaxVersion or .[-1].migrationBundleDigest != $migrationBundleDigest
+     then error("latest deployment receipt does not match verified provenance")
+     else .[-1] | .verification = {healthz: $healthz, readyz: $readyz, authHttpStatus: $authHttpStatus, runningBinaryPath: $runningBinaryPath}
+     end' \
+    "$LEDGER")" || fail "VERIFY FAIL: 无法更新当前 deployment receipt"
+  split_at="$(LC_ALL=C awk '
+    BEGIN { bytes=0; depth=0; quoted=0; escaped=0; start=0 }
+    {
+      for (i=1; i<=length($0); i++) {
+        c=substr($0,i,1)
+        if (quoted) {
+          if (escaped) escaped=0
+          else if (c=="\\") escaped=1
+          else if (c=="\"") quoted=0
+        } else if (c=="\"") quoted=1
+        else if (c=="{" || c=="[") {
+          if (depth==0) start=bytes+i-1
+          depth++
+        } else if (c=="}" || c=="]") depth--
+      }
+      bytes+=length($0)+1
+    }
+    END { print start }
+  ' "$LEDGER")"
   if [[ "$split_at" -gt 0 ]]; then
     { head -c "$split_at" "$LEDGER"; printf '%s\n' "$new_last"; } > "$LEDGER.tmp"
   else
@@ -654,12 +729,19 @@ verify() {
 main() {
   local cmd="${1:-all}"
   local sha="${2:-}"
-  if [[ "$cmd" == "archive" ]]; then
-    archive_ledger
-    return 0
+  if [[ "$cmd" != "archive" ]]; then
+    [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha> | release.sh archive"
   fi
-  [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha> | release.sh archive"
   case "$cmd" in
+    build|deploy|verify|all|archive) ;;
+    *) fail "未知子命令: $cmd" ;;
+  esac
+  trap release_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  acquire_release_lock
+  case "$cmd" in
+    archive) archive_ledger ;;
     build) init_release_attribution; build "$sha" ;;
     deploy) init_release_attribution; deploy "$sha" ;;
     verify) verify "$sha" ;;
@@ -674,3 +756,4 @@ main() {
 }
 
 main "$@"
+
