@@ -143,7 +143,33 @@ Health gates per phase:
 
 ## Rollback
 
-- svc: roll back the binary; 0027 tables are inert (no old code touches them).
+- svc: Owner accepted the exact
+  `WORKFLOW_EXECUTION_CONTROL_V1_DEPLOYMENT_ROLLBACK_AMENDMENT_DRAFT.md`
+  (SHA-256 `b76fa3aabc51d572d0bfaaa426e9acc273181c2f1e185636787bd4b240f50398`)
+  and its `0027-empty-only-recovery.sql` (SHA-256
+  `49cf0921202ec1fc0bf33212985a535dd643ccede7cdec56b01d802f8ce6ec96`)
+  on 2026-09-24. Before migration 0027 commits, retain or restore the exact
+  preimage binary and 26-file migration bundle without schema recovery. After
+  0027 commits, **empty-only schema rollback is permitted only before any WEC
+  candidate process has launched**, and only with a durable
+  `NO_WEC_WRITE_FENCE` receipt proving continuous production mutex and journal,
+  candidate launch count zero, no direct WEC writer, the exact preimage service
+  generation or continuously stopped state, exact database and actor, and the
+  reviewed SQL digest. That continuous fence must prove both new tables were
+  never written. Fresh SQL gates must prove both are currently empty, their
+  exact definitions, and the exact successful `1..27` migration ledger,
+  including the reviewed version-27 checksum. Current emptiness alone is
+  never no-write proof. The sole
+  destructive effect is to drop `public.workflow_outbox` and
+  `public.workflow_forum_bindings` without `CASCADE` and delete exactly the
+  matching successful version-27 ledger row. Then restore the exact preimage
+  binary and 26-file bundle; require ledger `1..26`, both WEC tables absent,
+  `/version.gitSha = f6a74001b71af106777045b596b30c3a7e99934d`,
+  `/readyz = 200`, and a durable receipt before releasing the mutex. If the
+  candidate ever launched, a WEC write may have occurred, any prerequisite is
+  unknown, or the journal/fence is incomplete, preserve 0027 and its data and
+  recover forward. An unknown SQL transaction outcome must never be replayed.
+  Normal successful forward deployment never invokes the recovery SQL.
 - dsh: roll back the binary; ledger files replay byte-identically on either
   version (additive event fields only).
 - forum: `DROP INDEX uq_forum_threads_workflow_instance_context;` + roll back
