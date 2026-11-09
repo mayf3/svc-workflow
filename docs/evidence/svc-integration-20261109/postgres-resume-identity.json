@@ -1,0 +1,17 @@
+{
+  "evaluated_at": "2026-11-09T15:41:01.878097+00:00",
+  "command": [
+    "/opt/homebrew/opt/postgresql@16/bin/psql",
+    "-X",
+    "-w",
+    "postgres://svc_integration_test@127.0.0.1:55947/svc_integration_20261109_lib",
+    "-At",
+    "-c",
+    "SELECT current_database(),current_user,inet_server_addr(),inet_server_port(),current_setting('data_directory');"
+  ],
+  "rc": 0,
+  "stdout": "svc_integration_20261109_lib|svc_integration_test|127.0.0.1|55947|/private/tmp/svc-integration/postgres/data\n",
+  "stderr": "",
+  "expected": "svc_integration_20261109_lib|svc_integration_test|127.0.0.1|55947|/private/tmp/svc-integration/postgres/data",
+  "removed_environment_keys": []
+}

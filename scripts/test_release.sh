@@ -191,6 +191,38 @@ test_repeat_deploy_same_sha_preserves_previous_receipt() {
   setup_case; write_ledger "$SOURCE_SHA"; run_verify; expect_success; expect_current_receipt_verified
 }
 
+test_verify_preserves_attribution_and_history() {
+  setup_case; write_ledger
+  # Preserve an explicitly constructed prefix, independently of verify's parser.
+  jq -s --arg actor $'historical "owner"\n{发布}' \
+    --arg auth $'approval/{history}\n"原始授权"' \
+    '.[0] + {osUser: "historical-os-user", actor: $actor, authRef: $auth,
+      attemptId: "11111111-1111-4111-8111-111111111111"}' \
+    "$SERVICE_DIR/ledger.json" > "$CASE_DIR/history.prefix"
+  jq -cs '.[1] + {osUser: "deployment-os-user", actor: "deployment-actor",
+    authRef: "deployment-approval", attemptId: "22222222-2222-4222-8222-222222222222"}' \
+    "$SERVICE_DIR/ledger.json" > "$CASE_DIR/current.receipt"
+  cat "$CASE_DIR/history.prefix" "$CASE_DIR/current.receipt" > "$SERVICE_DIR/ledger.json"
+  cp "$SERVICE_DIR/ledger.json" "$CASE_DIR/ledger.before"
+  export SVC_WORKFLOW_RELEASE_ACTOR="different-verify-caller"
+  export SVC_WORKFLOW_RELEASE_AUTH_REF="different-verify-approval"
+  export SVC_WORKFLOW_RELEASE_ATTEMPT_ID="33333333-3333-4333-8333-333333333333"
+  run_verify; expect_success; expect_current_receipt_verified
+  local prefix_bytes
+  prefix_bytes="$(wc -c < "$CASE_DIR/history.prefix" | tr -d ' ')"
+  head -c "$prefix_bytes" "$SERVICE_DIR/ledger.json" > "$CASE_DIR/history.after"
+  cmp -s "$CASE_DIR/history.prefix" "$CASE_DIR/history.after" \
+    || { printf 'verification changed historical receipt bytes\n'; return 1; }
+  jq -es --slurpfile before "$CASE_DIR/ledger.before" \
+    'def attribution: {osUser, actor, authRef, attemptId};
+     map(attribution) == ($before | map(attribution))' \
+    "$SERVICE_DIR/ledger.json" >/dev/null
+  # A later failed verification must preserve both attributed receipts in full.
+  cp "$SERVICE_DIR/ledger.json" "$CASE_DIR/ledger.before"
+  export TEST_READY_STATUS=503
+  run_verify; expect_failure_without_receipt_change
+}
+
 test_latest_receipt_mismatch_fails() {
   setup_case; write_ledger "$SOURCE_SHA" "$OTHER_SHA"; run_verify
   expect_failure_without_receipt_change
@@ -464,6 +496,7 @@ failures=0
 for test in \
   test_preserves_historical_receipt \
   test_repeat_deploy_same_sha_preserves_previous_receipt \
+  test_verify_preserves_attribution_and_history \
   test_latest_receipt_mismatch_fails \
   test_latest_receipt_artifact_mismatch_fails \
   test_latest_receipt_migration_mismatch_fails \

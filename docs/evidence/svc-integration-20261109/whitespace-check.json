@@ -1,0 +1,45 @@
+{
+  "evaluated_at": "2026-11-09T15:47:59.792948+00:00",
+  "default_check": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check"
+    ],
+    "rc": 2,
+    "stdout": "docs/evidence/svc-integration-20261109/channels.log:36: new blank line at EOF.\ndocs/evidence/svc-integration-20261109/historical-library-baseline.txt:30: new blank line at EOF.\ndocs/evidence/svc-integration-20261109/historical-shell-baseline.txt:11: new blank line at EOF.\ndocs/evidence/svc-integration-20261109/library.log:298: new blank line at EOF.\n",
+    "stderr": ""
+  },
+  "disposition": "Only blank final lines in raw cargo logs and git historical-body exports; preserve original bytes. No code or authored-document whitespace error.",
+  "authored_files_check": {
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check",
+      "--",
+      "SVC-INTEGRATION-RECEIPT.md",
+      "scripts/test_release.sh",
+      "*.md",
+      "*.py",
+      "*.json"
+    ],
+    "rc": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "all_files_except_blank_eof_check": {
+    "command": [
+      "git",
+      "-c",
+      "core.whitespace=-blank-at-eof",
+      "diff",
+      "--cached",
+      "--check"
+    ],
+    "rc": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+}

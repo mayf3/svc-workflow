@@ -1,0 +1,21 @@
+{
+  "evaluated_at": "2026-11-09T15:42:38.241392+00:00",
+  "identity_before_stop": "svc_integration_20261109_lib|svc_integration_test|127.0.0.1|55947|/private/tmp/svc-integration/postgres/data",
+  "identity_rc": 0,
+  "command": [
+    "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+    "-D",
+    "/private/tmp/svc-integration/postgres/data",
+    "-m",
+    "fast",
+    "-w",
+    "stop"
+  ],
+  "rc": 0,
+  "stdout": "waiting for server to shut down.... done\nserver stopped\n",
+  "stderr": "",
+  "task_port_closed": true,
+  "postmaster_pid_absent": true,
+  "data_preserved": true,
+  "scope": "task-owned PG only; no pre-existing/production service stopped"
+}

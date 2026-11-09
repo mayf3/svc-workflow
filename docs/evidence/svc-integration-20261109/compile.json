@@ -1,0 +1,17 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--offline",
+    "--jobs",
+    "4",
+    "--no-run",
+    "--lib",
+    "--test",
+    "48_outbox_three_channels"
+  ],
+  "started_at": "2026-11-09T15:27:05.306349+00:00",
+  "finished_at": "2026-11-09T15:32:29.916732+00:00",
+  "rc": 0
+}
