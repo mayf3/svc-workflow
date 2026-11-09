@@ -89,22 +89,41 @@ fn valid_graph() -> WorkflowGraph {
                 metadata: None,
                 created_at: chrono::Utc::now(),
             },
-            // READY_CONTRACT: keep a non-primary exit for missing evidence or input.
-            TransitionDefinition {
-                transition_id: TransitionId::new(),
-                definition_version_id: version_id,
-                transition_key: "ready-contract-return".to_string(),
-                display_name: "Return to Draft".to_string(),
-                source_node_id: normal_node_id,
-                target_node_id: draft_node_id,
-                transition_effect: TransitionEffect::Return,
-                submission_schema: None,
-                metadata: None,
-                created_at: chrono::Utc::now(),
-            },
         ],
         context_schema: Some(serde_json::json!({"type": "object"})),
     }
+}
+
+#[test]
+fn r131_v7_split_authorization_gate_has_one_primary_advance_per_node() {
+    let version_id = DefinitionVersionId::new();
+    let ids: Vec<NodeId> = (0..7).map(|_| NodeId::new()).collect();
+    let edge_ids: Vec<TransitionId> = (0..5).map(|_| TransitionId::new()).collect();
+    let keys = ["draft", "entry", "waiting_authorization", "publishing", "verify", "done", "publish_failed"];
+    let nodes = keys.iter().enumerate().map(|(i, key)| NodeDefinition {
+        node_id: ids[i], definition_version_id: version_id, node_key: (*key).to_string(),
+        display_name: (*key).to_string(), order_index: i as i32,
+        node_type: if i == 0 { NodeType::DRAFT } else if i >= 5 { NodeType::TERMINAL } else { NodeType::NORMAL },
+        assignee_ref: if i >= 5 { None } else { Some(AssigneeRef { ref_type: if i == 0 { AssigneeRefType::WorkflowCreator } else { AssigneeRefType::FixedPrincipal }, fixed_principal_id: if i == 0 { None } else { Some(PrincipalId::new()) }, assignee_input_key: None }) },
+        instructions: None, primary_advance_transition_id: (i < 5).then(|| edge_ids[i]),
+        metadata: None, created_at: chrono::Utc::now(),
+    }).collect();
+    let edge = |id: TransitionId, key: &str, source: usize, target: usize, effect: TransitionEffect| TransitionDefinition {
+        transition_id: id, definition_version_id: version_id, transition_key: key.to_string(),
+        display_name: key.to_string(), source_node_id: ids[source], target_node_id: ids[target],
+        transition_effect: effect, submission_schema: None, metadata: None, created_at: chrono::Utc::now(),
+    };
+    let graph = WorkflowGraph { nodes, transitions: vec![
+        edge(edge_ids[0], "draft_entry", 0, 1, TransitionEffect::Advance),
+        edge(edge_ids[1], "entry_wait_auth", 1, 2, TransitionEffect::Advance),
+        edge(edge_ids[2], "auth_publish", 2, 3, TransitionEffect::Advance),
+        edge(edge_ids[3], "publish_verify", 3, 4, TransitionEffect::Advance),
+        edge(edge_ids[4], "verify_done", 4, 5, TransitionEffect::Advance),
+        edge(TransitionId::new(), "publish_failed", 3, 6, TransitionEffect::Terminate),
+        edge(TransitionId::new(), "verify_retry", 4, 3, TransitionEffect::Return),
+    ], context_schema: Some(serde_json::json!({"type": "object"})) };
+    let result = validate_graph(&graph);
+    assert!(result.valid, "R131 v7 split graph must validate: {:?}", result.errors);
 }
 
 #[test]
