@@ -1,0 +1,54 @@
+{
+  "evaluated_at": "2026-11-09T15:44:19.791527+00:00",
+  "candidate_head": "f51d8724fe0dc80053a82c37f19862b059ba6a37",
+  "release": {
+    "historical_outbox_core_passed": 24,
+    "main_core_passed": 25,
+    "current_core_passed": 26,
+    "upstream_target_suite_passed": 88,
+    "integrated_baseline_passed": 113,
+    "current_passed": 114,
+    "failed": 0,
+    "rc": 0,
+    "delta_from_113": 1,
+    "removed_main_cases": [],
+    "added_main_cases": [
+      "test_verify_preserves_attribution_and_history"
+    ],
+    "removed_historical_core_cases": [],
+    "added_from_historical_core_cases": [
+      "test_archive_respects_busy_release_lock",
+      "test_verify_preserves_attribution_and_history"
+    ]
+  },
+  "library": {
+    "historical_passed": 215,
+    "current": {
+      "status": "ok",
+      "passed": 276,
+      "failed": 0,
+      "ignored": 1,
+      "measured": 0,
+      "filtered_out": 0
+    },
+    "rc": 0,
+    "delta": 61
+  },
+  "channels": {
+    "prior_132_passed": 22,
+    "current": {
+      "status": "ok",
+      "passed": 22,
+      "failed": 0,
+      "ignored": 0,
+      "measured": 0,
+      "filtered_out": 0
+    },
+    "rc": 0,
+    "delta": 0
+  },
+  "source_acceptance": "YES",
+  "production_wake_recovery": "SEPARATE",
+  "full_cargo_suite": "NOT_RUN",
+  "ignored_library_case": "forum_sync::owner_assistance_wake_tests::owner_wake_outbox_stays_pending_then_recovers_on_later_pass"
+}

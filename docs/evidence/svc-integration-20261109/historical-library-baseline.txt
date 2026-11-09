@@ -1,0 +1,30 @@
+4c2903989b4571ece3a662c2b76c5883bca0265c
+test(outbox): native multi-backend concurrency regression
+
+Closes the native-PostgreSQL concurrency gap left open by the release
+candidate evidence: PGlite's single WASM backend could never exercise
+several real backends at once, and every existing database-gated test
+pinned max_connections(1) over per-connection TEMP tables.
+
+One bounded store-level regression on the real migrated workflow_outbox
+(rows keyed under a unique run prefix, deleted before any assertion can
+fail the test):
+
+- eight backends race the same (outbox_kind, event_key) queue insert:
+  exactly one row survives the dedupe
+- two backends mark the same row failed concurrently: attempt_count
+  lands exactly at 2 and the row stays pending (no silent loss)
+- four reconciler readers poll concurrently: wake readers see only
+  OWNER_ASSISTANCE_WAKE, kick readers only EXECUTION_KICK, FORUM_EVENT
+  rows stay untouched (optional Forum isolation under concurrency)
+
+Requires TEST_DATABASE_URL naming an isolated PostgreSQL instance with
+the migrations applied (applied on first use when missing); same
+contract as the existing database-gated cases. Test-only delta; no
+behavior change, no migration.
+
+Native PostgreSQL 16.15 evidence: lib 215/215 (208 non-DB + 6 existing
+DB-gated + this case); sequential fresh-DB integration run 42 targets
+green except the pre-existing acc_dkc_001_no_cursor_unchanged timing
+flake (1-in-3, identical on base 5d479d8).
+

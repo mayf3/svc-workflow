@@ -1,0 +1,47 @@
+{
+  "evaluated_at": "2026-11-09T15:30:32.872801+00:00",
+  "setup": [
+    {
+      "command": [
+        "/opt/homebrew/opt/postgresql@16/bin/initdb",
+        "-D",
+        "/private/tmp/svc-integration/postgres/data",
+        "-U",
+        "svc_integration_test",
+        "-A",
+        "trust",
+        "--no-locale",
+        "--encoding=UTF8"
+      ],
+      "rc": 0,
+      "output": "The files belonging to this database system will be owned by user \"yanfenma\".\nThis user must also own the server process.\n\nThe database cluster will be initialized with locale \"C\".\nThe default text search configuration will be set to \"english\".\n\nData page checksums are disabled.\n\ncreating directory /private/tmp/svc-integration/postgres/data ... ok\ncreating subdirectories ... ok\nselecting dynamic shared memory implementation ... posix\nselecting default max_connections ... 100\nselecting default shared_buffers ... 128MB\nselecting default time zone ... Asia/Shanghai\ncreating configuration files ... ok\nrunning bootstrap script ... ok\nperforming post-bootstrap initialization ... ok\nsyncing data to disk ... ok\n\nSuccess. You can now start the database server using:\n\n    '/opt/homebrew/opt/postgresql@16/bin/pg_ctl' -D /private/tmp/svc-integration/postgres/data -l logfile start\n\n"
+    },
+    {
+      "command": [
+        "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+        "-D",
+        "/private/tmp/svc-integration/postgres/data",
+        "-l",
+        "/private/tmp/svc-integration/postgres/server.log",
+        "-o",
+        "-h 127.0.0.1 -p 55947 -k /private/tmp/svc-integration/postgres/socket",
+        "-w",
+        "start"
+      ],
+      "rc": 0,
+      "output": "waiting for server to start.... done\nserver started\n"
+    }
+  ],
+  "createdb_rc": 0,
+  "identity_rc": 0,
+  "identity": "PostgreSQL 16.15 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.1.1.101), 64-bit\nsvc_integration_20261109_lib|svc_integration_test|127.0.0.1|55947|/private/tmp/svc-integration/postgres/data\n",
+  "coordinate": {
+    "host": "127.0.0.1",
+    "port": 55947,
+    "user": "svc_integration_test",
+    "database": "svc_integration_20261109_lib",
+    "data_directory": "/private/tmp/svc-integration/postgres/data",
+    "dsn": "postgres://svc_integration_test@127.0.0.1:55947/svc_integration_20261109_lib"
+  },
+  "existing_5432": "read-only postgres catalog preflight only; svc_wf role has no CREATEDB; no application database contacted"
+}
