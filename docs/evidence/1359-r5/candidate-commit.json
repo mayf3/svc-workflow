@@ -1,0 +1,16 @@
+{
+  "command": [
+    "git",
+    "commit",
+    "-m",
+    "test(outbox): correct sustained retry checks and record attribution (#1359)"
+  ],
+  "cwd": "/private/tmp/h1359-outbox",
+  "started_at": "2026-11-07T21:06:40.822425+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "rc": 0,
+  "ended_at": "2026-11-07T21:06:40.869129+00:00",
+  "elapsed_seconds": 0.037,
+  "stdout_sha256": "6e8adccde727262e8936aaa47b2d6b056986a8dfaeac46b294cf060814c81070",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

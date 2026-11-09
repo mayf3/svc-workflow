@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/dfc88ccb-820c-48cd-83d2-09b8d7e8af38/transitions",
+  "request": {
+    "expectedWorkflowStateVersion": 1,
+    "submissionPayload": {},
+    "transitionDefinitionId": "df37f9bb-f98a-47f3-ab9b-560440b71e9a"
+  },
+  "response": {
+    "currentContextRevisionId": "a9862c0c-cd48-455b-9e38-ae8907d37e0a",
+    "currentNodeVisitId": "afabb1aa-6cc3-436c-bd5d-81f920e22a8b",
+    "eventSequence": 2,
+    "sourceNodeVisitId": "0bba65cd-490d-493a-b361-0053c9ddf7c5",
+    "submissionId": "a7a4e7f8-6d3c-4b95-ac32-ba0cab9666e5",
+    "workflowInstanceId": "dfc88ccb-820c-48cd-83d2-09b8d7e8af38",
+    "workflowStateVersion": 2
+  },
+  "status": 200
+}

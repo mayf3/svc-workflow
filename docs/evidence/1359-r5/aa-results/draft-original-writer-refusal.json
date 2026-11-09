@@ -1,0 +1,116 @@
+{
+  "before": {
+    "events": [
+      {
+        "actor_principal_id": "cb2adb25-de05-421a-b913-5bbd131e8ae5",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "16e2a8cd-fb8a-437b-92be-1d7b8a33107e",
+        "context_revision_id": "e6a4a07d-e7d0-461e-9693-884a27272b70",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:00:31.942465+00:00",
+        "event_data": {
+          "assignee_resolution_type": "WORKFLOW_CREATOR",
+          "definition_digest": "b0692920a97a63e9797e3c18ab30d442cd4cba0ad6720b4f56c2ee3d487872e5",
+          "definition_version_id": "58daa6d3-09a0-42c8-ba25-e82acac3bff8",
+          "initial_node_id": "99201f76-711b-42d1-a4db-511a980351bd"
+        },
+        "event_data_digest": "23026483a3ecd769c008b9e6f31b44b008bc8282d2fab1d6c673cd1fd3440f1e",
+        "event_id": "5e0ecc74-5d3f-4b70-af76-bc1e052a2359",
+        "event_schema_version": "v1",
+        "event_sequence": 1,
+        "event_type": "INSTANCE_CREATED",
+        "from_node_id": null,
+        "new_workflow_state_version": 1,
+        "old_workflow_state_version": 0,
+        "source_node_visit_id": null,
+        "submission_id": null,
+        "target_node_visit_id": "79eff6f3-ca3c-4ef7-be23-0353d2c6c56d",
+        "to_node_id": null,
+        "transition_effect": null,
+        "workflow_instance_id": "e8871933-b3e9-44cc-92a9-4710df59bce3"
+      }
+    ],
+    "instance": {
+      "archive_reason": null,
+      "archived_at": null,
+      "archived_by_principal_id": null,
+      "artifact_digest": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "cancel_reason": null,
+      "cancelled": false,
+      "cancelled_at": null,
+      "cancelled_by_principal_id": null,
+      "created_at": "2026-11-07T21:00:31.942465+00:00",
+      "created_by_principal_id": "cb2adb25-de05-421a-b913-5bbd131e8ae5",
+      "current_context_revision_id": "e6a4a07d-e7d0-461e-9693-884a27272b70",
+      "current_node_visit_id": "79eff6f3-ca3c-4ef7-be23-0353d2c6c56d",
+      "definition_version_id": "58daa6d3-09a0-42c8-ba25-e82acac3bff8",
+      "domain_id": "2dd87070-dd3c-4587-81a5-f6fc9171b3d5",
+      "execution_class": "BUSINESS",
+      "external_reference": null,
+      "external_url": null,
+      "metadata": {},
+      "require_artifact_binding": false,
+      "require_explicit_node_assignees": false,
+      "semantic_model_version": 1,
+      "subject_id": null,
+      "updated_at": "2026-11-07T21:00:31.942465+00:00",
+      "workflow_instance_id": "e8871933-b3e9-44cc-92a9-4710df59bce3",
+      "workflow_state_version": 1
+    },
+    "principals": [
+      {
+        "created_at": "2026-11-07T21:00:31.917912+00:00",
+        "display_name": "agent",
+        "email": "cb2adb25-de05-421a-b913-5bbd131e8ae5@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "cb2adb25-de05-421a-b913-5bbd131e8ae5",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:00:31.917912+00:00"
+      }
+    ],
+    "receipts": [
+      {
+        "command_id": "16e2a8cd-fb8a-437b-92be-1d7b8a33107e",
+        "command_type": "CREATE_WORKFLOW_INSTANCE",
+        "completed_at": "2026-11-07T21:00:31.942465+00:00",
+        "created_at": "2026-11-07T21:00:31.942465+00:00",
+        "idempotency_key": "1a48a5a5-0e0b-4897-a1eb-dfd47fdce8c9",
+        "principal_id": "cb2adb25-de05-421a-b913-5bbd131e8ae5",
+        "receipt_status": "COMPLETED",
+        "request_hash": "52091280cecce32d4f2597927918e73f27a7f26d22db1227b4ab5baf42168260",
+        "response_body": {
+          "currentContextRevisionId": "e6a4a07d-e7d0-461e-9693-884a27272b70",
+          "currentNodeVisitId": "79eff6f3-ca3c-4ef7-be23-0353d2c6c56d",
+          "eventSequence": 1,
+          "workflowInstanceId": "e8871933-b3e9-44cc-92a9-4710df59bce3",
+          "workflowStateVersion": 1
+        },
+        "response_digest": "048ddce32f15756410d0594176b1723ae8d72baa1798ddbe3d9155a938f68a79",
+        "response_status": 200
+      }
+    ],
+    "submissions": [],
+    "visits": [
+      {
+        "assignee_principal_id": "cb2adb25-de05-421a-b913-5bbd131e8ae5",
+        "created_at": "2026-11-07T21:00:31.942465+00:00",
+        "entered_by_transition_id": null,
+        "node_id": "99201f76-711b-42d1-a4db-511a980351bd",
+        "node_visit_id": "79eff6f3-ca3c-4ef7-be23-0353d2c6c56d",
+        "visit_number": 1,
+        "workflow_instance_id": "e8871933-b3e9-44cc-92a9-4710df59bce3"
+      }
+    ]
+  },
+  "response": {
+    "error": {
+      "code": "internal_consistency_error",
+      "message": "invalid definition version state"
+    }
+  },
+  "status": 500
+}

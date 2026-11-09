@@ -15,13 +15,13 @@ use uuid::Uuid;
 
 use crate::application::definition::commands::{RawNodeDefinition, RawTransitionDefinition};
 use crate::application::definition::queries::{
-    GetCompleteVersionGraph, GetDefinition, GetDefinitionVersion, ListDefinitionVersions,
-    ListDomainDefinitions,
+    GetCompleteVersionGraph, GetDefinition, GetDefinitionVersion, GetPublishedVersionInputContract,
+    ListDefinitionVersions, ListDomainDefinitions,
 };
 use crate::application::definition::DefinitionService;
 use crate::application::definition_governance::{
     governance_archive_definition, governance_create_definition, governance_create_draft_version,
-    governance_publish_version, governance_replace_draft_graph,
+    governance_publish_version_with_actor, governance_replace_draft_graph,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::definition::error::DefinitionError;
@@ -203,6 +203,90 @@ pub(crate) async fn get_definition_detail(
 }
 
 // ---------------------------------------------------------------------------
+// GET /internal/v1/domains/{domainId}/definitions/{definitionId}/versions/{versionId}
+// ---------------------------------------------------------------------------
+
+/// Precise single-version read for the same-domain owner: full graph
+/// (nodes/transitions) plus the exact version row. Reuses the existing
+/// DefinitionService authorization (H-5 domain owner + enabled principal).
+/// Path ownership must be consistent — a version that does not belong to the
+/// path definition/domain is reported as intentionally not visible (opaque
+/// 404, no existence leak). DRAFT and PUBLISHED versions are both readable
+/// by the owner, matching the definition-detail read policy.
+pub(crate) async fn get_definition_version_detail(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path((domain_id, definition_id, version_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+
+    let repo = PgDefinitionRepository::new(state.pool.clone());
+    let service = DefinitionService::new(repo);
+
+    let result = service
+        .get_definition_version(GetDefinitionVersion {
+            actor_principal_id: principal.principal_id.into_uuid(),
+            definition_version_id: version_id,
+        })
+        .await
+        .map_err(|e| map_definition_error(e, Some(domain_id)))?;
+
+    let def = &result.version.definition;
+    if def.id.into_uuid() != definition_id || def.domain_id.into_uuid() != domain_id {
+        return Err(ApiError::new(
+            axum::http::StatusCode::NOT_FOUND,
+            "definition_not_found",
+            "workflow definition not found",
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "definition": result.version.definition,
+        "version": result.version.version,
+        "nodes": result.version.nodes,
+        "transitions": result.version.transitions,
+        "nodes_count": result.nodes_count,
+        "transitions_count": result.transitions_count,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// GET /internal/v1/definition-versions/{definitionVersionId}/input-contract
+//
+// SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: callers passing the
+// create-instance admission predicate read the PUBLISHED version's input
+// contract. Server returns ONLY the five contract fields — never the H-5
+// management read payloads (graph, instructions, assignees, lifecycle data).
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn get_definition_version_input_contract(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(definition_version_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+
+    let repo = PgDefinitionRepository::new(state.pool.clone());
+    let service = DefinitionService::new(repo);
+
+    let contract = service
+        .get_published_version_input_contract(GetPublishedVersionInputContract {
+            actor_principal_id: principal.principal_id.into_uuid(),
+            definition_version_id,
+        })
+        .await
+        .map_err(|e| map_definition_error(e, None))?;
+
+    Ok(Json(serde_json::json!({
+        "definitionVersionId": contract.definition_version_id,
+        "definitionId": contract.definition_id,
+        "versionNumber": contract.version_number,
+        "versionStatus": contract.version_status,
+        "contextSchema": contract.context_schema,
+    })))
+}
+
+// ---------------------------------------------------------------------------
 // POST /internal/v1/domains/{domainId}/definitions
 // ---------------------------------------------------------------------------
 
@@ -361,12 +445,11 @@ pub(crate) async fn publish_version(
     // Canonical identity admission gate (CTR-CIR-003): `Some` only when the
     // deployment enabled admission; dormant mode keeps existing behavior.
     // The monotonic admission start is captured here, before any transaction.
-    let admission = crate::store::postgres::admission_gate::AdmissionGate::new(
-        state.admission_client.as_ref(),
-    )
-    .with_pool(Some(&state.pool));
+    let admission =
+        crate::store::postgres::admission_gate::AdmissionGate::new(state.admission_client.as_ref())
+            .with_pool(Some(&state.pool));
 
-    let result = governance_publish_version(
+    let result = governance_publish_version_with_actor(
         &state.pool,
         principal.principal_id.into_uuid(),
         &key,
@@ -374,6 +457,7 @@ pub(crate) async fn publish_version(
         payload.version_id,
         payload.expected_revision,
         admission,
+        state.workflow_policy_actor_principal_id,
     )
     .await
     .map_err(ApiError::from_definition_governance)?;
@@ -459,6 +543,13 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             "definition_version_immutable",
             "definition version is not in DRAFT status",
         ),
+        // Mirrors the create-instance deterministic failure (409
+        // version_not_published) for non-PUBLISHED versions; no schema bytes.
+        E::VersionNotPublished => ApiError::new(
+            axum::http::StatusCode::CONFLICT,
+            "version_not_published",
+            "definition version is not PUBLISHED",
+        ),
         E::DefinitionKeyConflict => ApiError::new(
             axum::http::StatusCode::CONFLICT,
             "definition_key_conflict",
@@ -497,11 +588,66 @@ fn map_definition_error(e: DefinitionError, _domain_id: Option<Uuid>) -> ApiErro
             // internal endpoint/body details.
             let status = axum::http::StatusCode::from_u16(error.sanitized_status() as u16)
                 .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-            ApiError::new(status, error.sanitized_code(), "definition publish was not admitted")
+            ApiError::new(
+                status,
+                error.sanitized_code(),
+                "definition publish was not admitted",
+            )
         }
         E::StorageError(detail) => {
             tracing::error!(error = %detail, "definition storage error");
             ApiError::service_unavailable("service_unavailable", "storage is unavailable")
         }
+    }
+}
+
+#[cfg(test)]
+mod input_contract_error_mapping_tests {
+    //! SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: every denial of
+    //! the member input-contract read must land in the SAME opaque-404 bucket,
+    //! so callers cannot enumerate versions (P4).
+
+    use super::map_definition_error;
+    use crate::domain::definition::error::DefinitionError;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn all_denials_share_the_opaque_404_bucket() {
+        let denials = vec![
+            DefinitionError::PermissionDenied,
+            DefinitionError::PrincipalNotFound,
+            DefinitionError::PrincipalDisabled,
+            DefinitionError::DomainNotFound,
+            DefinitionError::DefinitionNotFound,
+            DefinitionError::DefinitionVersionNotFound,
+        ];
+        for e in denials {
+            let api = map_definition_error(e, Some(uuid::Uuid::new_v4()));
+            assert_eq!(api.code(), "definition_not_found");
+            assert_eq!(
+                api.into_response().status(),
+                axum::http::StatusCode::NOT_FOUND
+            );
+        }
+    }
+
+    #[test]
+    fn non_published_maps_to_create_style_409() {
+        let api = map_definition_error(DefinitionError::VersionNotPublished, None);
+        assert_eq!(api.code(), "version_not_published");
+        assert_eq!(
+            api.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn disabled_domain_maps_to_403_like_create() {
+        let api = map_definition_error(DefinitionError::DomainDisabled, None);
+        assert_eq!(api.code(), "domain_disabled");
+        assert_eq!(
+            api.into_response().status(),
+            axum::http::StatusCode::FORBIDDEN
+        );
     }
 }

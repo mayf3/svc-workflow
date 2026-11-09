@@ -24,6 +24,8 @@ pub struct CreateWorkflowInstanceRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkflowInstanceResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub admission_observation: Option<serde_json::Value>,
     pub workflow_instance_id: Uuid,
     pub workflow_state_version: i32,
     pub current_context_revision_id: Uuid,
@@ -34,6 +36,7 @@ pub struct CreateWorkflowInstanceResponse {
 impl From<CreateWorkflowInstanceResult> for CreateWorkflowInstanceResponse {
     fn from(value: CreateWorkflowInstanceResult) -> Self {
         Self {
+            admission_observation: value.admission_observation,
             workflow_instance_id: value.workflow_instance_id,
             workflow_state_version: value.workflow_state_version,
             current_context_revision_id: value.current_context_revision_id,
@@ -43,9 +46,17 @@ impl From<CreateWorkflowInstanceResult> for CreateWorkflowInstanceResponse {
     }
 }
 
+fn present_context_payload<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<serde_json::Value>, D::Error> {
+    serde::Deserialize::deserialize(d).map(Some)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExecuteWorkflowTransitionRequest {
+    #[serde(default, deserialize_with = "present_context_payload")]
+    pub context_payload: Option<serde_json::Value>,
     pub transition_definition_id: Uuid,
     pub expected_workflow_state_version: i32,
     pub submission_payload: Option<serde_json::Value>,
@@ -79,6 +90,109 @@ pub struct ExecutionEscalationResponse {
     pub owner_principal_id: Option<Uuid>,
     pub workflow_state_version: i32,
     pub event_sequence: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerAssistanceResumeEvidenceEnvelope {
+    pub evidence: Option<OwnerAssistanceResumeEvidenceDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerAssistanceResumeEvidenceDto {
+    pub dispatch_intent_id: Uuid,
+    pub workflow_instance_id: Uuid,
+    pub node_visit_id: Uuid,
+    pub owner_principal_id: Uuid,
+    pub activation_state: OwnerAssistanceActivationState,
+    pub workflow_state_version: i32,
+    pub assistance_case_id: Uuid,
+    pub request_event_sequence: i32,
+    pub resolution_event_sequence: i32,
+    pub requester_principal_id: Uuid,
+    pub resolver_principal_id: Uuid,
+    pub ingress: OwnerAssistanceIngress,
+    pub reason: Option<OwnerAssistancePolicyReason>,
+    pub last_attempt_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OwnerAssistanceActivationState {
+    Active,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnerAssistanceIngress {
+    Assignee,
+    ExecutionPolicy,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OwnerAssistancePolicyReason {
+    AttemptsExhausted,
+    StaleLoopExhausted,
+}
+
+impl TryFrom<
+    crate::store::postgres::workflow_instance_repository::query_owner_assistance_resume_evidence::OwnerAssistanceResumeEvidence,
+> for OwnerAssistanceResumeEvidenceDto {
+    type Error = ();
+
+    fn try_from(
+        value: crate::store::postgres::workflow_instance_repository::query_owner_assistance_resume_evidence::OwnerAssistanceResumeEvidence,
+    ) -> Result<Self, Self::Error> {
+        let ingress = match value.ingress.as_str() {
+            "assignee" => OwnerAssistanceIngress::Assignee,
+            "execution_policy" => OwnerAssistanceIngress::ExecutionPolicy,
+            _ => return Err(()),
+        };
+        let reason = value
+            .reason
+            .as_deref()
+            .map(|reason| match reason {
+                "ATTEMPTS_EXHAUSTED" => Ok(OwnerAssistancePolicyReason::AttemptsExhausted),
+                "STALE_LOOP_EXHAUSTED" => Ok(OwnerAssistancePolicyReason::StaleLoopExhausted),
+                _ => Err(()),
+            })
+            .transpose()?;
+        let (reason, last_attempt_id) = match ingress {
+            OwnerAssistanceIngress::Assignee => {
+                if reason.is_some() || value.last_attempt_id.is_some() {
+                    return Err(());
+                }
+                (None, None)
+            }
+            OwnerAssistanceIngress::ExecutionPolicy => {
+                let reason = reason.ok_or(())?;
+                let attempt_id = value.last_attempt_id.filter(|id| !id.is_empty()).ok_or(())?;
+                (Some(reason), Some(attempt_id))
+            }
+        };
+        if value.activation_state != "ACTIVE" {
+            return Err(());
+        }
+
+        Ok(Self {
+            dispatch_intent_id: value.dispatch_intent_id,
+            workflow_instance_id: value.workflow_instance_id,
+            node_visit_id: value.node_visit_id,
+            owner_principal_id: value.owner_principal_id,
+            activation_state: OwnerAssistanceActivationState::Active,
+            workflow_state_version: value.workflow_state_version,
+            assistance_case_id: value.assistance_case_id,
+            request_event_sequence: value.request_event_sequence,
+            resolution_event_sequence: value.resolution_event_sequence,
+            requester_principal_id: value.requester_principal_id,
+            resolver_principal_id: value.resolver_principal_id,
+            ingress,
+            reason,
+            last_attempt_id,
+        })
+    }
 }
 
 /// The escalation attached to a limit-reaching RETURN (CTR-SWEC-005).

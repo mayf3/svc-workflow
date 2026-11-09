@@ -277,6 +277,56 @@ pub(super) async fn validate_instance_input_principal_keys(
     Ok(())
 }
 
+/// SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-002): for a
+/// definition version whose transitions carry the reserved opt-in annotation,
+/// the formal Context payload must contain a valid `acceptanceCriteria`
+/// catalog. Runs after ordinary Context schema validation and before any
+/// workflow-fact write; failures are deterministic `context_validation_failed`
+/// 422s with the existing failure-receipt semantics. Metadata or any other
+/// carrier cannot substitute for the formal Context (the gate reads only the
+/// fixed `/acceptanceCriteria` pointer of the context payload itself).
+pub(super) async fn validate_acceptance_catalog_gate(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_uuid: Uuid,
+    context_payload: &serde_json::Value,
+) -> Result<(), CreateWorkflowInstanceError> {
+    use crate::domain::definition::acceptance_binding;
+
+    let schemas: Vec<Option<serde_json::Value>> = sqlx::query_scalar(
+        "SELECT submission_schema FROM workflow_transition_definitions \
+         WHERE definition_version_id = $1 AND submission_schema IS NOT NULL",
+    )
+    .bind(definition_version_uuid)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| CreateWorkflowInstanceError::StorageError(e.to_string()))?;
+
+    let opted_in = schemas
+        .iter()
+        .filter_map(|schema| schema.as_ref())
+        .any(|schema| acceptance_binding::contains_annotation_at_any_depth(schema));
+    if !opted_in {
+        return Ok(());
+    }
+
+    let catalog = context_payload
+        .get(acceptance_binding::CATALOG_MEMBER)
+        .ok_or_else(|| {
+            CreateWorkflowInstanceError::ContextValidationFailed(
+                "this definition version opts in to acceptance context binding; the \
+                 formal Context must contain an acceptanceCriteria catalog at \"/acceptanceCriteria\""
+                    .to_string(),
+            )
+        })?;
+    acceptance_binding::validate_catalog(catalog)
+        .map(|_| ())
+        .map_err(|detail| {
+            CreateWorkflowInstanceError::ContextValidationFailed(format!(
+                "acceptanceCriteria catalog validation failed: {detail}"
+            ))
+        })
+}
+
 /// Map an error to a deterministic HTTP-style status code.
 pub(crate) fn deterministic_error_code(err: &CreateWorkflowInstanceError) -> i32 {
     match err {

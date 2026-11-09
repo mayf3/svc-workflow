@@ -114,6 +114,10 @@ pub enum RejectionReason {
     AgentMissing,
     /// Agent-core directory observed `enabled == false`.
     AgentDisabled,
+    /// Explicit new inputs must select the canonical Principal themselves.
+    LegacyInput,
+    /// Immutable successor evidence and current identity facts disagree.
+    CanonicalBindingMismatch,
 }
 
 impl fmt::Display for RejectionReason {
@@ -125,6 +129,8 @@ impl fmt::Display for RejectionReason {
             RejectionReason::AgentMissing => {
                 write!(f, "agent missing in agent-core directory")
             }
+            RejectionReason::CanonicalBindingMismatch => write!(f, "canonical identity disagrees with immutable successor evidence"),
+            RejectionReason::LegacyInput => write!(f, "legacy principal input; select the verified canonical principal through the existing authoring lifecycle"),
             RejectionReason::AgentDisabled => {
                 write!(f, "agent disabled in agent-core directory")
             }
@@ -204,6 +210,18 @@ impl AdmissionError {
             Self::CommitOutcomeUnknown { .. } => "admission_commit_outcome_unknown",
             Self::Unavailable => "admission_unavailable",
             Self::Denied { .. } => "admission_denied",
+            Self::Rejected {
+                reason: RejectionReason::AgentDisabled,
+                ..
+            } => "admission_target_disabled",
+            Self::Rejected {
+                reason: RejectionReason::PrincipalNotActive(status),
+                ..
+            } if status == "disabled" => "admission_target_disabled",
+            Self::Rejected {
+                reason: RejectionReason::LegacyInput,
+                ..
+            } => "admission_legacy_input",
             Self::Rejected { .. } => "admission_rejected",
             Self::MalformedResponse { .. } => "admission_malformed_response",
         }
@@ -1540,7 +1558,7 @@ mod tests {
                     principal,
                     reason: RejectionReason::AgentDisabled,
                 },
-                "admission_rejected",
+                "admission_target_disabled",
                 422,
             ),
             (AdmissionError::Timeout, "admission_timeout", 422),

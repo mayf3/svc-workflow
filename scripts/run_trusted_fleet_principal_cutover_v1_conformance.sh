@@ -8,10 +8,28 @@ TARGET="${TRUSTED_FLEET_CARGO_TARGET_DIR:-$ROOT/target/trusted-fleet-conformance
 
 cleanup() {
   set +e
-  docker rm -f "$NAME" >/dev/null 2>&1
+  if [[ "${TRUSTED_FLEET_LOCAL_PG:-0}" != 1 ]]; then
+    docker rm -f "$NAME" >/dev/null 2>&1
+  fi
 }
 trap cleanup EXIT
 
+SUFFIX=""
+if [[ "${TRUSTED_FLEET_LOCAL_PG:-0}" == 1 ]]; then
+  # Owner-authorized H06 Tier-2 alternative; lifecycle is owned by the runbook.
+  BASE="postgres://postgres@localhost:55432"
+  SUFFIX="?host=/private/tmp/h06-tier2-pg"
+  IDENTITY="$(psql "${BASE}/postgres${SUFFIX}" -XAt -v ON_ERROR_STOP=1 -c \
+    "SELECT current_setting('data_directory') = '/private/tmp/h06-tier2-pg'
+       AND current_setting('port') = '55432'
+       AND current_setting('unix_socket_directories') = '/private/tmp/h06-tier2-pg'
+       AND current_setting('listen_addresses') = ''
+       AND current_setting('server_version_num')::int BETWEEN 160000 AND 169999
+       AND current_user = 'postgres' AND inet_server_addr() IS NULL")"
+  [[ "$IDENTITY" == t ]] || { printf 'H06 isolated PostgreSQL identity mismatch\n' >&2; exit 1; }
+  psql "${BASE}/postgres${SUFFIX}" -X -v ON_ERROR_STOP=1 \
+    -c 'CREATE DATABASE svc_workflow_cutover_test' -c 'CREATE DATABASE auth_cutover_test'
+else
 docker run -d --rm --name "$NAME" \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres \
   -P postgres:16-alpine >/dev/null
@@ -25,12 +43,13 @@ docker exec "$NAME" pg_isready -U postgres >/dev/null
 
 docker exec "$NAME" createdb -U postgres svc_workflow_cutover_test
 docker exec "$NAME" createdb -U postgres auth_cutover_test
+fi
 for migration in "$ROOT"/migrations/*.sql; do
-  psql "${BASE}/svc_workflow_cutover_test" -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+  psql "${BASE}/svc_workflow_cutover_test${SUFFIX}" -1 -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
 
-export TEST_WORKFLOW_DATABASE_URL="${BASE}/svc_workflow_cutover_test"
-export TEST_AUTH_DATABASE_URL="${BASE}/auth_cutover_test"
+export TEST_WORKFLOW_DATABASE_URL="${BASE}/svc_workflow_cutover_test${SUFFIX}"
+export TEST_AUTH_DATABASE_URL="${BASE}/auth_cutover_test${SUFFIX}"
 export CARGO_TARGET_DIR="$TARGET"
 export RUSTFLAGS="${RUSTFLAGS:-} --cfg trusted_fleet_cutover_conformance --check-cfg=cfg(trusted_fleet_cutover_conformance)"
 

@@ -251,6 +251,7 @@ pub(super) async fn update_instance(
         r#"
         UPDATE workflow_instances
         SET current_node_visit_id = $1,
+            updated_at = now(),
             workflow_state_version = $2
         WHERE workflow_instance_id = $3
           AND workflow_state_version = $4
@@ -296,6 +297,7 @@ pub(super) async fn insert_event(
     new_state_version: i32,
     transition: &TransitionDefinitionRow,
     submission_payload_digest: Option<String>,
+    new_context_revision_id: Option<Uuid>,
 ) -> Result<(), ExecuteWorkflowTransitionError> {
     let event_data = TransitionCommittedEventData {
         transition_definition_id: transition.transition_id.to_string(),
@@ -309,8 +311,12 @@ pub(super) async fn insert_event(
         submission_payload_digest,
     };
 
-    let event_data_json = serde_json::to_value(&event_data)
+    let mut event_data_json = serde_json::to_value(&event_data)
         .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    if let Some(new_id) = new_context_revision_id {
+        event_data_json["previousContextRevisionId"] = serde_json::json!(context_revision_id);
+        event_data_json["newContextRevisionId"] = serde_json::json!(new_id);
+    }
     let event_data_digest = digest::compute_json_digest(&event_data_json)
         .map_err(ExecuteWorkflowTransitionError::StorageError)?;
 

@@ -8,6 +8,7 @@ mod definition_crud;
 mod error_mapping;
 mod graph_read;
 mod graph_write;
+mod input_contract;
 mod lifecycle_transactions;
 
 use crate::application::definition::DefinitionRepository;
@@ -31,6 +32,18 @@ impl PgDefinitionRepository {
 
 #[allow(async_fn_in_trait)]
 impl DefinitionRepository for PgDefinitionRepository {
+    async fn get_published_version_input_contract(
+        &self,
+        actor_principal_id: uuid::Uuid,
+        definition_version_id: uuid::Uuid,
+    ) -> Result<
+        crate::application::definition::queries::PublishedVersionInputContract,
+        DefinitionError,
+    > {
+        self.get_published_version_input_contract_inner(actor_principal_id, definition_version_id)
+            .await
+    }
+
     // -- Principals & Domains ---------------------------------------------------
 
     async fn check_principal_enabled(
@@ -52,6 +65,23 @@ impl DefinitionRepository for PgDefinitionRepository {
     ) -> Result<bool, DefinitionError> {
         self.check_domain_role_inner(principal_id, domain_id, role_key)
             .await
+    }
+
+    async fn has_active_membership_binding(
+        &self,
+        principal_id: uuid::Uuid,
+        domain_id: uuid::Uuid,
+    ) -> Result<bool, DefinitionError> {
+        self.check_active_membership_binding_inner(principal_id, domain_id)
+            .await
+    }
+
+    async fn check_global_role(
+        &self,
+        principal_id: uuid::Uuid,
+        role_key: &str,
+    ) -> Result<bool, DefinitionError> {
+        self.check_global_role_inner(principal_id, role_key).await
     }
 
     // -- Definition CRUD -------------------------------------------------------

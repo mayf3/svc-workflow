@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exercises release verification with real bash/jq, local artifacts, and only
 # external Git/macOS/HTTP boundaries replaced by controlled command fixtures.
+# The upstream target/identity/attribution fixtures run through this same entry.
 set -euo pipefail
 
 RELEASE_SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release.sh}"
@@ -54,10 +55,34 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 case "$1" in
-  print) printf 'pid = 123\n' ;;
-  kickstart) [[ "$2" == "-k" ]] ;;
+  print)
+    case "$2" in
+      gui/502/com.svc-workflow)
+        printf '%s = {\n\tprogram = %s/svc-workflow\n\tpid = 123\n\tuid = 502\n}\n' \
+          "$2" "$SVC_WORKFLOW_SERVICE_DIR" ;;
+      system/com.svc-workflow)
+        printf 'Could not find service "com.svc-workflow"\n' >&2
+        exit 113 ;;
+      *) exit 2 ;;
+    esac ;;
+  kickstart) [[ "$2" == "-k" && "$3" == "gui/502/com.svc-workflow" ]] ;;
   *) exit 2 ;;
 esac
+EOF
+  cat > "$CASE_DIR/bin/id" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  -u) printf '502\n' ;;
+  -un) printf 'fixture-release-user\n' ;;
+  *) exit 2 ;;
+esac
+EOF
+  cat > "$CASE_DIR/bin/ps" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "-o uid= -p 123" ]]
+printf '502\n'
 EOF
   cat > "$CASE_DIR/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
@@ -97,21 +122,28 @@ EOF
   export TEST_SOURCE_SHA="$SOURCE_SHA"
   export TEST_CASE_DIR="$CASE_DIR" TEST_BUILD_FAIL=0
   export SVC_WORKFLOW_SERVICE_DIR="$SERVICE_DIR"
+  export EXPECTED_SERVICE_UID=502 EXPECTED_LAUNCHCTL_TARGET="gui/502/com.svc-workflow"
+  export EXPECTED_PREIMAGE_SHA256="$ARTIFACT_SHA"
+  export SVC_WORKFLOW_RELEASE_ACTOR="release-regression-fixture"
+  export SVC_WORKFLOW_RELEASE_AUTH_REF="isolated-test-only"
+  export SVC_WORKFLOW_RELEASE_ATTEMPT_ID="01234567-89ab-4cde-8fab-0123456789ab"
   export TEST_HEALTH_STATUS=200 TEST_READY_STATUS=200
   export TEST_UNAUTH_STATUS=401 TEST_AUTH_STATUS=200 AUTH_TOKEN=""
 }
 
 write_ledger() {
   local old_sha="${1:-$OTHER_SHA}" current_sha="${2:-$SOURCE_SHA}"
-  jq -cn --arg oldSha "$old_sha" --arg currentSha "$current_sha" \
+  jq -n --arg oldSha "$old_sha" --arg currentSha "$current_sha" \
     --arg artifactSha256 "$ARTIFACT_SHA" --arg migrationBundleDigest "$MIGRATION_DIGEST" \
     '{deployedAt: "2026-09-29T12:00:00Z", sourceSha: $oldSha,
       artifactSha256: $artifactSha256, previousArtifactSha256: "", migrationMaxVersion: "0001",
       migrationBundleDigest: $migrationBundleDigest, receipt: "historical",
+      launchctlTarget: "gui/502/com.svc-workflow", targetPreimageSha256: $artifactSha256,
       verification: {healthz: "200", readyz: "503", authHttpStatus: "401", runningBinaryPath: "/historical/binary"}},
      {deployedAt: "2026-09-30T12:00:00Z", sourceSha: $currentSha,
       artifactSha256: $artifactSha256, previousArtifactSha256: $artifactSha256,
-      migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, receipt: "current"}' \
+      migrationMaxVersion: "0001", migrationBundleDigest: $migrationBundleDigest, receipt: "current",
+      launchctlTarget: "gui/502/com.svc-workflow", targetPreimageSha256: $artifactSha256}' \
     > "$SERVICE_DIR/ledger.json"
   cp "$SERVICE_DIR/ledger.json" "$CASE_DIR/ledger.before"
 }
@@ -375,6 +407,7 @@ test_build_respects_busy_release_lock() { expect_busy_entry_fails build; }
 test_deploy_respects_busy_release_lock() { expect_busy_entry_fails deploy; }
 test_verify_respects_busy_release_lock() { expect_busy_entry_fails verify; }
 test_all_respects_busy_release_lock() { expect_busy_entry_fails all; }
+test_archive_respects_busy_release_lock() { expect_busy_entry_fails archive; }
 
 test_build_failure_cleans_worktree_and_lock() {
   setup_case; write_ledger
@@ -450,6 +483,7 @@ for test in \
   test_deploy_respects_busy_release_lock \
   test_verify_respects_busy_release_lock \
   test_all_respects_busy_release_lock \
+  test_archive_respects_busy_release_lock \
   test_build_failure_cleans_worktree_and_lock \
   test_build_cleanup_failure_preserves_failure_and_releases_lock \
   test_term_releases_owned_lock_without_verifying; do
@@ -465,4 +499,23 @@ for test in \
     failures=$((failures + 1))
   fi
 done
+
+# Keep the upstream #683/#128 suite unchanged in the repository, while directing
+# its release path to the optional candidate argument supported by this entry.
+# Its launchctl/ps/id/lsof/curl/cargo are fixtures, and its service tree and build
+# worktrees are temporary. No production service, network endpoint, or DB is used.
+TARGET_SUITE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/test-release-target-resolution.sh"
+TARGET_HARNESS="$TEST_ROOT/test-release-target-resolution.sh"
+awk '/^RELEASE_SH="\$HERE\/release.sh"$/ { $0 = "RELEASE_SH=\"${SVC_WORKFLOW_TEST_RELEASE_SCRIPT:?}\"" } { print }' \
+  "$TARGET_SUITE" > "$TARGET_HARNESS"
+target_status=0
+(
+  unset AUTH_TOKEN SVC_WORKFLOW_RELEASE_ACTOR SVC_WORKFLOW_RELEASE_AUTH_REF SVC_WORKFLOW_RELEASE_ATTEMPT_ID
+  export SVC_WORKFLOW_TEST_RELEASE_SCRIPT="$RELEASE_SCRIPT"
+  bash "$TARGET_HARNESS"
+) || target_status=$?
+if [[ "$target_status" != 0 ]]; then
+  printf 'FAIL upstream target/identity/attribution suite (rc=%s)\n' "$target_status"
+  failures=$((failures + 1))
+fi
 [[ "$failures" == 0 ]]

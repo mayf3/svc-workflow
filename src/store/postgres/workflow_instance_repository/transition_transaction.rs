@@ -45,6 +45,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     cmd: ExecuteWorkflowTransitionCommand,
     request_hash: &str,
     max_returns_per_edge: u32,
+    context_payload: Option<&serde_json::Value>,
 ) -> Result<TransitionOutcome, ExecuteWorkflowTransitionError> {
     let mut tx = pool
         .begin()
@@ -149,6 +150,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 2: Lock WorkflowInstance FOR UPDATE
     // ---------------------------------------------------------------
+    super::owner_obligation::intents::fence(&mut tx, instance_uuid)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
     let instance = validation_result!(lock_instance(&mut tx, instance_uuid).await);
 
     // Read domain_id for assignee resolution
@@ -182,9 +186,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 4: Check instance is not cancelled
     // ---------------------------------------------------------------
-    if instance.cancelled {
-        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
-    }
+    validation_result!(super::transition_checks::validate_not_cancelled(
+        instance.cancelled
+    ));
 
     // ---------------------------------------------------------------
     // Step 5: Read and validate current NodeVisit
@@ -195,9 +199,9 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 5: A Terminal visit is canonically unassigned and cannot transition.
     // ---------------------------------------------------------------
-    if current_visit.node_type_enum() == NodeType::TERMINAL {
-        deterministic_failure!(ExecuteWorkflowTransitionError::SourceNodeTerminal);
-    }
+    validation_result!(super::transition_checks::validate_nonterminal_source(
+        current_visit.node_type_enum()
+    ));
 
     // ---------------------------------------------------------------
     // Step 6: Validate caller principal enabled
@@ -210,9 +214,23 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // ---------------------------------------------------------------
     // Step 7: Validate caller is current visit assignee
     // ---------------------------------------------------------------
-    if current_visit.assignee_principal_id != Some(principal_uuid) {
-        deterministic_failure!(ExecuteWorkflowTransitionError::PrincipalNotAssignee);
-    }
+    let effective_assignee = match super::query_visibility::actor_is_effective_current_assignee(
+        &mut tx,
+        current_visit.assignee_principal_id,
+        principal_uuid,
+    )
+    .await
+    {
+        Ok(matches) => matches,
+        Err(error) => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(
+                error.to_string(),
+            ));
+        }
+    };
+    validation_result!(super::transition_checks::validate_assignee(
+        effective_assignee
+    ));
 
     // Assistance is a side-band Visit state, but an open case fail-closes all
     // normal transitions. This check runs under the same Instance lock and
@@ -264,73 +282,13 @@ pub(crate) async fn execute_workflow_transition_atomically(
         read_transition(&mut tx, transition_uuid, instance.definition_version_id).await
     );
 
-    // Validate transition source matches current node
-    if transition.source_node_id != current_visit.node_id {
-        deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-            "transition source node does not match current visit node".to_string(),
-        ));
-    }
-
-    // Validate transition effect, dispatching on the semantic model:
-    //  - Legacy (1): primary ADVANCE + orderIndex RETURN rules (unchanged)
-    //  - Minimal (2): any legal outgoing ADVANCE (no primary), RETURN by graph
-    //    ancestor (no orderIndex), TERMINATE forbidden (fail closed)
+    validation_result!(super::transition_checks::validate_source_and_effect(
+        &transition,
+        &current_visit,
+        &source_node,
+        is_minimal,
+    ));
     let effect = transition.transition_effect.clone();
-    match effect.as_str() {
-        "ADVANCE" => {
-            if !is_minimal {
-                // Verify this is the primary ADVANCE transition
-                let primary_id = source_node.primary_advance_transition_id.ok_or_else(|| {
-                    ExecuteWorkflowTransitionError::InternalConsistency(
-                        "source node has no primary advance transition".to_string(),
-                    )
-                })?;
-                if transition.transition_id != primary_id {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "ADVANCE must use the primary advance transition".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        "RETURN" => {
-            if !is_minimal {
-                // Verify it's NOT the primary ADVANCE transition
-                if let Some(primary_id) = source_node.primary_advance_transition_id {
-                    if transition.transition_id == primary_id {
-                        deterministic_failure!(
-                            ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                                "RETURN transition must not be the primary advance".to_string(),
-                            )
-                        );
-                    }
-                }
-            }
-        }
-        "TERMINATE" => {
-            if is_minimal {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "TERMINATE is forbidden in Minimal (V2) semantics".to_string(),
-                ));
-            }
-            // Verify it's NOT the primary ADVANCE transition
-            if let Some(primary_id) = source_node.primary_advance_transition_id {
-                if transition.transition_id == primary_id {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "TERMINATE transition must not be the primary advance".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        _ => {
-            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                format!("unknown transition effect: {}", effect)
-            ));
-        }
-    }
 
     // ---------------------------------------------------------------
     // Step 11: Read target node and validate node type vs effect
@@ -344,45 +302,12 @@ pub(crate) async fn execute_workflow_transition_atomically(
         .await
     );
 
-    match effect.as_str() {
-        "ADVANCE" => {
-            // ADVANCE allows any target: TASK continues, TERMINAL completes
-            // (normal completion contract, shared by Legacy and Minimal).
-        }
-        "RETURN" => {
-            // Target must be non-TERMINAL
-            if target_node.node_type_enum() == NodeType::TERMINAL {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "RETURN target must not be a TERMINAL node".to_string(),
-                ));
-            }
-            if !is_minimal {
-                // Legacy: orderIndex ordering rule. Minimal (V2) relies on the
-                // validator-guaranteed strict ADVANCE ancestor relation instead.
-                if target_node.order_index >= source_node.order_index {
-                    deterministic_failure!(
-                        ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                            "RETURN target must have lower order_index than source".to_string(),
-                        )
-                    );
-                }
-            }
-        }
-        "TERMINATE" => {
-            // Minimal is rejected earlier (v2 fail-closed); Legacy requires a
-            // TERMINAL target.
-            if target_node.node_type_enum() != NodeType::TERMINAL {
-                deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                    "TERMINATE target must be a TERMINAL node".to_string(),
-                ));
-            }
-        }
-        _ => {
-            deterministic_failure!(ExecuteWorkflowTransitionError::TransitionNotApplicable(
-                format!("unknown transition effect: {}", effect)
-            ));
-        }
-    }
+    validation_result!(super::transition_checks::validate_target(
+        &effect,
+        &target_node,
+        &source_node,
+        is_minimal,
+    ));
 
     // ---------------------------------------------------------------
     // Step 11c: WORKFLOW_EXECUTION_CONTROL_V1 RETURN policy (CTR-SWEC-005).
@@ -392,60 +317,76 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // OWNER_PENDING assistance was opened when the limit-reaching RETURN
     // committed (below, after the transition event).
     // ---------------------------------------------------------------
-    let prior_return_count: i64 = if effect == "RETURN" {
-        let row: (i64,) = sqlx::query_as(
-            // TransitionCommittedEventData serializes snake_case (no camelCase
-            // rename on that struct) — match the canonical key.
-            "SELECT COUNT(*) FROM workflow_events
-              WHERE workflow_instance_id = $1
-                AND transition_effect = 'RETURN'
-                AND event_data->>'transition_definition_id' = $2",
+    let (prior_return_count, max_returns_per_edge) = validation_result!(
+        super::transition_checks::return_budget(
+            &mut tx,
+            instance_uuid,
+            transition.transition_id,
+            &effect,
+            max_returns_per_edge,
         )
-        .bind(instance_uuid)
-        .bind(transition.transition_id.to_string())
-        .fetch_one(&mut *tx)
         .await
-        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
-        row.0
-    } else {
-        0
-    };
-    if effect == "RETURN" && prior_return_count >= max_returns_per_edge as i64 {
-        deterministic_failure!(ExecuteWorkflowTransitionError::ReturnPolicyExhausted {
-            limit: max_returns_per_edge as i32,
-        });
-    }
+    );
 
     // ---------------------------------------------------------------
     // Step 11b: VISIT_ACTIVATION_V1 fail-closed node-kind checks
     // ---------------------------------------------------------------
-    if is_visit_activation {
-        // New-model graphs contain exactly TASK | TERMINAL; anything else on
-        // a v1 instance is invariant drift and must not transition.
-        if source_node.node_type_enum() != NodeType::TASK {
-            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 source node is not a TASK".to_string(),
-            ));
-        }
-        let target_is_task_or_terminal = matches!(
-            target_node.node_type_enum(),
-            NodeType::TASK | NodeType::TERMINAL
-        );
-        if !target_is_task_or_terminal {
-            deterministic_failure!(ExecuteWorkflowTransitionError::InternalConsistency(
-                "VISIT_ACTIVATION_V1 target node is neither TASK nor TERMINAL".to_string(),
-            ));
-        }
-        if target_node.assignee_ref_type_enum()
-            == Some(crate::domain::enums::AssigneeRefType::InstanceInputPrincipal)
-        {
-            deterministic_failure!(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
-                "VISIT_ACTIVATION_V1 target uses INSTANCE_INPUT_PRINCIPAL, which is not                  in the new-model owner reference set"
-                    .to_string(),
-            ));
-        }
+    // Preserve this guard's original explicit failure-receipt path, including
+    // its InternalConsistency branch (which is not in is_deterministic_error).
+    if let Err(error) = super::transition_checks::validate_activation_node_types(
+        &source_node,
+        &target_node,
+        is_visit_activation,
+    ) {
+        deterministic_failure!(error);
     }
 
+    let changed_context = match super::owner_obligation::transition_context::validate(
+        &mut tx,
+        instance_uuid,
+        instance.definition_version_id,
+        instance.current_context_revision_id,
+        transition.target_node_id,
+        &effect,
+        context_payload,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) if e.status >= 500 => {
+            return Err(ExecuteWorkflowTransitionError::StorageError(e.code))
+        }
+        Err(e) if e.code == "invalid_input" => {
+            deterministic_failure!(ExecuteWorkflowTransitionError::InvalidInput(e.code))
+        }
+        Err(e) => deterministic_failure!(ExecuteWorkflowTransitionError::ContextValidationFailed(
+            e.code
+        )),
+    };
+
+    if let Err(e) = super::owner_obligation::guards::before_transition(
+        &mut tx,
+        principal_uuid,
+        instance_uuid,
+        transition.target_node_id,
+        &effect,
+        context_payload,
+        cmd.submission_payload.as_ref(),
+    )
+    .await
+    {
+        if e.status >= 500 {
+            return Err(ExecuteWorkflowTransitionError::StorageError(e.code));
+        }
+        if e.code.starts_with("owner_node_gate_") {
+            deterministic_failure!(ExecuteWorkflowTransitionError::ContextValidationFailed(
+                e.code
+            ));
+        }
+        deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+            e.code
+        ));
+    }
     // ---------------------------------------------------------------
     // Step 12: Handle Submission
     // ---------------------------------------------------------------
@@ -498,6 +439,125 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .await
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
+    // ---------------------------------------------------------------
+    // SVC_WORKFLOW_ACCEPTANCE_CONTEXT_BINDING_V1 (CTR-ACB-003): the
+    // successful-ADVANCE binding predicate. Runs under the Instance lock,
+    // after every ordinary gate above, and before any workflow-fact write
+    // below. A present annotation is validated strictly; a malformed one
+    // never means absence (CTR-ACB-001). The catalog is re-checked from the
+    // Context row fetched by this locked Instance's exact
+    // `current_context_revision_id` (CTR-ACB-003.2); the client-supplied
+    // catalog is never authority. Report failures are deterministic
+    // `submission_validation_failed` 422s with the existing failure-receipt
+    // semantics; a missing or corrupt authoritative Context linkage is an
+    // internal consistency failure and never an unchecked success
+    // (CTR-ACB-004). The validator compares the canonical UUID, literal ID
+    // coverage and literal PASS verdicts only — it does not interpret
+    // evidence meaning (CTR-ACB-003).
+    // ---------------------------------------------------------------
+    if let Some(schema) = transition.submission_schema.as_ref() {
+        use crate::domain::definition::acceptance_binding;
+
+        match acceptance_binding::inspect_submission_schema(schema) {
+            Err(detail) => {
+                deterministic_failure!(ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                    format!("acceptance binding annotation invalid: {detail}")
+                ));
+            }
+            Ok(Some(_binding)) => {
+                // Placement re-check: the annotation is publishable only on a
+                // model3 primary ADVANCE from a TASK; Steps 10/11b above
+                // already enforce primary/TASK for model3 — the effect and
+                // model conditions are restated here so an annotation that
+                // drifted into any other transition fails closed.
+                if effect != "ADVANCE" || !is_visit_activation {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "acceptance binding annotation is not allowed on this transition"
+                                .to_string(),
+                        )
+                    );
+                }
+                let Some(context_payload) = current_context_payload.as_ref() else {
+                    return Err(ExecuteWorkflowTransitionError::InternalConsistency(
+                        "acceptance binding: current context revision payload is missing"
+                            .to_string(),
+                    ));
+                };
+                // F1 (ACB-SOURCE-SNAPSHOT-A1-INDEPENDENT-REVIEW): the
+                // authoritative Context row exists and is correctly linked to
+                // this Instance (the composite FK fences wrong-instance
+                // linkage), so a missing or malformed catalog is rejected
+                // through the existing deterministic failure path — public
+                // 422 `submission_validation_failed` with the failure
+                // Receipt and same-key replay — not as an internal error.
+                // Details are sanitized and never echo Context text.
+                let catalog = match context_payload.get(acceptance_binding::CATALOG_MEMBER) {
+                    Some(catalog) => catalog,
+                    None => deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "the instance's formal Context has no acceptanceCriteria catalog at \"/acceptanceCriteria\""
+                                .to_string(),
+                        )
+                    ),
+                };
+                let catalog_ids = match acceptance_binding::validate_catalog(catalog) {
+                    Ok(catalog_ids) => catalog_ids,
+                    Err(_) => deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "the instance's formal Context acceptanceCriteria catalog is missing, empty, or malformed"
+                                .to_string(),
+                        )
+                    ),
+                };
+                let Some(payload) = cmd.submission_payload.as_ref() else {
+                    // Unreachable in practice: a schema present with no payload
+                    // failed `submission_required` at Step 12. Fail closed anyway.
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(
+                            "acceptance binding requires the submission payload".to_string(),
+                        )
+                    );
+                };
+                if let Err(detail) = acceptance_binding::validate_acceptance_report(
+                    payload,
+                    instance.current_context_revision_id,
+                    &catalog_ids,
+                ) {
+                    deterministic_failure!(
+                        ExecuteWorkflowTransitionError::SubmissionValidationFailed(format!(
+                            "acceptance report validation failed: {detail}"
+                        ))
+                    );
+                }
+            }
+            Ok(None) => {}
+        }
+    }
+
+    if let Err(error) =
+        super::assistance_transaction::governance_child::validate_selected_submission(
+            &mut tx,
+            instance_uuid,
+            transition_uuid,
+            cmd.submission_payload.as_ref(),
+        )
+        .await
+    {
+        match error {
+            crate::domain::workflow_instance::assistance::AssistanceError::InvalidPayload(
+                detail,
+            ) => deterministic_failure!(
+                ExecuteWorkflowTransitionError::SubmissionValidationFailed(detail)
+            ),
+            _ => {
+                return Err(ExecuteWorkflowTransitionError::StorageError(
+                    error.to_string(),
+                ))
+            }
+        }
+    }
+
     if is_minimal
         && target_node.assignee_ref_type_enum()
             == Some(crate::domain::enums::AssigneeRefType::DomainOwner)
@@ -513,10 +573,105 @@ pub(crate) async fn execute_workflow_transition_atomically(
             &instance,
             domain_uuid,
             current_context_payload.as_ref(),
+            effect == "RETURN",
         )
         .await
     );
-    if is_visit_activation {
+    // A RETURN source is historical evidence, not the new target. Validate
+    // its exact prior responsibility and canonical successor before applying
+    // the shared enabled-target checks to the responsibility we will persist.
+    let target_assignee_id = if effect == "RETURN" {
+        if let Some(original) = target_assignee_id {
+            let validated = admission
+                .admit_historical_target_on_tx(
+                    &mut tx,
+                    instance_uuid,
+                    target_node.node_id,
+                    original,
+                )
+                .await
+                .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+            Some(
+                validated
+                    .responsibility(original)
+                    .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?,
+            )
+        } else {
+            None
+        }
+    } else {
+        target_assignee_id
+    };
+    if semantic_model_version == 1 {
+        if let Some(assignee_id) = target_assignee_id {
+            validation_result!(
+                transition_validation::verify_principal_enabled_for_transition(
+                    &mut tx,
+                    assignee_id,
+                    false,
+                )
+                .await
+            );
+        }
+    }
+    // CTR-WPE-005: Minimal creator resolution snapshots a new assignment.
+    // Preserve Fixed/Input checks and the independent Legacy/model3 paths.
+    if is_minimal
+        && target_node.assignee_ref_type_enum()
+            == Some(crate::domain::enums::AssigneeRefType::WorkflowCreator)
+    {
+        if let Some(assignee_id) = target_assignee_id {
+            let enabled =
+                crate::store::postgres::write_path_enabled::principal_enabled(&mut tx, assignee_id)
+                    .await
+                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if enabled != Some(true) {
+                let err = ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    if enabled.is_none() {
+                        "resolved principal not found"
+                    } else {
+                        "resolved principal is disabled"
+                    }
+                    .to_string(),
+                );
+                crate::store::postgres::write_path_enabled::audit_denial(
+                    &mut tx,
+                    _actual_command_id,
+                    "assignee_resolution_failed",
+                    &serde_json::json!({
+                        "domainId": domain_uuid, "workflowInstanceId": instance_uuid,
+                        "checkedPrincipalId": assignee_id, "checkObject": "target"
+                    }),
+                )
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                let body = transition_validation::error_response_body(&err);
+                let response_digest = digest::compute_json_digest(&body)
+                    .map_err(ExecuteWorkflowTransitionError::StorageError)?;
+                complete_transition_receipt(
+                    &mut tx,
+                    _actual_command_id,
+                    422,
+                    &body,
+                    &response_digest,
+                )
+                .await?;
+                crate::store::postgres::write_path_enabled::verify_denial_receipt(
+                    &mut tx,
+                    _actual_command_id,
+                    422,
+                    &body,
+                )
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                tx.commit()
+                    .await
+                    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+                return Err(err);
+            }
+        }
+    }
+    if is_visit_activation && effect != "RETURN" {
         if let Some(owner_id) = target_assignee_id {
             let owner_type_check =
                 activation_facts::validate_owner_is_human_or_agent(&mut tx, owner_id)
@@ -543,10 +698,35 @@ pub(crate) async fn execute_workflow_transition_atomically(
     // T72 (WF-GS-07): resolve lineage through the COMMITTING transaction —
     // never borrow a second pool connection while this transaction holds one
     // (self-starves a max_connections=1 deployment until acquire timeout).
-    admission
-        .admit_on_tx(&mut tx, target_assignee_id)
-        .await
-        .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+    let target_assignee_id = if effect != "RETURN" {
+        if let Some(original) = target_assignee_id {
+            let validated = admission
+                .admit_on_tx(&mut tx, [original])
+                .await
+                .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?;
+            Some(
+                validated
+                    .responsibility(original)
+                    .map_err(ExecuteWorkflowTransitionError::AdmissionFailed)?,
+            )
+        } else {
+            None
+        }
+    } else {
+        target_assignee_id
+    };
+    if is_visit_activation && effect == "RETURN" {
+        if let Some(owner) = target_assignee_id {
+            let checked = activation_facts::validate_owner_is_human_or_agent(&mut tx, owner)
+                .await
+                .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+            if let Err(reason) = checked {
+                return Err(ExecuteWorkflowTransitionError::AssigneeResolutionFailed(
+                    reason,
+                ));
+            }
+        }
+    }
 
     // ---------------------------------------------------------------
     // Step 14: Compute target visit_number
@@ -587,6 +767,20 @@ pub(crate) async fn execute_workflow_transition_atomically(
             ));
         }
     }
+
+    let effective_context_revision_id = if let Some(payload) = changed_context.as_ref() {
+        super::owner_obligation::transition_context::append(
+            &mut tx,
+            instance_uuid,
+            instance.current_context_revision_id,
+            principal_uuid,
+            payload,
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.code))?
+    } else {
+        instance.current_context_revision_id
+    };
 
     if let Some(payload) = &cmd.submission_payload {
         transition_helpers::insert_submission(
@@ -702,6 +896,8 @@ pub(crate) async fn execute_workflow_transition_atomically(
         new_state_version,
         &transition,
         submission_payload_digest,
+        (effective_context_revision_id != instance.current_context_revision_id)
+            .then_some(effective_context_revision_id),
     )
     .await?;
 
@@ -731,6 +927,13 @@ pub(crate) async fn execute_workflow_transition_atomically(
     .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     if target_node.node_type_enum() == NodeType::TERMINAL {
+        super::assistance_transaction::governance_child::record_terminal(
+            &mut tx,
+            instance_uuid,
+            event_id,
+        )
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
         super::super::outbox::queue_forum_event(
             &mut tx,
             instance_uuid,
@@ -781,7 +984,10 @@ pub(crate) async fn execute_workflow_transition_atomically(
         super::super::outbox::queue_forum_event(
             &mut tx,
             instance_uuid,
-            &format!("return_policy_reached:{instance_uuid}:{}", transition.transition_id),
+            &format!(
+                "return_policy_reached:{instance_uuid}:{}",
+                transition.transition_id
+            ),
             serde_json::json!({
                 "eventType": "return_policy_reached",
                 "workflowInstanceId": instance_uuid,
@@ -814,7 +1020,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     let response_body = serde_json::json!({
         "workflowInstanceId": instance_uuid,
         "workflowStateVersion": final_state_version,
-        "currentContextRevisionId": instance.current_context_revision_id,
+        "currentContextRevisionId": effective_context_revision_id,
         "sourceNodeVisitId": instance.current_node_visit_id,
         "currentNodeVisitId": new_node_visit_id,
         "submissionId": final_submission_id,
@@ -886,7 +1092,7 @@ pub(crate) async fn execute_workflow_transition_atomically(
     Ok(TransitionOutcome::Executed(TransitionResult {
         workflow_instance_id: instance_uuid,
         workflow_state_version: final_state_version,
-        current_context_revision_id: instance.current_context_revision_id,
+        current_context_revision_id: effective_context_revision_id,
         source_node_visit_id: instance.current_node_visit_id,
         current_node_visit_id: new_node_visit_id,
         submission_id: final_submission_id,

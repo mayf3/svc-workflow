@@ -196,7 +196,9 @@ async fn test_replace_draft_graph_atomic() {
                 assignee_input_key: None,
                 instructions: Some("Review the work".to_string()),
                 primary_advance_transition_key: Some("advance-done".to_string()),
-                metadata: None,
+                // READY_CONTRACT exemption: this fixture exercises atomic draft
+                // replacement mechanics, not publish-graph contract validation.
+                metadata: Some(serde_json::json!({"readyContractExempt": true})),
             },
             RawNodeDefinition {
                 node_key: "done".to_string(),
@@ -400,7 +402,7 @@ async fn seed_minimal_and_publish(
         definition_version_id: ver_id,
         expected_revision: None,
     };
-    service.publish_version(pub_cmd, AdmissionGate::disabled())
+    service.publish_version(pub_cmd, crate::common::admitting_gate())
         .await
         .expect("publish");
 }

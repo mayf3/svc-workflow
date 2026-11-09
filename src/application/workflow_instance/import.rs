@@ -99,8 +99,8 @@ async fn ensure_principal_exists(
 /// Import one legacy ADC record as a workflow instance.
 ///
 /// `admission` is the canonical identity admission gate (CTR-CIR-003); the
-/// monotonic admission start is captured here at service entry. Dormant mode
-/// (`AdmissionGate::disabled()`) preserves the pre-admission behavior.
+/// monotonic admission start is captured here at service entry. An absent directory client
+/// rejects new Agent admission rather than bypassing validation.
 pub async fn import_legacy_workflow_instance(
     pool: &PgPool,
     admission: AdmissionGate<'_>,

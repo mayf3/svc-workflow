@@ -1,0 +1,23 @@
+-- P0-B Outbox three-channel independence: additive dead-letter marker for
+-- the latency-only EXECUTION_KICK channel. Rows are NEVER deleted; a
+-- dead-lettered row retains its payload, attempt_count and last_error, and
+-- the reconciler's due queries stop selecting it.
+--
+-- Recovery entry (run by an operator after repairing the underlying cause,
+-- e.g. rotating WORKFLOW_EXECUTION_KICK_TOKEN):
+--
+--   UPDATE workflow_outbox
+--      SET dead_lettered_at = NULL,
+--          attempt_count = 0,
+--          next_attempt_at = now()
+--    WHERE outbox_id = $1 AND delivered_at IS NULL;
+--
+-- FORUM_EVENT and OWNER_ASSISTANCE_WAKE rows keep the never-dead-lettered
+-- correctness-path discipline; the marker simply never becomes set for them.
+--
+-- Rollback note: after 0032 is applied, rolling the binary back to the
+-- previous release fails that build's strict migration-ledger readiness
+-- check (it expects exactly 1..=31); pair any binary rollback with the
+-- standard release-process ledger handling.
+ALTER TABLE workflow_outbox
+    ADD COLUMN dead_lettered_at TIMESTAMPTZ;

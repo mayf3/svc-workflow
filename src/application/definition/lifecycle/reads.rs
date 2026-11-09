@@ -8,7 +8,8 @@ use crate::domain::definition::model::WorkflowGraph;
 
 use super::super::queries::{
     DefinitionQueryResult, DomainDefinitionListResult, GetCompleteVersionGraph, GetDefinition,
-    GetDefinitionVersion, GraphQueryResult, ListDefinitionVersions, ListDomainDefinitions,
+    GetDefinitionVersion, GetPublishedVersionInputContract, GraphQueryResult,
+    ListDefinitionVersions, ListDomainDefinitions, PublishedVersionInputContract,
     VersionListResult, VersionQueryResult,
 };
 use super::super::repository::DefinitionData;
@@ -30,7 +31,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization — caller must be domain owner
-        self.ensure_domain_owner(query.actor_principal_id, definition.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, definition.domain_id.into_uuid())
             .await?;
 
         Ok(DefinitionQueryResult {
@@ -58,7 +59,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let (nodes, transitions) = self
@@ -95,7 +96,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization — check before listing versions
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let versions = self
@@ -131,7 +132,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // H-5: Domain authorization
-        self.ensure_domain_owner(query.actor_principal_id, def.domain_id.into_uuid())
+        self.ensure_definition_read(query.actor_principal_id, def.domain_id.into_uuid())
             .await?;
 
         let (nodes, transitions) = self
@@ -148,6 +149,34 @@ impl<R: DefinitionRepository> DefinitionService<R> {
         })
     }
 
+    /// Get the input contract of a PUBLISHED definition version.
+    ///
+    /// Admission applies the same five conditions and the same membership SQL
+    /// as create-instance admission (SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_
+    /// MEMBER_READ_V1) — the AUTHORIZED SET is identical; the ORDER below is
+    /// this read's own member-safe sequence, not create's internal one
+    /// (create checks sizes -> version exists + domain-match + PUBLISHED
+    /// inside `lock_and_validate_version`, THEN domain enabled -> principal
+    /// enabled -> membership, so observable error precedence differs on
+    /// pathological inputs; order equivalence is NOT claimed): principal
+    /// enabled -> version exists -> active domain membership binding -> domain
+    /// enabled -> version PUBLISHED. Denials for non-members stay in the
+    /// opaque-404 mapper bucket; only the five contract fields are returned.
+    pub async fn get_published_version_input_contract(
+        &self,
+        query: GetPublishedVersionInputContract,
+    ) -> Result<PublishedVersionInputContract, DefinitionError> {
+        // The repository owns the snapshot boundary: separate pool reads can
+        // combine gates that never held together. No management read shares
+        // this member-facing operation.
+        self.repo
+            .get_published_version_input_contract(
+                query.actor_principal_id,
+                query.definition_version_id,
+            )
+            .await
+    }
+
     /// List all definitions in a domain (paginated).
     pub async fn list_domain_definitions(
         &self,
@@ -157,7 +186,7 @@ impl<R: DefinitionRepository> DefinitionService<R> {
             .await?;
 
         // Domain owner check happens here.
-        self.ensure_domain_owner(query.actor_principal_id, query.domain_id)
+        self.ensure_definition_read(query.actor_principal_id, query.domain_id)
             .await?;
         self.ensure_domain_enabled(query.domain_id).await?;
 

@@ -1,0 +1,54 @@
+COMMAND ["cargo", "test", "--locked", "--test", "48_outbox_three_channels", "--", "--test-threads=1", "--nocapture"]
+   Compiling svc-workflow v0.1.0 (/private/tmp/h1359-outbox)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.34s
+     Running tests/48_outbox_three_channels.rs (target/debug/deps/48_outbox_three_channels-8aff9b380632eabb)
+
+running 22 tests
+test all_three_channels_deliver_independently_in_one_pass ... ok
+test backed_off_first_forum_event_blocks_later_events_across_passes ... ok
+test claim_lock_released_by_crashed_worker_recovers ... ok
+test concurrent_workers_never_double_deliver ... ok
+test concurrent_workers_on_a_one_connection_pool_deliver_both_kinds ... ok
+test forum_api_outage_does_not_block_kick_channel ... ok
+test forum_delivery_survives_a_one_connection_pool ... ok
+test forum_events_deliver_oldest_first_under_two_concurrent_workers ... ok
+test forum_timeouts_do_not_delay_healthy_background_channels ... H1359_TIMING pending_bindings=20 forum_http_timeout_ms=10000 lookup_calls=1 kick_received_ms=Some(1) wake_received_ms=Some(4) kick_settled_ms=Some(26) wake_settled_ms=Some(26)
+ok
+test kick_400_dead_letters_immediately_with_payload_retained ... ok
+test kick_401_and_403_are_auth_failures_never_delivered ... ok
+test kick_409_is_retryable_per_contract ... ok
+test kick_5xx_retries_with_backoff_then_delivers ... ok
+test kick_dead_letters_at_the_retry_cap_and_recovers_via_requeue ... ok
+test kick_disabled_leaves_kick_rows_untouched ... ok
+test kick_only_delivers_without_any_forum_dependency ... ok
+test owner_wake_disabled_leaves_wake_rows_untouched ... ok
+test restart_does_not_lose_pending_rows ... ok
+test sustained_forum_timeout_keeps_other_channels_polling ... H1359_SUSTAINED slow=FORUM_EVENT first_healthy_ms=23 slow_timeout_settled_ms=10017 later_healthy_ms=22 slow_attempts=1 slow_http_started=2
+
+thread 'sustained_forum_timeout_keeps_other_channels_polling' (70267114) panicked at tests/48_outbox_three_channels.rs:652:5:
+original backoff is retained
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test sustained_kick_timeout_keeps_other_channels_polling ... H1359_SUSTAINED slow=EXECUTION_KICK first_healthy_ms=23 slow_timeout_settled_ms=5013 later_healthy_ms=24 slow_attempts=1 slow_http_started=2
+
+thread 'sustained_kick_timeout_keeps_other_channels_polling' (70267499) panicked at tests/48_outbox_three_channels.rs:652:5:
+original backoff is retained
+FAILED
+test sustained_wake_timeout_keeps_other_channels_polling ... H1359_SUSTAINED slow=OWNER_ASSISTANCE_WAKE first_healthy_ms=23 slow_timeout_settled_ms=5023 later_healthy_ms=23 slow_attempts=1 slow_http_started=2
+
+thread 'sustained_wake_timeout_keeps_other_channels_polling' (70267832) panicked at tests/48_outbox_three_channels.rs:652:5:
+original backoff is retained
+FAILED
+test transport_unknown_result_schedules_retry_and_carries_stable_request_id ... ok
+
+failures:
+
+failures:
+    sustained_forum_timeout_keeps_other_channels_polling
+    sustained_kick_timeout_keeps_other_channels_polling
+    sustained_wake_timeout_keeps_other_channels_polling
+
+test result: FAILED. 19 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.46s
+
+error: test failed, to rerun pass `--test 48_outbox_three_channels`
+COMMAND_RC 101

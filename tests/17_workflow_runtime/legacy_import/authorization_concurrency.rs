@@ -171,7 +171,7 @@ async fn import_locks_the_complete_migration_authorization_predicate() {
     let command = fixture.command.clone();
     let import_task =
         tokio::spawn(async move { import_legacy_workflow_instance(&import_pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await });
+crate::common::admitting_gate(), command).await });
 
     wait_for_definition_lock_wait(&fixture.pool, import_pid, definition_blocker_pid).await;
 

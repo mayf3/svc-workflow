@@ -4,14 +4,19 @@
 //! digest computation, and error types for workflow definitions
 //! and their version lifecycle.
 
+pub mod acceptance_binding;
 pub mod digest;
 pub mod error;
 pub mod graph;
 pub mod graph_helpers;
 pub mod model;
+pub mod prerequisite;
 
 #[cfg(test)]
 mod digest_tests;
 
 #[cfg(test)]
 mod graph_tests;
+
+pub(crate) mod owner_authoring;
+pub mod owner_obligation;

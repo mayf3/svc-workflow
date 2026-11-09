@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/assistance-cases/d1d13a8a-abf3-464f-805b-8f32b02cd6f6/resolve",
+  "request": {
+    "expectedWorkflowStateVersion": 8,
+    "resolution": {
+      "message": "Owner resolved exact max-return escalation"
+    }
+  },
+  "response": {
+    "assistanceCaseId": "d1d13a8a-abf3-464f-805b-8f32b02cd6f6",
+    "createdAt": "2026-11-07T21:01:27.108517Z",
+    "eventSequence": 9,
+    "nodeVisitId": "8b9c3f64-8542-4dd8-b61c-87f96460c102",
+    "status": "RESOLVED",
+    "workflowInstanceId": "300a979d-9930-4be0-9804-e2c279996f61",
+    "workflowStateVersion": 9
+  },
+  "status": 200
+}

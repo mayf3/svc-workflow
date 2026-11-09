@@ -164,7 +164,7 @@ async fn test_disabled_domain_blocks_write() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     match result.unwrap_err() {
         DefinitionError::DomainDisabled => {}

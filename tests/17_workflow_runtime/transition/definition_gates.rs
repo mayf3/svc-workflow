@@ -22,7 +22,7 @@ async fn test_transition_revoked_version_rejected() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::DefinitionVersionRevoked
@@ -51,7 +51,7 @@ async fn test_transition_deprecated_version_allowed() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(result.is_ok());
 }
 
@@ -83,7 +83,7 @@ async fn test_transition_wrong_version_rejected() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, adv2, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
@@ -107,7 +107,7 @@ async fn test_transition_wrong_source_rejected() {
     // Create instance at DRAFT and use RETURN (source=NORMAL) from DRAFT
     let create_cmd = make_command(principal_id, domain_id, ver_id);
     let create_result = create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), create_cmd).await.unwrap();
+crate::common::admitting_gate(), create_cmd).await.unwrap();
 
     let cmd = make_transition_command(
         principal_id,
@@ -117,7 +117,7 @@ svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), create
         None,
     );
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::TransitionNotApplicable(_)

@@ -20,7 +20,7 @@ async fn test_transition_submission_required() {
     // RETURN has a submission_schema, but we provide None
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, None);
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::SubmissionRequired
@@ -47,7 +47,7 @@ async fn test_transition_schema_null_no_payload_succeeds() {
     // NORMAL→TERMINAL has no submission_schema
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, None);
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
+    crate::common::admitting_gate(), cmd).await.unwrap();
     assert_eq!(result.submission_id, None);
 }
 
@@ -71,7 +71,7 @@ async fn test_transition_schema_null_with_payload_creates_submission() {
     let payload = serde_json::json!({"any": "data"});
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, Some(payload));
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
+    crate::common::admitting_gate(), cmd).await.unwrap();
     assert!(result.submission_id.is_some());
 }
 
@@ -96,7 +96,7 @@ async fn test_transition_submission_required_field_missing() {
     let payload = serde_json::json!({"extra": "field"});
     let cmd = make_transition_command(principal_id, instance_id, 2, term_trans_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
@@ -123,7 +123,7 @@ async fn test_transition_submission_type_error() {
     let payload = serde_json::json!({"reasonCode": 123, "reason": "test"});
     let cmd = make_transition_command(principal_id, instance_id, 2, term_trans_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
@@ -150,7 +150,7 @@ async fn test_transition_submission_valid_schema() {
     let payload = serde_json::json!({"reasonCode": "DUPLICATE", "reason": "This is a duplicate"});
     let cmd = make_transition_command(principal_id, instance_id, 2, term_trans_id, Some(payload));
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
+    crate::common::admitting_gate(), cmd).await.unwrap();
     assert!(result.submission_id.is_some());
 }
 
@@ -176,7 +176,7 @@ async fn test_transition_submission_size_exceeded() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, normal_adv, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::SizeLimitExceeded(_)
@@ -210,7 +210,7 @@ async fn test_transition_return_root_cause_wrong_instance() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
@@ -244,7 +244,7 @@ async fn test_transition_return_related_submission_wrong_instance() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     assert!(matches!(
         err,
         ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
@@ -280,7 +280,7 @@ async fn test_transition_return_valid_references_succeeds() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let result = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap();
+    crate::common::admitting_gate(), cmd).await.unwrap();
     assert!(result.submission_id.is_some());
 }
 
@@ -321,7 +321,7 @@ async fn test_transition_return_missing_contract_fields_reports_all() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     match err {
         ExecuteWorkflowTransitionError::InvalidReturnReferences(detail) => {
             assert!(
@@ -372,7 +372,7 @@ async fn test_transition_return_missing_root_cause_only() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     match err {
         ExecuteWorkflowTransitionError::InvalidReturnReferences(detail) => {
             assert!(
@@ -411,7 +411,7 @@ async fn test_transition_return_root_cause_not_uuid() {
 
     let cmd = make_transition_command(principal_id, instance_id, 2, ret_id, Some(payload));
     let err = execute_workflow_transition(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.unwrap_err();
+    crate::common::admitting_gate(), cmd).await.unwrap_err();
     match err {
         ExecuteWorkflowTransitionError::InvalidReturnReferences(detail) => {
             assert!(

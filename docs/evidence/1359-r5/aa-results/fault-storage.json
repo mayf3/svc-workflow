@@ -1,0 +1,9 @@
+{
+  "response": {
+    "error": {
+      "code": "service_unavailable",
+      "message": "storage is unavailable"
+    }
+  },
+  "status": 503
+}

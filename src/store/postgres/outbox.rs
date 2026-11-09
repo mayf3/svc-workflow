@@ -6,7 +6,11 @@
 //! forum/agent-core outage can delay delivery but can never lose a queued
 //! fact and can never roll back a business transaction. Delivery is
 //! at-least-once; dedupe rides `uq_outbox_kind_event_key` (queuing) and the
-//! per-service idempotency protocols (draining).
+//! per-service idempotency protocols (draining). The reconciler claims per
+//! kind with `FOR UPDATE SKIP LOCKED` inside the delivery transaction, and
+//! only the latency-only EXECUTION_KICK channel dead-letters at its retry
+//! cap (payload and failure reason retained; recovery via the migrations/0032
+//! requeue statement).
 
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
@@ -143,21 +147,30 @@ pub(crate) struct OutboxRow {
     pub attempt_count: i32,
 }
 
-/// One kind's due batch, oldest first. Owner wakes have their own bound so
-/// kick/projection backlogs cannot consume their delivery batch. Unsupported
-/// kinds remain in the kick batch for retry across forward deployment/rollback.
+/// Retry budget for the latency-only EXECUTION_KICK channel before a row
+/// dead-letters (payload and last_error are retained; the recovery entry is
+/// the requeue statement in migrations/0032_outbox_dead_letter.sql). The
+/// correctness-path channels (FORUM_EVENT, OWNER_ASSISTANCE_WAKE) keep their
+/// never-dead-letter discipline.
+pub(crate) const EXECUTION_KICK_MAX_ATTEMPTS: i32 = 12;
+
+/// The due batch of ONE kind, oldest first. `delivered_at IS NULL AND
+/// dead_lettered_at IS NULL AND next_attempt_at <= now()` mirrors the partial
+/// index; a channel that is not enabled never sees another kind's rows.
+/// FORUM_EVENT rows additionally hold each other back per instance so the
+/// thread projection posts in commit order.
 pub(crate) async fn next_pending_batch(
     pool: &sqlx::PgPool,
-    limit: i64,
     outbox_kind: &str,
+    limit: i64,
 ) -> Result<Vec<OutboxRow>, sqlx::Error> {
     sqlx::query_as::<_, OutboxRow>(
         "SELECT o.outbox_id, o.workflow_instance_id, o.outbox_kind, o.event_key,
                 o.payload, o.attempt_count
            FROM workflow_outbox o
-          WHERE o.delivered_at IS NULL AND o.next_attempt_at <= now()
-            AND (o.outbox_kind = $2 OR ($2 = 'EXECUTION_KICK' AND
-                 o.outbox_kind NOT IN ('FORUM_EVENT','EXECUTION_KICK','OWNER_ASSISTANCE_WAKE')))
+          WHERE o.outbox_kind = $1
+            AND o.delivered_at IS NULL AND o.dead_lettered_at IS NULL
+            AND o.next_attempt_at <= now()
             AND (o.outbox_kind <> 'FORUM_EVENT' OR NOT EXISTS (
                 SELECT 1 FROM workflow_outbox earlier
                  WHERE earlier.workflow_instance_id = o.workflow_instance_id
@@ -166,31 +179,92 @@ pub(crate) async fn next_pending_batch(
                    AND (earlier.created_at, earlier.outbox_id) < (o.created_at, o.outbox_id)
             ))
           ORDER BY o.created_at, o.outbox_id
-          LIMIT $1",
+          LIMIT $2",
     )
-    .bind(limit)
     .bind(outbox_kind)
+    .bind(limit)
     .fetch_all(pool)
     .await
 }
 
+/// Atomically claim one row for delivery inside the caller's transaction:
+/// `FOR UPDATE SKIP LOCKED` makes concurrent workers skip a row that another
+/// worker is already delivering, and re-checks every due predicate under the
+/// lock. The row lock doubles as the lease — a crashed worker's transaction
+/// dies with its connection, releasing the row for the next pass.
+pub(crate) async fn claim_row(
+    tx: &mut Transaction<'_, Postgres>,
+    outbox_id: Uuid,
+    outbox_kind: &str,
+) -> Result<Option<OutboxRow>, sqlx::Error> {
+    sqlx::query_as::<_, OutboxRow>(
+        "SELECT o.outbox_id, o.workflow_instance_id, o.outbox_kind, o.event_key,
+                o.payload, o.attempt_count
+           FROM workflow_outbox o
+          WHERE o.outbox_id = $1 AND o.outbox_kind = $2
+            AND o.delivered_at IS NULL AND o.dead_lettered_at IS NULL
+            AND o.next_attempt_at <= now()
+          FOR UPDATE OF o SKIP LOCKED",
+    )
+    .bind(outbox_id)
+    .bind(outbox_kind)
+    .fetch_optional(&mut **tx)
+    .await
+}
+
 pub(crate) async fn mark_delivered(
-    pool: &sqlx::PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     outbox_id: Uuid,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE workflow_outbox SET delivered_at = now(), last_error = NULL WHERE outbox_id = $1",
+        "UPDATE workflow_outbox SET delivered_at = now(), last_error = NULL
+          WHERE outbox_id = $1 AND delivered_at IS NULL",
     )
     .bind(outbox_id)
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Exponential backoff capped at 10 minutes; the row is never deleted or
-/// dead-lettered (no silent loss).
+/// Exponential backoff capped at 10 minutes. When `dead_letter_after_attempts`
+/// is Some(cap) and this attempt reaches it, the row dead-letters in the same
+/// statement: payload, attempt_count and last_error are retained, the due
+/// queries stop selecting it, and the recovery entry is the requeue statement
+/// in migrations/0032_outbox_dead_letter.sql. `None` keeps the
+/// never-dead-lettered correctness-path discipline (no silent loss).
 pub(crate) async fn mark_attempt_failed(
-    pool: &sqlx::PgPool,
+    tx: &mut Transaction<'_, Postgres>,
+    outbox_id: Uuid,
+    error: &str,
+    dead_letter_after_attempts: Option<i32>,
+) -> Result<(), sqlx::Error> {
+    let sanitized: String = error
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(500)
+        .collect();
+    sqlx::query(
+        "UPDATE workflow_outbox
+            SET attempt_count = attempt_count + 1,
+                next_attempt_at = now() + make_interval(secs => LEAST(POWER(2, attempt_count + 1), 600)),
+                last_error = $2,
+                dead_lettered_at = CASE
+                    WHEN $3::int IS NOT NULL AND attempt_count + 1 >= $3 THEN now()
+                    ELSE dead_lettered_at END
+          WHERE outbox_id = $1 AND delivered_at IS NULL",
+    )
+    .bind(outbox_id)
+    .bind(sanitized)
+    .bind(dead_letter_after_attempts)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Dead-letter a row immediately (a deterministically rejected delivery with
+/// no retry value). The row, its payload and the failure reason are retained.
+pub(crate) async fn mark_dead_lettered(
+    tx: &mut Transaction<'_, Postgres>,
     outbox_id: Uuid,
     error: &str,
 ) -> Result<(), sqlx::Error> {
@@ -202,13 +276,13 @@ pub(crate) async fn mark_attempt_failed(
     sqlx::query(
         "UPDATE workflow_outbox
             SET attempt_count = attempt_count + 1,
-                next_attempt_at = now() + make_interval(secs => LEAST(POWER(2, attempt_count + 1), 600)),
+                dead_lettered_at = now(),
                 last_error = $2
-          WHERE outbox_id = $1",
+          WHERE outbox_id = $1 AND delivered_at IS NULL",
     )
     .bind(outbox_id)
     .bind(sanitized)
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }
@@ -253,6 +327,23 @@ pub(crate) async fn bind_thread(
     Ok(())
 }
 
+/// The oldest PENDING bindings (thread ensure pass).
+pub(crate) async fn pending_bindings(
+    pool: &sqlx::PgPool,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT b.workflow_instance_id
+           FROM workflow_forum_bindings b
+          WHERE b.binding_state = 'PENDING'
+          ORDER BY b.created_at, b.workflow_instance_id
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
 #[cfg(test)]
 mod regression_tests {
     use super::*;
@@ -294,6 +385,8 @@ mod regression_tests {
                 attempt_count INT NOT NULL DEFAULT 0,
                 next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 delivered_at TIMESTAMPTZ,
+                last_error TEXT,
+                dead_lettered_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                 UNIQUE (outbox_kind, event_key)
             )",
@@ -339,7 +432,7 @@ mod regression_tests {
             .await
             .unwrap();
         }
-        assert!(next_pending_batch(&pool, 20, "FORUM_EVENT")
+        assert!(next_pending_batch(&pool, "FORUM_EVENT", 20)
             .await
             .unwrap()
             .is_empty());
@@ -348,7 +441,7 @@ mod regression_tests {
             .execute(&pool)
             .await
             .unwrap();
-        let rows = next_pending_batch(&pool, 20, "FORUM_EVENT").await.unwrap();
+        let rows = next_pending_batch(&pool, "FORUM_EVENT", 20).await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.outbox_id).collect::<Vec<_>>(),
             vec![old]
@@ -358,11 +451,284 @@ mod regression_tests {
             .execute(&pool)
             .await
             .unwrap();
-        let rows = next_pending_batch(&pool, 20, "FORUM_EVENT").await.unwrap();
+        let rows = next_pending_batch(&pool, "FORUM_EVENT", 20).await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.outbox_id).collect::<Vec<_>>(),
             vec![later]
         );
+    }
+
+    #[tokio::test]
+    async fn batch_is_kind_scoped_and_excludes_dead_lettered_rows() {
+        let pool = fixture().await;
+        let instance = Uuid::new_v4();
+        let kick = Uuid::new_v4();
+        let forum = Uuid::new_v4();
+        let wake = Uuid::new_v4();
+        let dead = Uuid::new_v4();
+        for (id, kind, key) in [
+            (kick, "EXECUTION_KICK", "kick:a"),
+            (forum, "FORUM_EVENT", "wf_created:a"),
+            (wake, "OWNER_ASSISTANCE_WAKE", "owner-assistance:a"),
+            (dead, "EXECUTION_KICK", "kick:dead"),
+        ] {
+            sqlx::query(
+                "INSERT INTO workflow_outbox
+                 (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+                 VALUES ($1,$2,$3,$4,'{}'::jsonb)",
+            )
+            .bind(id)
+            .bind(instance)
+            .bind(kind)
+            .bind(key)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        sqlx::query("UPDATE workflow_outbox SET dead_lettered_at = now() WHERE outbox_id = $1")
+            .bind(dead)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let kicks: Vec<Uuid> = next_pending_batch(&pool, "EXECUTION_KICK", 20)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.outbox_id)
+            .collect();
+        assert_eq!(
+            kicks,
+            vec![kick],
+            "dead-lettered rows stay out of the batch"
+        );
+        assert_eq!(
+            next_pending_batch(&pool, "FORUM_EVENT", 20)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            next_pending_batch(&pool, "OWNER_ASSISTANCE_WAKE", 20)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_row_locks_and_rechecks_due_predicates() {
+        let pool = fixture().await;
+        let instance = Uuid::new_v4();
+        let kick = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+             (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+             VALUES ($1,$2,'EXECUTION_KICK','kick:claim','{}'::jsonb)",
+        )
+        .bind(kick)
+        .bind(instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // A backed-off row is not claimable.
+        sqlx::query(
+            "UPDATE workflow_outbox SET next_attempt_at = now() + interval '10 minutes' WHERE outbox_id = $1",
+        )
+        .bind(kick)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        assert!(claim_row(&mut tx, kick, "EXECUTION_KICK")
+            .await
+            .unwrap()
+            .is_none());
+        tx.commit().await.unwrap();
+
+        // Due again: claimable, and a wrong kind never claims another
+        // channel's row.
+        sqlx::query("UPDATE workflow_outbox SET next_attempt_at = now() WHERE outbox_id = $1")
+            .bind(kick)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        assert!(claim_row(&mut tx, kick, "FORUM_EVENT")
+            .await
+            .unwrap()
+            .is_none());
+        let claimed = claim_row(&mut tx, kick, "EXECUTION_KICK")
+            .await
+            .unwrap()
+            .expect("claimable while due");
+        assert_eq!(claimed.outbox_id, kick);
+        tx.commit().await.unwrap();
+        // Cross-session SKIP LOCKED behavior (concurrent workers, crash
+        // recovery) is covered by tests/48 on the real table.
+    }
+
+    #[tokio::test]
+    async fn mark_attempt_failed_dead_letters_only_at_the_cap() {
+        let pool = fixture().await;
+        let instance = Uuid::new_v4();
+        let kick = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+             (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+             VALUES ($1,$2,'EXECUTION_KICK','kick:cap','{}'::jsonb)",
+        )
+        .bind(kick)
+        .bind(instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        for attempt in 1..EXECUTION_KICK_MAX_ATTEMPTS {
+            let mut tx = pool.begin().await.unwrap();
+            mark_attempt_failed(
+                &mut tx,
+                kick,
+                "kick endpoint 5xx: 502",
+                Some(EXECUTION_KICK_MAX_ATTEMPTS),
+            )
+            .await
+            .unwrap();
+            tx.commit().await.unwrap();
+            let (attempts, dead): (
+                i32,
+                Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            ) = sqlx::query_as(
+                "SELECT attempt_count, dead_lettered_at FROM workflow_outbox WHERE outbox_id = $1",
+            )
+            .bind(kick)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(attempts, attempt);
+            assert!(dead.is_none(), "no dead-letter before the cap");
+        }
+        let mut tx = pool.begin().await.unwrap();
+        mark_attempt_failed(
+            &mut tx,
+            kick,
+            "kick endpoint 5xx: 502",
+            Some(EXECUTION_KICK_MAX_ATTEMPTS),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let (attempts, dead): (
+            i32,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+        ) = sqlx::query_as(
+            "SELECT attempt_count, dead_lettered_at FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(kick)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(attempts, EXECUTION_KICK_MAX_ATTEMPTS);
+        assert!(dead.is_some(), "the cap dead-letters the row");
+        // Dead-lettered rows never come back through the due batch.
+        assert!(next_pending_batch(&pool, "EXECUTION_KICK", 20)
+            .await
+            .unwrap()
+            .is_empty());
+
+        // Unbounded channels (cap = None) never dead-letter.
+        let forum = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+             (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+             VALUES ($1,$2,'FORUM_EVENT','wf_created:cap','{}'::jsonb)",
+        )
+        .bind(forum)
+        .bind(instance)
+        .execute(&pool)
+        .await
+        .unwrap();
+        for _ in 0..(EXECUTION_KICK_MAX_ATTEMPTS + 3) {
+            let mut tx = pool.begin().await.unwrap();
+            mark_attempt_failed(&mut tx, forum, "forum http 503", None)
+                .await
+                .unwrap();
+            tx.commit().await.unwrap();
+        }
+        let dead: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> =
+            sqlx::query_scalar("SELECT dead_lettered_at FROM workflow_outbox WHERE outbox_id = $1")
+                .bind(forum)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(
+            dead.is_none(),
+            "correctness-path rows are never dead-lettered"
+        );
+        let (delivered, attempts): (
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            i32,
+        ) = sqlx::query_as(
+            "SELECT delivered_at, attempt_count FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(forum)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(delivered.is_none(), "never silently delivered");
+        assert_eq!(
+            attempts,
+            EXECUTION_KICK_MAX_ATTEMPTS + 3,
+            "every attempt counted; the row stays recoverable"
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_dead_lettered_retains_payload_and_reason() {
+        let pool = fixture().await;
+        let instance = Uuid::new_v4();
+        let kick = Uuid::new_v4();
+        let payload = serde_json::json!({"dispatchIntentId": instance});
+        sqlx::query(
+            "INSERT INTO workflow_outbox
+             (outbox_id, workflow_instance_id, outbox_kind, event_key, payload)
+             VALUES ($1,$2,'EXECUTION_KICK','kick:perm',$3)",
+        )
+        .bind(kick)
+        .bind(instance)
+        .bind(&payload)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        mark_dead_lettered(&mut tx, kick, "kick endpoint 400: permanent rejection")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let (stored_payload, dead, error): (
+            serde_json::Value,
+            Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>,
+            Option<String>,
+        ) = sqlx::query_as(
+            "SELECT payload, dead_lettered_at, last_error FROM workflow_outbox WHERE outbox_id = $1",
+        )
+        .bind(kick)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(stored_payload, payload, "original request retained");
+        assert!(dead.is_some());
+        assert_eq!(
+            error.as_deref(),
+            Some("kick endpoint 400: permanent rejection")
+        );
+        assert!(next_pending_batch(&pool, "EXECUTION_KICK", 20)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -567,13 +933,23 @@ mod regression_tests {
                 .unwrap();
         let failing = |pool: sqlx::PgPool, outbox_id: Uuid| {
             tokio::spawn(async move {
-                mark_attempt_failed(&pool, outbox_id, "concurrent backoff probe").await
+                let mut tx = pool.begin().await?;
+                mark_attempt_failed(
+                    &mut tx,
+                    outbox_id,
+                    "concurrent backoff probe",
+                    Some(EXECUTION_KICK_MAX_ATTEMPTS),
+                )
+                .await?;
+                tx.commit().await
             })
         };
-        tokio::join!(
+        let (failure_a, failure_b) = tokio::join!(
             failing(pool.clone(), backoff_row),
             failing(pool.clone(), backoff_row)
         );
+        failure_a.unwrap().unwrap();
+        failure_b.unwrap().unwrap();
 
         // Four reconciler readers poll their own partition concurrently.
         // Wake readers may only see wakes; kick readers may only see kicks
@@ -582,7 +958,7 @@ mod regression_tests {
         let reader = |outbox_kind: &'static str, pool: sqlx::PgPool| async move {
             let mut violations = Vec::new();
             for _ in 0..10 {
-                let rows = match next_pending_batch(&pool, 20, outbox_kind).await {
+                let rows = match next_pending_batch(&pool, outbox_kind, 20).await {
                     Ok(rows) => rows,
                     Err(error) => {
                         violations.push(format!("{outbox_kind} batch query failed: {error}"));
@@ -605,8 +981,19 @@ mod regression_tests {
                         ));
                         return violations;
                     }
-                    if let Err(error) = mark_delivered(&pool, row.outbox_id).await {
-                        violations.push(format!("mark delivered failed: {error}"));
+                    let settled = async {
+                        let mut tx = pool.begin().await?;
+                        if claim_row(&mut tx, row.outbox_id, outbox_kind)
+                            .await?
+                            .is_some()
+                        {
+                            mark_delivered(&mut tx, row.outbox_id).await?;
+                        }
+                        tx.commit().await
+                    }
+                    .await;
+                    if let Err(error) = settled {
+                        violations.push(format!("claim/mark delivered failed: {error}"));
                         return violations;
                     }
                 }

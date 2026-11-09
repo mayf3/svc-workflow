@@ -1,0 +1,21 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/1231b8ae-186a-4c09-a508-a3953326ad2c/assistance-cases",
+  "request": {
+    "currentNodeVisitId": "49e9507e-f7ab-4650-b4e3-aa8a2aa51ce8",
+    "expectedWorkflowStateVersion": 1,
+    "request": {
+      "message": "revocation must not turn Assistance into transition permission"
+    }
+  },
+  "response": {
+    "assistanceCaseId": "5431413e-5c89-4568-ba95-d5d25ea393f7",
+    "createdAt": "2026-11-07T21:01:05.410694Z",
+    "eventSequence": 2,
+    "nodeVisitId": "49e9507e-f7ab-4650-b4e3-aa8a2aa51ce8",
+    "status": "OWNER_PENDING",
+    "workflowInstanceId": "1231b8ae-186a-4c09-a508-a3953326ad2c",
+    "workflowStateVersion": 2
+  },
+  "status": 201
+}

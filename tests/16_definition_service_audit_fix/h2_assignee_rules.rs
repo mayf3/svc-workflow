@@ -254,7 +254,7 @@ async fn test_fixed_principal_disabled_rejected() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(result.is_err(), "disabled principal should be rejected");
     match result.unwrap_err() {
@@ -278,7 +278,7 @@ async fn test_terminal_without_assignee_allowed() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(
         result.is_ok(),
@@ -357,6 +357,16 @@ fn valid_raw_graph_instance_input_principal() -> (
             submission_schema: None,
             metadata: None,
         },
+        // READY_CONTRACT: keep a non-primary exit for missing evidence or input.
+        RawTransitionDefinition {
+            transition_key: "ready-contract-return".to_string(),
+            display_name: "Return to Draft".to_string(),
+            source_node_key: "do".to_string(),
+            target_node_key: "draft".to_string(),
+            transition_effect: "RETURN".to_string(),
+            submission_schema: None,
+            metadata: None,
+        },
     ];
     (nodes, transitions)
 }
@@ -415,7 +425,7 @@ async fn instance_input_principal_node_publishes() {
             actor_principal_id: owner,
             definition_version_id: version_id,
             expected_revision: None,
-        }, AdmissionGate::disabled())
+        }, crate::common::admitting_gate())
         .await;
     assert!(
         result.is_ok(),

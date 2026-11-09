@@ -47,19 +47,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = config.expect("server configuration loaded above");
     let state = AppState::new(pool.clone(), &config);
+    {
+        let actor = state.workflow_policy_actor_principal_id;
+        let producer_pool = pool.clone();
+        let admission_client = state.admission_client.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(2));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tick.tick().await;
+                let gate =
+                    AdmissionGate::new(admission_client.as_ref()).with_pool(Some(&producer_pool));
+                if let Err(error)=svc_workflow::store::postgres::workflow_instance_repository::owner_obligation::reconcile::reconcile_configured(&producer_pool,actor,gate).await {
+                    tracing::warn!(code=%error.code,"owner obligation producer deferred");
+                }
+            }
+        });
+    }
     let app = http::router(state, &config);
 
     // WORKFLOW_EXECUTION_CONTROL_V1 (CTR-SWEC-002): the outbox reconciler
-    // runs alongside the HTTP server when Forum or Core delivery is configured.
-    if let Some(forum_config) = svc_workflow::forum_sync::ForumSyncConfig::from_env() {
+    // runs alongside the HTTP server. Its three channels (EXECUTION_KICK,
+    // FORUM_EVENT, OWNER_ASSISTANCE_WAKE) are configured independently — the
+    // loop starts when any channel is enabled and stays fully dormant (with
+    // an honest startup line) when none is.
+    let outbox_config = svc_workflow::forum_sync::OutboxReconcilerConfig::from_env();
+    if outbox_config.any_channel_enabled() {
+        tracing::info!(channels = ?outbox_config.enabled_channel_names(), "outbox reconciler starting");
         let reconciler_pool = pool.clone();
         tokio::spawn(async move {
-            svc_workflow::forum_sync::run_loop(reconciler_pool, forum_config).await;
+            svc_workflow::forum_sync::run_loop(reconciler_pool, outbox_config).await;
         });
-        tracing::info!("outbox reconciler started");
     } else {
         tracing::info!(
-            "outbox delivery unconfigured (Forum and Core destinations disabled) — outbox stays queued"
+            "outbox reconciler fully dormant (no channels enabled) — outbox stays queued"
         );
     }
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;

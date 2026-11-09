@@ -4,7 +4,8 @@ use sqlx::PgPool;
 
 use super::query_types::*;
 use crate::store::postgres::workflow_instance_repository::{
-    query_detail, query_domain_instances, query_global_instances, query_worklists,
+    query_detail, query_domain_instances, query_global_instances,
+    query_owner_assistance_resume_evidence, query_worklists,
 };
 
 #[derive(Clone)]
@@ -13,6 +14,29 @@ pub struct WorkflowQueryService {
 }
 
 impl WorkflowQueryService {
+    pub async fn get_workflow_instance_detail_with_authorized_actions(
+        &self,
+        query: GetWorkflowInstanceDetail,
+        credential: super::authorized_actions::ActionCredential,
+    ) -> Result<super::authorized_actions::AuthorizedInstanceDetail, WorkflowQueryError> {
+        crate::store::postgres::workflow_instance_repository::query_authorized_actions::get(
+            &self.pool, query, credential,
+        )
+        .await
+    }
+
+    pub async fn current_task_input(
+        &self,
+        actor: uuid::Uuid,
+        instance: uuid::Uuid,
+        request: super::current_task_input::CurrentTaskInputRequest,
+    ) -> Result<serde_json::Value, super::current_task_input::CurrentTaskInputError> {
+        crate::store::postgres::workflow_instance_repository::current_task_input::read(
+            &self.pool, actor, instance, request,
+        )
+        .await
+    }
+
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -129,6 +153,26 @@ impl WorkflowQueryService {
             actor_principal_id,
             limit,
             cursor,
+        )
+        .await
+    }
+
+    pub async fn get_owner_assistance_resume_evidence(
+        &self,
+        actor_principal_id: uuid::Uuid,
+        dispatch_intent_id: uuid::Uuid,
+        previous_attempt_id: &str,
+        pre_delivery_workflow_state_version: i32,
+    ) -> Result<
+        Option<query_owner_assistance_resume_evidence::OwnerAssistanceResumeEvidence>,
+        WorkflowQueryError,
+    > {
+        query_owner_assistance_resume_evidence::get_owner_assistance_resume_evidence(
+            &self.pool,
+            actor_principal_id,
+            dispatch_intent_id,
+            previous_attempt_id,
+            pre_delivery_workflow_state_version,
         )
         .await
     }

@@ -145,7 +145,7 @@ async fn complete_receipt(
     Ok(())
 }
 
-fn error_body(error: &AssistanceError) -> serde_json::Value {
+pub(crate) fn error_body(error: &AssistanceError) -> serde_json::Value {
     match error {
         AssistanceError::WorkflowStateVersionConflict { expected, actual } => serde_json::json!({
             "error": error.code(), "expected": expected, "actual": actual
@@ -190,6 +190,7 @@ fn replay_error(status: i32, body: &serde_json::Value) -> AssistanceError {
             AssistanceError::AssistanceCaseNotFoundOrNotVisible
         }
         "assistance_status_conflict" => AssistanceError::AssistanceStatusConflict,
+        "governed_operation_required" => AssistanceError::GovernedOperationRequired,
         "invalid_assistance_payload" => AssistanceError::InvalidPayload(
             body.get("detail")
                 .and_then(|v| v.as_str())
@@ -248,11 +249,12 @@ struct LockedInstance {
     assignee_principal_id: Option<Uuid>,
 }
 
-async fn lock_instance(
+async fn load_instance(
     tx: &mut Transaction<'_, Postgres>,
     instance_id: Uuid,
+    lock: bool,
 ) -> Result<LockedInstance, AssistanceError> {
-    sqlx::query_as(
+    let query = format!(
         "SELECT wi.workflow_instance_id, wi.domain_id,
                 wi.current_context_revision_id, wi.current_node_visit_id,
                 wi.workflow_state_version, wi.cancelled, wi.archived_at,
@@ -260,14 +262,22 @@ async fn lock_instance(
          FROM workflow_instances wi
          LEFT JOIN workflow_node_visits nv ON nv.node_visit_id = wi.current_node_visit_id
          LEFT JOIN workflow_node_definitions nd ON nd.node_id = nv.node_id
-         WHERE wi.workflow_instance_id = $1
-         FOR UPDATE OF wi",
-    )
-    .bind(instance_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(storage)?
-    .ok_or(AssistanceError::InstanceNotFound)
+         WHERE wi.workflow_instance_id = $1{}",
+        if lock { " FOR UPDATE OF wi" } else { "" },
+    );
+    sqlx::query_as(&query)
+        .bind(instance_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?
+        .ok_or(AssistanceError::InstanceNotFound)
+}
+
+async fn lock_instance(
+    tx: &mut Transaction<'_, Postgres>,
+    instance_id: Uuid,
+) -> Result<LockedInstance, AssistanceError> {
+    load_instance(tx, instance_id, true).await
 }
 
 async fn validate_actor_enabled(
@@ -286,40 +296,52 @@ async fn validate_actor_enabled(
     }
 }
 
-async fn effective_owner(
+async fn effective_owner_with_lock(
     tx: &mut Transaction<'_, Postgres>,
     domain_id: Uuid,
+    lock: bool,
 ) -> Result<Uuid, AssistanceError> {
     // `domains` is the owner-replacement serialization point. Keep this as a
     // separate statement: after waiting for a concurrent replacement, the
     // following binding query receives a fresh READ COMMITTED snapshot and
     // therefore observes either the complete old owner or the complete new
     // owner, never the transient EvalPlanQual gap between them.
-    let domain_enabled: Option<bool> =
-        sqlx::query_scalar("SELECT enabled FROM domains WHERE domain_id=$1 FOR SHARE")
-            .bind(domain_id)
-            .fetch_optional(&mut **tx)
-            .await
-            .map_err(storage)?;
+    let domain_query = format!(
+        "SELECT enabled FROM domains WHERE domain_id=$1{}",
+        if lock { " FOR SHARE" } else { "" },
+    );
+    let domain_enabled: Option<bool> = sqlx::query_scalar(&domain_query)
+        .bind(domain_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?;
     if domain_enabled != Some(true) {
         return Err(AssistanceError::DomainOwnerMissing);
     }
-    let owners: Vec<Uuid> = sqlx::query_scalar(
+    let owners_query = format!(
         "SELECT b.principal_id
          FROM domain_role_bindings b
          JOIN principals p ON p.principal_id = b.principal_id AND p.enabled = TRUE
          WHERE b.domain_id = $1 AND b.role_key = 'DOMAIN_OWNER' AND b.enabled = TRUE
-         ORDER BY b.principal_id
-         FOR SHARE OF b, p",
-    )
-    .bind(domain_id)
-    .fetch_all(&mut **tx)
-    .await
-    .map_err(storage)?;
+         ORDER BY b.principal_id{}",
+        if lock { " FOR SHARE OF b, p" } else { "" },
+    );
+    let owners: Vec<Uuid> = sqlx::query_scalar(&owners_query)
+        .bind(domain_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(storage)?;
     if owners.len() != 1 {
         return Err(AssistanceError::DomainOwnerMissing);
     }
     Ok(owners[0])
+}
+
+async fn effective_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    domain_id: Uuid,
+) -> Result<Uuid, AssistanceError> {
+    effective_owner_with_lock(tx, domain_id, true).await
 }
 
 async fn increment_instance_and_event(
@@ -332,6 +354,7 @@ async fn increment_instance_and_event(
     previous_status: Option<&str>,
     new_status: &str,
     payload_digest: &str,
+    governance_review: Option<&serde_json::Value>,
 ) -> Result<i32, AssistanceError> {
     let old_version = instance.workflow_state_version;
     let new_version = old_version + 1;
@@ -355,13 +378,16 @@ async fn increment_instance_and_event(
     let current_visit = instance
         .current_node_visit_id
         .ok_or(AssistanceError::CurrentVisitNotFound)?;
-    let event_data = serde_json::to_value(AssistanceEventData {
+    let mut event_data = serde_json::to_value(AssistanceEventData {
         assistance_case_id: case_id.to_string(),
         previous_status: previous_status.map(ToOwned::to_owned),
         new_status: new_status.to_string(),
         payload_digest: payload_digest.to_string(),
     })
     .map_err(|error| AssistanceError::InternalConsistency(error.to_string()))?;
+    if let Some(review) = governance_review {
+        event_data["governanceChildReview"] = review.clone();
+    }
     let event_digest =
         digest::compute_json_digest(&event_data).map_err(AssistanceError::InternalConsistency)?;
     sqlx::query(
@@ -430,6 +456,7 @@ pub(crate) async fn void_open_cases(
     command_id: Uuid,
     reason: &str,
 ) -> Result<u64, AssistanceError> {
+    super::owner_obligation::intents::retire(tx, instance_id, command_id, reason).await?;
     sqlx::query(
         "UPDATE workflow_assistance_cases
          SET status='VOIDED', voided_by_principal_id=$2, void_reason_code=$4,
@@ -446,8 +473,13 @@ pub(crate) async fn void_open_cases(
     .map(|result| result.rows_affected())
 }
 
+mod checks;
+pub(crate) mod governance_child;
 mod query;
 mod write;
+pub(crate) use checks::{
+    evaluate_owner_identity_state, evaluate_request_identity_state, OwnerActionKind,
+};
 
 pub(crate) use query::{
     get_assistance_case, get_human_required_assistance_case, list_assistance,
@@ -458,3 +490,5 @@ pub use query::{
     AssistancePage, HumanRequiredAssistanceCaseView, HumanRequiredAssistancePage,
 };
 pub(crate) use write::{escalate_assistance, request_assistance, resolve_assistance};
+
+pub(crate) use write::{owner_action_on_tx, OwnerAction};

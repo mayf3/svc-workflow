@@ -13,6 +13,14 @@ pub struct AssistanceNodeSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistanceCaseView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_obligation: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_binding: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governance_terminal_proof: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prerequisite_readiness: Option<serde_json::Value>,
     pub assistance_case_id: Uuid,
     pub workflow_instance_id: Uuid,
     pub node_visit_id: Uuid,
@@ -63,6 +71,10 @@ impl TryFrom<AssistanceViewRow> for AssistanceCaseView {
     type Error = AssistanceError;
     fn try_from(row: AssistanceViewRow) -> Result<Self, Self::Error> {
         Ok(Self {
+            owner_obligation: None,
+            governance_binding: None,
+            governance_terminal_proof: None,
+            prerequisite_readiness: None,
             assistance_case_id: row.assistance_case_id,
             workflow_instance_id: row.workflow_instance_id,
             node_visit_id: row.node_visit_id,
@@ -191,6 +203,22 @@ async fn actor_enabled(pool: &PgPool, actor: Uuid) -> Result<(), AssistanceError
     }
 }
 
+async fn actor_enabled_on_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+) -> Result<(), AssistanceError> {
+    match sqlx::query_scalar::<_, bool>("SELECT enabled FROM principals WHERE principal_id=$1")
+        .bind(actor)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(storage)?
+    {
+        None => Err(AssistanceError::PrincipalNotFound),
+        Some(false) => Err(AssistanceError::PrincipalDisabled),
+        Some(true) => Ok(()),
+    }
+}
+
 const VIEW_SELECT: &str =
     "SELECT ac.assistance_case_id, ac.workflow_instance_id, ac.node_visit_id, ac.status,
             wi.domain_id, wd.definition_key, nd.node_id, nd.node_key, nd.display_name,
@@ -214,7 +242,10 @@ pub(crate) async fn list_assistance(
     before: Option<AssistanceCursor>,
     limit: u32,
 ) -> Result<AssistancePage, AssistanceError> {
-    actor_enabled(pool, actor).await?;
+    let mut tx = super::super::query_visibility::begin_snapshot(pool)
+        .await
+        .map_err(|e| AssistanceError::StorageError(e.to_string()))?;
+    actor_enabled_on_tx(&mut tx, actor).await?;
     if !(1..=100).contains(&limit) {
         return Err(AssistanceError::InvalidPagination(
             "limit must be between 1 and 100".to_string(),
@@ -247,15 +278,25 @@ pub(crate) async fn list_assistance(
         .bind(before.map(|cursor| cursor.at))
         .bind(before.map(|cursor| cursor.id))
         .bind(i64::from(limit) + 1)
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(storage)?;
     let has_more = rows.len() > limit as usize;
-    let items: Vec<AssistanceCaseView> = rows
+    let mut items: Vec<AssistanceCaseView> = rows
         .into_iter()
         .take(limit as usize)
         .map(AssistanceCaseView::try_from)
         .collect::<Result<_, _>>()?;
+    if matches!(view, AssistanceListView::OwnerInbox) {
+        for item in &mut items {
+            item.owner_obligation = super::super::owner_obligation::case_projection::project(
+                &mut tx,
+                item.assistance_case_id,
+            )
+            .await?;
+        }
+    }
+    tx.commit().await.map_err(storage)?;
     let next_cursor = if has_more {
         items.last().map(|item| AssistanceCursor {
             at: item.created_at,
@@ -332,7 +373,10 @@ pub(crate) async fn get_assistance_case(
     actor: Uuid,
     case_id: Uuid,
 ) -> Result<AssistanceCaseView, AssistanceError> {
-    actor_enabled(pool, actor).await?;
+    let mut tx = super::super::query_visibility::begin_snapshot(pool)
+        .await
+        .map_err(|e| AssistanceError::StorageError(e.to_string()))?;
+    actor_enabled_on_tx(&mut tx, actor).await?;
     let sql = format!(
         "{VIEW_SELECT}
          WHERE ac.assistance_case_id=$2 AND (
@@ -346,11 +390,38 @@ pub(crate) async fn get_assistance_case(
     let row = sqlx::query_as::<_, AssistanceViewRow>(&sql)
         .bind(actor)
         .bind(case_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(storage)?
         .ok_or(AssistanceError::AssistanceCaseNotFoundOrNotVisible)?;
-    AssistanceCaseView::try_from(row)
+    let mut view = AssistanceCaseView::try_from(row)?;
+    if let Some((binding, proof)) = super::governance_child::detail(&mut *tx, case_id).await? {
+        view.governance_binding = Some(binding);
+        view.governance_terminal_proof = proof;
+    }
+    if let Some(binding) = view.governance_binding.as_ref() {
+        if let Some(child) = binding
+            .pointer("/child/workflowInstanceId")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|s| s.parse::<Uuid>().ok())
+        {
+            if super::super::prerequisite::reader_allowed(&mut tx, actor, child)
+                .await
+                .map_err(|e| AssistanceError::StorageError(e.to_string()))?
+            {
+                view.prerequisite_readiness = super::super::prerequisite::project(&mut tx, child)
+                    .await
+                    .map_err(|e| AssistanceError::StorageError(e.to_string()))?;
+            }
+        }
+    }
+    let current_owner:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM domain_role_bindings b JOIN domains d USING(domain_id) JOIN principals p ON p.principal_id=b.principal_id WHERE b.domain_id=$1 AND b.principal_id=$2 AND b.role_key='DOMAIN_OWNER' AND b.enabled AND d.enabled AND p.enabled)").bind(view.domain_id).bind(actor).fetch_one(&mut *tx).await.map_err(storage)?;
+    if current_owner {
+        view.owner_obligation =
+            super::super::owner_obligation::case_projection::project(&mut tx, case_id).await?;
+    }
+    tx.commit().await.map_err(storage)?;
+    Ok(view)
 }
 
 pub(crate) async fn get_human_required_assistance_case(

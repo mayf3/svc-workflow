@@ -50,7 +50,7 @@ async fn combined_command_commits_one_atomic_state_change() {
     command.submission_payload = submission_payload.clone();
 
     let result = revise_context_and_transition(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), command).await.unwrap();
+crate::common::admitting_gate(), command).await.unwrap();
 
     assert_eq!(result.workflow_state_version, 2);
     assert_eq!(result.event_sequence, 2);
@@ -216,7 +216,7 @@ async fn combined_command_resolves_domain_owner_target_assignee() {
     .await;
     let result = revise_context_and_transition(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_combined_command(creator_id, created.workflow_instance_id, 1, advance_id),
     )
     .await

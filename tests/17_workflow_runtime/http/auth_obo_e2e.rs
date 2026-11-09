@@ -34,7 +34,7 @@ fn build_app(
     allowed_delegating_sub: &str,
 ) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -283,7 +283,7 @@ async fn create_instance(
     };
     let result = create_workflow_instance(
         pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         command,
     )
     .await
@@ -757,7 +757,7 @@ async fn obo_verifier_auth_context_correct() {
     let pool = create_pool().await;
     let mock = common::MockJwksServer::start().await;
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,

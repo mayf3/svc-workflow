@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/d171a887-f5e7-4796-814b-f36ab0b60a92/assistance-cases",
+  "request": {
+    "currentNodeVisitId": "1b66a1f9-19bd-4b6d-a2aa-822066893156",
+    "expectedWorkflowStateVersion": 1,
+    "request": {
+      "message": "canonical successor is not raw assignee"
+    }
+  },
+  "response": {
+    "error": {
+      "code": "principal_not_assignee",
+      "message": "workflow assistance request failed"
+    }
+  },
+  "status": 403
+}

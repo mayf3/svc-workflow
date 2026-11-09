@@ -13,6 +13,7 @@ pub mod pool;
 pub mod provisioning_repository;
 pub mod repository_rows;
 pub mod workflow_instance_repository;
+pub(crate) mod write_path_enabled;
 
 /// Default database name used in development / CI.
 #[allow(dead_code)]

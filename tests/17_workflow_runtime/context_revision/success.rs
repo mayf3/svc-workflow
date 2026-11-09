@@ -6,7 +6,7 @@ async fn create_instance(pool: &PgPool) -> (Uuid, Uuid, Uuid, Uuid) {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(pool, domain_id).await;
     let result = create_workflow_instance(pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create instance");
     (
@@ -23,7 +23,7 @@ async fn test_revise_context_by_creator_succeeds() {
     let (principal_id, instance_id, prev_rev_id, visit_id) = create_instance(&pool).await;
     let result = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             instance_id,
@@ -42,7 +42,7 @@ async fn test_revise_revision2_previous_points_to_revision1() {
     let (principal_id, instance_id, prev_rev_id, _visit_id) = create_instance(&pool).await;
     let r1 = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(
             principal_id,
             instance_id,
@@ -65,14 +65,14 @@ async fn test_revise_revision3_after_revision2() {
     let (principal_id, instance_id, _rev1, _visit_id) = create_instance(&pool).await;
     let r1 = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
     .expect("revise to v2");
     let r2 = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 2, serde_json::json!({"v": 3})),
     )
     .await
@@ -92,7 +92,7 @@ async fn test_revise_current_node_visit_unchanged() {
     let (principal_id, instance_id, _rev1, visit_id) = create_instance(&pool).await;
     let result = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
@@ -115,7 +115,7 @@ async fn test_revise_payload_digest_readback() {
     let payload = serde_json::json!({"title": "digest test", "nested": {"a": 1}});
     let result = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, payload.clone()),
     )
     .await
@@ -138,7 +138,7 @@ async fn test_revise_event_data_digest_readback() {
     let (principal_id, instance_id, _prev_rev_id, _visit_id) = create_instance(&pool).await;
     let _result = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
@@ -161,7 +161,7 @@ async fn test_revise_response_digest_readback() {
     let cmd = make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2}));
     let idem_key = cmd.idempotency_key.clone();
     let result = revise_workflow_context(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await.expect("revise");
+    crate::common::admitting_gate(), cmd).await.expect("revise");
     let stored_digest: String = sqlx::query_scalar(
         "SELECT response_digest FROM workflow_command_receipts WHERE principal_id = $1 AND idempotency_key = $2",
     ).bind(principal_id).bind(&idem_key).fetch_one(&pool).await.expect("digest");
@@ -184,7 +184,7 @@ async fn test_revise_exactly_one_event() {
     let (principal_id, instance_id, _rev1, _visit_id) = create_instance(&pool).await;
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
@@ -201,7 +201,7 @@ async fn test_revise_event_submission_null() {
     let (principal_id, instance_id, _rev1, _visit_id) = create_instance(&pool).await;
     revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
@@ -218,7 +218,7 @@ async fn test_revise_consecutive_event_sequence() {
     let (principal_id, instance_id, _rev1, _visit_id) = create_instance(&pool).await;
     let r1 = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 1, serde_json::json!({"v": 2})),
     )
     .await
@@ -226,7 +226,7 @@ async fn test_revise_consecutive_event_sequence() {
     assert_eq!(r1.event_sequence, 2);
     let r2 = revise_workflow_context(
         &pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        crate::common::admitting_gate(),
         make_revise_command(principal_id, instance_id, 2, serde_json::json!({"v": 3})),
     )
     .await

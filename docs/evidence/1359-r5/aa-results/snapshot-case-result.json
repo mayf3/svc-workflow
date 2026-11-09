@@ -1,0 +1,343 @@
+{
+  "barrier_key": 6803847530945007521,
+  "current_refusal": {
+    "error": {
+      "code": "assistance_open",
+      "message": "current visit has an unresolved assistance case"
+    }
+  },
+  "fresh": {
+    "authorized_actions": [],
+    "authorized_actions_scope": "INSTANCE_TASK_AND_GOVERNANCE_V1",
+    "authorized_actions_status": "NONE_FOR_ACTOR",
+    "current_context": {
+      "context_revision_id": "3eb6a282-81ae-4a97-90ad-977af2ca3c99",
+      "created_at": "2026-11-07T21:00:37.767210Z",
+      "created_by_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+      "payload": {},
+      "payload_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "previous_revision_id": null,
+      "revision_number": 1,
+      "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4"
+    },
+    "current_context_revision_id": "3eb6a282-81ae-4a97-90ad-977af2ca3c99",
+    "current_node_visit_id": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+    "current_task_type": {
+      "business_task_type": null,
+      "node_type": "NORMAL",
+      "source": "CURRENT_NODE_TYPE"
+    },
+    "current_visit": {
+      "assignee_canonical_agent_id": null,
+      "assignee_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+      "created_at": "2026-11-07T21:00:41.957029Z",
+      "eligibility": {
+        "classification": "ACTIONABLE_NOW"
+      },
+      "entered_by_transition_id": "7351cc04-d0c5-4f08-9427-01985839260a",
+      "instructions": null,
+      "node": {
+        "display_name": "work",
+        "node_id": "7907c0c7-c9dc-4e69-91a0-17590cbdf95b",
+        "node_key": "work",
+        "node_type": "NORMAL"
+      },
+      "node_visit_id": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+      "visit_number": 1,
+      "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4"
+    },
+    "instance": {
+      "created_at": "2026-11-07T21:00:37.767210Z",
+      "created_by_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+      "current_node": {
+        "display_name": "work",
+        "node_id": "7907c0c7-c9dc-4e69-91a0-17590cbdf95b",
+        "node_key": "work",
+        "node_type": "NORMAL"
+      },
+      "definition_version_id": "59ac343c-f819-4200-9fb6-437f8272e76c",
+      "definition_version_status": "PUBLISHED",
+      "domain_enabled": true,
+      "domain_id": "1c8fc529-3caf-4b09-9ced-a93d10035e82",
+      "external_reference": null,
+      "external_url": null,
+      "is_terminal": false,
+      "metadata": {},
+      "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4",
+      "workflow_state_version": 3
+    },
+    "outgoing_transitions": [
+      {
+        "blocked_reason": null,
+        "display_name": "work_done",
+        "executable_for_actor": true,
+        "submission_schema": null,
+        "target_node": {
+          "display_name": "done",
+          "node_id": "b931f2e9-ce1d-49e7-b40c-45d05e770d7e",
+          "node_key": "done",
+          "node_type": "TERMINAL"
+        },
+        "transition_effect": "ADVANCE",
+        "transition_id": "6de6ada7-a01f-45cd-a41e-bf4df0c638d2",
+        "transition_key": "work_done"
+      },
+      {
+        "blocked_reason": null,
+        "display_name": "work_return",
+        "executable_for_actor": true,
+        "submission_schema": {
+          "properties": {
+            "reason": {
+              "description": "engine-required human-readable return reason",
+              "minLength": 1,
+              "type": "string"
+            },
+            "reasonCode": {
+              "description": "engine-required machine-readable return reason code, e.g. EVIDENCE_INCOMPLETE",
+              "minLength": 1,
+              "type": "string"
+            },
+            "relatedSubmissionIds": {
+              "description": "optional: submission UUIDs of this instance related to the return",
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "rootCauseNodeVisitId": {
+              "description": "nodeVisitId of a visit of THIS instance where the root cause was observed (engine-required for RETURN; take it from the instance's node-visit history)",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "rootCauseNodeVisitId",
+            "reasonCode",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "target_node": {
+          "display_name": "start",
+          "node_id": "7c59daa2-b139-4673-84e4-e7ece81ec0b9",
+          "node_key": "start",
+          "node_type": "DRAFT"
+        },
+        "transition_effect": "RETURN",
+        "transition_id": "a966e0b0-3414-4fb3-b341-b0ec762e5ae6",
+        "transition_key": "work_return"
+      },
+      {
+        "blocked_reason": null,
+        "display_name": "work_terminate",
+        "executable_for_actor": true,
+        "submission_schema": null,
+        "target_node": {
+          "display_name": "done",
+          "node_id": "b931f2e9-ce1d-49e7-b40c-45d05e770d7e",
+          "node_key": "done",
+          "node_type": "TERMINAL"
+        },
+        "transition_effect": "TERMINATE",
+        "transition_id": "c66a3dc5-efd8-42a9-8189-167ac614916d",
+        "transition_key": "work_terminate"
+      }
+    ]
+  },
+  "mutation_request": {
+    "currentNodeVisitId": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+    "expectedWorkflowStateVersion": 2,
+    "request": {
+      "message": "actual concurrent Assistance"
+    }
+  },
+  "mutation_response": {
+    "assistanceCaseId": "cb20a3a5-3ade-47ed-9f95-a3a42a39748a",
+    "createdAt": "2026-11-07T21:00:42.006658Z",
+    "eventSequence": 3,
+    "nodeVisitId": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+    "status": "OWNER_PENDING",
+    "workflowInstanceId": "d495d778-f0f4-4359-8527-e3ed1899b7b4",
+    "workflowStateVersion": 3
+  },
+  "mutation_status": 201,
+  "observed_rr_wait": true,
+  "old_snapshot": {
+    "detail": {
+      "authorized_actions": [
+        {
+          "operation": "transition",
+          "request_validation": "REQUIRED_AT_EXECUTION",
+          "transition_effect": "ADVANCE",
+          "transition_id": "6de6ada7-a01f-45cd-a41e-bf4df0c638d2"
+        },
+        {
+          "operation": "transition",
+          "request_validation": "REQUIRED_AT_EXECUTION",
+          "transition_effect": "RETURN",
+          "transition_id": "a966e0b0-3414-4fb3-b341-b0ec762e5ae6"
+        },
+        {
+          "operation": "transition",
+          "request_validation": "REQUIRED_AT_EXECUTION",
+          "transition_effect": "TERMINATE",
+          "transition_id": "c66a3dc5-efd8-42a9-8189-167ac614916d"
+        },
+        {
+          "operation": "request_assistance",
+          "request_validation": "REQUIRED_AT_EXECUTION"
+        }
+      ],
+      "authorized_actions_scope": "INSTANCE_TASK_AND_GOVERNANCE_V1",
+      "authorized_actions_status": "AVAILABLE",
+      "current_context": {
+        "context_revision_id": "3eb6a282-81ae-4a97-90ad-977af2ca3c99",
+        "created_at": "2026-11-07T21:00:37.767210Z",
+        "created_by_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+        "payload": {},
+        "payload_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "previous_revision_id": null,
+        "revision_number": 1,
+        "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4"
+      },
+      "current_context_revision_id": "3eb6a282-81ae-4a97-90ad-977af2ca3c99",
+      "current_node_visit_id": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+      "current_task_type": {
+        "business_task_type": null,
+        "node_type": "NORMAL",
+        "source": "CURRENT_NODE_TYPE"
+      },
+      "current_visit": {
+        "assignee_canonical_agent_id": null,
+        "assignee_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+        "created_at": "2026-11-07T21:00:41.957029Z",
+        "eligibility": {
+          "classification": "ACTIONABLE_NOW"
+        },
+        "entered_by_transition_id": "7351cc04-d0c5-4f08-9427-01985839260a",
+        "instructions": null,
+        "node": {
+          "display_name": "work",
+          "node_id": "7907c0c7-c9dc-4e69-91a0-17590cbdf95b",
+          "node_key": "work",
+          "node_type": "NORMAL"
+        },
+        "node_visit_id": "6cd6aa23-63ce-4735-8634-e152a864f1d3",
+        "visit_number": 1,
+        "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4"
+      },
+      "instance": {
+        "created_at": "2026-11-07T21:00:37.767210Z",
+        "created_by_principal_id": "2bdf8cec-a305-421a-b2f3-a3e6780ee50d",
+        "current_node": {
+          "display_name": "work",
+          "node_id": "7907c0c7-c9dc-4e69-91a0-17590cbdf95b",
+          "node_key": "work",
+          "node_type": "NORMAL"
+        },
+        "definition_version_id": "59ac343c-f819-4200-9fb6-437f8272e76c",
+        "definition_version_status": "PUBLISHED",
+        "domain_enabled": true,
+        "domain_id": "1c8fc529-3caf-4b09-9ced-a93d10035e82",
+        "external_reference": null,
+        "external_url": null,
+        "is_terminal": false,
+        "metadata": {},
+        "workflow_instance_id": "d495d778-f0f4-4359-8527-e3ed1899b7b4",
+        "workflow_state_version": 2
+      },
+      "outgoing_transitions": [
+        {
+          "blocked_reason": null,
+          "display_name": "work_done",
+          "executable_for_actor": true,
+          "submission_schema": null,
+          "target_node": {
+            "display_name": "done",
+            "node_id": "b931f2e9-ce1d-49e7-b40c-45d05e770d7e",
+            "node_key": "done",
+            "node_type": "TERMINAL"
+          },
+          "transition_effect": "ADVANCE",
+          "transition_id": "6de6ada7-a01f-45cd-a41e-bf4df0c638d2",
+          "transition_key": "work_done"
+        },
+        {
+          "blocked_reason": null,
+          "display_name": "work_return",
+          "executable_for_actor": true,
+          "submission_schema": {
+            "properties": {
+              "reason": {
+                "description": "engine-required human-readable return reason",
+                "minLength": 1,
+                "type": "string"
+              },
+              "reasonCode": {
+                "description": "engine-required machine-readable return reason code, e.g. EVIDENCE_INCOMPLETE",
+                "minLength": 1,
+                "type": "string"
+              },
+              "relatedSubmissionIds": {
+                "description": "optional: submission UUIDs of this instance related to the return",
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "rootCauseNodeVisitId": {
+                "description": "nodeVisitId of a visit of THIS instance where the root cause was observed (engine-required for RETURN; take it from the instance's node-visit history)",
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "rootCauseNodeVisitId",
+              "reasonCode",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "target_node": {
+            "display_name": "start",
+            "node_id": "7c59daa2-b139-4673-84e4-e7ece81ec0b9",
+            "node_key": "start",
+            "node_type": "DRAFT"
+          },
+          "transition_effect": "RETURN",
+          "transition_id": "a966e0b0-3414-4fb3-b341-b0ec762e5ae6",
+          "transition_key": "work_return"
+        },
+        {
+          "blocked_reason": null,
+          "display_name": "work_terminate",
+          "executable_for_actor": true,
+          "submission_schema": null,
+          "target_node": {
+            "display_name": "done",
+            "node_id": "b931f2e9-ce1d-49e7-b40c-45d05e770d7e",
+            "node_key": "done",
+            "node_type": "TERMINAL"
+          },
+          "transition_effect": "TERMINATE",
+          "transition_id": "c66a3dc5-efd8-42a9-8189-167ac614916d",
+          "transition_key": "work_terminate"
+        }
+      ]
+    },
+    "visibility": "full"
+  },
+  "stale_refusal": {
+    "error": {
+      "code": "workflow_state_version_conflict",
+      "details": {
+        "actual": 3,
+        "expected": 2
+      },
+      "message": "workflow state version does not match"
+    }
+  }
+}
