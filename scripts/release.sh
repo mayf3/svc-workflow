@@ -14,6 +14,12 @@
 #   SVC_WORKFLOW_SERVICE_DIR  部署目录（默认 ~/.local/services/svc-workflow）
 #   SVC_WORKFLOW_PORT         /version 探测端口（默认 8989）
 #   AUTH_TOKEN                可选：部署后基础认证请求使用的 Bearer token
+#   SVC_WORKFLOW_RELEASE_ACTOR 执行者标识；未设置/空值记 unattributed 并警告
+#   SVC_WORKFLOW_RELEASE_AUTH_REF 可选授权依据引用（仅审计声明，不授予发布权限）
+#   SVC_WORKFLOW_RELEASE_ATTEMPT_ID 可选 UUID；未设置/空值自动生成
+#                             all 的 build/deploy 共用一次调用的审计字段；分开
+#                             调用各记自己的身份/attempt，保留原构建 provenance。
+#                             osUser 记录 id -un 的实际有效 OS 用户。
 #   EXPECTED_SERVICE_UID      预期服务 UID（#683 G1，与调用 EUID 分开；root 调用必填）
 #   EXPECTED_PREIMAGE_SHA256  必填（#683 G3/P3）：目标 binary 的精确 sha256（无首装例外）
 #   EXPECTED_LAUNCHCTL_TARGET 当 active ledger 不存在时必填（#683 P5）：固定目标
@@ -35,11 +41,34 @@ BASE_URL="http://127.0.0.1:$PORT"
 GIT=$(command -v git)
 SHASUM=$(command -v shasum)
 RELEASE_WT=""
+RELEASE_ATTRIBUTION=""
 
 log() { printf '[release] %s\n' "$*"; }
 fail() { printf '[release] ERROR: %s\n' "$*" >&2; exit 1; }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# 只为 build/deploy/all 初始化一次；verify/archive 不补造历史归因。
+init_release_attribution() {
+  local os_user actor auth_ref attempt_id
+  os_user="$(id -un)" || fail "无法读取执行者 OS 用户 (id -un)"
+  [[ -n "$os_user" ]] || fail "执行者 OS 用户为空"
+  actor="${SVC_WORKFLOW_RELEASE_ACTOR:-unattributed}"
+  auth_ref="${SVC_WORKFLOW_RELEASE_AUTH_REF:-}"
+  if [[ -z "${SVC_WORKFLOW_RELEASE_ACTOR:-}" ]]; then
+    printf '[release] WARNING: SVC_WORKFLOW_RELEASE_ACTOR 未设置或为空，记录 actor=unattributed\n' >&2
+  fi
+  attempt_id="${SVC_WORKFLOW_RELEASE_ATTEMPT_ID:-}"
+  if [[ -z "$attempt_id" ]]; then
+    attempt_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  fi
+  [[ "$attempt_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || fail "SVC_WORKFLOW_RELEASE_ATTEMPT_ID 必须是 UUID: $attempt_id"
+  RELEASE_ATTRIBUTION="$(jq -n \
+    --arg osUser "$os_user" --arg actor "$actor" \
+    --arg authRef "$auth_ref" --arg attemptId "$attempt_id" \
+    '{osUser: $osUser, actor: $actor, authRef: $authRef, attemptId: $attemptId}')"
+}
 
 assert_source_sha() {
   local sha="$1"
@@ -367,7 +396,8 @@ build() {
     --arg buildCommand "cargo build --release --locked (clean detached worktree @ $sha)" \
     --arg migrationMaxVersion "$migration_max" \
     --arg migrationBundleDigest "$migration_digest" \
-    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, buildCommand: $buildCommand, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest}' \
+    --argjson attribution "$RELEASE_ATTRIBUTION" \
+    '{sourceSha: $sourceSha, treeState: $treeState, artifactSha256: $artifactSha256, builtAt: $builtAt, buildCommand: $buildCommand, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest} + $attribution' \
     > "$dir/provenance.json"
   log "artifact 已归档: $dir/$BINARY"
   log "migration bundle 已归档: $dir/migrations (max=$migration_max, digest=$migration_digest)"
@@ -489,7 +519,8 @@ deploy() {
     --arg launchctlTarget "$LAUNCHCTL_TARGET" \
     --arg targetPreimage "$target_preimage_sha256" \
     --arg otherRealmState "$OTHER_REALM_STATE" \
-    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage, otherRealmState: $otherRealmState}' \
+    --argjson attribution "$RELEASE_ATTRIBUTION" \
+    '{deployedAt: $deployedAt, sourceSha: $sourceSha, artifactSha256: $artifactSha256, previousArtifactSha256: $previousArtifactSha256, migrationMaxVersion: $migrationMaxVersion, migrationBundleDigest: $migrationBundleDigest, launchctlTarget: $launchctlTarget, targetPreimageSha256: $targetPreimage, otherRealmState: $otherRealmState} + $attribution' \
     >> "$LEDGER"
   log "deployment ledger 已追加: $LEDGER"
 
@@ -629,10 +660,11 @@ main() {
   fi
   [[ -n "$sha" ]] || fail "用法: release.sh [build|deploy|verify|all] <sourceSha> | release.sh archive"
   case "$cmd" in
-    build) build "$sha" ;;
-    deploy) deploy "$sha" ;;
+    build) init_release_attribution; build "$sha" ;;
+    deploy) init_release_attribution; deploy "$sha" ;;
     verify) verify "$sha" ;;
     all)
+      init_release_attribution
       build "$sha"
       deploy "$sha"
       verify "$sha"
