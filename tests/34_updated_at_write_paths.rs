@@ -120,3 +120,83 @@ async fn advance_and_return_maintain_updated_at() {
             .bind(inst).fetch_one(&pool).await.expect("t2");
     assert!(after_ret > after_adv, "RETURN must bump updated_at again");
 }
+
+/// Minimal DRAFT+TERMINAL graph for the revise-only write path (mirrors the
+/// tests/17 seed used by test_revise_context_by_creator_succeeds; revise
+/// requires the current node to be a DRAFT node). Returns version_id.
+async fn seed_draft_terminal(pool: &PgPool, domain: Uuid) -> Uuid {
+    let (def, ver) = (Uuid::new_v4(), Uuid::new_v4());
+    sqlx::query("INSERT INTO workflow_definitions (workflow_definition_id, domain_id, definition_key, display_name) VALUES ($1,$2,$3,'updated_at revise test')")
+        .bind(def).bind(domain).bind(format!("upd-rev-{}", &Uuid::new_v4().to_string()[..8])).execute(pool).await.expect("def");
+    sqlx::query("INSERT INTO workflow_definition_versions (definition_version_id, workflow_definition_id, version_number, version_status, context_schema) VALUES ($1,$2,1,'DRAFT',NULL)")
+        .bind(ver).bind(def).execute(pool).await.expect("ver");
+    let (d, t) = (Uuid::new_v4(), Uuid::new_v4());
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1,$2,'draft','draft',0,'DRAFT','WORKFLOW_CREATOR')")
+        .bind(d).bind(ver).execute(pool).await.expect("draft node");
+    sqlx::query("INSERT INTO workflow_node_definitions (node_id, definition_version_id, node_key, display_name, order_index, node_type, assignee_ref_type) VALUES ($1,$2,'done','done',1,'TERMINAL',NULL)")
+        .bind(t).bind(ver).execute(pool).await.expect("terminal node");
+    let adv = Uuid::new_v4();
+    sqlx::query("INSERT INTO workflow_transition_definitions (transition_id, definition_version_id, transition_key, display_name, source_node_id, target_node_id, transition_effect) VALUES ($1,$2,'advance','advance',$3,$4,'ADVANCE')")
+        .bind(adv).bind(ver).bind(d).bind(t).execute(pool).await.expect("t");
+    sqlx::query("UPDATE workflow_node_definitions SET primary_advance_transition_id=$1 WHERE node_id=$2").bind(adv).bind(d).execute(pool).await.expect("p");
+    sqlx::query("UPDATE workflow_definition_versions SET version_status='PUBLISHED' WHERE definition_version_id=$1").bind(ver).execute(pool).await.expect("pub");
+    ver
+}
+
+/// Revise-only write path: creator revise must succeed and maintain
+/// workflow_instances.updated_at (regression 2026-10-26: the revise UPDATE in
+/// revise_transaction.rs dropped the comma before `updated_at = now()`,
+/// making every revise fail with a SQL syntax error, so neither the revise
+/// itself nor its updated_at maintenance could execute; tests/17 exercises
+/// revise but never asserts updated_at, and this file previously covered
+/// ADVANCE/RETURN only).
+#[tokio::test]
+async fn revise_only_maintains_updated_at() {
+    let pool = common::create_pool().await;
+    let (owner, domain) = common::seed_principal_domain_with_owner(&pool).await;
+    let ver = seed_draft_terminal(&pool, domain).await;
+    sqlx::query("INSERT INTO domain_role_bindings (binding_id, domain_id, principal_id, role_key, enabled) VALUES ($1,$2,$3,'DOMAIN_MEMBER',TRUE)")
+        .bind(Uuid::new_v4()).bind(domain).bind(owner).execute(&pool).await.expect("member");
+
+    let inst = svc_workflow::application::workflow_instance::create::create_workflow_instance(
+        &pool, svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        CreateWorkflowInstanceCommand {
+            principal_id: PrincipalId::from_uuid(owner), idempotency_key: format!("c-{}", Uuid::new_v4()),
+            command_schema_version: "v1".into(),
+            execution_class: svc_workflow::domain::enums::WorkflowExecutionClass::Business,
+            domain_id: DomainId::from_uuid(domain), definition_version_id: DefinitionVersionId::from_uuid(ver),
+            external_reference: None, external_url: None, metadata: json!({}), context_payload: json!({"title":"v1"}),
+        }).await.expect("create").workflow_instance_id;
+
+    let baseline: (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) =
+        sqlx::query_as("SELECT created_at, updated_at FROM workflow_instances WHERE workflow_instance_id=$1")
+            .bind(inst).fetch_one(&pool).await.expect("t0");
+    assert_eq!(baseline.0, baseline.1, "fresh instance baseline");
+
+    let result = svc_workflow::application::workflow_instance::revise::revise_workflow_context(
+        &pool,
+        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(),
+        svc_workflow::domain::workflow_instance::commands::ReviseWorkflowContextCommand {
+            principal_id: PrincipalId::from_uuid(owner),
+            idempotency_key: format!("c-{}", Uuid::new_v4()),
+            command_schema_version: "v1".into(),
+            workflow_instance_id: WorkflowInstanceId::from_uuid(inst),
+            expected_workflow_state_version: 1,
+            context_payload: json!({"title":"v2"}),
+        },
+    ).await.expect("creator revise must succeed");
+    assert_eq!(result.workflow_state_version, 2);
+    assert_eq!(result.event_sequence, 2);
+
+    let after_rev: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM workflow_instances WHERE workflow_instance_id=$1")
+            .bind(inst).fetch_one(&pool).await.expect("t1");
+    assert!(after_rev > baseline.0, "revise-only must bump updated_at (task 7cd02846 write-path obligation)");
+
+    // Instance projection carries the new revision and state version.
+    let inst_row: (i32, Uuid) = sqlx::query_as(
+        "SELECT workflow_state_version, current_context_revision_id FROM workflow_instances WHERE workflow_instance_id=$1")
+        .bind(inst).fetch_one(&pool).await.expect("inst row");
+    assert_eq!(inst_row.0, 2);
+    assert_eq!(inst_row.1, result.current_context_revision_id);
+}
