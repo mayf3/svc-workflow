@@ -100,8 +100,12 @@
 #      E2 un-archived old-format active ledger refuses deploy (archive first).
 #   Z  assertion self-test: the zero-write/rc checks themselves must be able to
 #      fail (deleted/altered fingerprint, missing rc file).
+#   AT #126 attribution: env/defaults, JSON escaping, UUID validation before
+#      writes, legacy records retained, separate build/deploy identities, and
+#      one shared tuple for all (cargo is also FAKE; no real Rust build).
 
 set -u
+unset SVC_WORKFLOW_RELEASE_ACTOR SVC_WORKFLOW_RELEASE_AUTH_REF SVC_WORKFLOW_RELEASE_ATTEMPT_ID
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RELEASE_SH="$HERE/release.sh"
 MERGE_SHA="18fb2f8bc80983a36b15e65bf51d8f5c4b64fb78"
@@ -186,7 +190,15 @@ EOF
 cat > "$FAKEBIN/id" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = "-u" ]; then cat "$STATE/fake-euid"; exit 0; fi
+if [ "\$1" = "-un" ]; then printf 'fixture-release-user\n'; exit 0; fi
 exit 1
+EOF
+cat > "$FAKEBIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "build --release --locked" ]] || exit 1
+mkdir -p target/release
+cp /bin/echo target/release/svc-workflow
 EOF
 cat > "$FAKEBIN/curl" <<EOF
 #!/usr/bin/env bash
@@ -245,16 +257,21 @@ kick_count() {  # $1 = full launchd target; prints count (0 when absent)
   echo "${n:-0}"
 }
 
-run_deploy_env() {  # $1 = tag, $2 = sourceSha, remaining: extra env K=V
-  local tag="$1" sha="$2"; shift 2
+run_release_env() {  # $1 = tag, $2 = command, $3 = sourceSha, remaining: env K=V
+  local tag="$1" cmd="$2" sha="$3"; shift 3
   local before after rc
   before=$(fingerprint)
-  env SVC_WORKFLOW_SERVICE_DIR="$SVC" PATH="$FAKEBIN:$PATH" EXPECTED_SERVICE_UID=502 "$@"     bash "$RELEASE_SH" deploy "$sha" > "$WORK/out-$tag.txt" 2>&1
+  env SVC_WORKFLOW_SERVICE_DIR="$SVC" PATH="$FAKEBIN:$PATH" EXPECTED_SERVICE_UID=502 "$@"     bash "$RELEASE_SH" "$cmd" "$sha" > "$WORK/out-$tag.txt" 2>&1
   rc=$?
   after=$(fingerprint)
   printf '%s' "$rc" > "$WORK/rc-$tag.txt"
   printf '%s' "$before" > "$WORK/fp-before-$tag.txt"
   printf '%s' "$after" > "$WORK/fp-after-$tag.txt"
+}
+
+run_deploy_env() {  # $1 = tag, $2 = sourceSha, remaining: extra env K=V
+  local tag="$1" sha="$2"; shift 2
+  run_release_env "$tag" deploy "$sha" "$@"
 }
 
 run_deploy() {  # $1 = launchctl-state, $2 = tag, [$3 = euid], [$4 = running uid]
@@ -284,7 +301,7 @@ fp_intact() {  # 1 仅当前后指纹文件都存在、非空且逐字节相等�
   local b="$WORK/fp-before-$1.txt" a="$WORK/fp-after-$1.txt"
   if [[ -s "$b" && -s "$a" ]] && cmp -s "$b" "$a"; then echo 1; else echo 0; fi
 }
-assert() { if [ "$2" = "1" ]; then PASS=$((PASS+1)); echo "PASS $1"; else FAIL=$((FAIL+1)); echo "FAIL $1: $3"; fi; }
+assert() { if [ "$2" = "1" ]; then PASS=$((PASS+1)); echo "PASS $1"; else FAIL=$((FAIL+1)); echo "FAIL $1: $3"; exit 1; fi; }
 
 # Negative case: rc file present+non-empty+numeric+nonzero, target gate message
 # in output, and the INDEPENDENT before/after fingerprints byte-identical.
@@ -304,6 +321,67 @@ KICK=$(kick_count "$SYS_TARGET"); NOGUI=$(kick_count "gui/502/com.svc-workflow")
 LED=$([ -f "$SVC/ledger.json" ] && echo 1 || echo 0)
 assert "A: deploy succeeds via SYSTEM target" $([ "$(have_rc A)" = "1" ] && [ "$RC" = "0" ] && [ "$KICK" -ge 1 ] && [ "$LED" = "1" ] && echo 1 || echo 0) "rc=$RC kick=$KICK ledger=$LED"
 assert "A: never kickstarts a gui binding" $([ "$NOGUI" = "0" ] && echo 1 || echo 0) "nogui=$NOGUI"
+assert "AT1: absent actor warns and defaults; OS user and generated UUID recorded" $(jq -e '
+  .osUser == "fixture-release-user" and .actor == "unattributed" and .authRef == "" and
+  (.attemptId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))
+  ' "$SVC/ledger.json" >/dev/null && grep -q 'WARNING:.*actor=unattributed' "$WORK/out-A.txt" && echo 1 || echo 0) "see out-A/ledger"
+
+# Modern pre-#126 ledger rows/provenance remain valid and are never migrated.
+jq 'del(.osUser, .actor, .authRef, .attemptId)' "$SVC/ledger.json" > "$STATE/legacy-ledger.json"
+cp "$STATE/legacy-ledger.json" "$SVC/ledger.json"
+cp "$SVC/releases/$MERGE_SHA/provenance.json" "$STATE/legacy-provenance.json"
+ATTR_ACTOR=$'worker "126"\n发布'
+ATTR_AUTH=$'https://github.com/mayf3/svc-workflow/issues/126#approval\n"owner"'
+ATTR_ATTEMPT="12345678-1234-4234-8234-123456789abc"
+run_deploy_env AT2 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" \
+  SVC_WORKFLOW_RELEASE_ACTOR="$ATTR_ACTOR" SVC_WORKFLOW_RELEASE_AUTH_REF="$ATTR_AUTH" \
+  SVC_WORKFLOW_RELEASE_ATTEMPT_ID="$ATTR_ATTEMPT"
+assert "AT2: explicit env values survive JSON escaping on legacy inputs" $([ "$(rc_of AT2)" = "0" ] && jq -se \
+  --arg actor "$ATTR_ACTOR" --arg auth "$ATTR_AUTH" --arg attempt "$ATTR_ATTEMPT" '
+  length == 2 and (.[0] | has("actor") | not) and
+  (.[1] | .osUser == "fixture-release-user" and .actor == $actor and .authRef == $auth and .attemptId == $attempt)
+  ' "$SVC/ledger.json" >/dev/null && ! grep -q 'WARNING:' "$WORK/out-AT2.txt" && echo 1 || echo 0) "rc=$(rc_of AT2)"
+LEGACY_BYTES=$(wc -c < "$STATE/legacy-ledger.json" | tr -d ' ')
+assert "AT2: legacy ledger prefix and old provenance stay byte-identical" $(head -c "$LEGACY_BYTES" "$SVC/ledger.json" | cmp -s - "$STATE/legacy-ledger.json" \
+  && cmp -s "$SVC/releases/$MERGE_SHA/provenance.json" "$STATE/legacy-provenance.json" && echo 1 || echo 0) "history changed"
+cp "$SVC/ledger.json" "$STATE/attribution-explicit-ledger.json"
+
+# Invalid caller UUID is rejected even before a build worktree/service write.
+run_release_env AT3 build "$MERGE_SHA" SVC_WORKFLOW_RELEASE_ACTOR=worker SVC_WORKFLOW_RELEASE_ATTEMPT_ID=not-a-uuid
+assert_gate "AT3: invalid attempt UUID rejected before build writes" AT3 'SVC_WORKFLOW_RELEASE_ATTEMPT_ID 必须是 UUID'
+
+# all uses real release.sh flow with fake cargo/process/HTTP commands only.
+rm -rf "$SVC/releases/$MERGE_SHA"
+printf '{"service":"svc-workflow","gitSha":"%s","gitTreeState":"clean"}\n' "$MERGE_SHA" > "$STATE/fake-version.json"
+run_release_env AT4 all "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" \
+  SVC_WORKFLOW_RELEASE_ACTOR=all-worker SVC_WORKFLOW_RELEASE_AUTH_REF=issue-126
+assert "AT4: all shares generated attribution between provenance and verified ledger" $([ "$(rc_of AT4)" = "0" ] && jq -se \
+  --slurpfile p "$SVC/releases/$MERGE_SHA/provenance.json" '
+  def attribution: {osUser, actor, authRef, attemptId};
+  (.[-1] | attribution) == ($p[0] | attribution) and
+  .[-1].actor == "all-worker" and .[-1].authRef == "issue-126" and
+  .[-1].verification.healthz == "200" and
+  (.[-1].attemptId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))
+  ' "$SVC/ledger.json" >/dev/null && echo 1 || echo 0) "rc=$(rc_of AT4) (see out-AT4)"
+cp "$SVC/ledger.json" "$STATE/attribution-all-ledger.json"
+cp "$SVC/releases/$MERGE_SHA/provenance.json" "$STATE/attribution-all-provenance.json"
+
+# Explicit build metadata belongs to its builder; later deployment is distinct.
+rm -rf "$SVC/releases/$MERGE_SHA"
+run_release_env AT5 build "$MERGE_SHA" SVC_WORKFLOW_RELEASE_ACTOR=build-worker \
+  SVC_WORKFLOW_RELEASE_AUTH_REF=build-approval SVC_WORKFLOW_RELEASE_ATTEMPT_ID="$ATTR_ATTEMPT"
+assert "AT5: standalone build writes supplied attribution to provenance" $([ "$(rc_of AT5)" = "0" ] && jq -e \
+  --arg attempt "$ATTR_ATTEMPT" '.osUser == "fixture-release-user" and .actor == "build-worker" and .authRef == "build-approval" and .attemptId == $attempt' \
+  "$SVC/releases/$MERGE_SHA/provenance.json" >/dev/null && echo 1 || echo 0) "rc=$(rc_of AT5)"
+cp "$SVC/releases/$MERGE_SHA/provenance.json" "$STATE/builder-provenance.json"
+run_deploy_env AT6 "$MERGE_SHA" EXPECTED_PREIMAGE_SHA256="$(installed_sha)" \
+  SVC_WORKFLOW_RELEASE_ACTOR= SVC_WORKFLOW_RELEASE_AUTH_REF= SVC_WORKFLOW_RELEASE_ATTEMPT_ID=
+assert "AT6: empty env defaults warn; deploy does not inherit builder identity/attempt" $([ "$(rc_of AT6)" = "0" ] && jq -se \
+  --arg buildAttempt "$ATTR_ATTEMPT" '.[-1] | .osUser == "fixture-release-user" and .actor == "unattributed" and .authRef == "" and
+  .attemptId != $buildAttempt and (.attemptId | test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))' \
+  "$SVC/ledger.json" >/dev/null && grep -q 'WARNING:.*actor=unattributed' "$WORK/out-AT6.txt" \
+  && cmp -s "$SVC/releases/$MERGE_SHA/provenance.json" "$STATE/builder-provenance.json" && echo 1 || echo 0) "rc=$(rc_of AT6)"
+cp "$SVC/ledger.json" "$STATE/attribution-separate-ledger.json"
 
 # ── B. both realms present: ambiguous → FAIL, ZERO writes ────────────────
 run_deploy both B
