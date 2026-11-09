@@ -107,3 +107,65 @@ acceptance are separate claims.
 - The production/merge status of 7cd (merge_to_main15 blocked by
   merge_not_verified) and of 8121 (merge_to_main18; separate M3 production
   gap) is unchanged by this docs round; this plan is not production success.
+
+## 6. 当前 main 重 PREFLIGHT/base-impact 与活性父本对账 (2026-11-09)
+
+Sections 1–5 above retain the historical `bfc28c1` preparation record, including
+its unexecuted RED predictions. Their four-SQL-change execution plan is no
+longer a current-main work order. This bounded update records local Git source
+observations only; it does not execute that plan or accept the proposal.
+
+```text
+EXECUTION_MANDATE = user's B1/B2 docs-only blocker closure; no production access
+PARENT_HEAD = c64642467ceb2b410d96a8ce07b72dbb4e04b98e
+HISTORICAL_BASE_HEAD = bfc28c15320acab8cf7d7a36128cd5c9db9a1b1a
+CURRENT_BASE_HEAD = local origin/main e4efe23238dad67d0726da34e32a2c1bf8b27714
+REMOTE_FRESHNESS = NOT_VERIFIED (ls-remote failed: proxy 127.0.0.1:7890 unreachable)
+AUTHORITY_ACTION = AMEND (named proposed target; metadata and report only)
+PLAN_LEVEL = BRIEF
+ASSURANCE_LEVEL = DURABLE
+ROUTE_STAGE = AUTHORITY_AUTHORING
+AUTHORITY_ACCEPTED_IN_BASE = NO (this proposed updated_at Spec)
+IMPLEMENTATION_READY = NO
+PRODUCTION_APPLY_AUTHORITY = none
+ACCEPTANCE = NOT_PERFORMED
+DONE_WHEN = B1 metadata and B2 bounded fact correction reviewed; one docs commit
+EXPANSION_TRIGGER = implementation, acceptance, or production access (forbidden)
+NEXT_ACTION = RE_PREFLIGHT before any future acceptance or implementation
+```
+
+Static base-impact readback at `CURRENT_BASE_HEAD` (the three helpers are under
+`src/store/postgres/workflow_instance_repository/`):
+
+| Surface | Observed current-main state | Remaining implication |
+|---|---|---|
+| `transition_helpers.rs:254` | `updated_at = now()` already present | Do not reapply the historical transition SQL hunk. |
+| `combined_helpers.rs:121` | `updated_at = now()` already present | Do not reapply the historical combined SQL hunk. |
+| `revise_transaction.rs:479-480` | State-version clause has the comma; `updated_at = now()` already present | Do not reapply the historical revise SQL hunk. |
+| `tests/34_updated_at_write_paths.rs` | Blob `0195831ef7532513db30be323e29dda6261425fc` equals both `e068dd0621068201dc1794133a7952b933e18dfe` and #134 landing commit `64fb848c1590f1089ef31267f449cba5e499d71d` (merged by `e4efe23`) | Already landed; blob identity is not an executed test result. |
+| `repair_transaction.rs:531-533` | Projection UPDATE still omits `updated_at` | Repair remains an outstanding CTR-UAM-002 obligation, subject to authority and fresh implementation PREFLIGHT. |
+
+The proposal's recorded parents are historical at this base. Frontmatter and
+reciprocal successor links show Architecture `V0_4_3 → V0_4_4 → V0_4_5 → V0_4_6
+→ V0_4_7` and Product `V8 → V9 → V10 → V11 → V12 → V13`. The accepted,
+non-superseded successors recorded in this snapshot are
+`docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_7.md` and
+`docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V13.md`; both retain
+`implementation_authority: none` and `production_apply_authority: none`.
+Their recorded paired-lifecycle effectiveness condition is not independently
+verified across repositories here. V0_4_3 and V8 are now `status: superseded`.
+This metadata-only correction leaves the proposal's historical `governed_by`
+unchanged; before acceptance, reconcile it against the active parent Contracts
+and review any required proposal amendment. Existing source cannot supply
+missing Product Authority or retroactively accept this proposal.
+Full frontmatter-schema validation still reports the pre-existing strict-ID
+pattern mismatch for `governed_by[1] = SVC_WORKFLOW_ARCHITECTURE_V0_4_3`;
+the required B1 fields are present, but no full-schema PASS is claimed.
+
+Re-PREFLIGHT the remaining repair and the full CTR-UAM-001–007 evidence matrix
+against a fresh base and reconciled authority before future implementation.
+The named behavior cases, negative controls, other path families, created_at,
+untouched historical rows and rollback obligations remain unverified here.
+No database, build, or functional test was run in this correction; current
+conformance remains NOT_VERIFIED. Neither §3's historical main RED predictions
+nor #1301's candidate-line RED/GREEN are converted into current-main results.

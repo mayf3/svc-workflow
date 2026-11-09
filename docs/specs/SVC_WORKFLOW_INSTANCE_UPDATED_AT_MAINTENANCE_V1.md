@@ -4,12 +4,14 @@ status: proposed
 spec_kind: implementation
 authority_level: governing_spec
 implementation_authority: contracts
+production_apply_authority: none
 scope:
   - mayf3/svc-workflow
   - workflow_instances.updated_at write maintenance only
 governed_by:
   - SVC_WORKFLOW_PRODUCT_BOUNDARY_V8
   - SVC_WORKFLOW_ARCHITECTURE_V0_4_3
+external_authorities: []
 supersedes: []
 superseded_by: null
 owners:
