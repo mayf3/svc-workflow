@@ -10,7 +10,8 @@ use crate::application::provisioning::{provision_global_role_binding, revoke_glo
 use crate::domain::ids::PrincipalId;
 use crate::domain::provisioning::{
     ProvisionGlobalRoleBindingCommand, RevokeGlobalRoleBindingCommand,
-    GLOBAL_WORKFLOW_COORDINATOR_ROLE, GLOBAL_WORKFLOW_READER_ROLE,
+    GLOBAL_WORKFLOW_AUDITOR_ROLE, GLOBAL_WORKFLOW_COORDINATOR_ROLE,
+    GLOBAL_WORKFLOW_READER_ROLE,
 };
 use crate::http::dto::{ProvisionGlobalRoleBindingRequest, RevokeGlobalRoleBindingRequest};
 use crate::http::error::ApiError;
@@ -34,10 +35,11 @@ pub(crate) async fn create(
     if req.role_key != GLOBAL_WORKFLOW_COORDINATOR_ROLE
         && req.role_key != GLOBAL_WORKFLOW_READER_ROLE
         && req.role_key != crate::domain::provisioning::GLOBAL_SCHEDULER_READ_ROLE
+        && req.role_key != GLOBAL_WORKFLOW_AUDITOR_ROLE
     {
         return Err(ApiError::unprocessable(
             "role_key_invalid",
-            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, or GLOBAL_SCHEDULER_READ",
+            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, GLOBAL_SCHEDULER_READ, or GLOBAL_WORKFLOW_AUDITOR",
         ));
     }
 
@@ -79,10 +81,11 @@ pub(crate) async fn delete(
     if req.role_key != GLOBAL_WORKFLOW_COORDINATOR_ROLE
         && req.role_key != GLOBAL_WORKFLOW_READER_ROLE
         && req.role_key != crate::domain::provisioning::GLOBAL_SCHEDULER_READ_ROLE
+        && req.role_key != GLOBAL_WORKFLOW_AUDITOR_ROLE
     {
         return Err(ApiError::unprocessable(
             "role_key_invalid",
-            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, or GLOBAL_SCHEDULER_READ",
+            "roleKey must be GLOBAL_WORKFLOW_COORDINATOR, GLOBAL_WORKFLOW_READER, GLOBAL_SCHEDULER_READ, or GLOBAL_WORKFLOW_AUDITOR",
         ));
     }
 

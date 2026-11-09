@@ -1,6 +1,7 @@
 //! Assistance request, escalation, and resolution transactions.
 
 use super::*;
+use sqlx::Acquire;
 
 pub(crate) async fn request_assistance(
     pool: &PgPool,
@@ -30,6 +31,9 @@ pub(crate) async fn request_assistance(
     let payload_digest =
         digest::compute_json_digest(&payload).map_err(AssistanceError::InternalConsistency)?;
 
+    super::super::owner_obligation::intents::fence(&mut tx, instance_id)
+        .await
+        .map_err(storage)?;
     let instance = match lock_instance(&mut tx, instance_id).await {
         Ok(row) => row,
         Err(error) => return deterministic_failure(tx, command_id, error).await,
@@ -49,35 +53,22 @@ pub(crate) async fn request_assistance(
         return deterministic_failure(tx, command_id, AssistanceError::CurrentNodeVisitMismatch)
             .await;
     }
-    if instance.cancelled {
-        return deterministic_failure(tx, command_id, AssistanceError::InstanceCancelled).await;
-    }
-    if instance.archived_at.is_some() {
-        return deterministic_failure(tx, command_id, AssistanceError::InstanceArchived).await;
-    }
-    if instance.node_type.as_deref() == Some("TERMINAL") {
-        return deterministic_failure(tx, command_id, AssistanceError::SourceNodeTerminal).await;
+    if let Err(error) = super::checks::request_lifecycle(&instance) {
+        return deterministic_failure(tx, command_id, error).await;
     }
     if let Err(error) = validate_actor_enabled(&mut tx, actor).await {
         return deterministic_failure(tx, command_id, error).await;
     }
-    if instance.assignee_principal_id != Some(actor) {
-        return deterministic_failure(tx, command_id, AssistanceError::PrincipalNotAssignee).await;
+    if let Err(error) = super::checks::request_assignee(&instance, actor) {
+        return deterministic_failure(tx, command_id, error).await;
     }
     let owner = match effective_owner(&mut tx, instance.domain_id).await {
         Ok(owner) => owner,
         Err(error) => return deterministic_failure(tx, command_id, error).await,
     };
-    let open_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM workflow_assistance_cases
-         WHERE node_visit_id = $1 AND status IN ('OWNER_PENDING','HUMAN_REQUIRED'))",
-    )
-    .bind(requested_visit)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(storage)?;
-    if open_exists {
-        return deterministic_failure(tx, command_id, AssistanceError::AssistanceAlreadyOpen).await;
+    let open_exists = has_open_assistance(&mut tx, requested_visit).await?;
+    if let Err(error) = super::checks::request_open_case(open_exists) {
+        return deterministic_failure(tx, command_id, error).await;
     }
 
     let case_id = Uuid::new_v4();
@@ -116,6 +107,7 @@ pub(crate) async fn request_assistance(
         None,
         "OWNER_PENDING",
         &payload_digest,
+        None,
     )
     .await?;
     // CTR-SWEC-008: assistance lifecycle is projected to the canonical forum
@@ -134,16 +126,18 @@ pub(crate) async fn request_assistance(
     )
     .await
     .map_err(storage)?;
-    super::super::super::outbox::queue_owner_assistance_wake(
-        &mut tx,
-        instance_id,
-        requested_visit,
-        case_id,
-        owner,
-        "ASSISTANCE_REQUESTED",
-    )
-    .await
-    .map_err(storage)?;
+    if !super::super::owner_obligation::intents::request(&mut tx, case_id, command_id).await? {
+        super::super::super::outbox::queue_owner_assistance_wake(
+            &mut tx,
+            instance_id,
+            requested_visit,
+            case_id,
+            owner,
+            "ASSISTANCE_REQUESTED",
+        )
+        .await
+        .map_err(storage)?;
+    }
     let result = AssistanceCommandResult {
         assistance_case_id: case_id,
         workflow_instance_id: instance_id,
@@ -161,16 +155,8 @@ pub(crate) async fn request_assistance(
     Ok(result)
 }
 
-#[derive(Debug, FromRow)]
-struct LockedCase {
-    assistance_case_id: Uuid,
-    workflow_instance_id: Uuid,
-    node_visit_id: Uuid,
-    status: String,
-    created_at: DateTime<Utc>,
-}
-
-enum OwnerAction {
+#[derive(Clone)]
+pub(crate) enum OwnerAction {
     Escalate(AssistancePayload),
     Resolve(AssistancePayload),
 }
@@ -184,7 +170,7 @@ async fn owner_action(
     action: OwnerAction,
     request_hash: &str,
 ) -> Result<AssistanceCommandResult, AssistanceError> {
-    let (command_type, event_type, payload_ref, target_status) = match &action {
+    let (command_type, _event_type, _payload_ref, _target_status) = match &action {
         OwnerAction::Escalate(payload) => (
             COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
             ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE,
@@ -205,9 +191,63 @@ async fn owner_action(
         Ok(owned) => owned,
         Err(result) => return result,
     };
+    let mut facts = tx.begin().await.map_err(storage)?;
+    match owner_action_on_tx(
+        &mut facts,
+        actor,
+        case_id,
+        expected_version,
+        action,
+        command_id,
+    )
+    .await
+    {
+        Ok(result) => {
+            facts.commit().await.map_err(storage)?;
+            let body = serde_json::to_value(&result)
+                .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
+            complete_receipt(&mut tx, command_id, 200, &body).await?;
+            tx.commit().await.map_err(storage)?;
+            Ok(result)
+        }
+        Err(e) => {
+            facts.rollback().await.map_err(storage)?;
+            if matches!(
+                e,
+                AssistanceError::StorageError(_) | AssistanceError::InternalConsistency(_)
+            ) {
+                return Err(e);
+            }
+            deterministic_failure(tx, command_id, e).await
+        }
+    }
+}
+pub(crate) async fn owner_action_on_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+    case_id: Uuid,
+    expected_version: i32,
+    action: OwnerAction,
+    command_id: Uuid,
+) -> Result<AssistanceCommandResult, AssistanceError> {
+    let (_command_type, event_type, payload_ref, target_status) = match &action {
+        OwnerAction::Escalate(payload) => (
+            COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
+            ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE,
+            payload,
+            AssistanceCaseStatus::HumanRequired,
+        ),
+        OwnerAction::Resolve(payload) => (
+            COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
+            ASSISTANCE_RESOLVED_EVENT_TYPE,
+            payload,
+            AssistanceCaseStatus::Resolved,
+        ),
+    };
+    super::super::owner_obligation::intents::require_effect(tx, case_id, command_id).await?;
     let payload = match validate_payload(payload_ref) {
         Ok(payload) => payload,
-        Err(error) => return deterministic_failure(tx, command_id, error).await,
+        Err(error) => return Err(error),
     };
     let payload_digest =
         digest::compute_json_digest(&payload).map_err(AssistanceError::InternalConsistency)?;
@@ -215,81 +255,57 @@ async fn owner_action(
         "SELECT workflow_instance_id FROM workflow_assistance_cases WHERE assistance_case_id = $1",
     )
     .bind(case_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await
     .map_err(storage)?;
     let instance_id = match instance_id {
         Some(instance_id) => instance_id,
-        None => {
-            return deterministic_failure(
-                tx,
-                command_id,
-                AssistanceError::AssistanceCaseNotFoundOrNotVisible,
-            )
-            .await
-        }
+        None => return Err(AssistanceError::AssistanceCaseNotFoundOrNotVisible),
     };
-    let instance = match lock_instance(&mut tx, instance_id).await {
+    super::super::owner_obligation::intents::fence(tx, instance_id)
+        .await
+        .map_err(storage)?;
+    let instance = match lock_instance(tx, instance_id).await {
         Ok(row) => row,
-        Err(error) => return deterministic_failure(tx, command_id, error).await,
+        Err(error) => return Err(error),
     };
     if expected_version != instance.workflow_state_version {
-        return deterministic_failure(
-            tx,
-            command_id,
-            AssistanceError::WorkflowStateVersionConflict {
-                expected: expected_version,
-                actual: instance.workflow_state_version,
-            },
-        )
-        .await;
+        return Err(AssistanceError::WorkflowStateVersionConflict {
+            expected: expected_version,
+            actual: instance.workflow_state_version,
+        });
     }
-    if let Err(error) = validate_actor_enabled(&mut tx, actor).await {
-        return deterministic_failure(tx, command_id, error).await;
-    }
-    let owner = match effective_owner(&mut tx, instance.domain_id).await {
+    validate_actor_enabled(tx, actor).await?;
+    let owner = match effective_owner(tx, instance.domain_id).await {
         Ok(owner) => owner,
-        Err(error) => return deterministic_failure(tx, command_id, error).await,
+        Err(error) => return Err(error),
     };
-    if owner != actor {
-        return deterministic_failure(tx, command_id, AssistanceError::NotDomainOwner).await;
-    }
-    let case: LockedCase = match sqlx::query_as(
-        "SELECT assistance_case_id, workflow_instance_id, node_visit_id, status, created_at
-         FROM workflow_assistance_cases WHERE assistance_case_id = $1 FOR UPDATE",
-    )
-    .bind(case_id)
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(storage)?
-    {
-        Some(case) => case,
-        None => {
-            return deterministic_failure(
-                tx,
-                command_id,
-                AssistanceError::AssistanceCaseNotFoundOrNotVisible,
-            )
-            .await
-        }
-    };
-    if case.workflow_instance_id != instance_id
-        || instance.current_node_visit_id != Some(case.node_visit_id)
-    {
-        return deterministic_failure(tx, command_id, AssistanceError::AssistanceStatusConflict)
-            .await;
-    }
+    super::checks::owner_actor(owner, actor)?;
+    let case = super::checks::load_case(tx, case_id, true).await?;
+    super::checks::owner_case(
+        OwnerActionKind::from(&action),
+        instance_id,
+        instance.current_node_visit_id,
+        &case,
+    )?;
     let previous_status = case.status.clone();
-    let status_ok = match action {
-        OwnerAction::Escalate(_) => previous_status == "OWNER_PENDING",
-        OwnerAction::Resolve(_) => {
-            previous_status == "OWNER_PENDING" || previous_status == "HUMAN_REQUIRED"
+
+    let governance_review = if matches!(action, OwnerAction::Resolve(_)) {
+        match super::governance_child::validate_resolve(tx, case_id, &payload).await {
+            Ok(review) => review,
+            Err(error) => {
+                if matches!(
+                    error,
+                    AssistanceError::StorageError(_) | AssistanceError::InternalConsistency(_)
+                ) {
+                    return Err(error);
+                }
+                return Err(error);
+            }
         }
+    } else {
+        None
     };
-    if !status_ok {
-        return deterministic_failure(tx, command_id, AssistanceError::AssistanceStatusConflict)
-            .await;
-    }
 
     let affected = match action {
         OwnerAction::Escalate(_) => sqlx::query(
@@ -304,7 +320,7 @@ async fn owner_action(
         .bind(&payload)
         .bind(&payload_digest)
         .bind(command_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(storage)?
         .rows_affected(),
@@ -320,7 +336,7 @@ async fn owner_action(
         .bind(&payload)
         .bind(&payload_digest)
         .bind(command_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await
         .map_err(storage)?
         .rows_affected(),
@@ -331,7 +347,7 @@ async fn owner_action(
         ));
     }
     let new_version = increment_instance_and_event(
-        &mut tx,
+        tx,
         &instance,
         command_id,
         actor,
@@ -340,6 +356,7 @@ async fn owner_action(
         Some(&previous_status),
         target_status.as_str(),
         &payload_digest,
+        governance_review.as_ref(),
     )
     .await?;
     // CTR-SWEC-008: escalate/resolve projected to the canonical forum thread.
@@ -348,7 +365,7 @@ async fn owner_action(
         OwnerAction::Resolve(_) => "assistance_resolved",
     };
     super::super::super::outbox::queue_forum_event(
-        &mut tx,
+        tx,
         case.workflow_instance_id,
         &format!("{lifecycle_event_type}:{case_id}"),
         serde_json::json!({
@@ -372,10 +389,6 @@ async fn owner_action(
         created_at: case.created_at,
         replayed: false,
     };
-    let body = serde_json::to_value(&result)
-        .map_err(|error| AssistanceError::InternalConsistency(error.to_string()))?;
-    complete_receipt(&mut tx, command_id, 200, &body).await?;
-    tx.commit().await.map_err(storage)?;
     Ok(result)
 }
 

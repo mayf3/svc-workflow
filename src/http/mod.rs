@@ -27,7 +27,7 @@ pub use state::{AppState, ExecutionControlConfig, HttpConfig};
 pub const API_CONTRACT_VERSION: &str = "internal-v0";
 pub const SERVICE_VERSION: &str = "0.3.1";
 pub const SCHEMA_VERSION: &str = "0023";
-pub const EXPECTED_MIGRATION_VERSION: i64 = 28;
+pub const EXPECTED_MIGRATION_VERSION: i64 = 32;
 
 pub fn router(state: AppState, config: &HttpConfig) -> Router {
     let request_id = HeaderName::from_static("x-request-id");
@@ -47,6 +47,13 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::instances::detail),
         )
         .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/readiness",
+            get(handlers::instances::readiness),
+        )
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/owner-obligation",get(handlers::owner_obligation::read))
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/operation-effects/{effectId}",get(handlers::owner_obligation::read_effect))
+        .route("/internal/v1/workflow-instances/{workflowInstanceId}/node-visits/{nodeVisitId}/operation-effects/{slotAction}",post(handlers::owner_obligation::execute).layer(middleware::from_fn_with_state(state.clone(),canary_guard::canary_write_guard)))
+        .route(
             "/internal/v1/workflow-instances/{workflowInstanceId}/transitions",
             post(handlers::transitions::execute).layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -63,6 +70,19 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human",
             post(handlers::assistance::escalate).layer(middleware::from_fn_with_state(
+                state.clone(),
+                canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/governance-child",
+            post(handlers::assistance::bind_governance_child).layer(
+                middleware::from_fn_with_state(state.clone(), canary_guard::canary_write_guard),
+            ),
+        )
+        .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/governance-child:create-and-bind",
+            post(handlers::assistance::create_and_bind).layer(middleware::from_fn_with_state(
                 state.clone(),
                 canary_guard::canary_write_guard,
             )),
@@ -113,6 +133,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::submissions::list),
         )
         .route(
+            "/internal/v1/workflow-instances/{workflowInstanceId}/current-task-input",
+            get(handlers::current_task_input::read),
+        )
+        .route(
             "/internal/v1/workflow-instances/domain",
             get(handlers::instances::domain_list),
         )
@@ -131,6 +155,14 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/dispatch-intents",
             get(handlers::dispatch_intents::list_due),
+        )
+        .route(
+            "/internal/v1/dispatch-intents/ready",
+            get(handlers::dispatch_intents::list_ready),
+        )
+        .route(
+            "/internal/v1/dispatch-intents/{dispatchIntentId}/owner-assistance-resume-evidence",
+            get(handlers::dispatch_intents::owner_assistance_resume_evidence),
         )
         .route(
             "/internal/v1/worklists/assigned-to-me",
@@ -218,6 +250,10 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             get(handlers::definitions::get_definition_detail),
         )
         .route(
+            "/internal/v1/domains/{domainId}/definitions/{definitionId}/versions/{versionId}",
+            get(handlers::definitions::get_definition_version_detail),
+        )
+        .route(
             "/internal/v1/domains/{domainId}/definitions",
             post(handlers::definitions::create_definition).layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -292,6 +328,14 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
         .route(
             "/internal/v1/admin/definition-versions/{definitionVersionId}",
             get(handlers::provisioning::definitions::get),
+        )
+        // SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1: caller-scoped
+        // read of a PUBLISHED version's input contract, gated server-side by
+        // the exact create-instance admission predicate. Not an admin route;
+        // no management data in the payload.
+        .route(
+            "/internal/v1/definition-versions/{definitionVersionId}/input-contract",
+            get(handlers::definitions::get_definition_version_input_contract),
         )
         .fallback(|| async {
             error::ApiError::new(StatusCode::NOT_FOUND, "route_not_found", "route not found")

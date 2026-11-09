@@ -1,0 +1,17 @@
+{
+  "command": [
+    "git",
+    "ls-remote",
+    "origin",
+    "refs/heads/main",
+    "refs/heads/fix/outbox-channel-isolation"
+  ],
+  "cwd": "/private/tmp/h1359-outbox",
+  "started_at": "2026-11-07T21:06:12.601305+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "rc": 0,
+  "ended_at": "2026-11-07T21:06:13.567589+00:00",
+  "elapsed_seconds": 0.954,
+  "stdout_sha256": "eac14c5734cb7286868da84c1fa05387fd58302a6834229f1f61195263178075",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

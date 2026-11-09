@@ -1,0 +1,38 @@
+{
+  "status": "ACCEPTED_FOR_SOURCE_AND_ISOLATED_IMPLEMENTATION_AFTER_SPEC_MERGE",
+  "acceptedAt": "2026-10-27T17:37:27.570181+00:00",
+  "acceptedBy": "Codex root acting under explicit user delegated design and implementation authority",
+  "userAuthority": "接受，全权交给你定就行; 按无人看守目标补齐通用底层机制并实际落地; 尽量委派便宜模型",
+  "reviewedHeads": {
+    "core": "62e9d263acd48c554bfeb47727eab4e3048aff73",
+    "svc": "2c7e59a14d5d84ecc0688c47c30c5f04d0f05900"
+  },
+  "patches": {
+    "core": "6b11cbccc3f8f2d5dbc4140f9ee71705ba6147e115c94b921c008dae2b6ca563",
+    "svc": "fd49ca3913ad22695df51cf18b95e94679b1e71fc51c5b677149e29803e33e04"
+  },
+  "bodyHashes": {
+    "docs/specs/AGENT_CORE_WORKFLOW_EXECUTION_CONTROL_V1.md": "f0821c644e3e3b84a98a7f4bb2c2ab86c9e7f5264602957627ff374d6ff975fb",
+    "docs/specs/AGENT_CORE_WORKFLOW_STALE_REENTRY_V1.md": "d03c3e4da4ed7a854a16b963bbbe05139e5e0086ee1b1d8266f99bd8081f4c5a",
+    "docs/specs/AGENT_CORE_WORKFLOW_EXECUTION_CONTROL_V2.md": "ea3ad252f94173ebb1e3479fc09af9f21d34d8963b26f9e653ea933363ef7884",
+    "docs/specs/AGENT_CORE_WORKFLOW_STALE_REENTRY_V2.md": "bab05faf378851d6a63ddf857eadc689d8927b4e75f5ebfa95ce0e09acee5992",
+    "docs/specs/SVC_WORKFLOW_EXECUTION_CONTROL_V1.md": "c5b34b713f1c5045ddcf9c23d1d663e572f4c10be4e2a15e001ed7b8e2030194"
+  },
+  "independentSemanticReview": {
+    "actor": "/root/recovery_contract_review_luna",
+    "result": "PASS",
+    "record": "Tool-delivered final message in this chat; reviewer independently scratch-applied both patches and byte-compared all five files; prior P1/DTO blockers closed"
+  },
+  "rootVerification": "Read complete semantic deltas and svc companion; fresh-read exact candidate commits and compared all five files with manifest/applied full bytes",
+  "route": {
+    "core": "SUPERSEDE whole WEC and SRE authorities atomically with backlinks",
+    "svc": "AMEND additive CTR-SWEC-010, prior body unchanged"
+  },
+  "allowedNext": "Record acceptance metadata with reviewed head/lineage; docs-only PRs; exact-head merge after lifecycle-only check; then separate REUSE source implementation and isolated validation",
+  "productionAuthority": "NONE",
+  "notClaimed": [
+    "implementation complete",
+    "native unattended verified",
+    "production deployment"
+  ]
+}

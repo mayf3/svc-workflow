@@ -7,6 +7,7 @@ use sqlx::Postgres;
 use sqlx::Transaction;
 use uuid::Uuid;
 
+use super::queries::PublishedVersionInputContract;
 use crate::domain::definition::error::DefinitionError;
 use crate::domain::definition::model::{
     NodeDefinition, TransitionDefinition, WorkflowDefinition, WorkflowDefinitionVersion,
@@ -27,6 +28,15 @@ pub struct DefinitionData {
 /// All methods are fallible and return [`DefinitionError`].
 #[allow(async_fn_in_trait)]
 pub trait DefinitionRepository {
+    /// Read the exact version's minimal input contract and all five admission
+    /// conditions from one consistent database snapshot, preserving the read's
+    /// principal -> version/definition -> membership -> domain -> status order.
+    async fn get_published_version_input_contract(
+        &self,
+        actor_principal_id: Uuid,
+        definition_version_id: Uuid,
+    ) -> Result<PublishedVersionInputContract, DefinitionError>;
+
     // -----------------------------------------------------------------------
     // Principals & Domains (read-only checks)
     // -----------------------------------------------------------------------
@@ -42,6 +52,25 @@ pub trait DefinitionRepository {
         &self,
         principal_id: Uuid,
         domain_id: Uuid,
+        role_key: &str,
+    ) -> Result<bool, DefinitionError>;
+
+    /// Check that a principal holds ANY active (enabled) role binding in the
+    /// domain. Same SQL as create-instance admission's
+    /// `validate_domain_membership` (role_key unrestricted, enabled=TRUE);
+    /// the read invokes it at its own point in the check order (see reads.rs
+    /// — order equivalence with create is not claimed).
+    async fn has_active_membership_binding(
+        &self,
+        principal_id: Uuid,
+        domain_id: Uuid,
+    ) -> Result<bool, DefinitionError>;
+
+    /// Check that a principal holds an enabled global (domain-independent)
+    /// role binding (e.g., GLOBAL_WORKFLOW_AUDITOR).
+    async fn check_global_role(
+        &self,
+        principal_id: Uuid,
         role_key: &str,
     ) -> Result<bool, DefinitionError>;
 

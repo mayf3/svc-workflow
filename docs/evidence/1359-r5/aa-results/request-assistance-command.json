@@ -1,0 +1,21 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/workflow-instances/418ae862-99cf-4bf7-9cd1-b4b4c8c22297/assistance-cases",
+  "request": {
+    "currentNodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+    "expectedWorkflowStateVersion": 1,
+    "request": {
+      "message": "isolated ordinary Assistance"
+    }
+  },
+  "response": {
+    "assistanceCaseId": "bf44b64d-2c2e-4ace-aecc-d8ca0805a1ba",
+    "createdAt": "2026-11-07T21:01:13.333724Z",
+    "eventSequence": 2,
+    "nodeVisitId": "e7934c4e-1c85-490d-827d-1db7d07875bd",
+    "status": "OWNER_PENDING",
+    "workflowInstanceId": "418ae862-99cf-4bf7-9cd1-b4b4c8c22297",
+    "workflowStateVersion": 2
+  },
+  "status": 201
+}

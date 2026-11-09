@@ -1,0 +1,7 @@
+{
+  "at": "2026-11-07T21:01:47.847474+00:00",
+  "head": "8aa864ab9ff70107faf8e016a04d32f4e78ad141",
+  "status": "M REVIEW-1359-OUTBOX.md\n M STOPPED-1359-OUTBOX.md\n M tests/48_outbox_three_channels.rs\n?? RECEIPT-1359-OUTBOX.md\n?? docs/evidence/1359-r3/\n?? docs/evidence/1359-r4/",
+  "manifest_entries": 814,
+  "mismatches": {}
+}

@@ -1,0 +1,156 @@
+[
+  {
+    "name": "git-before",
+    "argv": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "command": "git status --short",
+    "start": "2026-11-06T00:46:17.809287+00:00",
+    "end": "2026-11-06T00:46:17.825938+00:00",
+    "rc": 0
+  },
+  {
+    "name": "runner-r2-diff",
+    "argv": [
+      "git",
+      "diff",
+      "HEAD",
+      "--",
+      "scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh"
+    ],
+    "command": "git diff HEAD -- scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh",
+    "start": "2026-11-06T00:46:17.826257+00:00",
+    "end": "2026-11-06T00:46:17.838968+00:00",
+    "rc": 0
+  },
+  {
+    "name": "runner-full-diff",
+    "argv": [
+      "git",
+      "diff",
+      "5a7dc9ee2dde1dd730dae94afb39f116160aec2c",
+      "--",
+      "scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh"
+    ],
+    "command": "git diff 5a7dc9ee2dde1dd730dae94afb39f116160aec2c -- scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh",
+    "start": "2026-11-06T00:46:17.839266+00:00",
+    "end": "2026-11-06T00:46:17.851507+00:00",
+    "rc": 0
+  },
+  {
+    "name": "tool-version",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "--version"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl --version",
+    "start": "2026-11-06T00:46:17.851845+00:00",
+    "end": "2026-11-06T00:46:17.856689+00:00",
+    "rc": 0
+  },
+  {
+    "name": "runner-syntax",
+    "argv": [
+      "/bin/bash",
+      "-n",
+      "scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh"
+    ],
+    "command": "/bin/bash -n scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh",
+    "start": "2026-11-06T00:46:17.856947+00:00",
+    "end": "2026-11-06T00:46:17.860786+00:00",
+    "rc": 0
+  },
+  {
+    "name": "pg-status-before",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h06-tier2-pg",
+      "status"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg status",
+    "start": "2026-11-06T00:46:17.861102+00:00",
+    "end": "2026-11-06T00:46:17.865469+00:00",
+    "rc": 3
+  },
+  {
+    "name": "pg-start",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h06-tier2-pg",
+      "-l",
+      "/private/tmp/h06-tier2-r2-evidence/postgres.log",
+      "-w",
+      "-t",
+      "30",
+      "-o",
+      "-p 55432 -h '' -k /private/tmp/h06-tier2-pg -c unix_socket_permissions=0700 -c log_connections=on -c log_disconnections=on",
+      "start"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg -l /private/tmp/h06-tier2-r2-evidence/postgres.log -w -t 30 -o '-p 55432 -h '\"'\"''\"'\"' -k /private/tmp/h06-tier2-pg -c unix_socket_permissions=0700 -c log_connections=on -c log_disconnections=on' start",
+    "start": "2026-11-06T00:46:17.865704+00:00",
+    "end": "2026-11-06T00:46:17.983898+00:00",
+    "rc": 0
+  },
+  {
+    "name": "pg-identity",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/psql",
+      "postgres://postgres@localhost:55432/postgres?host=/private/tmp/h06-tier2-pg",
+      "-XAt",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      "SELECT json_build_object('data_directory', current_setting('data_directory'), 'port', current_setting('port'), 'socket', current_setting('unix_socket_directories'), 'listen_addresses', current_setting('listen_addresses'), 'server_version_num', current_setting('server_version_num'), 'user', current_user, 'is_superuser', current_setting('is_superuser'), 'server_ip', inet_server_addr(), 'database', current_database(), 'databases', (SELECT json_agg(datname ORDER BY datname) FROM pg_database))"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/psql 'postgres://postgres@localhost:55432/postgres?host=/private/tmp/h06-tier2-pg' -XAt -v ON_ERROR_STOP=1 -c 'SELECT json_build_object('\"'\"'data_directory'\"'\"', current_setting('\"'\"'data_directory'\"'\"'), '\"'\"'port'\"'\"', current_setting('\"'\"'port'\"'\"'), '\"'\"'socket'\"'\"', current_setting('\"'\"'unix_socket_directories'\"'\"'), '\"'\"'listen_addresses'\"'\"', current_setting('\"'\"'listen_addresses'\"'\"'), '\"'\"'server_version_num'\"'\"', current_setting('\"'\"'server_version_num'\"'\"'), '\"'\"'user'\"'\"', current_user, '\"'\"'is_superuser'\"'\"', current_setting('\"'\"'is_superuser'\"'\"'), '\"'\"'server_ip'\"'\"', inet_server_addr(), '\"'\"'database'\"'\"', current_database(), '\"'\"'databases'\"'\"', (SELECT json_agg(datname ORDER BY datname) FROM pg_database))'",
+    "start": "2026-11-06T00:46:17.984411+00:00",
+    "end": "2026-11-06T00:46:18.005882+00:00",
+    "rc": 0
+  },
+  {
+    "name": "conformance",
+    "argv": [
+      "/bin/bash",
+      "scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh"
+    ],
+    "command": "/bin/bash scripts/run_trusted_fleet_principal_cutover_v1_conformance.sh",
+    "start": "2026-11-06T00:46:18.006322+00:00",
+    "end": "2026-11-06T00:46:18.434478+00:00",
+    "rc": 3
+  },
+  {
+    "name": "pg-stop",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h06-tier2-pg",
+      "-m",
+      "fast",
+      "-w",
+      "-t",
+      "30",
+      "stop"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg -m fast -w -t 30 stop",
+    "start": "2026-11-06T00:46:18.435245+00:00",
+    "end": "2026-11-06T00:46:18.544511+00:00",
+    "rc": 0
+  },
+  {
+    "name": "pg-status-after",
+    "argv": [
+      "/opt/homebrew/opt/postgresql@16/bin/pg_ctl",
+      "-D",
+      "/private/tmp/h06-tier2-pg",
+      "status"
+    ],
+    "command": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/h06-tier2-pg status",
+    "start": "2026-11-06T00:46:18.544796+00:00",
+    "end": "2026-11-06T00:46:18.549849+00:00",
+    "rc": 3
+  }
+]

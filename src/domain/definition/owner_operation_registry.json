@@ -1,0 +1,134 @@
+[
+  {
+    "descriptor": {
+      "key": "workflow.create_instance",
+      "version": 1,
+      "hash": "c1769e5ff7a0b41d3493405beafdbdce26a1b73cb960e52d5c544a0b658bcb44"
+    },
+    "canonicalInput": {
+      "key": "workflow.create_instance",
+      "version": 1,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "domainId",
+          "definitionVersionId",
+          "contextPayload",
+          "metadata"
+        ],
+        "properties": {
+          "domainId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "definitionVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contextPayload": {},
+          "metadata": {},
+          "externalReference": {
+            "type": "string"
+          },
+          "externalUrl": {
+            "type": "string"
+          },
+          "executionClass": {
+            "type": "string",
+            "enum": [
+              "BUSINESS",
+              "NON_BUSINESS_TEST"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "descriptor": {
+      "key": "workflow.assistance.resolve_current_review",
+      "version": 1,
+      "hash": "92657cb2435928ea84f2b0040606f8fc46d9f464e189aae6e19211e7e2f35a29"
+    },
+    "canonicalInput": {
+      "key": "workflow.assistance.resolve_current_review",
+      "version": 1,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assistanceCaseId",
+          "expectedWorkflowStateVersion",
+          "resolution"
+        ],
+        "properties": {
+          "assistanceCaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedWorkflowStateVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resolution": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "message"
+            ],
+            "properties": {
+              "supportingPayload": {},
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "descriptor": {
+      "key": "workflow.assistance.escalate_to_human",
+      "version": 1,
+      "hash": "86aad94d5dfa3f543278d9e0a5260a1b0bd93ef7e04e2cf66cbaaf45598d08e8"
+    },
+    "canonicalInput": {
+      "key": "workflow.assistance.escalate_to_human",
+      "version": 1,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assistanceCaseId",
+          "expectedWorkflowStateVersion",
+          "escalation"
+        ],
+        "properties": {
+          "assistanceCaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedWorkflowStateVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "escalation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "message"
+            ],
+            "properties": {
+              "supportingPayload": {},
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+]

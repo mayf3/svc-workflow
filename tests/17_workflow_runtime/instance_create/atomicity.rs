@@ -190,7 +190,7 @@ async fn test_exactly_one_event_per_creation() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let count: i64 =
@@ -208,7 +208,7 @@ async fn test_command_id_matches_event() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let count: i64 = sqlx::query_scalar(
@@ -223,7 +223,7 @@ async fn test_deferred_fk_committed_successfully() {
     let (principal_id, domain_id) = seed_principal_domain_with_owner(&pool).await;
     let (_d, ver_id) = seed_published_definition_wf_creator(&pool, domain_id).await;
     let result = create_workflow_instance(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), make_command(principal_id, domain_id, ver_id))
+        crate::common::admitting_gate(), make_command(principal_id, domain_id, ver_id))
         .await
         .expect("create");
     let fk_ok: bool = sqlx::query_scalar(
@@ -251,7 +251,7 @@ async fn test_event_failure_rolls_back_everything() {
 
     let cmd = make_command(principal_id, domain_id, ver_id);
     let err = create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+crate::common::admitting_gate(), cmd).await;
 
     assert!(
         err.is_err(),
@@ -285,7 +285,7 @@ async fn test_infrastructure_failure_no_residual_receipt() {
 
     let cmd = make_command(principal_id, domain_id, ver_id);
     let err = create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+crate::common::admitting_gate(), cmd).await;
 
     assert!(err.is_err(), "infrastructure failure must return error");
 
@@ -313,7 +313,7 @@ async fn test_receipt_completion_failure_rolls_back_all_runtime_facts() {
     let cmd = make_command(principal_id, domain_id, ver_id);
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(&pool,
-svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+crate::common::admitting_gate(), cmd).await;
 
     assert!(
         err.is_err(),
@@ -359,7 +359,7 @@ async fn test_deterministic_failure_no_runtime_facts_left() {
     let cmd = make_command(principal_id, domain_id, ver_id);
     let idem_key = cmd.idempotency_key.clone();
     let err = create_workflow_instance(&pool,
-    svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), cmd).await;
+    crate::common::admitting_gate(), cmd).await;
     assert!(matches!(
         err,
         Err(CreateWorkflowInstanceError::DomainDisabled)

@@ -1,5 +1,12 @@
 # Workflow Query Service Contract v0.1
 
+> Proposed whole-authority successor (discovery only):
+> [WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1](../specs/WORKFLOW_INSTANCE_AUTHORIZED_ACTIONS_V1.md).
+> This candidate carries this complete baseline and an explicit AMENDMENT map;
+> it remains `PENDING_OWNER_EXACT_HEAD_ACCEPTANCE`. This link changes no accepted
+> meaning or current lifecycle. This document remains CURRENT until an accepted
+> atomic whole-authority lifecycle transaction records its successor backlink.
+
 ```text
 Status: CURRENT
 Architecture: svc-workflow v0.3.1

@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-11-07T20:23:50.015066+00:00",
+  "clusters": [
+    {
+      "port": 56589,
+      "identity": "/private/tmp/h1359-r3-pg/data|56589|127.0.0.1|0",
+      "data_directory": "/private/tmp/h1359-r3-pg/data",
+      "stop_rc": 0
+    },
+    {
+      "port": 55432,
+      "identity": "/private/tmp/h1359-r3-pg-55432/data|55432|127.0.0.1|0",
+      "data_directory": "/private/tmp/h1359-r3-pg-55432/data",
+      "stop_rc": 0
+    },
+    {
+      "port": 55483,
+      "identity": "/private/tmp/h1359-r3-pg-55483/data|55483|127.0.0.1|0",
+      "data_directory": "/private/tmp/h1359-r3-pg-55483/data",
+      "stop_rc": 0
+    }
+  ],
+  "data_preserved": true,
+  "existing_services_touched": false
+}

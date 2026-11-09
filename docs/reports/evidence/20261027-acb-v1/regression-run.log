@@ -1,0 +1,26 @@
+# Regression run 2026-10-27, branch codex/workflow-acceptance-impl-20261027 (pre-commit working tree)
+# TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/svc_workflow_acb_impl_27oct (isolated PG16)
+=== cargo test --test 03_context_revision_constraints -- --test-threads=1 ===
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+=== cargo test --test 05_submission_constraints -- --test-threads=1 ===
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+=== cargo test --test 13_definition_service_tests -- --test-threads=1 ===
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+=== cargo test --test 14_definition_lifecycle_tests -- --test-threads=1 ===
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+=== cargo test --test 19_domain_owner_definition_governance -- --test-threads=1 ===
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.72s
+=== cargo test --test 36_execution_control_v1 -- --test-threads=1 ===
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.61s
+=== cargo test --test 17_workflow_runtime -- --test-threads=1 ===
+test result: ok. 451 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 502.36s
+=== cargo test --test 28_visit_activation_v1 -- --test-threads=1 ===
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.98s
+=== cargo test --test 29_model3_authoring_conformance -- --test-threads=1 ===
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.35s
+=== cargo test --test 32_definition_publish_admission -- --test-threads=1 ===
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.18s
+=== cargo test --test 41_acceptance_context_binding_v1 -- --test-threads=1 ===
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.48s
+=== cargo test --lib ===
+test result: ok. 237 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s

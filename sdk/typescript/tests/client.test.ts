@@ -285,3 +285,56 @@ describe('WorkflowClient transport', () => {
     expect(projected).not.toHaveProperty('resolution');
   });
 });
+
+describe('WorkflowClient definition input contract (SVC_WORKFLOW_DEFINITION_INPUT_CONTRACT_MEMBER_READ_V1)', () => {
+  const VERSION_ID = '55555555-5555-4555-8555-555555555555';
+
+  function inputContractResponse() {
+    return {
+      definitionVersionId: VERSION_ID,
+      definitionId: DEFINITION_ID,
+      versionNumber: 1,
+      versionStatus: 'PUBLISHED',
+      contextSchema: { type: 'object', required: ['title'] },
+    };
+  }
+
+  it('GETs the version-keyed input-contract route and parses the five fields', async () => {
+    const fetchImplementation = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      expect(url).toBe(
+        `http://127.0.0.1:8989/internal/v1/definition-versions/${VERSION_ID}/input-contract`,
+      );
+      return response(200, inputContractResponse());
+    });
+    const client = new WorkflowClient({
+      baseUrl: 'http://127.0.0.1:8989',
+      tokenProvider: () => 'test-token',
+      maxAttempts: 1,
+      fetchImplementation,
+    });
+
+    await expect(client.getDefinitionVersionInputContract(VERSION_ID)).resolves.toEqual(
+      inputContractResponse(),
+    );
+  });
+
+  it('rejects payloads carrying management data (strict schema = leak detector)', async () => {
+    const fetchImplementation = vi.fn(async () =>
+      response(200, {
+        ...inputContractResponse(),
+        nodes: [{ nodeKey: 'draft', instructions: 'secret' }],
+      }),
+    );
+    const client = new WorkflowClient({
+      baseUrl: 'http://127.0.0.1:8989',
+      tokenProvider: () => 'test-token',
+      maxAttempts: 1,
+      fetchImplementation,
+    });
+
+    await expect(client.getDefinitionVersionInputContract(VERSION_ID)).rejects.toThrow(
+      WorkflowError,
+    );
+  });
+});

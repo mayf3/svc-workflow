@@ -281,15 +281,14 @@ pub async fn create_domain(
     // 409 domain_identity_conflict before any row is written.
     let domain_id = DomainId::new();
     let domain_uuid = domain_id.into_uuid();
-    let inserted =
-        provisioning_repository::upsert_domain(
-            &mut tx,
-            domain_uuid,
-            &cmd.domain_key,
-            cmd.display_name.as_deref(),
-            cmd.enabled,
-        )
-        .await;
+    let inserted = provisioning_repository::upsert_domain(
+        &mut tx,
+        domain_uuid,
+        &cmd.domain_key,
+        cmd.display_name.as_deref(),
+        cmd.enabled,
+    )
+    .await;
     let result = match inserted {
         Ok(id) => provisioning_repository::establish_domain_owner(&mut tx, id, actor_uuid)
             .await
@@ -723,8 +722,13 @@ pub async fn replace_owner(
         return handle_receipt_result(receipt);
     }
 
-    let result =
-        provisioning_repository::replace_domain_owner(&mut tx, domain_uuid, new_owner_uuid).await;
+    let result = provisioning_repository::replace_domain_owner(
+        &mut tx,
+        domain_uuid,
+        new_owner_uuid,
+        receipt.command_id(),
+    )
+    .await;
 
     let response = match &result {
         Ok(_) => serde_json::json!({"domainId": domain_uuid, "newOwnerId": new_owner_uuid}),

@@ -3,7 +3,7 @@
 //! Fail-closed `GLOBAL_SCHEDULER_READ` gate inside the query snapshot
 //! (CTR-VAI-009); the projection is exactly the v0.4.0 §5.7 minimum record.
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
 
@@ -11,6 +11,13 @@ use crate::auth::AuthenticatedPrincipal;
 use crate::http::error::ApiError;
 use crate::http::handlers::require_scope;
 use crate::http::AppState;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct OwnerAssistanceResumeEvidenceQuery {
+    previous_attempt_id: Option<String>,
+    pre_delivery_workflow_state_version: Option<String>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +39,78 @@ pub(crate) async fn list_due(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_scope(&principal, "workflow.read")?;
 
+    let (limit, cursor) = parse_query(&query)?;
+    let intents = state
+        .query_service
+        .list_due_dispatch_intents(principal.principal_id.into_uuid(), limit, cursor)
+        .await
+        .map_err(ApiError::from_query)?;
+
+    Ok(Json(serde_json::json!({ "items": intents })))
+}
+
+pub(crate) async fn owner_assistance_resume_evidence(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Path(dispatch_intent_id): Path<String>,
+    Query(query): Query<OwnerAssistanceResumeEvidenceQuery>,
+) -> Result<Json<crate::http::dto::OwnerAssistanceResumeEvidenceEnvelope>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    crate::http::handlers::definitions::require_direct_token(&principal)?;
+
+    let dispatch_intent_id = uuid::Uuid::parse_str(&dispatch_intent_id).map_err(|_| {
+        ApiError::bad_request("invalid_path_parameter", "dispatchIntentId must be a UUID")
+    })?;
+    let previous_attempt_id = query.previous_attempt_id.ok_or_else(|| {
+        ApiError::unprocessable(
+            "invalid_query_parameter",
+            "previousAttemptId is required and must be non-empty",
+        )
+    })?;
+    if previous_attempt_id.is_empty() {
+        return Err(ApiError::unprocessable(
+            "invalid_query_parameter",
+            "previousAttemptId is required and must be non-empty",
+        ));
+    }
+    let pre_delivery_workflow_state_version = query
+        .pre_delivery_workflow_state_version
+        .as_deref()
+        .and_then(|value| value.parse::<i32>().ok())
+        .ok_or_else(|| {
+            ApiError::unprocessable(
+                "invalid_query_parameter",
+                "preDeliveryWorkflowStateVersion must be an integer",
+            )
+        })?;
+
+    let evidence = state
+        .query_service
+        .get_owner_assistance_resume_evidence(
+            principal.principal_id.into_uuid(),
+            dispatch_intent_id,
+            &previous_attempt_id,
+            pre_delivery_workflow_state_version,
+        )
+        .await
+        .map_err(ApiError::from_query)?
+        .map(crate::http::dto::OwnerAssistanceResumeEvidenceDto::try_from)
+        .transpose()
+        .map_err(|_| {
+            ApiError::service_unavailable(
+                "service_unavailable",
+                "stored owner-assistance evidence is inconsistent",
+            )
+        })?;
+
+    Ok(Json(
+        crate::http::dto::OwnerAssistanceResumeEvidenceEnvelope { evidence },
+    ))
+}
+
+fn parse_query(
+    query: &DueDispatchIntentsQuery,
+) -> Result<(i64, Option<(chrono::DateTime<chrono::Utc>, uuid::Uuid)>), ApiError> {
     let limit = query.limit.unwrap_or(50);
     if !(1..=100).contains(&limit) {
         return Err(ApiError::unprocessable(
@@ -72,11 +151,23 @@ pub(crate) async fn list_due(
         }
     };
 
-    let intents = state
-        .query_service
-        .list_due_dispatch_intents(principal.principal_id.into_uuid(), limit, cursor)
-        .await
-        .map_err(ApiError::from_query)?;
-
-    Ok(Json(serde_json::json!({ "items": intents })))
+    Ok((limit, cursor))
+}
+pub(crate) async fn list_ready(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+    Query(query): Query<DueDispatchIntentsQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    require_scope(&principal, "workflow.read")?;
+    crate::http::handlers::definitions::require_direct_token(&principal)?;
+    let (limit, cursor) = parse_query(&query)?;
+    let items = crate::store::postgres::workflow_instance_repository::query_ready_intents::list(
+        &state.pool,
+        principal.principal_id.into_uuid(),
+        limit,
+        cursor,
+    )
+    .await
+    .map_err(ApiError::from_query)?;
+    Ok(Json(serde_json::json!({"items":items})))
 }

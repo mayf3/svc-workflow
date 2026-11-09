@@ -1,0 +1,4 @@
+OWNED_CLUSTER /private/tmp/h1359-r3-pg-55432/data|55432|127.0.0.1|0
+waiting for server to shut down.... done
+server stopped
+rc=0

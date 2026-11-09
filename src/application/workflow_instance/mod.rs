@@ -7,8 +7,10 @@ pub mod admin_recovery;
 pub mod admin_repair;
 pub mod archive;
 pub mod assistance;
+pub mod authorized_actions;
 pub mod cancel;
 pub mod create;
+pub mod current_task_input;
 /// Canonical work-eligibility classification shared by read projections
 /// (SVC_WORKFLOW_WORK_ELIGIBILITY_PROJECTION_V1).
 pub mod eligibility;

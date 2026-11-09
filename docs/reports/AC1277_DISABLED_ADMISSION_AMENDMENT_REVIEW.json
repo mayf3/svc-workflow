@@ -1,0 +1,186 @@
+{
+  "schema_version": 2,
+  "reviewKind": "INDEPENDENT_EXACT_HEAD_SEMANTIC_AMENDMENT",
+  "reviewer": "/root/handoff_audit",
+  "author": "/root",
+  "independence": "Reviewer authored no product/spec/source/test changes; this new review receipt is the only review write.",
+  "evaluationTimeUtc": "2026-10-31T00:55:54.834674+00:00",
+  "targetRepository": "mayf3/svc-workflow",
+  "worktree": "/tmp/ac1277-svc-spec",
+  "head": "bd2f0c8d735f512afafccf9393c946de3a948526",
+  "tree": "8b6e6828cb6f5e0a5f902c284553de580bb963c8",
+  "base": "35c3b685db4ac91bc7a216d840fcf19a0fa1a890",
+  "candidateClean": true,
+  "affectedPaths": [
+    "docs/specs/SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2.md"
+  ],
+  "scope": "Only the added CTR-CIR-003-DISABLED subsection in accepted CIR V2; documentation-only acceptance of disabled-target rejection and existing explicit handling boundaries.",
+  "governingRuling": {
+    "url": "https://github.com/mayf3/agent-control/issues/1277#issuecomment-6536769590",
+    "commentId": 6536769590,
+    "issuer": "mayf3",
+    "updatedAt": "2026-10-31T00:51:16Z",
+    "bodySha256": "4339e3af6a6789af8d92ef1c19b1ce8646553d5e59f82e55abda92fbdaaa1956",
+    "acceptanceDelegation": "Owner explicitly directs finite V2 subsection amendment; accepted after independent non-author review."
+  },
+  "coordinates": {
+    "specPath": "docs/specs/SVC_WORKFLOW_CANONICAL_IDENTITY_RECONCILIATION_V2.md",
+    "baseSpecSha256": "8d873a72c6d231b5eff689d2f26e0ba6039af638b67216951657a51198c63e5f",
+    "candidateSpecSha256": "6f118d5ace7643e51b933b04daceab4aa8623710949f8ea5123cb749e079048c",
+    "insertedSubsectionSha256": "e395d4794e0f8d7bd98af83b4e9068ddd25ab849ca4804ad38db01ca6b27067d",
+    "insertedLineCount": 36,
+    "outsideInsertedSubsectionByteIdentical": true,
+    "frontmatterByteIdentical": true,
+    "externalAuthorityPinsByteIdentical": true,
+    "frozenScopePath": "docs/evidence/workflow-canonical-identity-reconciliation-v1/scope.json",
+    "frozenScopeSha256": "99e35b9b64275787e8516d7df4cefa7e147e6a940b68e3b69c4c89652b1338c0",
+    "frozenScopeByteIdentical": true,
+    "unacceptedV3AbsentFromFinalTree": true,
+    "parentAuthorities": [
+      {
+        "path": "docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V13.md",
+        "revision": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "646271316ac20804d0b1375b7a7bd1e35eff8c545bc2fd71e60eaa477a99726b",
+        "unchangedFromBase": true,
+        "declaredStatus": "accepted"
+      },
+      {
+        "path": "docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_7.md",
+        "revision": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "59ea63c105c04ac314c63bf2ede774455c33040ada80f728afe9b60a50bb9024",
+        "unchangedFromBase": true,
+        "declaredStatus": "accepted"
+      }
+    ],
+    "currentCoreCapability": {
+      "path": "docs/specs/AGENT_CORE_WORKFLOW_ASSIGNEE_TRANSITION_CAPABILITY_V3.md",
+      "head": "ca18b7176cea0f66f14b825a6fd4b47bfcef577d",
+      "sha256": "62d85acb81a94cbc0c56047264cb575a95a595c1403be4b004e05a2153d9e063",
+      "declaredStatus": "accepted",
+      "relation": "Current accepted successor of ruling historical V1 reference; no new transfer API inferred."
+    }
+  },
+  "checks": {
+    "AUTHORITY_REVIEW": {
+      "verdict": "PASS",
+      "observations": [
+        "Fresh owner issue ruling selects fail-closed disabled canonical identity plus explicit existing transfer/park handling and explicitly authorizes additive V2 subsection and acceptance on non-author PASS.",
+        "CIR V2 is accepted with contracts implementation authority; active Product V13/Architecture V0.4.7 remain unchanged and preserve exact owner/assignee, transaction, immutability and request identities.",
+        "Strictly additive DA contract IDs clarify an already rejected disabled target; no changed accepted bytes, supersession, grant, migration membership or broad canonical-write decision.",
+        "Current DSH Capability V3 retains server-side authorization and no arbitrary assignment capability. This amendment names only existing independently authorized lifecycle paths."
+      ]
+    },
+    "PRIMITIVE_BOUNDARY_REVIEW": {
+      "verdict": "PASS",
+      "observations": [
+        "Auth principal status and Agent Definition enabled state remain separate authoritative observations; neither Workflow projection nor alias/name implies proof.",
+        "A typed admission rejection is distinct from existing current work, historical identity, actual caller, grant and migration provenance.",
+        "Disabled target is expressly not an admission deployment-configuration decision; this review does not resolve unrelated dormant-mode or Q-write/P-persist behavior.",
+        "Successor/park is an explicit action through a pre-existing authorized transaction, repair or assistance seam, not a new primitive, endpoint, mapping or permission."
+      ]
+    },
+    "CONTRACT_REVIEW": {
+      "verdict": "PASS",
+      "observations": [
+        "DA-001 matches ruling: either Auth disabled or Agent disabled rejects new admission with ADMISSION_TARGET_DISABLED class and no silent successor, alias or orphan substitution.",
+        "Inherited missing/revoked/noncanonical/ambiguous/unavailable proof remains fail-closed; existing admission zero-delta transaction/receipt rollback is preserved. Existing 31_admission_wiring.rs documents and asserts receipt rollback on create/transition/revise admission denial.",
+        "DA-002 preserves existing work/history, exact role/state/CAS/request checks, immutable migration origin and UNKNOWN request/result recovery before another mutation.",
+        "No transfer success is promised where an existing authorized path is unavailable; no assignment endpoint, grant inheritance or frozen-scope enlargement is introduced."
+      ]
+    },
+    "ACCEPTANCE_COVERAGE_REVIEW": {
+      "verdict": "PASS",
+      "observations": [
+        "ACC-CIR-DA-001 covers both distinct authoritative disabled states, explicit typed rejection, write-path/HTTP fixtures and zero before/after business/receipt deltas.",
+        "ACC-CIR-DA-002 covers existing Visit/history visibility, immutable digest, no implicit movement or grant, existing explicit handling/replay and UNKNOWN duplicate prevention.",
+        "Rows are test definitions only; no changed-behavior execution or T1 implementation conformance is claimed by this docs review. Existing T0 tests/review remain unchanged evidence at their original coordinates."
+      ]
+    },
+    "MANDATE_SCOPE_REVIEW": {
+      "verdict": "PASS",
+      "observations": [
+        "Exact final diff is one accepted V2 file with only a 36-line inserted subsection, as owner directed. Unaccepted V3 is absent.",
+        "All old accepted bytes, three external pins, frozen scope JSON, Product and Architecture files are unchanged.",
+        "This review reads local Git/files and owner GitHub comment only; it performs no product edit, test run, DB access, production read/write, deployment, credential/grant/session operation or real business transition.",
+        "The acceptance does not activate historical conditional production apply authority or authorize a new operator membership; source implementation must consume accepted documentation separately."
+      ]
+    },
+    "EVIDENCE_REVIEWABILITY": {
+      "verdict": "PASS",
+      "observations": [
+        "Exact head/tree and SHA-256 values are computed from immutable Git objects and checked against clean working tree.",
+        "Removing only the inserted subsection recreates the entire base spec byte-for-byte; Git changed-path set contains only the expected V2 path.",
+        "Owner comment was freshly read through gh api and bound by issuer, ID, updated time and body hash.",
+        "Known legacy Architecture-ID schema debt is unchanged because frontmatter and governance/schema files are unchanged. No full frontmatter syntax PASS is claimed or required to be invented by this semantic acceptance ruling."
+      ]
+    }
+  },
+  "findings": [
+    {
+      "id": "TD-NW-001",
+      "kind": "TOOLING_DEBT",
+      "status": "UNCHANGED",
+      "affectedReadiness": {
+        "boundedAmendmentSemanticAcceptance": "NOT_BLOCKED",
+        "fullFrontmatterSyntaxPass": "NO"
+      },
+      "source": ".agents/schemas/spec-frontmatter.schema.json; original R2 t1-spec-validation.json",
+      "observation": "Unchanged accepted V2 governed_by contains SVC_WORKFLOW_ARCHITECTURE_V0_4_1, which stock strict _V[0-9]+ reference validation rejects. No architecture rename, schema change or waiver is performed.",
+      "disposition": "Preserve historical comparative failure; do not relabel syntax as PASS or turn unchanged debt into a new semantic product blocker against explicit finite Owner acceptance."
+    }
+  ],
+  "blockers": [],
+  "SPEC_COMPLIANCE": "PASS_BOUNDED_DISABLED_TARGET_AMENDMENT",
+  "verdict": "PASS",
+  "acceptanceEffect": "The exact reviewed amendment is accepted under owner ruling comment 6536769590 upon this independent non-author PASS; author may record lifecycle/provenance only and obtain final-head delta recheck.",
+  "readiness": {
+    "semanticAmendmentAcceptedUnderOwnerRuling": "YES",
+    "readyForLifecycleFinalize": "YES",
+    "effectiveInImplementationBase": "NO_UNTIL_DOCS_MERGE_OR_ACCEPTED_PARENT_IN_BASE",
+    "sourceImplementationConformance": "NOT_TESTED",
+    "T1Complete": "NO",
+    "productionOperationAllowed": "NO"
+  },
+  "nextAction": "Author records accepted amendment lifecycle/provenance only, then reviewer rechecks exact final-head delta. Separately accepted/base documentation precedes changed source/tests.",
+  "executionLimits": {
+    "behaviorTestsRun": false,
+    "productEdits": 0,
+    "productionAccess": false,
+    "databaseAccess": false,
+    "productionChanges": 0
+  },
+  "receiptBoundaryRecheck": {
+    "verdict": "PASS_NO_NEW_RECEIPT_LIFECYCLE_POLICY",
+    "reason": "DA-001 applies only to its new-admission rejection; current admission source and regression definitions already require no persisted failure receipt. Ordinary DSH deterministic failures and their durable receipts remain unchanged. Original UNKNOWN still requires reconciliation, and a definitive rolled-back admission failure is not relabeled UNKNOWN.",
+    "evidence": [
+      {
+        "path": "src/store/postgres/admission_gate.rs",
+        "lines": "12-16",
+        "head": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "639f504aa26169b1b1627149ea76af6c92138cba9064e2a3cb16a05b1d691907",
+        "observation": "Explicit existing admission exception: rollback the committing transaction and no deterministic failure receipt."
+      },
+      {
+        "path": "src/store/postgres/workflow_instance_repository/transition_transaction.rs",
+        "lines": "709-724",
+        "head": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "ac22a0c233f4c9bf2fbec7bf883faff50c08bcba04d2acf43775d0de635bb59f",
+        "observation": "AdmissionFailed propagates through ? before business facts; the ordinary deterministic_failure! seam is not used for admission rejection."
+      },
+      {
+        "path": "tests/31_admission_wiring.rs",
+        "lines": "575-577;693-695",
+        "head": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "4f2d01bd7e8334b7dfcd3ca57b1dc968bab828e7dab78a0dc908be13d3bb48af",
+        "observation": "Existing create and transition disabled-principal cases require receipt rollback and same-key readmission after a definitive zero-delta rejection."
+      },
+      {
+        "path": "tests/32_definition_publish_admission.rs",
+        "lines": "587-590",
+        "head": "bd2f0c8d735f512afafccf9393c946de3a948526",
+        "sha256": "14d5d25ccc1faefd3d6915925964d97ab6071f1731f5dbb02fe3c7b8a95ce341",
+        "observation": "Existing publish admission denial requires receipt rollback, not stored deterministic negative."
+      }
+    ]
+  }
+}

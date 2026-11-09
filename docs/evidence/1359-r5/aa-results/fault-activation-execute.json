@@ -1,0 +1,9 @@
+{
+  "response": {
+    "error": {
+      "code": "internal_consistency_error",
+      "message": "internal consistency error"
+    }
+  },
+  "status": 500
+}

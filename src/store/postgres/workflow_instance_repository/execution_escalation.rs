@@ -77,6 +77,9 @@ pub(crate) async fn open_owner_pending_visit_tx(
     let payload_digest = digest::compute_json_digest(&request_payload)
         .map_err(AssistanceError::InternalConsistency)?;
 
+    super::owner_obligation::intents::fence(tx, workflow_instance_id)
+        .await
+        .map_err(storage)?;
     // Lock the instance row (same discipline as the assistance commands).
     let instance: Option<(
         Uuid,
@@ -145,6 +148,15 @@ pub(crate) async fn open_owner_pending_visit_tx(
     .map_err(storage)?;
     let owner_principal_id = owner_principal_id.ok_or(AssistanceError::DomainOwnerMissing)?;
 
+    let managed_stop = super::owner_obligation::intents::policy_escalation(
+        tx,
+        workflow_instance_id,
+        node_visit_id,
+        command_id,
+        &supporting_payload,
+    )
+    .await?;
+
     // Idempotency: an open case on this visit replays as escalated=false.
     let existing: Option<Uuid> = sqlx::query_scalar(
         "SELECT assistance_case_id FROM workflow_assistance_cases
@@ -174,9 +186,9 @@ pub(crate) async fn open_owner_pending_visit_tx(
     let receipt_digest =
         digest::compute_json_digest(&body_json).map_err(AssistanceError::InternalConsistency)?;
     let request_receipt_id = Uuid::new_v4();
-    for (receipt_id, command_type, idem_suffix) in [
-        (request_receipt_id, "REQUEST_WORKFLOW_ASSISTANCE", "req"),
-    ] {
+    for (receipt_id, command_type, idem_suffix) in
+        [(request_receipt_id, "REQUEST_WORKFLOW_ASSISTANCE", "req")]
+    {
         sqlx::query(
             "INSERT INTO workflow_command_receipts
                  (command_id, principal_id, idempotency_key, command_type, request_hash, receipt_status)
@@ -294,16 +306,20 @@ pub(crate) async fn open_owner_pending_visit_tx(
         .and_then(|value| value.get("reason"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or("OWNER_ATTENTION_REQUIRED");
-    super::super::outbox::queue_owner_assistance_wake(
-        tx,
-        workflow_instance_id,
-        node_visit_id,
-        case_id,
-        owner_principal_id,
-        wake_reason,
-    )
-    .await
-    .map_err(storage)?;
+    if !managed_stop
+        && !super::owner_obligation::intents::request(tx, case_id, request_receipt_id).await?
+    {
+        super::super::outbox::queue_owner_assistance_wake(
+            tx,
+            workflow_instance_id,
+            node_visit_id,
+            case_id,
+            owner_principal_id,
+            wake_reason,
+        )
+        .await
+        .map_err(storage)?;
+    }
 
     Ok(PolicyEscalationOutcome {
         assistance_case_id: case_id,
@@ -455,6 +471,37 @@ pub(crate) async fn system_execution_escalation(
     .await?
     {
         Receipt::Owned(command_id) => {
+            // CTR-WPE-004: this store gate also protects non-HTTP callers.
+            if crate::store::postgres::write_path_enabled::principal_enabled(
+                &mut tx,
+                command.principal_id,
+            )
+            .await
+            .map_err(storage)?
+                != Some(true)
+            {
+                let error = AssistanceError::PrincipalDisabled;
+                let body = super::assistance_transaction::error_body(&error);
+                crate::store::postgres::write_path_enabled::audit_denial(
+                    &mut tx,
+                    command_id,
+                    error.code(),
+                    &serde_json::json!({
+                        "workflowInstanceId": command.workflow_instance_id,
+                        "checkedPrincipalId": command.principal_id, "checkObject": "actor"
+                    }),
+                )
+                .await
+                .map_err(storage)?;
+                complete_receipt(&mut tx, command_id, 403, &body).await?;
+                crate::store::postgres::write_path_enabled::verify_denial_receipt(
+                    &mut tx, command_id, 403, &body,
+                )
+                .await
+                .map_err(storage)?;
+                tx.commit().await.map_err(storage)?;
+                return Err(error);
+            }
             let outcome = escalate_and_project(&mut tx, command_id, &command).await?;
             let body = serde_json::to_value(&outcome)
                 .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
@@ -462,12 +509,24 @@ pub(crate) async fn system_execution_escalation(
             tx.commit().await.map_err(storage)?;
             Ok(outcome)
         }
-        Receipt::Replay(_status, body) => {
-            let mut outcome: SystemEscalationOutcome = serde_json::from_value(body).map_err(|e| {
-                AssistanceError::InternalConsistency(format!(
-                    "escalation replay body mismatch: {e}"
-                ))
-            })?;
+        Receipt::Replay(status, body) => {
+            if status != 200 {
+                tx.commit().await.map_err(storage)?;
+                return Err(if status == 403 && body["error"] == "principal_disabled" {
+                    AssistanceError::PrincipalDisabled
+                } else {
+                    AssistanceError::InternalConsistency(format!(
+                        "unknown replayed assistance failure: status={status}, code={}",
+                        body["error"]
+                    ))
+                });
+            }
+            let mut outcome: SystemEscalationOutcome =
+                serde_json::from_value(body).map_err(|e| {
+                    AssistanceError::InternalConsistency(format!(
+                        "escalation replay body mismatch: {e}"
+                    ))
+                })?;
             // Pre-owner-attention receipts do not carry ownerPrincipalId. Enrich
             // the replay from current authoritative Domain bindings without
             // mutating the historical receipt.

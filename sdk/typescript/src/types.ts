@@ -7,6 +7,7 @@ import type {
   assistanceCommandResponseSchema,
   assistanceInboxQuerySchema,
   archiveDefinitionResponseSchema,
+  authorizedActionV1Schema,
   createDefinitionRequestSchema,
   createDefinitionResponseSchema,
   createDraftVersionRequestSchema,
@@ -14,7 +15,9 @@ import type {
   createWorkflowInstanceRequestSchema,
   createWorkflowInstanceResponseSchema,
   creatorDraftPageSchema,
+  currentTaskTypeV1Schema,
   definitionDetailResponseSchema,
+  definitionInputContractResponseSchema,
   definitionItemSchema,
   definitionListPageSchema,
   definitionListQuerySchema,
@@ -26,6 +29,7 @@ import type {
   executeWorkflowTransitionResponseSchema,
   humanRequiredAssistancePageSchema,
   humanRequiredAssistanceQuerySchema,
+  instanceDetailWithAuthorizedActionsV1Schema,
   memberAddResponseSchema,
   memberItemSchema,
   memberListPageSchema,
@@ -80,6 +84,11 @@ export type ExecuteWorkflowTransitionResponse = z.infer<
 export type WorkflowInstanceDetailResponse = z.infer<
   typeof workflowInstanceDetailResponseSchema
 >;
+export type AuthorizedActionV1 = z.infer<typeof authorizedActionV1Schema>;
+export type CurrentTaskTypeV1 = z.infer<typeof currentTaskTypeV1Schema>;
+export type InstanceDetailWithAuthorizedActionsV1 = z.infer<
+  typeof instanceDetailWithAuthorizedActionsV1Schema
+>;
 export type TimelineQuery = z.infer<typeof timelineQuerySchema>;
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>;
 export type WorklistQuery = z.infer<typeof worklistQuerySchema>;
@@ -98,6 +107,7 @@ export type MemberRemoveResponse = z.infer<typeof memberRemoveResponseSchema>;
 export type DefinitionItem = z.infer<typeof definitionItemSchema>;
 export type DefinitionVersionSummary = z.infer<typeof definitionVersionSummarySchema>;
 export type DefinitionDetailResponse = z.infer<typeof definitionDetailResponseSchema>;
+export type DefinitionInputContractResponse = z.infer<typeof definitionInputContractResponseSchema>;
 export type DefinitionListPage = z.infer<typeof definitionListPageSchema>;
 export type DefinitionListQuery = z.infer<typeof definitionListQuerySchema>;
 export type CreateDefinitionRequest = z.infer<typeof createDefinitionRequestSchema>;

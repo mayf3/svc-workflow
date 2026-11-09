@@ -118,6 +118,7 @@ pub(super) async fn update_instance(
         UPDATE workflow_instances
         SET current_context_revision_id = $1,
             current_node_visit_id = $2,
+            updated_at = now(),
             workflow_state_version = $3
         WHERE workflow_instance_id = $4
           AND workflow_state_version = $5

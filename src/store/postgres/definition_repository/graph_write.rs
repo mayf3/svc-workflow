@@ -13,7 +13,8 @@
 //! `DefinitionService::publish_version`).
 
 use crate::domain::definition::error::DefinitionError;
-use crate::domain::definition::model::{NodeDefinition, TransitionDefinition};
+use crate::domain::definition::model::{NodeDefinition, TransitionDefinition, WorkflowGraph};
+use crate::domain::definition::{graph, owner_authoring, owner_obligation};
 
 use super::error_mapping::map_db_error;
 use super::PgDefinitionRepository;
@@ -37,19 +38,63 @@ impl PgDefinitionRepository {
         let mut tx = self.pool.begin().await.map_err(map_db_error)?;
 
         // Lock version and verify DRAFT
-        let version: Option<(String,)> = sqlx::query_as(
-            "SELECT version_status::TEXT FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
+        let version: Option<(String, i16, Option<serde_json::Value>)> = sqlx::query_as(
+            "SELECT version_status::TEXT, semantic_model_version, context_schema FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE",
         )
         .bind(version_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(map_db_error)?;
 
-        match version {
-            None => return Err(DefinitionError::DefinitionVersionNotFound),
-            Some((status,)) if status != "DRAFT" => return Err(DefinitionError::VersionNotDraft),
-            _ => {}
+        let (status, model, stored_schema) =
+            version.ok_or(DefinitionError::DefinitionVersionNotFound)?;
+        if status != "DRAFT" {
+            return Err(DefinitionError::VersionNotDraft);
         }
+
+        // CTR-ONR-002/003: canonical read-edit must use this locked DRAFT,
+        // never the application's earlier read or an unrelated Version.
+        let mut canonical_nodes = nodes.to_vec();
+        if owner_authoring::affected(nodes) {
+            let old_keys: Vec<(uuid::Uuid, String)> = sqlx::query_as(
+                "SELECT node_id, node_key FROM workflow_node_definitions WHERE definition_version_id=$1",
+            )
+            .bind(version_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(map_db_error)?;
+            owner_authoring::normalize(&mut canonical_nodes, &old_keys)
+                .map_err(DefinitionError::GraphValidationFailed)?;
+            let effective_schema = match context_schema {
+                None => stored_schema,
+                Some(s) if s.is_null() => None,
+                Some(s) => Some(s.clone()),
+            };
+            let canonical = WorkflowGraph {
+                nodes: canonical_nodes.clone(),
+                transitions: transitions.to_vec(),
+                context_schema: effective_schema,
+            };
+            let mut errors = match model {
+                1 => graph::validate_graph(&canonical),
+                2 => graph::validate_minimal_graph(&canonical),
+                3 => graph::validate_visit_activation_graph(&canonical),
+                _ => {
+                    return Err(DefinitionError::StorageError(
+                        "invalid semantic model".into(),
+                    ))
+                }
+            }
+            .errors;
+            errors.extend(crate::application::definition::validate_graph_schemas(
+                &canonical,
+            ));
+            errors.extend(owner_obligation::validate(model, &canonical));
+            if !errors.is_empty() {
+                return Err(DefinitionError::GraphValidationFailed(errors));
+            }
+        }
+        let nodes = &canonical_nodes;
 
         // Delete old transitions first (FK to nodes)
         sqlx::query("DELETE FROM workflow_transition_definitions WHERE definition_version_id = $1")

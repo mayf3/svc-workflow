@@ -201,6 +201,12 @@ impl From<ExecuteWorkflowTransitionError> for ReviseContextAndTransitionError {
             ExecuteWorkflowTransitionError::TransitionNotApplicable(detail) => {
                 Self::TransitionNotApplicable(detail)
             }
+            ExecuteWorkflowTransitionError::ContextValidationFailed(detail) => {
+                Self::ContextValidationFailed(detail)
+            }
+            ExecuteWorkflowTransitionError::InvalidInput(detail) => {
+                Self::InternalConsistency(detail)
+            }
             ExecuteWorkflowTransitionError::SubmissionRequired => {
                 Self::SubmissionValidationFailed("submission payload is required".to_string())
             }

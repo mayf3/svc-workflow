@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-11-07T18:28:18.617019+00:00",
+  "clusters": [
+    {
+      "port": 56485,
+      "identity": "/private/tmp/h1359-r2-pg/data|56485|127.0.0.1|0",
+      "expected_data_directory": "/private/tmp/h1359-r2-pg/data",
+      "stop_rc": 0
+    },
+    {
+      "port": 55432,
+      "identity": "/private/tmp/h1359-r2-pg-55432/data|55432|127.0.0.1|0",
+      "expected_data_directory": "/private/tmp/h1359-r2-pg-55432/data",
+      "stop_rc": 0
+    },
+    {
+      "port": 55483,
+      "identity": "/private/tmp/h1359-r2-pg-55483/data|55483|127.0.0.1|0",
+      "expected_data_directory": "/private/tmp/h1359-r2-pg-55483/data",
+      "stop_rc": 0
+    }
+  ],
+  "data_preserved": true,
+  "external_postgresql_touched": false
+}

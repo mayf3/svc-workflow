@@ -1,0 +1,15 @@
+2026-11-06 08:42:09.792 CST [16023] LOG:  starting PostgreSQL 16.15 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.1.1.101), 64-bit
+2026-11-06 08:42:09.793 CST [16023] LOG:  listening on IPv6 address "::1", port 55432
+2026-11-06 08:42:09.793 CST [16023] LOG:  could not bind IPv4 address "127.0.0.1": Address already in use
+2026-11-06 08:42:09.793 CST [16023] HINT:  Is another postmaster already running on port 55432? If not, wait a few seconds and retry.
+2026-11-06 08:42:09.793 CST [16023] LOG:  listening on Unix socket "/private/tmp/h06-tier2-pg/.s.PGSQL.55432"
+2026-11-06 08:42:09.795 CST [16026] LOG:  database system was shut down at 2026-11-06 08:31:18 CST
+2026-11-06 08:42:09.798 CST [16023] LOG:  database system is ready to accept connections
+2026-11-06 08:42:12.921 CST [16050] FATAL:  role "yanfenma" does not exist
+2026-11-06 08:42:31.003 CST [16023] LOG:  received fast shutdown request
+2026-11-06 08:42:31.003 CST [16023] LOG:  aborting any active transactions
+2026-11-06 08:42:31.004 CST [16023] LOG:  background worker "logical replication launcher" (PID 16029) exited with exit code 1
+2026-11-06 08:42:31.004 CST [16024] LOG:  shutting down
+2026-11-06 08:42:31.004 CST [16024] LOG:  checkpoint starting: shutdown immediate
+2026-11-06 08:42:31.005 CST [16024] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.001 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/151DB68, redo lsn=0/151DB68
+2026-11-06 08:42:31.006 CST [16023] LOG:  database system is shut down

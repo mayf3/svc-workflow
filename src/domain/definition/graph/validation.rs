@@ -83,6 +83,52 @@ pub(super) fn validate_node_rules<'a>(
     (draft_nodes, terminal_nodes)
 }
 
+
+/// Validate failure-path coverage (READY_CONTRACT enforcement, 2026-10-26
+/// owner decision; fleet evidence: 6 of 8 stalled TASK nodes had RET:0/HR:0
+/// exits — agents then had no formal place to record blocked/missing-input
+/// outcomes and stalled, e.g. adc-backend-dev dev_self_check).
+///
+/// Every non-DRAFT, non-TERMINAL node must have at least one outgoing
+/// transition whose effect is RETURN or TERMINATE. ADVANCE-only nodes make
+/// "evidence missing" / "input missing" outcomes unrepresentable: the graph
+/// only encodes the happy path.
+///
+/// Legacy escape hatch: a node MAY declare metadata.readyContractExempt=true
+/// (explicit per-node exemption, audited) — e.g. intake nodes whose only
+/// legitimate outcome is human follow-up outside the workflow.
+pub(super) fn validate_failure_path_coverage(
+    graph: &WorkflowGraph,
+    errors: &mut Vec<GraphValidationError>,
+) {
+    for node in &graph.nodes {
+        if node.node_type == NodeType::DRAFT || node.node_type == NodeType::TERMINAL {
+            continue;
+        }
+        if node
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("readyContractExempt"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let has_failure_exit = graph.transitions.iter().any(|t| {
+            matches!(t.transition_effect, crate::domain::enums::TransitionEffect::Return | crate::domain::enums::TransitionEffect::Terminate)
+        });
+        if !has_failure_exit {
+            errors.push(GraphValidationError::new(
+                "NO_FAILURE_EXIT",
+                format!(
+                    "TASK node '{}' has no RETURN or TERMINATE outgoing transition; every execution node must define a failure path (evidence/input missing → RETURN to upstream, external blocker → HUMAN_REQUIRED/TERMINATE). Add one, or set metadata.readyContractExempt=true to record an explicit exemption.",
+                    node.node_key
+                ),
+            ));
+        }
+    }
+}
+
 /// Validate that all nodes are reachable from DRAFT via directed edges (H-1).
 pub(super) fn validate_directed_reachability(
     graph: &WorkflowGraph,

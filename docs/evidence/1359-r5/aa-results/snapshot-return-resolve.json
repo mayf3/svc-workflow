@@ -1,0 +1,20 @@
+{
+  "method": "POST",
+  "path": "/internal/v1/assistance-cases/3bdaacb5-e2fb-4aad-a878-a0c077e75095/resolve",
+  "request": {
+    "expectedWorkflowStateVersion": 8,
+    "resolution": {
+      "message": "real Owner resolution of RETURN cap case"
+    }
+  },
+  "response": {
+    "assistanceCaseId": "3bdaacb5-e2fb-4aad-a878-a0c077e75095",
+    "createdAt": "2026-11-07T21:00:47.052609Z",
+    "eventSequence": 9,
+    "nodeVisitId": "8e1220da-42ba-4571-8e08-58880fdd1957",
+    "status": "RESOLVED",
+    "workflowInstanceId": "a96afa25-30e4-41bb-a9c7-8431240a4044",
+    "workflowStateVersion": 9
+  },
+  "status": 200
+}

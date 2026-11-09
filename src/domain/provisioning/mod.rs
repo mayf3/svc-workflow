@@ -59,6 +59,20 @@ pub const GLOBAL_WORKFLOW_READER_ROLE: &str = "GLOBAL_WORKFLOW_READER";
 /// stays with the separately gated provisioning authority.
 pub const GLOBAL_SCHEDULER_READ_ROLE: &str = "GLOBAL_SCHEDULER_READ";
 
+/// The read-only cross-domain governance-audit role (2026-10-22 owner
+/// decision; mayf3/svc-workflow#80).
+///
+/// Holders get FULL read visibility across all enabled domains — instance
+/// detail, timeline, context revisions, node visits and submission history
+/// (via the `classify_visibility` auditor branch), plus published
+/// definition/version reads and the global instance summary list. It gates
+/// ONLY reads: transitions, draft edits, publish/archive, cancel,
+/// membership, owner replacement and provisioning stay gated exactly as for
+/// a role-less principal. Deliberately distinct from
+/// GLOBAL_WORKFLOW_READER (summaries only) so existing READER holders'
+/// powers never change.
+pub const GLOBAL_WORKFLOW_AUDITOR_ROLE: &str = "GLOBAL_WORKFLOW_AUDITOR";
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------

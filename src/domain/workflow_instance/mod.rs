@@ -10,3 +10,5 @@ pub mod errors;
 pub mod events;
 pub mod import;
 pub mod recovery;
+
+pub mod governance_child;

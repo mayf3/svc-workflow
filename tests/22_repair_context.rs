@@ -321,7 +321,7 @@ async fn apply_appends_revision_event_and_audit() {
         "assigneePrincipalId": owner,
     });
     let outcome = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .expect("apply repair");
 
@@ -416,7 +416,7 @@ async fn non_authorized_operator_rejected() {
         "assigneePrincipalId": owner,
     });
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(stranger, instance_id, repaired))
+        crate::common::admitting_gate(), request(stranger, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -447,7 +447,7 @@ async fn disabled_operator_rejected() {
         "assigneePrincipalId": owner,
     });
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -473,7 +473,7 @@ async fn payload_altering_existing_value_rejected() {
     });
     let before = snapshot_counts(&pool, instance_id).await;
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -501,7 +501,7 @@ async fn payload_adding_non_required_key_rejected() {
         "bonusField": "not allowed",
     });
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -531,7 +531,7 @@ async fn payload_still_missing_required_key_rejected_on_apply() {
     );
 
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, unchanged))
+        crate::common::admitting_gate(), request(owner, instance_id, unchanged))
         .await
         .unwrap_err();
     assert!(
@@ -567,7 +567,7 @@ async fn unknown_principal_in_payload_rejected() {
     );
 
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -596,7 +596,7 @@ async fn cancelled_instance_rejected() {
         "assigneePrincipalId": owner,
     });
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(
@@ -627,7 +627,7 @@ async fn archived_instance_rejected() {
         "assigneePrincipalId": owner,
     });
     let err = apply_repair_context(&pool,
-        svc_workflow::store::postgres::admission_gate::AdmissionGate::disabled(), request(owner, instance_id, repaired))
+        crate::common::admitting_gate(), request(owner, instance_id, repaired))
         .await
         .unwrap_err();
     assert!(

@@ -1,0 +1,929 @@
+{
+  "agent": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+  "dsn": "postgres://swaar4@127.0.0.1:55483/aa_r4_shared_258af8e63a454f8792bc7c0e132633b1",
+  "facts": {
+    "_sqlx_migrations": [
+      {
+        "checksum": "\\xb375a5cbcc9653cfce4ad5f06af7d8963295793f4e32dd3c5a32d4ab159c58bb025bb4742af0bacd7783387e55bff10b",
+        "description": "identity domain",
+        "execution_time": 4769292,
+        "installed_on": "2026-11-07T21:01:27.337362+00:00",
+        "success": true,
+        "version": 1
+      },
+      {
+        "checksum": "\\xfc265b32720c73edde6b2538f3d3ce8db457bf9eaf75ffd7b6570b776d936806cc24679e8fcf4912bd70d061b1f75ea0",
+        "description": "terminal assignee nullable",
+        "execution_time": 557916,
+        "installed_on": "2026-11-07T21:01:27.366551+00:00",
+        "success": true,
+        "version": 10
+      },
+      {
+        "checksum": "\\x9ee9a47de6048d9d0908a9e4f80b934de06cab19388ee0d33ce1e624ce3630dbe3806c360d3e959ece3046919b33c2ae",
+        "description": "add definition archived",
+        "execution_time": 519667,
+        "installed_on": "2026-11-07T21:01:27.367183+00:00",
+        "success": true,
+        "version": 11
+      },
+      {
+        "checksum": "\\xe4e37dbf6f7185b17219b3a4066543c2d3454206bcd51d3b5749b81916f461db155803a3ddce64c246fc5df2fc3e34f6",
+        "description": "restore workflow state version constraint",
+        "execution_time": 435500,
+        "installed_on": "2026-11-07T21:01:27.367779+00:00",
+        "success": true,
+        "version": 12
+      },
+      {
+        "checksum": "\\x934cb99be7fc7b119b3aa6108066d725746b189a8c648ee770182261c8de4c7f51e25ddb7ace266b2eac56cefd1b5fb6",
+        "description": "instance input principal assignee",
+        "execution_time": 208500,
+        "installed_on": "2026-11-07T21:01:27.368284+00:00",
+        "success": true,
+        "version": 13
+      },
+      {
+        "checksum": "\\xb32d0b8c24d56effc9c0765d2a19cb52afc0fe8bacf3a73c50836d34b18ae3bb00f5732182357b269c4483c36a1f81cf",
+        "description": "instance input principal schema",
+        "execution_time": 409500,
+        "installed_on": "2026-11-07T21:01:27.368562+00:00",
+        "success": true,
+        "version": 14
+      },
+      {
+        "checksum": "\\xdbd7c7df669b3393435745a582b72582d06070397de21d3441c7097c53e00c0481fdf4157666f1b7075fd73550d0556a",
+        "description": "add instance cancel archive",
+        "execution_time": 641875,
+        "installed_on": "2026-11-07T21:01:27.369044+00:00",
+        "success": true,
+        "version": 15
+      },
+      {
+        "checksum": "\\xaea505c2386feb18004835d28f1485acc133397990580f238b86d077169f8ddf642286b8971cba2940de127b63ab354b",
+        "description": "instance assignees and artifact",
+        "execution_time": 1375916,
+        "installed_on": "2026-11-07T21:01:27.369762+00:00",
+        "success": true,
+        "version": 16
+      },
+      {
+        "checksum": "\\x7661ad178b42e102d2d58d5133738970a5f49dff481c2287728b2aced2071db9f66d5f60dcb502f503e17813422c6a22",
+        "description": "reconcile assignee artifact constraints",
+        "execution_time": 391166,
+        "installed_on": "2026-11-07T21:01:27.371227+00:00",
+        "success": true,
+        "version": 17
+      },
+      {
+        "checksum": "\\x01c13770e2f88d677506f9895268121222ea6f3b2db82b7f149a13b7ace2db520e72059d87ca69a4f121c3968bf8152e",
+        "description": "reconcile node assignees unique name",
+        "execution_time": 251583,
+        "installed_on": "2026-11-07T21:01:27.371693+00:00",
+        "success": true,
+        "version": 18
+      },
+      {
+        "checksum": "\\x5e58ce79fb5eeccbc4a368147a6b1d9493faea058053e0f7f4921ecc85ca51f81a3d9bb3ebd8783ae98a38ec3803c693",
+        "description": "add definition semantic model version",
+        "execution_time": 339500,
+        "installed_on": "2026-11-07T21:01:27.372017+00:00",
+        "success": true,
+        "version": 19
+      },
+      {
+        "checksum": "\\x53f87d2dd581867097984f3dbbb6fd5f8108f4febf1a17c1d76a664b609705e3cb33955de0a24a54a54fe7dedbf2b587",
+        "description": "workflow definition",
+        "execution_time": 6017417,
+        "installed_on": "2026-11-07T21:01:27.342348+00:00",
+        "success": true,
+        "version": 2
+      },
+      {
+        "checksum": "\\x9bf48496c812a75635bc418a7427ad90a17ab7b13cadd914ac3418a01a06e602a87cb9b3a4bc5a10018ef09e75d1c77f",
+        "description": "global role bindings",
+        "execution_time": 1033167,
+        "installed_on": "2026-11-07T21:01:27.372431+00:00",
+        "success": true,
+        "version": 20
+      },
+      {
+        "checksum": "\\xe160d3c5d91e2b726b185c8e068651f07f94f58965070ae278ff9fe726181498aba0d19eee1917d82e8b69368f23e65a",
+        "description": "workflow assistance v1",
+        "execution_time": 3156917,
+        "installed_on": "2026-11-07T21:01:27.373541+00:00",
+        "success": true,
+        "version": 21
+      },
+      {
+        "checksum": "\\x026481b87e75e0235d714eb9e7083adc16822e163822e2a2e70705aa574c0f6ed7eee8f63001f5fa4691965459e318d3",
+        "description": "assistance v1 db invariants",
+        "execution_time": 437500,
+        "installed_on": "2026-11-07T21:01:27.376784+00:00",
+        "success": true,
+        "version": 22
+      },
+      {
+        "checksum": "\\x879787019eb5af541f8809293aa2c6b49b8b2a58304cb630b656d8df09ae63048eb3d22a98c35039678edd1a450710a6",
+        "description": "visit activation v1",
+        "execution_time": 3784333,
+        "installed_on": "2026-11-07T21:01:27.377295+00:00",
+        "success": true,
+        "version": 23
+      },
+      {
+        "checksum": "\\xa484fc5f346cd34c2972922b96e390925e2e9e986e52a9a3b92a209bcbffaecc43de37626987aabfc32d533f95647080",
+        "description": "deprecation reason",
+        "execution_time": 320333,
+        "installed_on": "2026-11-07T21:01:27.381174+00:00",
+        "success": true,
+        "version": 24
+      },
+      {
+        "checksum": "\\x1327d0fbe76998c048176daad1d997335c5724dd230fcebe4c0e4115126ac9f122ec00aecca02b1c4cc5b37899f805e3",
+        "description": "workflow identity successor lines",
+        "execution_time": 1102292,
+        "installed_on": "2026-11-07T21:01:27.381572+00:00",
+        "success": true,
+        "version": 25
+      },
+      {
+        "checksum": "\\x98f9b6daa637a734d0776ba342cc8ecddf9993f8b6bf39f669ee8a6f336629e8354f0d1f8473e61aa0db5f1acab42b64",
+        "description": "work execution class",
+        "execution_time": 310125,
+        "installed_on": "2026-11-07T21:01:27.382754+00:00",
+        "success": true,
+        "version": 26
+      },
+      {
+        "checksum": "\\x515576d74a2415ca10bbd23ac02f907dbbe81a4a7a81a4b978a3817a29bca326ece35bc04190ef2b91b4125178afd440",
+        "description": "execution control v1",
+        "execution_time": 1846541,
+        "installed_on": "2026-11-07T21:01:27.383142+00:00",
+        "success": true,
+        "version": 27
+      },
+      {
+        "checksum": "\\x53fd4115a27cad3ae8b7fa8e8b5e5c8814f2b01f449be318165a654bf3ee65de6e7c3938c9a131eecffa08c89e21661b",
+        "description": "owner assistance wake outbox",
+        "execution_time": 270500,
+        "installed_on": "2026-11-07T21:01:27.385069+00:00",
+        "success": true,
+        "version": 28
+      },
+      {
+        "checksum": "\\xf21bf5725d33768c7bcda0d91641d9acef4c80e342453aa343a7e008d77ba0e0fbbee032170a2951319f44732c77bf3a",
+        "description": "governance child return",
+        "execution_time": 3934917,
+        "installed_on": "2026-11-07T21:01:27.385417+00:00",
+        "success": true,
+        "version": 29
+      },
+      {
+        "checksum": "\\xf4764041f7bc1135408c6722a2b851bb23f252e560aefb4ebc4ccebf3987f2b0e220ebd2962d3ae070d31a6b3cba34e1",
+        "description": "runtime",
+        "execution_time": 6954875,
+        "installed_on": "2026-11-07T21:01:27.348492+00:00",
+        "success": true,
+        "version": 3
+      },
+      {
+        "checksum": "\\x5e0efa75eb3367cabd5057bf5dd6e9af31b3df222e8ad0b797187953b18915f699f290d3ee88b4aaa93148e161bc7a90",
+        "description": "composite command event integrity",
+        "execution_time": 1696250,
+        "installed_on": "2026-11-07T21:01:27.389454+00:00",
+        "success": true,
+        "version": 30
+      },
+      {
+        "checksum": "\\xbdcc95d7d9b3e86c08ed5a5f29de827a6a89f3366678150e641f5e8a75e5d92dbbc2edcba8187d8953d3940ed1589696",
+        "description": "owner obligation workflows",
+        "execution_time": 10765334,
+        "installed_on": "2026-11-07T21:01:27.391232+00:00",
+        "success": true,
+        "version": 31
+      },
+      {
+        "checksum": "\\x0d680e50eb28419aace78e477d0921b5d6cf32d38e80d4c978dec1d19d9be4f686c29e989537f07bf5209a1e5fd5cf0b",
+        "description": "outbox dead letter",
+        "execution_time": 228458,
+        "installed_on": "2026-11-07T21:01:27.402136+00:00",
+        "success": true,
+        "version": 32
+      },
+      {
+        "checksum": "\\x2efdaff9d2c71b4727b1fee23d2216271c5efaeffe659cc82754e217f73cabcd16628732cd3aa7186bdf5dc7c8699a34",
+        "description": "workflow events",
+        "execution_time": 3100458,
+        "installed_on": "2026-11-07T21:01:27.35559+00:00",
+        "success": true,
+        "version": 4
+      },
+      {
+        "checksum": "\\x2fb89ce9dfa5d08db74e35d9d9ce98950fde8ac732619ff6a1c768a9865bfdbed4c7f7d793c458abd8fc9f94cc3082fa",
+        "description": "command audit",
+        "execution_time": 3252791,
+        "installed_on": "2026-11-07T21:01:27.358829+00:00",
+        "success": true,
+        "version": 5
+      },
+      {
+        "checksum": "\\x4028ad9753305ec5b036fcaa71d59c71d8da9a2cc50733c41159635e0f41f4a5ea34e8304d9ee5a09d43538351344cdf",
+        "description": "triggers constraints",
+        "execution_time": 2697084,
+        "installed_on": "2026-11-07T21:01:27.362172+00:00",
+        "success": true,
+        "version": 6
+      },
+      {
+        "checksum": "\\xb305b433bca476198717a169ffe018c74dc901063d496c76a6373d61036e58ff5127e6a5a6a20275a7e804b0bc6187b1",
+        "description": "definition graph immutability",
+        "execution_time": 456542,
+        "installed_on": "2026-11-07T21:01:27.364969+00:00",
+        "success": true,
+        "version": 7
+      },
+      {
+        "checksum": "\\xe95f6765e79ff864740eea65e2b6955675ce41c5b37081548e71a09e2adb25d90491476cf6278ec0dbbdb575b82e7f2d",
+        "description": "fix graph definition version escape",
+        "execution_time": 620666,
+        "installed_on": "2026-11-07T21:01:27.365501+00:00",
+        "success": true,
+        "version": 8
+      },
+      {
+        "checksum": "\\x4ce036cc7470235740b6b034acba688f06ed384dfbacd3fbfbe7499ab921c84a08221dc5f24241a322e2a938842f5ef1",
+        "description": "add instance external reference",
+        "execution_time": 281625,
+        "installed_on": "2026-11-07T21:01:27.366196+00:00",
+        "success": true,
+        "version": 9
+      }
+    ],
+    "domain_role_bindings": [
+      {
+        "binding_id": "a325f2ae-fed5-4094-a1f5-07f11e6be00b",
+        "created_at": "2026-11-07T21:01:27.407778+00:00",
+        "disabled_at": null,
+        "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "enabled": true,
+        "principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "role_key": "DOMAIN_MEMBER"
+      },
+      {
+        "binding_id": "e1c2ba22-263f-4f6a-a428-71c7b89011f5",
+        "created_at": "2026-11-07T21:01:27.406551+00:00",
+        "disabled_at": null,
+        "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "enabled": true,
+        "principal_id": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244",
+        "role_key": "DOMAIN_OWNER"
+      }
+    ],
+    "domains": [
+      {
+        "created_at": "2026-11-07T21:01:27.405941+00:00",
+        "display_name": "AA R4 isolated",
+        "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "domain_key": "aa-r4-976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "enabled": true,
+        "metadata": null,
+        "updated_at": "2026-11-07T21:01:27.405941+00:00"
+      }
+    ],
+    "global_role_bindings": [
+      {
+        "binding_id": "904fd6a9-caf8-452f-a77a-c268fa57593d",
+        "created_at": "2026-11-07T21:01:27.408182+00:00",
+        "disabled_at": null,
+        "enabled": true,
+        "principal_id": "f1c6156a-a03a-4c22-bf85-693c499d911a",
+        "role_key": "GLOBAL_WORKFLOW_COORDINATOR"
+      }
+    ],
+    "principals": [
+      {
+        "created_at": "2026-11-07T21:01:27.405441+00:00",
+        "display_name": "owner",
+        "email": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:27.405441+00:00"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.405607+00:00",
+        "display_name": "outsider",
+        "email": "c1530894-336f-4788-8851-d4b2ae941a1c@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "c1530894-336f-4788-8851-d4b2ae941a1c",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:27.405607+00:00"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.40574+00:00",
+        "display_name": "coordinator",
+        "email": "f1c6156a-a03a-4c22-bf85-693c499d911a@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "f1c6156a-a03a-4c22-bf85-693c499d911a",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:27.40574+00:00"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.404611+00:00",
+        "display_name": "agent",
+        "email": "fe67aa39-e8cb-4822-a88f-db55e0324e8e@example.test",
+        "enabled": true,
+        "metadata": null,
+        "principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "principal_type": "AGENT",
+        "updated_at": "2026-11-07T21:01:27.404611+00:00"
+      }
+    ],
+    "workflow_activation_closures": [],
+    "workflow_activations": [
+      {
+        "activation_at": "2026-11-07T21:01:27.420487+00:00",
+        "activation_id": "f171eb72-c795-4909-bddb-e720182e24be",
+        "activation_kind": "DISPATCH_INTENT",
+        "command_id": "4ec11c94-81e7-4f5d-bb0d-a9ecad749a22",
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "initial_next_eligible_at": "2026-11-07T21:01:27.420487+00:00",
+        "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "owner_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_assistance_cases": [],
+    "workflow_command_attempt_audits": [],
+    "workflow_command_receipts": [
+      {
+        "command_id": "4ec11c94-81e7-4f5d-bb0d-a9ecad749a22",
+        "command_type": "CREATE_WORKFLOW_INSTANCE",
+        "completed_at": "2026-11-07T21:01:27.420487+00:00",
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "idempotency_key": "029cba61-cd94-4b50-9426-fbf211398fca",
+        "principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "receipt_status": "COMPLETED",
+        "request_hash": "24b1667a86f68f92687c39bec44c3b70acc4785aaaf423e7892c7594ca8b77aa",
+        "response_body": {
+          "currentContextRevisionId": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+          "currentNodeVisitId": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+          "eventSequence": 1,
+          "workflowInstanceId": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+          "workflowStateVersion": 1
+        },
+        "response_digest": "daf2ee7d21d10cf08190891531b153b5fab77c57d6fa749e0a1a6f2a1f162089",
+        "response_status": 200
+      }
+    ],
+    "workflow_context_revisions": [
+      {
+        "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "payload": {},
+        "payload_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "previous_revision_id": null,
+        "revision_number": 1,
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_definition_versions": [
+      {
+        "context_schema": {
+          "type": "object"
+        },
+        "created_at": "2026-11-07T21:01:27.411894+00:00",
+        "definition_digest": "771006dcf420f3f81333333e6104cae06b76a7da3fbdb14f33773ad0d460d74b",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "deprecated_at": null,
+        "deprecated_by_principal_id": null,
+        "deprecation_reason": null,
+        "json_schema_dialect": null,
+        "metadata": null,
+        "published_at": "2026-11-07T21:01:27.418415+00:00",
+        "published_by_principal_id": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244",
+        "revoked_at": null,
+        "revoked_by_principal_id": null,
+        "semantic_model_version": 3,
+        "submission_schema": null,
+        "updated_at": "2026-11-07T21:01:27.418415+00:00",
+        "validator_version": null,
+        "version_number": 1,
+        "version_status": "PUBLISHED",
+        "workflow_definition_id": "01a94d81-3b8c-4c7f-adb8-3b71d1dda059"
+      }
+    ],
+    "workflow_definitions": [
+      {
+        "archived": false,
+        "archived_at": null,
+        "archived_by_principal_id": null,
+        "created_at": "2026-11-07T21:01:27.409455+00:00",
+        "definition_key": "aa-r4-887e9d0e-925c-41ca-861c-531b722abdc8",
+        "description": null,
+        "display_name": "AA legitimate graph",
+        "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "metadata": null,
+        "updated_at": "2026-11-07T21:01:27.409455+00:00",
+        "workflow_definition_id": "01a94d81-3b8c-4c7f-adb8-3b71d1dda059"
+      }
+    ],
+    "workflow_dispatch_eligibility_events": [],
+    "workflow_events": [
+      {
+        "actor_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "causation_id": null,
+        "command_event_slot": 0,
+        "command_id": "4ec11c94-81e7-4f5d-bb0d-a9ecad749a22",
+        "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "correlation_id": null,
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "event_data": {
+          "assignee_resolution_type": "WORKFLOW_CREATOR",
+          "definition_digest": "771006dcf420f3f81333333e6104cae06b76a7da3fbdb14f33773ad0d460d74b",
+          "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+          "initial_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a"
+        },
+        "event_data_digest": "3d1cfdd75b07cd50c41be230498c0b90eb06455a93e81d5cf2e09cadc1d99543",
+        "event_id": "c4849724-f421-4cd4-9ef2-210e385d9771",
+        "event_schema_version": "v1",
+        "event_sequence": 1,
+        "event_type": "INSTANCE_CREATED",
+        "from_node_id": null,
+        "new_workflow_state_version": 1,
+        "old_workflow_state_version": 0,
+        "source_node_visit_id": null,
+        "submission_id": null,
+        "target_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "to_node_id": null,
+        "transition_effect": null,
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_forum_bindings": [
+      {
+        "binding_state": "PENDING",
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "forum_thread_id": null,
+        "updated_at": "2026-11-07T21:01:27.420487+00:00",
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_governance_child_bindings": [],
+    "workflow_governance_child_reviews": [],
+    "workflow_identity_successor_lines": [],
+    "workflow_instance_node_assignees": [],
+    "workflow_instances": [
+      {
+        "archive_reason": null,
+        "archived_at": null,
+        "archived_by_principal_id": null,
+        "artifact_digest": null,
+        "artifact_id": null,
+        "artifact_version": null,
+        "cancel_reason": null,
+        "cancelled": false,
+        "cancelled_at": null,
+        "cancelled_by_principal_id": null,
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "current_context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "current_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+        "execution_class": "BUSINESS",
+        "external_reference": null,
+        "external_url": null,
+        "metadata": {},
+        "require_artifact_binding": false,
+        "require_explicit_node_assignees": false,
+        "semantic_model_version": 3,
+        "subject_id": null,
+        "updated_at": "2026-11-07T21:01:27.420487+00:00",
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+        "workflow_state_version": 1
+      }
+    ],
+    "workflow_node_definitions": [
+      {
+        "assignee_input_key": null,
+        "assignee_ref_type": "WORKFLOW_CREATOR",
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "start",
+        "fixed_principal_id": null,
+        "instructions": null,
+        "metadata": null,
+        "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+        "node_key": "start",
+        "node_type": "TASK",
+        "order_index": 0,
+        "primary_advance_transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b"
+      },
+      {
+        "assignee_input_key": null,
+        "assignee_ref_type": null,
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "done",
+        "fixed_principal_id": null,
+        "instructions": null,
+        "metadata": null,
+        "node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+        "node_key": "done",
+        "node_type": "TERMINAL",
+        "order_index": 2,
+        "primary_advance_transition_id": null
+      },
+      {
+        "assignee_input_key": null,
+        "assignee_ref_type": "WORKFLOW_CREATOR",
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "work",
+        "fixed_principal_id": null,
+        "instructions": null,
+        "metadata": null,
+        "node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+        "node_key": "work",
+        "node_type": "TASK",
+        "order_index": 1,
+        "primary_advance_transition_id": "3ee104db-8407-4795-914a-61564cf0b309"
+      }
+    ],
+    "workflow_node_visits": [
+      {
+        "assignee_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "entered_by_transition_id": null,
+        "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+        "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "visit_number": 1,
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_operation_effects": [],
+    "workflow_outbox": [
+      {
+        "attempt_count": 0,
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "dead_lettered_at": null,
+        "delivered_at": null,
+        "event_key": "wf_created:b2475dc3-0778-40a1-90ef-19a1536056f4",
+        "last_error": null,
+        "next_attempt_at": "2026-11-07T21:01:27.420487+00:00",
+        "outbox_id": "dea4da2f-fb4e-46ca-8ca7-31f563790162",
+        "outbox_kind": "FORUM_EVENT",
+        "payload": {
+          "definitionVersionId": "970bd239-4bc7-42f6-9a06-d1958c800791",
+          "eventType": "workflow_created",
+          "initialNodeId": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+          "workflowInstanceId": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+        },
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      },
+      {
+        "attempt_count": 0,
+        "created_at": "2026-11-07T21:01:27.420487+00:00",
+        "dead_lettered_at": null,
+        "delivered_at": null,
+        "event_key": "kick:f171eb72-c795-4909-bddb-e720182e24be",
+        "last_error": null,
+        "next_attempt_at": "2026-11-07T21:01:27.420487+00:00",
+        "outbox_id": "272201b3-eef3-45f7-8d21-9f0c69d87907",
+        "outbox_kind": "EXECUTION_KICK",
+        "payload": {
+          "dispatchIntentId": "f171eb72-c795-4909-bddb-e720182e24be",
+          "nodeVisitId": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+          "workflowInstanceId": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+        },
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+      }
+    ],
+    "workflow_owner_dependency_origins": [],
+    "workflow_owner_managed_instances": [],
+    "workflow_owner_obligation_intents": [],
+    "workflow_owner_policy_approvals": [],
+    "workflow_security_audits": [],
+    "workflow_submissions": [],
+    "workflow_transition_definitions": [
+      {
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "start_work",
+        "metadata": null,
+        "source_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+        "submission_schema": null,
+        "target_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+        "transition_effect": "ADVANCE",
+        "transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b",
+        "transition_key": "start_work"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "work_done",
+        "metadata": null,
+        "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+        "submission_schema": null,
+        "target_node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+        "transition_effect": "ADVANCE",
+        "transition_id": "3ee104db-8407-4795-914a-61564cf0b309",
+        "transition_key": "work_done"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "work_return",
+        "metadata": null,
+        "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+        "submission_schema": null,
+        "target_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+        "transition_effect": "RETURN",
+        "transition_id": "50d98e5b-b3f7-4e06-9417-f8c75dbcf971",
+        "transition_key": "work_return"
+      },
+      {
+        "created_at": "2026-11-07T21:01:27.413589+00:00",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "display_name": "work_terminate",
+        "metadata": null,
+        "source_node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+        "submission_schema": null,
+        "target_node_id": "c1dc018f-5c88-426b-9800-fdb668fef0f9",
+        "transition_effect": "TERMINATE",
+        "transition_id": "572498b3-71a6-470a-834a-ba5bcecebf92",
+        "transition_key": "work_terminate"
+      }
+    ]
+  },
+  "instance": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+  "owner": "5d6b3c84-1c68-4f11-ad7b-fcbb85d34244",
+  "shared": {
+    "assigned": {
+      "items": [
+        {
+          "detail": {
+            "current_context": {
+              "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+              "created_at": "2026-11-07T21:01:27.420487Z",
+              "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+              "payload": {},
+              "payload_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+              "previous_revision_id": null,
+              "revision_number": 1,
+              "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+            },
+            "current_context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+            "current_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+            "current_visit": {
+              "assignee_canonical_agent_id": null,
+              "assignee_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+              "created_at": "2026-11-07T21:01:27.420487Z",
+              "eligibility": {
+                "classification": "ACTIONABLE_NOW"
+              },
+              "entered_by_transition_id": null,
+              "instructions": null,
+              "node": {
+                "display_name": "start",
+                "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+                "node_key": "start",
+                "node_type": "TASK"
+              },
+              "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+              "visit_number": 1,
+              "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+            },
+            "instance": {
+              "created_at": "2026-11-07T21:01:27.420487Z",
+              "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+              "current_node": {
+                "display_name": "start",
+                "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+                "node_key": "start",
+                "node_type": "TASK"
+              },
+              "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+              "definition_version_status": "PUBLISHED",
+              "domain_enabled": true,
+              "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+              "external_reference": null,
+              "external_url": null,
+              "is_terminal": false,
+              "metadata": {},
+              "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+              "workflow_state_version": 1
+            },
+            "outgoing_transitions": [
+              {
+                "blocked_reason": null,
+                "display_name": "start_work",
+                "executable_for_actor": true,
+                "submission_schema": null,
+                "target_node": {
+                  "display_name": "work",
+                  "node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+                  "node_key": "work",
+                  "node_type": "TASK"
+                },
+                "transition_effect": "ADVANCE",
+                "transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b",
+                "transition_key": "start_work"
+              }
+            ]
+          },
+          "return_events_truncated": false,
+          "return_feedback_events": [],
+          "submissions_truncated": false,
+          "upstream_submissions": []
+        }
+      ],
+      "next_cursor": null
+    },
+    "cti_body": {
+      "binding": {
+        "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+        "workflow_state_version": 1
+      },
+      "body": {
+        "content_status": "COMPLETE",
+        "encoding": "utf-8",
+        "id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "kind": "CURRENT_DETAIL",
+        "next_offset": null,
+        "offset": 0,
+        "serialization": "JCS",
+        "sha256": "5f675144108ef75f4d731d1c47b69787352cdef91a23c180678f98e399834388",
+        "text": "{\"current_context\":{\"context_revision_id\":\"10b262c0-d1f1-4f6b-ba8b-4b2037be82d5\",\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"created_by_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"payload\":{},\"payload_digest\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"previous_revision_id\":null,\"revision_number\":1,\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\"},\"current_context_revision_id\":\"10b262c0-d1f1-4f6b-ba8b-4b2037be82d5\",\"current_node_visit_id\":\"598ac622-4f82-4e6a-aa99-f337b3f70b7c\",\"current_visit\":{\"assignee_canonical_agent_id\":null,\"assignee_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"eligibility\":{\"classification\":\"ACTIONABLE_NOW\"},\"entered_by_transition_id\":null,\"instructions\":null,\"node\":{\"display_name\":\"start\",\"node_id\":\"168c741c-45f5-4fcd-b821-4c211c6ea19a\",\"node_key\":\"start\",\"node_type\":\"TASK\"},\"node_visit_id\":\"598ac622-4f82-4e6a-aa99-f337b3f70b7c\",\"visit_number\":1,\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\"},\"instance\":{\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"created_by_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"current_node\":{\"display_name\":\"start\",\"node_id\":\"168c741c-45f5-4fcd-b821-4c211c6ea19a\",\"node_key\":\"start\",\"node_type\":\"TASK\"},\"definition_version_id\":\"970bd239-4bc7-42f6-9a06-d1958c800791\",\"definition_version_status\":\"PUBLISHED\",\"domain_enabled\":true,\"domain_id\":\"976c960b-7ac4-412a-a1ca-90abb969c07e\",\"external_reference\":null,\"external_url\":null,\"is_terminal\":false,\"metadata\":{},\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\",\"workflow_state_version\":1},\"outgoing_transitions\":[{\"blocked_reason\":null,\"display_name\":\"start_work\",\"executable_for_actor\":true,\"submission_schema\":null,\"target_node\":{\"display_name\":\"work\",\"node_id\":\"cc113731-dc83-418a-ad71-a339d6999b87\",\"node_key\":\"work\",\"node_type\":\"TASK\"},\"transition_effect\":\"ADVANCE\",\"transition_id\":\"40e8de8b-6c18-4ddf-9af2-1d927960a58b\",\"transition_key\":\"start_work\"}]}",
+        "total_bytes": 2005
+      },
+      "view": "body"
+    },
+    "cti_input": {
+      "binding": {
+        "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+        "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+        "workflow_state_version": 1
+      },
+      "content_complete": true,
+      "detail_body": {
+        "content_status": "COMPLETE",
+        "encoding": "utf-8",
+        "id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "kind": "CURRENT_DETAIL",
+        "next_offset": null,
+        "offset": 0,
+        "serialization": "JCS",
+        "sha256": "5f675144108ef75f4d731d1c47b69787352cdef91a23c180678f98e399834388",
+        "text": "{\"current_context\":{\"context_revision_id\":\"10b262c0-d1f1-4f6b-ba8b-4b2037be82d5\",\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"created_by_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"payload\":{},\"payload_digest\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"previous_revision_id\":null,\"revision_number\":1,\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\"},\"current_context_revision_id\":\"10b262c0-d1f1-4f6b-ba8b-4b2037be82d5\",\"current_node_visit_id\":\"598ac622-4f82-4e6a-aa99-f337b3f70b7c\",\"current_visit\":{\"assignee_canonical_agent_id\":null,\"assignee_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"eligibility\":{\"classification\":\"ACTIONABLE_NOW\"},\"entered_by_transition_id\":null,\"instructions\":null,\"node\":{\"display_name\":\"start\",\"node_id\":\"168c741c-45f5-4fcd-b821-4c211c6ea19a\",\"node_key\":\"start\",\"node_type\":\"TASK\"},\"node_visit_id\":\"598ac622-4f82-4e6a-aa99-f337b3f70b7c\",\"visit_number\":1,\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\"},\"instance\":{\"created_at\":\"2026-11-07T21:01:27.420487Z\",\"created_by_principal_id\":\"fe67aa39-e8cb-4822-a88f-db55e0324e8e\",\"current_node\":{\"display_name\":\"start\",\"node_id\":\"168c741c-45f5-4fcd-b821-4c211c6ea19a\",\"node_key\":\"start\",\"node_type\":\"TASK\"},\"definition_version_id\":\"970bd239-4bc7-42f6-9a06-d1958c800791\",\"definition_version_status\":\"PUBLISHED\",\"domain_enabled\":true,\"domain_id\":\"976c960b-7ac4-412a-a1ca-90abb969c07e\",\"external_reference\":null,\"external_url\":null,\"is_terminal\":false,\"metadata\":{},\"workflow_instance_id\":\"b2475dc3-0778-40a1-90ef-19a1536056f4\",\"workflow_state_version\":1},\"outgoing_transitions\":[{\"blocked_reason\":null,\"display_name\":\"start_work\",\"executable_for_actor\":true,\"submission_schema\":null,\"target_node\":{\"display_name\":\"work\",\"node_id\":\"cc113731-dc83-418a-ad71-a339d6999b87\",\"node_key\":\"work\",\"node_type\":\"TASK\"},\"transition_effect\":\"ADVANCE\",\"transition_id\":\"40e8de8b-6c18-4ddf-9af2-1d927960a58b\",\"transition_key\":\"start_work\"}]}",
+        "total_bytes": 2005
+      },
+      "entry": {
+        "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "event_id": "c4849724-f421-4cd4-9ef2-210e385d9771",
+        "event_sequence": 1,
+        "event_type": "INSTANCE_CREATED",
+        "source_node_visit_id": null,
+        "status": "INITIAL",
+        "submission_id": null,
+        "submission_status": "NONE_RECORDED",
+        "target_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "transition_id": null
+      },
+      "history_window_complete": true,
+      "input_status": "COMPLETE_FOR_SELECTION",
+      "recent_submission_ids": [],
+      "recent_submissions_truncated": false,
+      "requested_submissions": [],
+      "return_feedback": [],
+      "return_feedback_truncated": false,
+      "submissions": [],
+      "view": "input"
+    },
+    "detail_without_new_fields": {
+      "detail": {
+        "current_context": {
+          "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+          "created_at": "2026-11-07T21:01:27.420487Z",
+          "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+          "payload": {},
+          "payload_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "previous_revision_id": null,
+          "revision_number": 1,
+          "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+        },
+        "current_context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+        "current_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+        "current_visit": {
+          "assignee_canonical_agent_id": null,
+          "assignee_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+          "created_at": "2026-11-07T21:01:27.420487Z",
+          "eligibility": {
+            "classification": "ACTIONABLE_NOW"
+          },
+          "entered_by_transition_id": null,
+          "instructions": null,
+          "node": {
+            "display_name": "start",
+            "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+            "node_key": "start",
+            "node_type": "TASK"
+          },
+          "node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+          "visit_number": 1,
+          "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+        },
+        "instance": {
+          "created_at": "2026-11-07T21:01:27.420487Z",
+          "created_by_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+          "current_node": {
+            "display_name": "start",
+            "node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a",
+            "node_key": "start",
+            "node_type": "TASK"
+          },
+          "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+          "definition_version_status": "PUBLISHED",
+          "domain_enabled": true,
+          "domain_id": "976c960b-7ac4-412a-a1ca-90abb969c07e",
+          "external_reference": null,
+          "external_url": null,
+          "is_terminal": false,
+          "metadata": {},
+          "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4",
+          "workflow_state_version": 1
+        },
+        "outgoing_transitions": [
+          {
+            "blocked_reason": null,
+            "display_name": "start_work",
+            "executable_for_actor": true,
+            "submission_schema": null,
+            "target_node": {
+              "display_name": "work",
+              "node_id": "cc113731-dc83-418a-ad71-a339d6999b87",
+              "node_key": "work",
+              "node_type": "TASK"
+            },
+            "transition_effect": "ADVANCE",
+            "transition_id": "40e8de8b-6c18-4ddf-9af2-1d927960a58b",
+            "transition_key": "start_work"
+          }
+        ]
+      },
+      "visibility": "full"
+    },
+    "drafts": {
+      "items": [],
+      "next_cursor": null
+    },
+    "submissions": {
+      "items": [],
+      "next_cursor": null
+    },
+    "timeline": {
+      "items": [
+        {
+          "actor_principal_id": "fe67aa39-e8cb-4822-a88f-db55e0324e8e",
+          "causation_id": null,
+          "command_id": "4ec11c94-81e7-4f5d-bb0d-a9ecad749a22",
+          "context_revision_id": "10b262c0-d1f1-4f6b-ba8b-4b2037be82d5",
+          "correlation_id": null,
+          "created_at": "2026-11-07T21:01:27.420487Z",
+          "event_data": {
+            "assignee_resolution_type": "WORKFLOW_CREATOR",
+            "definition_digest": "771006dcf420f3f81333333e6104cae06b76a7da3fbdb14f33773ad0d460d74b",
+            "definition_version_id": "970bd239-4bc7-42f6-9a06-d1958c800791",
+            "initial_node_id": "168c741c-45f5-4fcd-b821-4c211c6ea19a"
+          },
+          "event_data_digest": "3d1cfdd75b07cd50c41be230498c0b90eb06455a93e81d5cf2e09cadc1d99543",
+          "event_id": "c4849724-f421-4cd4-9ef2-210e385d9771",
+          "event_schema_version": "v1",
+          "event_sequence": 1,
+          "event_type": "INSTANCE_CREATED",
+          "from_node_id": null,
+          "new_workflow_state_version": 1,
+          "old_workflow_state_version": 0,
+          "source_node_visit_id": null,
+          "submission_id": null,
+          "target_node_visit_id": "598ac622-4f82-4e6a-aa99-f337b3f70b7c",
+          "to_node_id": null,
+          "transition_effect": null,
+          "workflow_instance_id": "b2475dc3-0778-40a1-90ef-19a1536056f4"
+        }
+      ],
+      "nextCursor": null
+    }
+  }
+}

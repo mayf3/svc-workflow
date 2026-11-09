@@ -49,14 +49,32 @@ pub(crate) async fn check_domain_owner(
     .map_err(storage)
 }
 
+/// Check whether the actor holds the governance-audit read role
+/// (mayf3/svc-workflow#80): full cross-domain instance read visibility,
+/// read-only by construction — write surfaces never consult this check.
+pub(crate) async fn check_global_workflow_auditor_role(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(\n           SELECT 1 FROM global_role_bindings\n           WHERE principal_id = $1\n             AND role_key = 'GLOBAL_WORKFLOW_AUDITOR'\n             AND enabled = TRUE)",
+    )
+    .bind(actor)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)
+}
+
 /// Check whether the actor holds a global read role for the cross-domain
 /// instance list.
 ///
-/// Two role keys satisfy the gate (SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1):
-/// the read-only `GLOBAL_WORKFLOW_READER` and the legacy
-/// `GLOBAL_WORKFLOW_COORDINATOR`. Both are domain-independent bindings in
+/// Three role keys satisfy the gate (SVC_WORKFLOW_GLOBAL_WORKFLOW_READER_V1
+/// plus the governance-audit role from mayf3/svc-workflow#80): the read-only
+/// `GLOBAL_WORKFLOW_READER`, the legacy `GLOBAL_WORKFLOW_COORDINATOR`, and
+/// `GLOBAL_WORKFLOW_AUDITOR`. All are domain-independent bindings in
 /// `global_role_bindings`; they grant read access to instance summaries
-/// across all domains and nothing else.
+/// across all domains (the auditor additionally carries full cross-domain
+/// instance read visibility — see `classify_visibility`).
 pub(crate) async fn check_global_workflow_read_role(
     tx: &mut Transaction<'_, Postgres>,
     actor: Uuid,
@@ -65,13 +83,37 @@ pub(crate) async fn check_global_workflow_read_role(
         "SELECT EXISTS(
            SELECT 1 FROM global_role_bindings
            WHERE principal_id = $1
-             AND role_key IN ('GLOBAL_WORKFLOW_READER', 'GLOBAL_WORKFLOW_COORDINATOR')
+             AND role_key IN ('GLOBAL_WORKFLOW_READER', 'GLOBAL_WORKFLOW_COORDINATOR',
+                              'GLOBAL_WORKFLOW_AUDITOR')
              AND enabled = TRUE)",
     )
     .bind(actor)
     .fetch_one(&mut **tx)
     .await
     .map_err(storage)
+}
+
+/// Effective current-assignee check under the canonical identity lineage
+/// (migration 0025, CTR-CIR V2): the stored assignee itself, or its unique
+/// canonical successor, holds the assignee's read and current-node
+/// authority. Mirrors the my_tasks projection contract in
+/// `query_worklists` so worklist visibility, instance read visibility and
+/// transition authorization agree on one identity answer. The stored
+/// assignee UUID is never rewritten.
+pub(crate) async fn actor_is_effective_current_assignee(
+    tx: &mut Transaction<'_, Postgres>,
+    stored_assignee: Option<Uuid>,
+    actor: Uuid,
+) -> Result<bool, WorkflowQueryError> {
+    let Some(stored) = stored_assignee else {
+        return Ok(false);
+    };
+    let effective = crate::store::postgres::identity_successor::resolve_current_principal(
+        &mut **tx, stored,
+    )
+    .await
+    .map_err(storage)?;
+    Ok(effective == Some(actor))
 }
 
 /// The fail-closed server-side mapping of the V6 `GLOBAL_SCHEDULER_READ`
@@ -277,7 +319,14 @@ async fn classify_visibility(
     if owner {
         return Ok(Some(QueryVisibility::DomainOwnerFull));
     }
-    if base.current_assignee_principal_id == Some(actor)
+    let auditor = check_global_workflow_auditor_role(tx, actor).await?;
+    if auditor {
+        return Ok(Some(QueryVisibility::DomainOwnerFull));
+    }
+    let effective_assignee =
+        actor_is_effective_current_assignee(&mut *tx, base.current_assignee_principal_id, actor)
+            .await?;
+    if effective_assignee
         && base.current_node_type.as_deref() != Some("TERMINAL")
         && base.visit_instance_id == Some(base.workflow_instance_id)
         && base.node_definition_version_id == Some(base.definition_version_id)

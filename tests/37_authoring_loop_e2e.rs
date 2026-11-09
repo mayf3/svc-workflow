@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 fn build_app(pool: sqlx::PgPool, jwks_url: &str, admin_ids: Vec<Uuid>) -> axum::Router {
     let config = HttpConfig {
-        admission: svc_workflow::auth::admission::AdmissionConfig::disabled(),
+        admission: crate::common::admitting_config(),
         bind_addr: "127.0.0.1:0".parse().unwrap(),
         request_body_max_bytes: 2_097_152,
         request_timeout_seconds: 30,
@@ -193,7 +193,11 @@ impl Harness {
                          "transition_effect": "ADVANCE"},
                         {"transition_key": "finish", "display_name": "Finish",
                          "source_node_key": "work", "target_node_key": "done",
-                         "transition_effect": "ADVANCE"}
+                         "transition_effect": "ADVANCE"},
+                        // READY_CONTRACT: work can return without changing its primary advance.
+                        {"transition_key": "return-draft", "display_name": "Return to draft",
+                         "source_node_key": "work", "target_node_key": "draft",
+                         "transition_effect": "RETURN"}
                     ]
                 }),
             )

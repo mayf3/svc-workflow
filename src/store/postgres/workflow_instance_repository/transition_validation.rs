@@ -20,16 +20,24 @@ pub(super) async fn lock_instance(
     tx: &mut Transaction<'_, Postgres>,
     instance_uuid: Uuid,
 ) -> Result<InstanceLockRow, ExecuteWorkflowTransitionError> {
-    let instance: Option<InstanceLockRow> = sqlx::query_as(
-        "SELECT workflow_instance_id, created_by_principal_id, \
-         definition_version_id, current_context_revision_id, \
-         current_node_visit_id, workflow_state_version, cancelled \
-         FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE",
-    )
-    .bind(instance_uuid)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    read_instance(tx, instance_uuid, true).await
+}
+
+pub(super) async fn read_instance(
+    tx: &mut Transaction<'_, Postgres>,
+    instance_uuid: Uuid,
+    lock: bool,
+) -> Result<InstanceLockRow, ExecuteWorkflowTransitionError> {
+    let sql = if lock {
+        "SELECT workflow_instance_id, created_by_principal_id, definition_version_id, current_context_revision_id, current_node_visit_id, workflow_state_version, cancelled FROM workflow_instances WHERE workflow_instance_id = $1 FOR UPDATE"
+    } else {
+        "SELECT workflow_instance_id, created_by_principal_id, definition_version_id, current_context_revision_id, current_node_visit_id, workflow_state_version, cancelled FROM workflow_instances WHERE workflow_instance_id = $1"
+    };
+    let instance: Option<InstanceLockRow> = sqlx::query_as(sql)
+        .bind(instance_uuid)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     instance.ok_or(ExecuteWorkflowTransitionError::InstanceNotFound)
 }
@@ -59,14 +67,24 @@ pub(super) async fn validate_definition_version_status(
     tx: &mut Transaction<'_, Postgres>,
     definition_version_id: Uuid,
 ) -> Result<DefinitionVersionStatus, ExecuteWorkflowTransitionError> {
-    let status: Option<(String,)> = sqlx::query_as(
-        "SELECT version_status::TEXT FROM workflow_definition_versions \
-         WHERE definition_version_id = $1 FOR UPDATE",
-    )
-    .bind(definition_version_id)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
+    read_definition_version_status(tx, definition_version_id, true).await
+}
+
+pub(super) async fn read_definition_version_status(
+    tx: &mut Transaction<'_, Postgres>,
+    definition_version_id: Uuid,
+    lock: bool,
+) -> Result<DefinitionVersionStatus, ExecuteWorkflowTransitionError> {
+    let sql = if lock {
+        "SELECT version_status::TEXT FROM workflow_definition_versions WHERE definition_version_id = $1 FOR UPDATE"
+    } else {
+        "SELECT version_status::TEXT FROM workflow_definition_versions WHERE definition_version_id = $1"
+    };
+    let status: Option<(String,)> = sqlx::query_as(sql)
+        .bind(definition_version_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| ExecuteWorkflowTransitionError::StorageError(e.to_string()))?;
 
     match status {
         None => Err(ExecuteWorkflowTransitionError::InternalConsistency(
@@ -212,6 +230,7 @@ pub(super) async fn resolve_assignee(
     instance: &InstanceLockRow,
     domain_uuid: Uuid,
     context_payload: Option<&serde_json::Value>,
+    historical_return: bool,
 ) -> Result<Option<Uuid>, ExecuteWorkflowTransitionError> {
     if target_node.node_type_enum() == NodeType::TERMINAL {
         // Published legacy Terminal definitions can still carry an obsolete
@@ -237,7 +256,7 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            verify_principal_enabled_for_transition(tx, owner_id)
+            verify_principal_enabled_for_transition(tx, owner_id, historical_return)
                 .await
                 .map(Some)
         }
@@ -248,7 +267,7 @@ pub(super) async fn resolve_assignee(
                 )
             })?;
 
-            verify_principal_enabled_for_transition(tx, fixed_id)
+            verify_principal_enabled_for_transition(tx, fixed_id, historical_return)
                 .await
                 .map(Some)
         }
@@ -284,7 +303,7 @@ pub(super) async fn resolve_assignee(
                     input_key, s
                 ))
             })?;
-            verify_principal_enabled_for_transition(tx, candidate)
+            verify_principal_enabled_for_transition(tx, candidate, historical_return)
                 .await
                 .map(Some)
         }
@@ -295,10 +314,17 @@ pub(super) async fn resolve_assignee(
 }
 
 /// Verify a principal exists and is enabled, returning its UUID. Fail-closed.
-async fn verify_principal_enabled_for_transition(
+pub(super) async fn verify_principal_enabled_for_transition(
     tx: &mut Transaction<'_, Postgres>,
     candidate: Uuid,
+    historical_return: bool,
 ) -> Result<Uuid, ExecuteWorkflowTransitionError> {
+    // RETURN may refer to an inactive historical source. The exact prior
+    // responsibility, one-edge target and target lifecycle are checked by
+    // the admission gate in this SAME transaction before any fact is written.
+    if historical_return {
+        return Ok(candidate);
+    }
     let row: Option<(bool,)> =
         sqlx::query_as("SELECT enabled FROM principals WHERE principal_id = $1")
             .bind(candidate)
@@ -520,6 +546,10 @@ pub(crate) fn error_response_body(err: &ExecuteWorkflowTransitionError) -> serde
                 "actual": actual,
             })
         }
+        ExecuteWorkflowTransitionError::InvalidInput(detail)
+        | ExecuteWorkflowTransitionError::ContextValidationFailed(detail) => {
+            serde_json::json!({"error":crate::domain::workflow_instance::errors::transition_error_label(err),"detail":detail})
+        }
         ExecuteWorkflowTransitionError::SubmissionValidationFailed(detail) => {
             serde_json::json!({
                 "error": "submission_validation_failed",
@@ -567,6 +597,8 @@ pub(super) fn is_deterministic_error(err: &ExecuteWorkflowTransitionError) -> bo
             | ExecuteWorkflowTransitionError::TransitionNotApplicable(_)
             | ExecuteWorkflowTransitionError::SubmissionRequired
             | ExecuteWorkflowTransitionError::SubmissionValidationFailed(_)
+            | ExecuteWorkflowTransitionError::InvalidInput(_)
+            | ExecuteWorkflowTransitionError::ContextValidationFailed(_)
             | ExecuteWorkflowTransitionError::SizeLimitExceeded(_)
             | ExecuteWorkflowTransitionError::InvalidReturnReferences(_)
             | ExecuteWorkflowTransitionError::ReturnPolicyExhausted { .. }
