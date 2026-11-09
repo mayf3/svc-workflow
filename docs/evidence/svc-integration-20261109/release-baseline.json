@@ -1,0 +1,10 @@
+{
+  "command": [
+    "bash",
+    "scripts/test_release.sh"
+  ],
+  "started_at": "2026-11-09T15:27:05.306732+00:00",
+  "finished_at": "2026-11-09T15:31:55.562385+00:00",
+  "rc": 0,
+  "head": "f51d8724fe0dc80053a82c37f19862b059ba6a37"
+}

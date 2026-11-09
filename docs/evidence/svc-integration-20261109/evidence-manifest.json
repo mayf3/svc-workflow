@@ -1,0 +1,29 @@
+{
+  "evaluated_at": "2026-11-09T15:47:59.793446+00:00",
+  "scope": "all evidence files except this manifest itself",
+  "files": {
+    "FINAL-REVIEW.md": "8298a9a4e543d02c78512dda03699b4a9d2da4b1fb52aeef6550b48f4bb42631",
+    "INDEPENDENT-REVIEW.md": "aeef6b36189588eb7953001a0a082da48ae329ad13e47819720c76db5d838246",
+    "OWNER-RECEIPT-BRIEF.md": "987ec39024bc0b4fac6c3aed82ee44e50be8ac73b98736a183164bcdf224fc03",
+    "channels.json": "72da16b5e36a0934a26d47dd67b2553d2e76a1b3e8e9b302747bc8fdf9b9239f",
+    "channels.log": "ffdd5533bcd1683602ea5331c00816698355c53e7936febc1825429559cd6d1c",
+    "compile.json": "ae5d8c296fead30a0f821914ca86c27291fa773e7173e4be29461417a0503aa3",
+    "compile.log": "746edd67b22e47fa5e6deccf51007f72a5ccd31d86dfbfb9c49eb26b347ba507",
+    "governance.json": "f314b3b27d9df34ac08c1bd9d2eb6a4fb04006cc37d64b6e020ca7581b51f9c3",
+    "historical-library-baseline.txt": "dab0382dae93ad2658aeb48bd2cef3c7de96898e696e4cab13f3a27aa4ec9f81",
+    "historical-shell-baseline.txt": "fab0745d260eb7cf5d145dd99dcab2b7df92d233916bf2cb5e4593cac5342a0b",
+    "library.json": "76044c92312813c0bf1f9cd33afebabff3637d0a7b37176624401be48f026829",
+    "library.log": "7a6bd4563a694587a94e75ce2756bf67ede50c8b86676504fc8832075aedd4aa",
+    "postgres-cleanup.json": "c3b53a235a1e035ce7e6c99f8f9ee9283f4da16572aebfd84ab439f33dd8708a",
+    "postgres-environment.json": "bc6e3f6bb5dd3edef3c761860f6eac8f0e2823338e1e65d4130f44fe29605235",
+    "postgres-resume-identity.json": "77e6d1abf3fccf250fe591653b3a2ee16fd7437ab90780897681958decb61ebe",
+    "release-baseline.json": "812b885696702a763cf03df66b382ca3cf07e9aab3ee4651f7eb9f6ac48dbddb",
+    "release-baseline.log": "79f7dab4d1d8bdb84aa0ff902d419a3feb28e80d53a0daafa0894e68c444deae",
+    "resume-validation.py": "016834f530e3e20d5f96a403031f84b152ee4f5854eafd8a88ed932ad989a59a",
+    "source-hashes-after.json": "a571206cc539d8d822cdea12585a01b104b56106b4f8829e20fd5d9805d71f78",
+    "source-hashes-before.json": "a571206cc539d8d822cdea12585a01b104b56106b4f8829e20fd5d9805d71f78",
+    "source-integrity.json": "04f03237e7fdcb7c069ce9de10e8d1321925bf5c99234b009e348cbafb45e638",
+    "test-comparison.json": "e7e900e56829362e98adf44634f01c11c1f51963c247205ba9a274e989bec9c0",
+    "whitespace-check.json": "0f488b74d592dad21f149057f11d5c63f8676e9a40dcf4f68fd996bf6020cb95"
+  }
+}

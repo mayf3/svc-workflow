@@ -1,0 +1,11 @@
+7f8d5497745735544279370185e9500852b2556a
+test(release): busy-lock entries must reach the timeout, not an abort
+
+Counterexample regression for MB-1: on macOS bash 3.2 at 4c29039 all
+four busy-lock cases passed vacuously because the entry exited 0 via the
+expansion abort. Each case now also requires the lock-timeout message in
+the output and the absence of any 'unbound variable' abort, in addition
+to the existing non-zero exit, unchanged ledger, foreign lock and <=30
+wait assertions. RED at 4c29039 on macOS (4 FAIL), GREEN after the
+release.sh fix (24/24).
+

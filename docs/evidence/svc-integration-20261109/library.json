@@ -1,0 +1,29 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "--offline",
+    "--jobs",
+    "4",
+    "--lib",
+    "--",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "started_at": "2026-11-09T15:41:01.914913+00:00",
+  "finished_at": "2026-11-09T15:41:05.532599+00:00",
+  "rc": 0,
+  "candidate_head": "f51d8724fe0dc80053a82c37f19862b059ba6a37",
+  "test_database_url": "postgres://svc_integration_test@127.0.0.1:55947/svc_integration_20261109_lib",
+  "summaries": [
+    {
+      "status": "ok",
+      "passed": 276,
+      "failed": 0,
+      "ignored": 1,
+      "measured": 0,
+      "filtered_out": 0
+    }
+  ]
+}
