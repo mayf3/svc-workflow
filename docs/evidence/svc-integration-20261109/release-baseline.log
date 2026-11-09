@@ -1,0 +1,115 @@
+PASS test_preserves_historical_receipt
+PASS test_repeat_deploy_same_sha_preserves_previous_receipt
+PASS test_verify_preserves_attribution_and_history
+PASS test_latest_receipt_mismatch_fails
+PASS test_latest_receipt_artifact_mismatch_fails
+PASS test_latest_receipt_migration_mismatch_fails
+PASS test_latest_receipt_migration_max_mismatch_fails
+PASS test_readyz_failure_fails
+PASS test_readyz_transport_failure_fails
+PASS test_unauthenticated_request_must_be_rejected
+PASS test_authenticated_request_must_succeed
+PASS test_token_success_does_not_hide_unprotected_endpoint
+PASS test_authenticated_success_records_current_receipt
+PASS test_healthz_failure_fails
+PASS test_missing_receipt_fails
+PASS test_empty_ledger_fails
+PASS test_malformed_ledger_fails
+PASS test_concurrent_deploy_receipt_survives_verify
+PASS test_build_respects_busy_release_lock
+PASS test_deploy_respects_busy_release_lock
+PASS test_verify_respects_busy_release_lock
+PASS test_all_respects_busy_release_lock
+PASS test_archive_respects_busy_release_lock
+PASS test_build_failure_cleans_worktree_and_lock
+PASS test_build_cleanup_failure_preserves_failure_and_releases_lock
+PASS test_term_releases_owned_lock_without_verifying
+PASS A: deploy succeeds via SYSTEM target
+PASS A: never kickstarts a gui binding
+PASS AT1: absent actor warns and defaults; OS user and generated UUID recorded
+PASS AT2: explicit env values survive JSON escaping on legacy inputs
+PASS AT2: legacy ledger prefix and old provenance stay byte-identical
+PASS AT3: invalid attempt UUID rejected before build writes: reaches gate [SVC_WORKFLOW_RELEASE_ATTEMPT_ID 必须是 UUID]
+PASS AT3: invalid attempt UUID rejected before build writes: ZERO live writes (independent fingerprints)
+PASS AT4: all shares generated attribution between provenance and verified ledger
+PASS AT5: standalone build writes supplied attribution to provenance
+PASS AT6: empty env defaults warn; deploy does not inherit builder identity/attempt
+PASS B: ambiguous realms fail
+PASS B: ZERO live writes on ambiguity
+PASS C: missing unit fails
+PASS C: ZERO live writes on missing unit
+PASS D: running-uid mismatch: reaches gate [service process uid=501 != expected 502]
+PASS D: running-uid mismatch: ZERO live writes (independent fingerprints)
+PASS E: preimage mismatch: reaches gate [PREIMAGE MISMATCH]
+PASS E: preimage mismatch: ZERO live writes (independent fingerprints)
+PASS F: verify resolves SYSTEM binding and passes
+PASS H: system control requires root: reaches gate [system-domain control requires root]
+PASS H: system control requires root: ZERO live writes (independent fingerprints)
+PASS J: same-hash different-path is a foreign install: reaches gate [refusing to manage a foreign install]
+PASS J: same-hash different-path is a foreign install: ZERO live writes (independent fingerprints)
+PASS K: declared preimage missing: reaches gate [declared preimage missing]
+PASS K: declared preimage missing: ZERO live writes (independent fingerprints)
+PASS K2: file and declaration missing together: reaches gate [target preimage missing]
+PASS K2: file and declaration missing together: ZERO live writes (independent fingerprints)
+PASS L: declared preimage but no target binary: reaches gate [target preimage missing]
+PASS L: declared preimage but no target binary: ZERO live writes (independent fingerprints)
+PASS M: denied/unknown print rejects before any success masks it: reaches gate [denied/unknown launchctl print result]
+PASS M: denied/unknown print rejects before any success masks it: ZERO live writes (independent fingerprints)
+PASS N: running+stopped two units are ambiguous: reaches gate [ambiguous, 2 present units]
+PASS N: running+stopped two units are ambiguous: ZERO live writes (independent fingerprints)
+PASS O1: deploy refuses corrupt ledger: reaches gate [deployment ledger corrupt]
+PASS O1: deploy refuses corrupt ledger: ZERO live writes (independent fingerprints)
+PASS O2: verify refuses corrupt ledger: reaches gate [deployment ledger corrupt]
+PASS O2: verify refuses corrupt ledger: ZERO live writes (independent fingerprints)
+PASS P: verify used the sha's ledger-recorded binding on multi-record ledger
+PASS P: refuses to annotate when latest event is another deployment
+PASS P: the sha's own record was NOT annotated (nothing rewritten)
+PASS Q: system→gui drift refused (rollback is same-binding only): reaches gate [binding drift]
+PASS Q: system→gui drift refused (rollback is same-binding only): ZERO live writes (independent fingerprints)
+PASS Q: no kickstart on drifted realm
+PASS Q2: verify refuses absent recorded binding (no substitute realm): reaches gate [ledger-recorded binding system/com.svc-workflow not present]
+PASS Q2: verify refuses absent recorded binding (no substitute realm): ZERO live writes (independent fingerprints)
+PASS R: stopped unit without config uid is unverifiable: reaches gate [stopped unit identity unverifiable]
+PASS R: stopped unit without config uid is unverifiable: ZERO live writes (independent fingerprints)
+PASS S: stopped same-binding restore proceeds
+PASS S: restore kickstarts the SAME system binding only
+PASS T: running executable at same-hash different path refuses pre-write: reaches gate [running executable (.*) != install target]
+PASS T: running executable at same-hash different path refuses pre-write: ZERO live writes (independent fingerprints)
+PASS T2: verify refuses running binary at same-hash different path: reaches gate [running binary (.*) != install target]
+PASS T2: verify refuses running binary at same-hash different path: ZERO live writes (independent fingerprints)
+PASS V1: first pinned update (no ledger) deploys OLD via system
+PASS V2: update to NEW sha/binary succeeds
+PASS V3: verify NEW uses latest NEW record
+PASS V3: recorded system binding re-used
+PASS V4: restore OLD on the same system binding
+PASS V5: corrupt ledger refuses the rollback: reaches gate [deployment ledger corrupt]
+PASS V5: corrupt ledger refuses the rollback: ZERO live writes (independent fingerprints)
+PASS V6: realm drift refuses the rollback: reaches gate [binding drift]
+PASS V6: realm drift refuses the rollback: ZERO live writes (independent fingerprints)
+PASS V6: no kickstart on drifted rollback
+PASS W: missing binding record refuses pre-write: reaches gate [deployment binding record missing]
+PASS W: missing binding record refuses pre-write: ZERO live writes (independent fingerprints)
+PASS W: no kickstart on any realm
+PASS AR1: one-time archive succeeds
+PASS AR1: archive byte-identical to original + receipt digest matches
+PASS AR1: archive performs no service control
+PASS AR2: re-archive after switch is idempotent
+PASS AR3: tampered archive digest mismatch reported: reaches gate [archived ledger digest mismatch]
+PASS AR3: tampered archive digest mismatch reported: ZERO live writes (independent fingerprints)
+PASS AR4: receipt+active conflict refuses explicitly
+PASS AR5: existing archive without receipt refuses overwrite
+PASS UP1: first pinned deploy after archive creates fresh modern ledger
+PASS UP1V: verify annotates only this event, record body unchanged
+PASS UP2: second deploy (new version) appends modern record
+PASS UP2V: historical prefix byte-identical, only last event annotated
+PASS UP3: same-binding rollback appends third record, all kickstarts system
+PASS UP3V: duplicate sourceSha — annotates ONLY the latest event
+PASS E1: modern record missing binding refuses: reaches gate [no valid modern binding]
+PASS E1: modern record missing binding refuses: ZERO live writes (independent fingerprints)
+PASS E2: un-archived old-format active refuses deploy (archive first): reaches gate [no valid modern binding]
+PASS E2: un-archived old-format active refuses deploy (archive first): ZERO live writes (independent fingerprints)
+PASS Z0: intact fingerprint pair asserts clean
+PASS Z1: deleted after-fingerprint fails the assertion
+PASS Z2: altered after-fingerprint fails the assertion
+PASS Z3: missing rc file fails the gate rc check
+RESULT: 88 passed, 0 failed

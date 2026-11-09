@@ -1,0 +1,13 @@
+{
+  "evaluated_at": "2026-11-09T15:44:19.858696+00:00",
+  "command": [
+    "python3",
+    ".agents/tools/verify_governance.py",
+    "--target",
+    ".",
+    "--require-accepted"
+  ],
+  "rc": 0,
+  "stdout": "vendored governance bytes match governance.lock.json and adoption is accepted\n",
+  "stderr": ""
+}
