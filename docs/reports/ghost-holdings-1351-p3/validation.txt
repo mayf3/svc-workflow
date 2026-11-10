@@ -1,0 +1,18 @@
+scope=docs-only proposal; product/integration/concurrency/deployment/production acceptance=NOT_EXECUTED
+recorded_at_utc=2026-11-08T13:09:00.199848+00:00
+Earlier check rc=1: legacy Architecture V0_4_7 in governed_by violated strict schema. Corrected to architecture_authority metadata; no accepted authority changed.
+Earlier staging rc=128: validation.txt not created after failed check; no commit.
+Second checker rc=1: checked validation.txt link before writing its own log. Initialized log before checking links; checker ordering corrected.
+frontmatter schema / proposed-none-production-none / lifecycle: PASS rc=0
+13 sections: PASS rc=0
+Contracts <-> Acceptance table / machine-readable index: PASS 8/8 Contracts; 8 definitions; rc=0
+local Markdown links: PASS rc=0
+provenance/hash readback: PASS 28/28 rc=0
+base identity and accepted governance lock in main: PASS rc=0
+verify_governance --require-accepted: rc=0 vendored governance bytes match governance.lock.json and adoption is accepted
+Spec SHA256=dedad998f9ba6f5b25a6f1f4890cc7da672827d47bfbb6b94192e30acde57e39
+Exploration diagnostics: guessed template rc=1; guessed source paths and absent .github/workflows rc=2. Actual required files located; no empty-search-as-failure predicate.
+Full syntax gate / semantic review / formal acceptance / product verification are not implied by these checks.
+affected-only lifecycle validator (base=[], candidate=[new proposed Spec]; prior authorities unchanged): PASS rc=0
+staged scope: six added documentation artifacts only; accepted authority/code/schema/config changes=0; product tests NOT_EXECUTED
+Independent source review found imprecise report grouping: rebuild projection/frozen offline migration are not all wired to fresh directory client. Report corrected; Spec unchanged (SHA above), local links and diff check PASS rc=0.
