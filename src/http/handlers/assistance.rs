@@ -9,7 +9,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::application::workflow_instance::assistance::{
-    adopt_stock_owner_intake, escalate_assistance_to_human, get_assistance_case,
+    adopt_stock_owner_intake as adopt_stock_owner_intake_command, escalate_assistance_to_human, get_assistance_case,
     get_human_required_assistance_case, list_assistance, list_human_required_assistance,
     request_assistance, resolve_assistance,
     AssistanceCursor, AssistanceListView,
@@ -161,7 +161,7 @@ pub(crate) async fn adopt_stock_owner_intake(
     let idempotency_key = idempotency_key(&headers)?;
     let case_id = path_id(&case_id)?;
     let Json(payload) = payload.map_err(ApiError::from_json_rejection)?;
-    let result = adopt_stock_owner_intake(&state.pool, AdoptStockOwnerIntakeCommand {
+    let result = adopt_stock_owner_intake_command(&state.pool, AdoptStockOwnerIntakeCommand {
         principal_id: principal.principal_id,
         idempotency_key,
         command_schema_version: "v1".to_string(),
