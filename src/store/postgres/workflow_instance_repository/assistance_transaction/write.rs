@@ -244,7 +244,6 @@ pub(crate) async fn owner_action_on_tx(
             AssistanceCaseStatus::Resolved,
         ),
     };
-    super::super::owner_obligation::intents::require_effect(tx, case_id, command_id).await?;
     let payload = match validate_payload(payload_ref) {
         Ok(payload) => payload,
         Err(error) => return Err(error),
@@ -311,6 +310,7 @@ pub(crate) async fn owner_action_on_tx(
         }
     }
 
+    super::super::owner_obligation::intents::require_effect(tx, case_id, command_id).await?;
     let governance_review = if matches!(action, OwnerAction::Resolve(_)) {
         match super::governance_child::validate_resolve(tx, case_id, &payload).await {
             Ok(review) => review,
@@ -539,18 +539,28 @@ pub(crate) async fn adopt_stock_owner_intake(
             .await;
         }
     }
+    sqlx::query("UPDATE workflow_assistance_cases SET status='OWNER_PENDING', updated_at=now() WHERE assistance_case_id=$1 AND status='HUMAN_REQUIRED'")
+        .bind(case_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage)?;
     let result = AssistanceCommandResult {
         assistance_case_id: case_id,
         workflow_instance_id: instance_id,
         node_visit_id: visit_id,
-        status: AssistanceCaseStatus::HumanRequired,
+        status: AssistanceCaseStatus::OwnerPending,
         workflow_state_version: instance.workflow_state_version,
         event_sequence: instance.workflow_state_version,
         created_at,
         replayed: false,
     };
-    let body = serde_json::to_value(&result)
+    let mut body = serde_json::to_value(&result)
         .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
+    body["adoptionMetadata"] = serde_json::json!({
+        "adopted_via": COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE,
+        "adopted_at": Utc::now(),
+        "prior_status": "HUMAN_REQUIRED"
+    });
     complete_receipt(&mut tx, command_id, 200, &body).await?;
     tx.commit().await.map_err(storage)?;
     Ok(result)
