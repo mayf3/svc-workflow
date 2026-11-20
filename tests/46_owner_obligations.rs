@@ -47,3 +47,6 @@ mod context_support;
 
 #[path = "owner_obligations/independent_counterexamples.rs"]
 mod independent_counterexamples;
+
+#[path = "owner_obligations/c1_adoption.rs"]
+mod c1_adoption;
