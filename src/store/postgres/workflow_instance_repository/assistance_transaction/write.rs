@@ -539,16 +539,11 @@ pub(crate) async fn adopt_stock_owner_intake(
             .await;
         }
     }
-    sqlx::query("UPDATE workflow_assistance_cases SET status='OWNER_PENDING', updated_at=now() WHERE assistance_case_id=$1 AND status='HUMAN_REQUIRED'")
-        .bind(case_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(storage)?;
     let result = AssistanceCommandResult {
         assistance_case_id: case_id,
         workflow_instance_id: instance_id,
         node_visit_id: visit_id,
-        status: AssistanceCaseStatus::OwnerPending,
+        status: AssistanceCaseStatus::HumanRequired,
         workflow_state_version: instance.workflow_state_version,
         event_sequence: instance.workflow_state_version,
         created_at,
