@@ -64,6 +64,19 @@ pub(crate) async fn request(
     let n=sqlx::query("INSERT INTO workflow_owner_obligation_intents(intent_id,kind,case_id,source_instance_id,source_node_visit_id,request_event_id,request_context_revision_id,source_definition_version_id,request_digest,policy_digest,policy_source_version_id,selected_definition_version_id,selected_transition_id,state) SELECT $2,'INTAKE',c.assistance_case_id,wi.workflow_instance_id,c.node_visit_id,e.event_id,e.context_revision_id,wi.definition_version_id,c.request_payload_digest,a.policy_digest,a.source_definition_version_id,a.intake_definition_version_id,a.intake_acceptance_transition_id,'PENDING' FROM workflow_assistance_cases c JOIN workflow_instances wi USING(workflow_instance_id) JOIN workflow_owner_policy_approvals a ON a.source_definition_version_id=wi.definition_version_id JOIN workflow_events e ON e.command_id=c.request_command_id AND e.event_type='ASSISTANCE_REQUESTED' AND e.workflow_instance_id=wi.workflow_instance_id WHERE c.assistance_case_id=$1 ON CONFLICT DO NOTHING").bind(case).bind(Uuid::new_v4()).execute(&mut **tx).await.map_err(storage)?.rows_affected();
     Ok(n > 0)
 }
+/// Atomically retire the exact active intake/review intent selected by Guard-A.
+pub(crate) async fn stop_for_human_escalation(
+    tx: &mut Transaction<'_, Postgres>,
+    case: Uuid,
+    intent: Uuid,
+    command: Uuid,
+) -> Result<(), AssistanceError> {
+    let affected = sqlx::query("UPDATE workflow_owner_obligation_intents SET state='STOPPED', outcome='SUPERSEDED_BY_HUMAN_ESCALATION', stop_code='SUPERSEDED_BY_HUMAN_ESCALATION', last_command_id=$3, updated_at=now() WHERE intent_id=$2 AND case_id=$1 AND kind IN ('INTAKE','REVIEW') AND state IN ('PENDING','MATERIALIZED')")
+        .bind(case).bind(intent).bind(command).execute(&mut **tx).await.map_err(storage)?.rows_affected();
+    if affected != 1 { return Err(AssistanceError::IntentActive); }
+    Ok(())
+}
+
 pub(crate) async fn terminal(
     tx: &mut Transaction<'_, Postgres>,
     binding: Uuid,

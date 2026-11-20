@@ -77,6 +77,16 @@ pub struct ResolveAssistanceCommand {
     pub resolution: AssistancePayload,
 }
 
+#[derive(Debug, Clone)]
+pub struct AdoptStockOwnerIntakeCommand {
+    pub principal_id: PrincipalId,
+    pub idempotency_key: String,
+    pub command_schema_version: String,
+    pub assistance_case_id: AssistanceCaseId,
+    pub current_node_visit_id: NodeVisitId,
+    pub expected_workflow_state_version: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssistanceCommandResult {
@@ -108,6 +118,8 @@ pub enum AssistanceError {
     AssistanceAlreadyOpen,
     AssistanceCaseNotFoundOrNotVisible,
     AssistanceStatusConflict,
+    OwnerPolicyApprovalMissing,
+    IntentActive,
     GovernedOperationRequired,
     GlobalCoordinatorRequired,
     InvalidPayload(String),
@@ -135,6 +147,8 @@ impl AssistanceError {
             | Self::DomainOwnerMissing
             | Self::AssistanceAlreadyOpen
             | Self::AssistanceStatusConflict
+            | Self::OwnerPolicyApprovalMissing
+            | Self::IntentActive
             | Self::GovernedOperationRequired
             | Self::IdempotencyConflict => 409,
             Self::AssistanceCaseNotFoundOrNotVisible => 404,
@@ -163,6 +177,8 @@ impl AssistanceError {
             Self::AssistanceAlreadyOpen => "assistance_already_open",
             Self::AssistanceCaseNotFoundOrNotVisible => "assistance_case_not_found_or_not_visible",
             Self::AssistanceStatusConflict => "assistance_status_conflict",
+            Self::OwnerPolicyApprovalMissing => "owner_policy_approval_missing",
+            Self::IntentActive => "intent_active",
             Self::GovernedOperationRequired => "governed_operation_required",
             Self::GlobalCoordinatorRequired => "global_coordinator_required",
             Self::InvalidPayload(_) => "invalid_assistance_payload",

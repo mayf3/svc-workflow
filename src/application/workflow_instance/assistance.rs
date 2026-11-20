@@ -9,12 +9,13 @@ pub use crate::store::postgres::workflow_instance_repository::assistance_transac
 };
 
 use crate::domain::workflow_instance::assistance::{
-    AssistanceCaseStatus, AssistanceCommandResult, AssistanceError, EscalateAssistanceCommand,
-    RequestAssistanceCommand, ResolveAssistanceCommand,
+    AdoptStockOwnerIntakeCommand, AssistanceCaseStatus, AssistanceCommandResult,
+    AssistanceError, EscalateAssistanceCommand, RequestAssistanceCommand,
+    ResolveAssistanceCommand,
 };
 use crate::domain::workflow_instance::events::{
-    COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN, COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE,
-    COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
+    COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE, COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
+    COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE, COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
 };
 use crate::store::postgres::workflow_instance_repository::assistance_transaction;
 
@@ -107,6 +108,22 @@ pub async fn resolve_assistance(
         }),
     )?;
     assistance_transaction::resolve_assistance(pool, command, &hash).await
+}
+
+pub async fn adopt_stock_owner_intake(
+    pool: &PgPool,
+    command: AdoptStockOwnerIntakeCommand,
+) -> Result<AssistanceCommandResult, AssistanceError> {
+    let actor = command.principal_id.into_uuid();
+    principal_exists(pool, actor).await?;
+    let hash = command_hash(
+        COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE,
+        &command.command_schema_version,
+        actor,
+        serde_json::json!({"assistanceCaseId": command.assistance_case_id}),
+        serde_json::json!({"currentNodeVisitId": command.current_node_visit_id, "expectedWorkflowStateVersion": command.expected_workflow_state_version}),
+    )?;
+    assistance_transaction::adopt_stock_owner_intake(pool, command, &hash).await
 }
 
 pub async fn list_assistance(

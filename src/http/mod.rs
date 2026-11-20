@@ -68,6 +68,12 @@ pub fn router(state: AppState, config: &HttpConfig) -> Router {
             )),
         )
         .route(
+            "/internal/v1/assistance-cases/{assistanceCaseId}/adopt-stock-owner-intake",
+            post(handlers::assistance::adopt_stock_owner_intake).layer(middleware::from_fn_with_state(
+                state.clone(), canary_guard::canary_write_guard,
+            )),
+        )
+        .route(
             "/internal/v1/assistance-cases/{assistanceCaseId}/escalate-to-human",
             post(handlers::assistance::escalate).layer(middleware::from_fn_with_state(
                 state.clone(),

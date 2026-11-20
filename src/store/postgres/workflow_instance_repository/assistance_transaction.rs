@@ -7,13 +7,15 @@ use uuid::Uuid;
 
 use crate::domain::definition::digest;
 use crate::domain::workflow_instance::assistance::{
-    AssistanceCaseStatus, AssistanceCommandResult, AssistanceError, AssistancePayload,
-    EscalateAssistanceCommand, RequestAssistanceCommand, ResolveAssistanceCommand,
+    AdoptStockOwnerIntakeCommand, AssistanceCaseStatus, AssistanceCommandResult, AssistanceError,
+    AssistancePayload, EscalateAssistanceCommand, RequestAssistanceCommand,
+    ResolveAssistanceCommand,
 };
 use crate::domain::workflow_instance::events::{
     AssistanceEventData, ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE, ASSISTANCE_REQUESTED_EVENT_TYPE,
     ASSISTANCE_RESOLVED_EVENT_TYPE, COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
-    COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE, COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
+    COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE, COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE,
+    COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
     EVENT_SCHEMA_VERSION,
 };
 
@@ -190,6 +192,8 @@ fn replay_error(status: i32, body: &serde_json::Value) -> AssistanceError {
             AssistanceError::AssistanceCaseNotFoundOrNotVisible
         }
         "assistance_status_conflict" => AssistanceError::AssistanceStatusConflict,
+        "owner_policy_approval_missing" => AssistanceError::OwnerPolicyApprovalMissing,
+        "intent_active" => AssistanceError::IntentActive,
         "governed_operation_required" => AssistanceError::GovernedOperationRequired,
         "invalid_assistance_payload" => AssistanceError::InvalidPayload(
             body.get("detail")
@@ -489,6 +493,6 @@ pub use query::{
     AssistanceCaseView, AssistanceCursor, AssistanceListView, AssistanceNodeSummary,
     AssistancePage, HumanRequiredAssistanceCaseView, HumanRequiredAssistancePage,
 };
-pub(crate) use write::{escalate_assistance, request_assistance, resolve_assistance};
+pub(crate) use write::{adopt_stock_owner_intake, escalate_assistance, request_assistance, resolve_assistance};
 
 pub(crate) use write::{owner_action_on_tx, OwnerAction};
