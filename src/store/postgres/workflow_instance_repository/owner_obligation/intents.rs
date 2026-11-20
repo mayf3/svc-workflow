@@ -188,7 +188,7 @@ pub(crate) async fn require_effect_for_command(
     case: Uuid,
     command: Option<Uuid>,
 ) -> Result<(), AssistanceError> {
-    let (managed,claimed):(bool,bool)=sqlx::query_as("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE'),EXISTS(SELECT 1 FROM workflow_operation_effects e JOIN workflow_owner_managed_instances m ON m.workflow_instance_id=e.managed_instance_id AND m.kind='REVIEW' WHERE e.case_id=$1 AND e.command_id=$2 AND e.state='STARTED')").bind(case).bind(command).fetch_one(&mut **tx).await.map_err(storage)?;
+    let (managed,claimed):(bool,bool)=sqlx::query_as("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE' AND state NOT IN ('STOPPED','RETIRED','COMPLETED')),EXISTS(SELECT 1 FROM workflow_operation_effects e JOIN workflow_owner_managed_instances m ON m.workflow_instance_id=e.managed_instance_id AND m.kind='REVIEW' WHERE e.case_id=$1 AND e.command_id=$2 AND e.state='STARTED')").bind(case).bind(command).fetch_one(&mut **tx).await.map_err(storage)?;
     if managed && !claimed {
         return Err(AssistanceError::GovernedOperationRequired);
     }
@@ -199,7 +199,7 @@ pub(crate) async fn require_auto_bind(
     case: Uuid,
     command: Uuid,
 ) -> Result<(), AssistanceError> {
-    let (managed,claimed):(bool,bool)=sqlx::query_as("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE'),EXISTS(SELECT 1 FROM workflow_owner_obligation_intents i JOIN workflow_command_receipts r ON r.command_id=i.last_command_id WHERE i.case_id=$1 AND i.kind='INTAKE' AND i.state='PENDING' AND r.command_id=$2 AND r.command_type='AUTO_CREATE_AND_BIND_OWNER_INTAKE' AND r.receipt_status='PROCESSING')").bind(case).bind(command).fetch_one(&mut **tx).await.map_err(storage)?;
+    let (managed,claimed):(bool,bool)=sqlx::query_as("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE' AND state NOT IN ('STOPPED','RETIRED','COMPLETED')),EXISTS(SELECT 1 FROM workflow_owner_obligation_intents i JOIN workflow_command_receipts r ON r.command_id=i.last_command_id WHERE i.case_id=$1 AND i.kind='INTAKE' AND i.state='PENDING' AND r.command_id=$2 AND r.command_type='AUTO_CREATE_AND_BIND_OWNER_INTAKE' AND r.receipt_status='PROCESSING')").bind(case).bind(command).fetch_one(&mut **tx).await.map_err(storage)?;
     if managed && !claimed {
         return Err(AssistanceError::GovernedOperationRequired);
     }
