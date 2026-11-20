@@ -8,10 +8,8 @@ pub async fn pool() -> PgPool {
         base.contains("@127.0.0.1:") || base.contains("@localhost:"),
         "only explicit loopback isolated PG"
     );
-    let configured_database = common::test_database_url()
-        .rsplit('/')
-        .next()
-        .unwrap_or_default();
+    let configured_url = common::test_database_url();
+    let configured_database = configured_url.rsplit('/').next().unwrap_or_default();
     assert!(
         configured_database == "svc_obl_20261029_impl"
             || configured_database == "svc_prereq_20261029_impl"
