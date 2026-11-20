@@ -73,7 +73,9 @@ pub(crate) async fn stop_for_human_escalation(
 ) -> Result<(), AssistanceError> {
     let affected = sqlx::query("UPDATE workflow_owner_obligation_intents SET state='STOPPED', outcome='SUPERSEDED_BY_HUMAN_ESCALATION', stop_code='SUPERSEDED_BY_HUMAN_ESCALATION', last_command_id=$3, updated_at=now() WHERE intent_id=$2 AND case_id=$1 AND kind IN ('INTAKE','REVIEW') AND state IN ('PENDING','MATERIALIZED')")
         .bind(case).bind(intent).bind(command).execute(&mut **tx).await.map_err(storage)?.rows_affected();
-    if affected != 1 { return Err(AssistanceError::IntentActive); }
+    if affected != 1 {
+        return Err(AssistanceError::IntentActive);
+    }
     Ok(())
 }
 

@@ -13,10 +13,9 @@ use crate::domain::workflow_instance::assistance::{
 };
 use crate::domain::workflow_instance::events::{
     AssistanceEventData, ASSISTANCE_ESCALATED_TO_HUMAN_EVENT_TYPE, ASSISTANCE_REQUESTED_EVENT_TYPE,
-    ASSISTANCE_RESOLVED_EVENT_TYPE, COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
-    COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE, COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE,
-    COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE,
-    EVENT_SCHEMA_VERSION,
+    ASSISTANCE_RESOLVED_EVENT_TYPE, COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE,
+    COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN, COMMAND_TYPE_REQUEST_WORKFLOW_ASSISTANCE,
+    COMMAND_TYPE_RESOLVE_WORKFLOW_ASSISTANCE, EVENT_SCHEMA_VERSION,
 };
 
 const MAX_PAYLOAD_BYTES: usize = 65_536;
@@ -493,6 +492,8 @@ pub use query::{
     AssistanceCaseView, AssistanceCursor, AssistanceListView, AssistanceNodeSummary,
     AssistancePage, HumanRequiredAssistanceCaseView, HumanRequiredAssistancePage,
 };
-pub(crate) use write::{adopt_stock_owner_intake, escalate_assistance, request_assistance, resolve_assistance};
+pub(crate) use write::{
+    adopt_stock_owner_intake, escalate_assistance, request_assistance, resolve_assistance,
+};
 
 pub(crate) use write::{owner_action_on_tx, OwnerAction};

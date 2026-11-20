@@ -9,10 +9,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::application::workflow_instance::assistance::{
-    adopt_stock_owner_intake as adopt_stock_owner_intake_command, escalate_assistance_to_human, get_assistance_case,
-    get_human_required_assistance_case, list_assistance, list_human_required_assistance,
-    request_assistance, resolve_assistance,
-    AssistanceCursor, AssistanceListView,
+    adopt_stock_owner_intake as adopt_stock_owner_intake_command, escalate_assistance_to_human,
+    get_assistance_case, get_human_required_assistance_case, list_assistance,
+    list_human_required_assistance, request_assistance, resolve_assistance, AssistanceCursor,
+    AssistanceListView,
 };
 use crate::auth::AuthenticatedPrincipal;
 use crate::domain::ids::{AssistanceCaseId, NodeVisitId, WorkflowInstanceId};
@@ -161,14 +161,19 @@ pub(crate) async fn adopt_stock_owner_intake(
     let idempotency_key = idempotency_key(&headers)?;
     let case_id = path_id(&case_id)?;
     let Json(payload) = payload.map_err(ApiError::from_json_rejection)?;
-    let result = adopt_stock_owner_intake_command(&state.pool, AdoptStockOwnerIntakeCommand {
-        principal_id: principal.principal_id,
-        idempotency_key,
-        command_schema_version: "v1".to_string(),
-        assistance_case_id: AssistanceCaseId::from_uuid(case_id),
-        current_node_visit_id: NodeVisitId::from_uuid(payload.current_node_visit_id),
-        expected_workflow_state_version: payload.expected_workflow_state_version,
-    }).await.map_err(ApiError::from_assistance)?;
+    let result = adopt_stock_owner_intake_command(
+        &state.pool,
+        AdoptStockOwnerIntakeCommand {
+            principal_id: principal.principal_id,
+            idempotency_key,
+            command_schema_version: "v1".to_string(),
+            assistance_case_id: AssistanceCaseId::from_uuid(case_id),
+            current_node_visit_id: NodeVisitId::from_uuid(payload.current_node_visit_id),
+            expected_workflow_state_version: payload.expected_workflow_state_version,
+        },
+    )
+    .await
+    .map_err(ApiError::from_assistance)?;
     Ok((StatusCode::OK, Json(result)))
 }
 
@@ -184,8 +189,17 @@ pub(crate) async fn escalate(
     let case_id = path_id(&case_id)?;
     let Json(mut payload) = payload.map_err(ApiError::from_json_rejection)?;
     if let Some(intent) = payload.intent_cancel_ref {
-        let mut object = payload.escalation.supporting_payload.take().unwrap_or_else(|| serde_json::json!({}));
-        if let Some(map) = object.as_object_mut() { map.insert("intentCancelRef".into(), serde_json::Value::String(intent.to_string())); }
+        let mut object = payload
+            .escalation
+            .supporting_payload
+            .take()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(map) = object.as_object_mut() {
+            map.insert(
+                "intentCancelRef".into(),
+                serde_json::Value::String(intent.to_string()),
+            );
+        }
         payload.escalation.supporting_payload = Some(object);
     }
     let result = escalate_assistance_to_human(

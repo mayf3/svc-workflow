@@ -9,9 +9,8 @@ pub use crate::store::postgres::workflow_instance_repository::assistance_transac
 };
 
 use crate::domain::workflow_instance::assistance::{
-    AdoptStockOwnerIntakeCommand, AssistanceCaseStatus, AssistanceCommandResult,
-    AssistanceError, EscalateAssistanceCommand, RequestAssistanceCommand,
-    ResolveAssistanceCommand,
+    AdoptStockOwnerIntakeCommand, AssistanceCaseStatus, AssistanceCommandResult, AssistanceError,
+    EscalateAssistanceCommand, RequestAssistanceCommand, ResolveAssistanceCommand,
 };
 use crate::domain::workflow_instance::events::{
     COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE, COMMAND_TYPE_ESCALATE_WORKFLOW_ASSISTANCE_TO_HUMAN,
