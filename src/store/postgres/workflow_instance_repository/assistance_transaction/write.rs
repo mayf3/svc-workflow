@@ -244,7 +244,6 @@ pub(crate) async fn owner_action_on_tx(
             AssistanceCaseStatus::Resolved,
         ),
     };
-    super::super::owner_obligation::intents::require_effect(tx, case_id, command_id).await?;
     let payload = match validate_payload(payload_ref) {
         Ok(payload) => payload,
         Err(error) => return Err(error),
@@ -290,6 +289,28 @@ pub(crate) async fn owner_action_on_tx(
     )?;
     let previous_status = case.status.clone();
 
+    // Guard-A: serialize human escalation with the case's active owner intent.
+    if let OwnerAction::Escalate(payload) = &action {
+        let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind IN ('INTAKE','REVIEW') AND state IN ('PENDING','MATERIALIZED'))")
+            .bind(case_id).fetch_one(&mut **tx).await.map_err(storage)?;
+        if active {
+            let cancel_ref = payload
+                .supporting_payload
+                .as_ref()
+                .and_then(|v| v.get("intentCancelRef"))
+                .and_then(|v| v.as_str())
+                .and_then(|v| Uuid::parse_str(v).ok());
+            let Some(intent) = cancel_ref else {
+                return Err(AssistanceError::IntentActive);
+            };
+            super::super::owner_obligation::intents::stop_for_human_escalation(
+                tx, case_id, intent, command_id,
+            )
+            .await?;
+        }
+    }
+
+    super::super::owner_obligation::intents::require_effect(tx, case_id, command_id).await?;
     let governance_review = if matches!(action, OwnerAction::Resolve(_)) {
         match super::governance_child::validate_resolve(tx, case_id, &payload).await {
             Ok(review) => review,
@@ -424,4 +445,131 @@ pub(crate) async fn resolve_assistance(
         request_hash,
     )
     .await
+}
+
+/// Owner-only, exactly-one-case adoption for stock HUMAN_REQUIRED cases.
+pub(crate) async fn adopt_stock_owner_intake(
+    pool: &PgPool,
+    command: AdoptStockOwnerIntakeCommand,
+    request_hash: &str,
+) -> Result<AssistanceCommandResult, AssistanceError> {
+    let actor = command.principal_id.into_uuid();
+    let case_id = command.assistance_case_id.into_uuid();
+    let visit_id = command.current_node_visit_id.into_uuid();
+    let mut tx = pool.begin().await.map_err(storage)?;
+    let acquired = acquire_receipt(
+        &mut tx,
+        actor,
+        &command.idempotency_key,
+        COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE,
+        request_hash,
+    )
+    .await?;
+    let (mut tx, command_id) = match replay_or_ownership(tx, acquired).await {
+        Ok(v) => v,
+        Err(v) => return v,
+    };
+    let row: Option<(Uuid, Uuid, Uuid, String, DateTime<Utc>)> = sqlx::query_as(
+        "SELECT assistance_case_id, workflow_instance_id, node_visit_id, status, created_at
+         FROM workflow_assistance_cases WHERE assistance_case_id=$1 FOR UPDATE",
+    )
+    .bind(case_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(storage)?;
+    let (_, instance_id, case_visit, status, created_at) = match row {
+        Some(v) => v,
+        None => {
+            return deterministic_failure(
+                tx,
+                command_id,
+                AssistanceError::AssistanceCaseNotFoundOrNotVisible,
+            )
+            .await
+        }
+    };
+    let instance = match lock_instance(&mut tx, instance_id).await {
+        Ok(v) => v,
+        Err(e) => return deterministic_failure(tx, command_id, e).await,
+    };
+    if command.expected_workflow_state_version != instance.workflow_state_version {
+        return deterministic_failure(
+            tx,
+            command_id,
+            AssistanceError::WorkflowStateVersionConflict {
+                expected: command.expected_workflow_state_version,
+                actual: instance.workflow_state_version,
+            },
+        )
+        .await;
+    }
+    if case_visit != visit_id
+        || instance.current_node_visit_id != Some(visit_id)
+        || status != "HUMAN_REQUIRED"
+    {
+        return deterministic_failure(tx, command_id, AssistanceError::AssistanceStatusConflict)
+            .await;
+    }
+    if let Err(e) = validate_actor_enabled(&mut tx, actor).await {
+        return deterministic_failure(tx, command_id, e).await;
+    }
+    let owner = match effective_owner(&mut tx, instance.domain_id).await {
+        Ok(v) => v,
+        Err(e) => return deterministic_failure(tx, command_id, e).await,
+    };
+    if owner != actor {
+        return deterministic_failure(tx, command_id, AssistanceError::NotDomainOwner).await;
+    }
+    let approved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_policy_approvals WHERE source_definition_version_id=$1)")
+        .bind(instance_definition_version(&instance, &mut tx).await?).fetch_one(&mut *tx).await.map_err(storage)?;
+    if !approved {
+        return deterministic_failure(tx, command_id, AssistanceError::OwnerPolicyApprovalMissing)
+            .await;
+    }
+    let inserted = sqlx::query("INSERT INTO workflow_owner_obligation_intents(intent_id,kind,case_id,source_instance_id,source_node_visit_id,request_event_id,request_context_revision_id,source_definition_version_id,request_digest,policy_digest,policy_source_version_id,selected_definition_version_id,selected_transition_id,state) SELECT $2,'INTAKE',c.assistance_case_id,wi.workflow_instance_id,c.node_visit_id,e.event_id,e.context_revision_id,wi.definition_version_id,c.request_payload_digest,a.policy_digest,a.source_definition_version_id,a.intake_definition_version_id,a.intake_acceptance_transition_id,'PENDING' FROM workflow_assistance_cases c JOIN workflow_instances wi USING(workflow_instance_id) JOIN workflow_owner_policy_approvals a ON a.source_definition_version_id=wi.definition_version_id JOIN workflow_events e ON e.command_id=c.request_command_id AND e.event_type='ASSISTANCE_REQUESTED' AND e.workflow_instance_id=wi.workflow_instance_id WHERE c.assistance_case_id=$1 ON CONFLICT DO NOTHING")
+        .bind(case_id).bind(Uuid::new_v4()).execute(&mut *tx).await.map_err(storage)?.rows_affected();
+    if inserted == 0 {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_owner_obligation_intents WHERE case_id=$1 AND kind='INTAKE')").bind(case_id).fetch_one(&mut *tx).await.map_err(storage)?;
+        if !exists {
+            return deterministic_failure(
+                tx,
+                command_id,
+                AssistanceError::OwnerPolicyApprovalMissing,
+            )
+            .await;
+        }
+    }
+    let result = AssistanceCommandResult {
+        assistance_case_id: case_id,
+        workflow_instance_id: instance_id,
+        node_visit_id: visit_id,
+        status: AssistanceCaseStatus::HumanRequired,
+        workflow_state_version: instance.workflow_state_version,
+        event_sequence: instance.workflow_state_version,
+        created_at,
+        replayed: false,
+    };
+    let mut body = serde_json::to_value(&result)
+        .map_err(|e| AssistanceError::InternalConsistency(e.to_string()))?;
+    body["adoptionMetadata"] = serde_json::json!({
+        "adopted_via": COMMAND_TYPE_ADOPT_STOCK_OWNER_INTAKE,
+        "adopted_at": Utc::now(),
+        "prior_status": "HUMAN_REQUIRED"
+    });
+    complete_receipt(&mut tx, command_id, 200, &body).await?;
+    tx.commit().await.map_err(storage)?;
+    Ok(result)
+}
+
+async fn instance_definition_version(
+    instance: &LockedInstance,
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<Uuid, AssistanceError> {
+    sqlx::query_scalar(
+        "SELECT definition_version_id FROM workflow_instances WHERE workflow_instance_id=$1",
+    )
+    .bind(instance.workflow_instance_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)
 }

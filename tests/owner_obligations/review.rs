@@ -114,8 +114,13 @@ async fn review_roundtrip(verdict: &str) {
         "owner-decision",
         b.clone(),
     )
-    .await
-    .unwrap();
+    .await;
+    if !resolving {
+        let error = result.unwrap_err();
+        assert_eq!(error.code, "intent_active");
+        return;
+    }
+    let result = result.unwrap();
     assert_eq!(result["result"]["status"], outcome);
     let replay = effects::execute(
         &p,

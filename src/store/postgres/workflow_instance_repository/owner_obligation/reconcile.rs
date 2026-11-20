@@ -112,7 +112,9 @@ async fn materialize(
         tx.commit().await.map_err(storage)?;
         return Ok(None);
     }
-    let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_assistance_cases c JOIN workflow_instances w USING(workflow_instance_id) JOIN domain_role_bindings b ON b.domain_id=w.domain_id AND b.role_key='DOMAIN_OWNER' AND b.enabled JOIN principals p ON p.principal_id=b.principal_id AND p.enabled WHERE c.assistance_case_id=$1 AND c.status='OWNER_PENDING' AND c.node_visit_id=w.current_node_visit_id AND NOT w.cancelled AND w.archived_at IS NULL)").bind(id(&i,"case_id")?).fetch_one(&mut *tx).await.map_err(storage)?;
+    // ADOPT_STOCK_OWNER_INTAKE may legitimately pair a HUMAN_REQUIRED case with a
+    // live intent; Guard-A prevents escalation from bypassing that responsibility.
+    let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM workflow_assistance_cases c JOIN workflow_instances w USING(workflow_instance_id) JOIN domain_role_bindings b ON b.domain_id=w.domain_id AND b.role_key='DOMAIN_OWNER' AND b.enabled JOIN principals p ON p.principal_id=b.principal_id AND p.enabled WHERE c.assistance_case_id=$1 AND c.status IN ('OWNER_PENDING','HUMAN_REQUIRED') AND c.node_visit_id=w.current_node_visit_id AND NOT w.cancelled AND w.archived_at IS NULL)").bind(id(&i,"case_id")?).fetch_one(&mut *tx).await.map_err(storage)?;
     if !active {
         sqlx::query("UPDATE workflow_owner_obligation_intents SET state='RETIRED',outcome='SOURCE_NOT_CURRENT' WHERE intent_id=$1").bind(intent).execute(&mut *tx).await.map_err(storage)?;
         tx.commit().await.map_err(storage)?;

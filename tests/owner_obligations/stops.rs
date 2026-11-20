@@ -42,7 +42,7 @@ async fn stops_disabled_policy_actor_and_plain_owner_action_cannot_bypass() {
         )
         .await
         .unwrap_err();
-    assert_eq!(denied, AssistanceError::GovernedOperationRequired);
+    assert_eq!(denied, AssistanceError::IntentActive);
     let m = reads::managed(&p, owner, managed, Some(pm)).await.unwrap();
     let visit = serde_json::from_value(m["currentNode"]["nodeVisitId"].clone()).unwrap();
     sqlx::query("UPDATE principals SET enabled=FALSE WHERE principal_id=$1")

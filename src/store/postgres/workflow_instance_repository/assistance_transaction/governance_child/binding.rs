@@ -110,7 +110,29 @@ pub(crate) async fn admit(
         return Err(conflict());
     }
     let (status,requester,visit,request_command,payload_digest):(String,Uuid,Uuid,Uuid,String)=sqlx::query_as("SELECT status,requested_by_principal_id,node_visit_id,request_command_id,request_payload_digest FROM workflow_assistance_cases WHERE assistance_case_id=$1 FOR UPDATE").bind(case).fetch_one(&mut **tx).await.map_err(storage)?;
-    if status != "OWNER_PENDING"
+    let adopted_human_required: bool = sqlx::query_scalar(
+        "SELECT $1 = 'HUMAN_REQUIRED'
+            AND EXISTS (
+                SELECT 1
+                FROM workflow_owner_obligation_intents i
+                WHERE i.case_id = $2
+                  AND i.kind = 'INTAKE'
+                  AND i.state IN ('PENDING', 'MATERIALIZED')
+            )
+            AND EXISTS (
+                SELECT 1
+                FROM workflow_command_receipts r
+                WHERE r.command_type = 'ADOPT_STOCK_OWNER_INTAKE'
+                  AND r.receipt_status = 'COMPLETED'
+                  AND r.response_body->>'assistanceCaseId' = $2::text
+            )",
+    )
+    .bind(&status)
+    .bind(case)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(storage)?;
+    if (status != "OWNER_PENDING" && !adopted_human_required)
         || src.current_node_visit_id != Some(visit)
         || src.assignee_principal_id != Some(requester)
     {

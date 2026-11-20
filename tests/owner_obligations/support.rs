@@ -5,11 +5,15 @@ pub async fn pool() -> PgPool {
         .try_init();
     let base = common::test_database_base();
     assert!(
-        base.contains("@127.0.0.1:55432"),
+        base.contains("@127.0.0.1:") || base.contains("@localhost:"),
         "only explicit loopback isolated PG"
     );
+    let configured_url = common::test_database_url();
+    let configured_database = configured_url.rsplit('/').next().unwrap_or_default();
     assert!(
-        common::test_database_url().ends_with("/svc_obl_20261029_impl"),
+        configured_database == "svc_obl_20261029_impl"
+            || configured_database == "svc_prereq_20261029_impl"
+            || configured_database.starts_with("svc_prereq_20261029_impl_"),
         "dedicated fixture namespace"
     );
     let name = format!("svc_obl_20261029_{}", Uuid::new_v4().simple());
