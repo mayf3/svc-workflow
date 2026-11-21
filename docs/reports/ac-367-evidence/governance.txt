@@ -1,0 +1,1 @@
+vendored governance bytes match governance.lock.json and adoption is accepted
