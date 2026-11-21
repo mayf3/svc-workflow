@@ -15,3 +15,9 @@ Do not implement non-mechanical behavior unless:
 Until this adoption is independently reviewed, explicitly accepted, and merged, the vendored files are a proposed governance candidate only. This bootstrap does not authorize product implementation.
 
 Do not treat code, tests, runtime state, chat history, a PR description, or the newest document as higher authority than the repository's accepted local authorities. Report conflicts as authority conflict or conformance drift; do not silently rewrite authority to match implementation.
+
+For the Owner-requested Definition-first / unattended-system task, consult
+[the bounded Svc adoption plan](docs/reports/DEFINITION_FIRST_ZERO_OPS_ADOPTION_PLAN_20261107.md).
+It records design direction and proposed implementation work, not accepted Product
+Authority or production permission. Business-node obligations belong in the owning
+Definition and service-enforced contracts, not duplicated role instructions here.
