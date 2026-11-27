@@ -1,6 +1,6 @@
 # Model-centered pilot: three-channel durable outbox
 
-**Status:** requirements/model/code mapping prepared; Lean kernel verification and consumer PR CI pending.
+**Status:** requirements/model/code mapping prepared; Lean kernel verification passed in primitives workflow run 45917271049; consumer Rust/JS execution remains pending.
 **Scope:** read-only pilot of the accepted three-channel outbox semantics. This report is not a Product Contract, production migration authorization, deployment authorization, configuration change, or backlog activation.
 
 ## 1. Exact source and authority
@@ -10,7 +10,7 @@
 - Existing acceptance criteria: `ACC-P0B-001..010` in that Spec.
 - Implementation: `src/forum_sync.rs`, `src/store/postgres/outbox.rs`, `migrations/0032_outbox_dead_letter.sql`.
 - Test surfaces: `tests/48_outbox_three_channels.rs` and focused unit tests in `src/store/postgres/outbox.rs`.
-- Shared model candidate: `mayf3/primitives` PR #12, module `AgentWorkflow.Outbox`. Kernel verification remains pending until the pinned Lean workflow passes.
+- Shared model candidate: `mayf3/primitives` PR #12, module `AgentWorkflow.Outbox`. Kernel verification passed in primitives workflow run 45917271049 (Lean 4.19.0; Agent Workflow 56 theorem declarations audited).
 - Historical evidence: `RECEIPT-1359-OUTBOX.md` and `REVIEW-1359-OUTBOX.md` are historical R5 evidence with explicitly limited scope; this pilot does not reinterpret their delivery or merge status.
 
 No accepted Spec is changed. No production DB, migration, runtime, config, credentials, backlog, or service state was accessed or changed.
@@ -85,7 +85,7 @@ Important semantic distinction: the Lean row model's exclusive claim theorem is 
 
 ## 7. Pilot conclusion
 
-**Model fit:** PASS for the narrow per-row channel / claim / UNKNOWN / dead-letter slice, subject to Lean CI.
+**Model fit:** PASS for the narrow per-row channel / claim / UNKNOWN / dead-letter slice, Lean model CI passed; implementation execution remains pending.
 **Implementation mapping:** identified for channel config, SQL selection, claim, settlement, retry, dead-letter and forum ordering.
 **SQL/PostgreSQL refinement:** NOT PROVED by Lean; test execution pending.
 **Production / migration / backlog / unattended acceptance:** NOT RUN / NOT AUTHORIZED / NOT CLAIMED.
