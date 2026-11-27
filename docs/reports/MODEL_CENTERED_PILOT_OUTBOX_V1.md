@@ -10,7 +10,7 @@
 - Existing acceptance criteria: `ACC-P0B-001..010` in that Spec.
 - Implementation: `src/forum_sync.rs`, `src/store/postgres/outbox.rs`, `migrations/0032_outbox_dead_letter.sql`.
 - Test surfaces: `tests/48_outbox_three_channels.rs` and focused unit tests in `src/store/postgres/outbox.rs`.
-- Shared model candidate: `mayf3/primitives` PR #12, module `AgentWorkflow.Outbox`. Kernel verification passed in primitives workflow run 45917271049 (Lean 4.19.0; Agent Workflow 56 theorem declarations audited).
+- Merged shared model: `mayf3/primitives` commit `9500d8e24730fdbce334b8fdcde71830838c21f4` (PR #12), module `AgentWorkflow.Outbox`. Pinned Lean 4.19.0 CI passed at workflow run `45917514882` (`PASS_CONDITIONAL_MODEL_PROOFS`; 56 Agent Workflow theorem declarations audited).
 - Historical evidence: `RECEIPT-1359-OUTBOX.md` and `REVIEW-1359-OUTBOX.md` are historical R5 evidence with explicitly limited scope; this pilot does not reinterpret their delivery or merge status.
 
 No accepted Spec is changed. No production DB, migration, runtime, config, credentials, backlog, or service state was accessed or changed.
@@ -68,13 +68,13 @@ The current source contains a substantial integration suite. This pilot inspecte
 - `tests/48_outbox_three_channels.rs:1763-1914`: concurrent Forum ordering and backed-off earlier event blocking later events.
 - `src/store/postgres/outbox.rs:400-780`: focused SQL-level ordering, kind scoping, claim recheck, retry-cap, payload retention and concurrent-backend tests.
 
-**Execution status:** no Rust test command was run in this GitHub-only pilot session. The new cap-boundary regression is committed but not executed. The consumer PR CI must run the focused test target and any required repository checks at its exact head before these are marked executed PASS.
+**Execution status:** no Rust test command was run in this GitHub-only pilot session. The new cap-boundary regression is committed but not executed. The focused Rust test target must run against the exact PR head in an isolated PostgreSQL environment before these are marked executed PASS. This repository has no existing PR workflow for this target, so no consumer test result is claimed.
 
 ## 6. Proof boundary and gaps
 
 | Claim | Current evidence class | Remaining obligation |
 |---|---|---|
-| Disabled row cannot transition; event key is invariant; only kick dead-letters; UNKNOWN is not delivered; claimed row cannot be claimed again in the abstract model | Lean model source; pending kernel run | Pinned Lean 4.19.0 build + compiled theorem/axiom audit in primitives PR #12 |
+| Disabled row cannot transition; event key is invariant; only kick dead-letters; UNKNOWN is not delivered; claimed row cannot be claimed again in the abstract model | Lean 4.19.0 kernel build + theorem/axiom audit passed at workflow run `45917514882` | Pinned Lean 4.19.0 build + compiled theorem/axiom audit in primitives PR #12 |
 | SQL claim is exclusive and settlement is guarded | Source mapping + integration/unit test definitions | Run the exact Rust tests at the candidate head; inspect transaction commit/rollback and lock release evidence |
 | Forum ordering is preserved under concurrent workers and backoff | SQL anti-overtake predicate + test definitions | Execute two-worker ordering and backoff tests against isolated PostgreSQL |
 | Slow channel does not block other channels | Separate worker implementation + sustained tests | Execute the three sustained slow-channel tests and retain timing output |
@@ -87,7 +87,7 @@ Important semantic distinction: the Lean row model's exclusive claim theorem is 
 
 **Model fit:** PASS for the narrow per-row channel / claim / UNKNOWN / dead-letter slice, Lean model CI passed; implementation execution remains pending.
 **Implementation mapping:** identified for channel config, SQL selection, claim, settlement, retry, dead-letter and forum ordering.
-**SQL/PostgreSQL refinement:** NOT PROVED by Lean; test execution pending.
+**SQL/PostgreSQL refinement:** NOT PROVED by Lean; Rust integration execution pending.
 **Production / migration / backlog / unattended acceptance:** NOT RUN / NOT AUTHORIZED / NOT CLAIMED.
 
 The highest-value result is a clean separation between properties that are generic state-machine invariants and properties that are specific to PostgreSQL concurrency, cross-channel scheduling, and remote HTTP effects. The latter must not be mislabeled as Lean-proven merely because the abstract row model compiles.
