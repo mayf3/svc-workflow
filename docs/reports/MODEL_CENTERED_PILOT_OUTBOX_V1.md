@@ -37,8 +37,8 @@ A row is modeled as:
 
 pending --claim(worker, channel enabled)--> claimed(worker)
 claimed(worker) --settle--> delivered
-claimed(worker) --retry / UNKNOWN--> pending, attempts + 1
-claimed(worker) --dead-letter, EXECUTION_KICK only--> deadLetter
+claimed(worker) --retry / UNKNOWN below kick cap--> pending, attempts + 1
+claimed(worker) --UNKNOWN at kick cap or permanent rejection, EXECUTION_KICK only--> deadLetter
 ```
 
 The abstract model intentionally does not claim:
@@ -63,7 +63,7 @@ The current source contains a substantial integration suite. This pilot inspecte
 
 - `tests/48_outbox_three_channels.rs:785-910`: kick-only operation, Forum outage isolation, disabled kick/wake non-interference.
 - `tests/48_outbox_three_channels.rs:945-1092`: retryable 5xx, auth 401/403, retryable 409, cap dead-letter/requeue, permanent 400.
-- `tests/48_outbox_three_channels.rs:1127-1267`: concurrent no-double-delivery, crash releasing row lock, UNKNOWN stable request ID, restart retention.
+- `tests/48_outbox_three_channels.rs:1127-1267`: concurrent no-double-delivery, crash releasing row lock, UNKNOWN stable request ID, restart retention. The new test `kick_unknown_at_retry_cap_dead_letters_with_payload_retained` seeds attempt_count=11, induces a transport UNKNOWN and checks attempt 12 dead-lettering with original payload retained.
 - `tests/48_outbox_three_channels.rs:1361-1476`: one-connection pool and all-three-channel delivery.
 - `tests/48_outbox_three_channels.rs:1715-1866`: concurrent Forum ordering and backed-off earlier event blocking later events.
 - `src/store/postgres/outbox.rs:400-780`: focused SQL-level ordering, kind scoping, claim recheck, retry-cap, payload retention and concurrent-backend tests.
