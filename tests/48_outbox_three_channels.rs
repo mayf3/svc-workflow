@@ -1264,6 +1264,54 @@ async fn transport_unknown_result_schedules_retry_and_carries_stable_request_id(
 }
 
 #[tokio::test]
+async fn kick_unknown_at_retry_cap_dead_letters_with_payload_retained() {
+    let pool = isolated_db().await;
+    let (instance, _visit) = create_instance_with_kick(&pool).await;
+    let kick_row = outbox_first_row(&pool, instance, "EXECUTION_KICK").await;
+    let payload_before: serde_json::Value =
+        sqlx::query_scalar("SELECT payload FROM workflow_outbox WHERE outbox_id = $1")
+            .bind(kick_row)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // The next retry is attempt 12. A transport failure is still UNKNOWN,
+    // but the accepted V3 cap applies to EXECUTION_KICK and must dead-letter
+    // it rather than return it to the due queue.
+    sqlx::query(
+        "UPDATE workflow_outbox SET attempt_count = 11, next_attempt_at = now() WHERE outbox_id = $1",
+    )
+    .bind(kick_row)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let config = OutboxReconcilerConfig {
+        forum: None,
+        poll_interval_ms: 250,
+        kick: Some(ExecutionKickConfig {
+            url: "http://127.0.0.1:1/workflow-execution/kicks".to_string(),
+            token: "kick-static-token".to_string(),
+        }),
+        owner_assistance_wake: Ok(None),
+    };
+    let forum = ForumClient::new(config);
+    assert_eq!(svc_workflow::forum_sync::run_once(&pool, &forum).await, 0);
+
+    let state = row_state(&pool, kick_row).await;
+    assert_eq!(state.attempt_count, 12);
+    assert!(state.delivered_at.is_none());
+    assert!(state.dead_lettered_at.is_some());
+    let payload_after: serde_json::Value =
+        sqlx::query_scalar("SELECT payload FROM workflow_outbox WHERE outbox_id = $1")
+            .bind(kick_row)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(payload_after, payload_before, "UNKNOWN dead-letter retains original payload");
+}
+
+#[tokio::test]
 async fn restart_does_not_lose_pending_rows() {
     let pool = isolated_db().await;
     let (instance, _visit) = create_instance_with_kick(&pool).await;
