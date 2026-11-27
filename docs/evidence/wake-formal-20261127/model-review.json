@@ -1,0 +1,141 @@
+{
+  "schema": "svc-workflow-wake-independent-model-review/v1",
+  "reviewed_at_utc": "2026-11-27T09:16:48.325712+00:00",
+  "status": "PASS_INDEPENDENT_SEMANTIC_REVIEW",
+  "reviewer": "/root/outbox_formal",
+  "author_independence": "PASS; reviewer authored neither WakeReceipt, WakeDurability nor formal/wake/verify.py",
+  "base_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+  "review_target": "uncommitted formal/wake candidate bound by exact model/tooling/context hashes",
+  "source_sha256": {
+    "WakeReceipt.lean": "1883864d698439b1335660c456b0d4ec4ed74a69c4ce5faeb2f5443b0e31a1c5",
+    "WakeDurability.lean": "3123cc0163f1c74b8dfe8e9995166e6c60f4486a4c0589487e5cdd9eac9b27dd",
+    "model-manifest.json": "73c82d4ef62f589bfa0afbf91881c7433f9d2688dfd771e6c68056916cf6ac54",
+    "lean-toolchain": "55e97be96000b5e9e290c9e74482e5e317861499a5540353ce845471bded8cea",
+    "verify.py": "a72306ff3c4da8bc6c34b85014549f7699d46ab38f92d7b1061c4bcd2aedbbb5",
+    "README.md": "48d12c7f02b95d7514be364882b96e4142cb183beafd5dd954e482eafdf0e803"
+  },
+  "implementation_context_sha256": {
+    "src/store/postgres/workflow_instance_repository/wake_transaction.rs": "26dcec8770d6522b50a83ec8c7abbaa56b70b8ff5e766d66477d58c7fef1be5d",
+    "src/store/postgres/workflow_instance_repository/activation_facts.rs": "622e7070a7a59c34fea8090324b29031fa334eab77de14970c11ad0ae2afc42e",
+    "src/application/workflow_instance/wake.rs": "8bb5a3fe759ce41248aa7617d641157a14a3c5adf93ef79d577bca6254fb370d",
+    "src/application/workflow_instance/idempotency.rs": "056dc60d3aaa0f00c3bc39289daa0b657512daefd40216815740932d99638c24",
+    "src/domain/workflow_instance/errors.rs": "ade2a7ee3bbdfe7ddcc7a456ce67c264ff55c13acb9be66013ac61b7964679e9",
+    "src/http/error.rs": "8bf28f7a3e2ee6b3dd1e56f8f904fc176de10b28a2f5d222b094becae600e02f",
+    "docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3.md": "7a25792a463f34c43b8a9190c80473d7b226e7a3eb4c987570edbccdfcc99159",
+    "docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_3.md": "631ffa9fe71283e07b54b275129a5f172e29530cb57e0fd5fd625677813c1b53"
+  },
+  "evidence_files_sha256": {
+    "evidence/verification.json": "b9f2fdc73f06261e6ef7442cd7bd11dd0162b4c851acda845a2353341a5330f2",
+    "evidence/axioms.txt": "98a11e9dd90929531e5c39e85d26a5ab5556b3f9e78c55ecc4f1e697b2b43d9e"
+  },
+  "compiled_receipt_consistency": {
+    "status": "PASS",
+    "source_hashes_match_current_files": true,
+    "implementation_context_hashes_match_current_files": true,
+    "theorem_count": 44,
+    "modules": {
+      "WakeReceipt": 21,
+      "WakeDurability": 23
+    },
+    "compiled_declarations": 828,
+    "compiled_theorems": 328,
+    "named_axioms": [
+      "Quot.sound",
+      "propext"
+    ],
+    "all_compiled_axioms_within_whitelist": true,
+    "excluded_unsafe_count": 758,
+    "excluded_partial_count": 2,
+    "all_recorded_commands_exit_zero": true,
+    "execution_by_this_reviewer": "No duplicate Lean run; inspected the current gate receipt and verified its input hashes, inventories, counts and dependencies. Root separately clean-compiled this candidate."
+  },
+  "semantic_checks": [
+    {
+      "area": "Historical dispatcher",
+      "result": "PASS",
+      "reason": "decodeHistorical is explicitly pinned to the pre-repair commit and is not presented as current behavior. Both normal outcomes encode 200, so arbitrary normal NoOp loses its required Applied fields. The concrete due witness satisfies the current classifier without malformed state."
+    },
+    {
+      "area": "Typed replay",
+      "result": "PASS",
+      "reason": "decodeTyped uses the persisted business discriminator. typed_roundtrip proves every normally encoded Applied/NoOp survives. The structured Body abstracts parsed JSON and does not claim missing/wrong-typed JSON parsing is proved."
+    },
+    {
+      "area": "Instance and activation binding",
+      "result": "PASS",
+      "reason": "Resolved is an explicit implementation-correspondence premise, not an invented runtime guard. It does not require target visit to be current, so stale visit/closed/version-mismatch cases remain in classify. appliedState preserves that binding."
+    },
+    {
+      "area": "Nonempty success domain",
+      "result": "PASS",
+      "reason": "resolved_future_witness_is_applicable constructs a resolved, active future-eligible state, matching version and non-overflowing counter. It is not a proof of a production SCHEDULER_DEFER writer; that limitation is explicit."
+    },
+    {
+      "area": "Effect and replay proof strength",
+      "result": "PASS",
+      "reason": "Fresh apply increments version, business Event count and eligibility fact count together; NoOp only records a receipt in this module. record_stores_original_outcome establishes the stored premise used by arbitrary-count induction. Replay theorems do not assume the target no-duplicate property directly."
+    },
+    {
+      "area": "Context-bound error detail",
+      "result": "PASS",
+      "reason": "invalid_cause payload deliberately omits detail. The information-loss theorem and missing-context negative theorem expose this. ContextMatches requires the original cause to be hash-bound; completed_outcome_roundtrip is correctly conditional and the actual unchanged JCS envelope covers cause. Hash correctness is not proved."
+    },
+    {
+      "area": "Rejection staging and audit",
+      "result": "PASS",
+      "reason": "stageRejection records the same scope/hash and exactly one rejection audit while preserving business/activation. Freshness is required for runRejection first-write theorems. The count is explicitly only WAKE_REJECTED, so conflict/applied/no-op audit mutations are not silently included."
+    },
+    {
+      "area": "Commit abstraction",
+      "result": "PASS_WITH_DECLARED_ASSUMPTION",
+      "reason": "settle explicitly chooses full staged state or prestate. Atomic commit/rollback semantics are modeled assumptions, not derived PostgreSQL facts. Acknowledged durability is proved only for the constructed rejection write set; arbitrary staged data is not certified as an actual valid Rust transaction."
+    },
+    {
+      "area": "Unknown reality versus observation",
+      "result": "PASS",
+      "reason": "unknownCommitted and unknownRolledBack are world alternatives, both observed as unavailable. unknown_apply_can_hide_either_business_result uses a nonempty valid apply witness and distinguishes version 2 from version 1. It does not infer zero effects from an infrastructure error."
+    },
+    {
+      "area": "Read replay failure and arbitrary finite traces",
+      "result": "PASS",
+      "reason": "observeRead permits unavailable even with an already durable completed receipt. retryTrace induction allows arbitrary fresh rejection parameters and resolutions, preserving modeled database state and returning only original outcome or unavailable. Existing receipt selection makes freshReason irrelevant; it is not a hidden reclassification assumption."
+    },
+    {
+      "area": "Processing, conflict and corrupt receipts",
+      "result": "PASS_IN_BOUNDED_ABSTRACTION",
+      "reason": "Processing is never decoded as completed. Other command types/different hashes conflict. Codec status/code mismatches fail. Exact SQL error timing and unmodeled audit categories remain implementation obligations."
+    },
+    {
+      "area": "Claims and scope",
+      "result": "PASS",
+      "reason": "README distinguishes conditional model proof, source mapping, executable tests and production acceptance. It does not claim fairness, liveness, every retry response succeeds, whole-program refinement, arbitrary external mutations during a trace, or production deployment."
+    }
+  ],
+  "verifier_review": {
+    "status": "PASS_FOR_THIS_REVIEWED_INPUT",
+    "checks": [
+      "Exact Lean 4.19.0 short version and matching manifest/toolchain pin",
+      "Manifest covers all current top-level model files and fixes build/import order",
+      "Model source forbids admitted/custom-axiom and custom-metaprogramming forms used by the policy; actual reviewed source has none",
+      "Clean temporary .olean build with inherited Lean paths removed and warnings treated as errors",
+      "Explicit theorem audit agrees with compiled environment inventory",
+      "Compiled enumeration covers all safe logic declarations in both owned modules, including generated/private helpers",
+      "Unsafe/partial compiler helpers are listed separately; no theorem may be excluded",
+      "Transitive axiom whitelist enforced on every compiled safe declaration",
+      "Model/tooling/readme and implementation-context hashes frozen before/after",
+      "Successful receipt written only after all build/audit/hash gates succeed"
+    ],
+    "trust_boundary": "Reviewed verifier and trusted pinned Lean toolchain; not an adversarial-source sandbox or independent kernel implementation. Hashing implementation files binds context, not semantic refinement."
+  },
+  "blockers": [],
+  "remaining_obligations": [
+    "Atomic serialized execution, SQLx/PostgreSQL semantics, lock/unique-constraint behavior and crash recovery require separate implementation evidence.",
+    "These are two linked abstract slices, not a fully composed executable proof of every Wake HTTP, auth, parsing, storage and network path.",
+    "Fresh rejection classification and hash/cause equality must be established by the actual caller; runRejection accepts an externally supplied classified reason.",
+    "Rejection-only audit counts do not prove Applied/NoOp/conflict audit behavior; root regression evidence and prior independent Rust source review cover those separately.",
+    "A returned unavailable can hide business changes for apply; real lost-acknowledgement injection has not been claimed by this model review.",
+    "Source review and gate receipt do not establish production SCHEDULER_DEFER reachability, fairness or original business task completion.",
+    "Parent authority recovery remains separate; no canonical authority restoration or full-repository conformance is inferred."
+  ],
+  "merge_acceptance": "Not performed; final committed source-hash binding and required executable evidence remain root responsibilities."
+}

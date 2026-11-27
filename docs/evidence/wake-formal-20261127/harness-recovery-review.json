@@ -1,0 +1,356 @@
+{
+  "schema": "svc-workflow-independent-harness-recovery-review/v1",
+  "created_at": "2026-11-27T09:24:30.607912+00:00",
+  "reviewer": "/root/wake_formal",
+  "verdict": "PASS_BOUNDED_REVIEW",
+  "scope": "Read-only final review of regression runner, original-Spec byte recovery and already executed logs; no test rerun by this reviewer.",
+  "independence": {
+    "runner_and_rust_author": false,
+    "mechanical_spec_restore_and_provenance_record_author": true,
+    "original_spec_semantics_author": false,
+    "note": "Recovery byte identity is a mechanical consistency recheck, not a new independent Owner acceptance. Original acceptance/lifecycle evidence is PR27 and PR28."
+  },
+  "runner": {
+    "path": "/workspace/scratch/3be81c9e4efa/svc-workflow-review/scripts/run_formal_regressions.py",
+    "sha256": "c82cc437e6f5ca38caece0579eafebadbc7603531967bdae1316c7f658f54821",
+    "reviewed_fixes": [
+      "All src/tests/migrations files plus current direct literal and concat!(env!(CARGO_MANIFEST_DIR), literal) include inputs are frozen; missing conditional inputs stay explicit.",
+      "Exact server data_directory, port and live owned postmaster PID are checked read-only before createdb.",
+      "Only svc-workflow package artifacts are cleaned before selected tests; dependency cache is retained.",
+      "Caller PG/database environment is cleared, suite database URL targets new loopback cluster, and shutdown is in finally.",
+      "Nonzero exit or zero passing tests cannot be reported as PASS; frozen inputs are checked after execution."
+    ],
+    "known_embedded_inputs_independently_checked": {
+      "src/domain/definition/owner_operation_registry.json": "2d16bac1be84e6339c7cd5ddfba21b66fb17ae4aa5c9f8a2eec2c68532c31240",
+      "tests/fixtures/h06-manifest/cutover-inline.txt": "689c316408c22b206f4de62f7c491b1e9970e06c467880b8e744706c09ca36e6",
+      "tests/fixtures/h06-manifest/event-replay-inline.txt": "689c316408c22b206f4de62f7c491b1e9970e06c467880b8e744706c09ca36e6",
+      "docs/evidence/human-executor-normalization-v2/exact-17-plan.tsv": "57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5",
+      "docs/specs/SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1.md": "81a76db7948b9388b8a489cea07aabde04c9853981d033eeacd5f8a41cb02c7e"
+    },
+    "current_manifest_input_count": 470,
+    "syntax_parse": "PASS",
+    "previous_executed_runner": {
+      "path": "/workspace/scratch/3be81c9e4efa/validation/regression-runner-c2be4e.py",
+      "sha256": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+      "diff_to_current": "Only source_manifest gains bounded concat include support; execution, clean-build, ownership and result classification branches unchanged."
+    }
+  },
+  "findings": [
+    {
+      "id": "F-HARNESS-001",
+      "severity": "bounded provenance limitation",
+      "status": "CLOSED_IN_CURRENT_RUNNER",
+      "description": "Prior c2be runner omitted one external concat include TSV. Current c82cc runner adds that known form; independent helper invocation confirmed all five actual non-Rust inputs and exact hashes. Earlier execution receipts remain bound to their original runner and do not gain checks retroactively.",
+      "path": "docs/evidence/human-executor-normalization-v2/exact-17-plan.tsv",
+      "current_sha256": "57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5",
+      "embedded_EXPECTED_PLAN_SHA_matches": true,
+      "present_in_candidate_manifest": false,
+      "recommended_resolution": "Implemented in c82cc runner. Keep original receipt coordinates and any separate source-tree supplement distinct.",
+      "present_in_current_manifest": true
+    }
+  ],
+  "spec_recovery": {
+    "path": "docs/specs/SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1.md",
+    "source_commit": "39279e34ff3124f8ca6f4269f9dab737a28aed75",
+    "accepted_lifecycle_commit": "424022741a7ec863fbb91f5afdee836f7c7ade6c",
+    "reviewed_semantic_commit": "78323394c6c6d82a14657bdfd6589419fdbb6dff",
+    "implementation_commit": "6f8b743bab130e1599c8a4b6b3358814f1ad7c91",
+    "blob_sha": "f49dba0344bac793f1e84faec0bb3259a5e3ef94",
+    "sha256": "81a76db7948b9388b8a489cea07aabde04c9853981d033eeacd5f8a41cb02c7e",
+    "bytes": 17559,
+    "lines": 345,
+    "exact_original_bytes": true,
+    "semantic_body_matches_reviewed_head": true,
+    "lifecycle_sources": [
+      "https://github.com/mayf3/svc-workflow/pull/27",
+      "https://github.com/mayf3/svc-workflow/pull/28"
+    ],
+    "original_merge_is_ancestor_of_rewritten_main": false,
+    "provenance_report_sha256": "f59eb9340837f925756af4875c7f105a11559d03d0a7e224b627a5592e465745",
+    "classification": "Verbatim recovery of an existing accepted compile input; no new authority or semantic change."
+  },
+  "observed_evidence": {
+    "wake_candidate": {
+      "receipt_path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-1/regression-receipt.json",
+      "receipt_sha256": "01d588034f90cccadf72d20777010ab1358b3ed0a53c38cbaafa3825417fd7b5",
+      "status": "PASS_LOCAL_PG_REGRESSIONS",
+      "runner_sha256": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+      "source_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+      "commands": [
+        {
+          "name": "wake-codec",
+          "arguments": [
+            "test",
+            "--locked",
+            "--lib",
+            "wake_transaction::tests",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "test_counts": [
+            {
+              "passed": 2,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 31.8
+        },
+        {
+          "name": "visit-activation",
+          "arguments": [
+            "test",
+            "--locked",
+            "--test",
+            "28_visit_activation_v1",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "test_counts": [
+            {
+              "passed": 17,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 71.64
+        }
+      ],
+      "source_manifest_hash_matches_receipt": true,
+      "package_artifacts_cleaned": true,
+      "cluster_ownership_verified_before_writes": true,
+      "owned_postgres_stopped": true,
+      "sources_unchanged": true,
+      "logs": {
+        "wake-codec": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-1/wake-codec.log",
+          "sha256": "a79cd79df69e1bfdca2b110cf444a4e5c2ff7ac5c7faf2b1f13fc2ee2156e716",
+          "test_counts_observed": [
+            [
+              "2",
+              "0",
+              "0"
+            ]
+          ]
+        },
+        "visit-activation": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-1/visit-activation.log",
+          "sha256": "0bbab6d0a352b6366af540dec4fc2457b08538430c2b0261e08e4d4e85d5867d",
+          "test_counts_observed": [
+            [
+              "17",
+              "0",
+              "0"
+            ]
+          ]
+        }
+      }
+    },
+    "wake_negative_control": {
+      "receipt_path": "/workspace/scratch/3be81c9e4efa/validation/wake-baseline-negative/regression-receipt.json",
+      "receipt_sha256": "2383f4a50af183b60b59a6c497e64aa240fca49e20f3e6772584195e77e6694a",
+      "status": "FAIL_LOCAL_PG_REGRESSIONS",
+      "runner_sha256": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+      "source_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+      "commands": [
+        {
+          "name": "visit-activation",
+          "arguments": [
+            "test",
+            "--locked",
+            "--test",
+            "28_visit_activation_v1",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 101,
+          "test_counts": [
+            {
+              "passed": 10,
+              "failed": 7,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 69.956
+        }
+      ],
+      "source_manifest_hash_matches_receipt": true,
+      "package_artifacts_cleaned": true,
+      "cluster_ownership_verified_before_writes": true,
+      "owned_postgres_stopped": true,
+      "sources_unchanged": true,
+      "logs": {
+        "visit-activation": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/wake-baseline-negative/visit-activation.log",
+          "sha256": "a22f0b752ab0ee27a364ccd7feac4e4bf23b11c52fa5765ce8b53ba0dbfd68a5",
+          "test_counts_observed": [
+            [
+              "10",
+              "7",
+              "0"
+            ]
+          ]
+        }
+      }
+    },
+    "graph_diagnostics": {
+      "log_path": "/workspace/scratch/3be81c9e4efa/validation/graph-diagnostics-unit.log",
+      "sha256": "193ea96eb34a40dba11cca5b78b7943e7668585222581718c026c86660ea4bb2",
+      "passed": 3,
+      "failed": 0,
+      "self_executed_by_reviewer": false
+    },
+    "outbox_pr141_separate_coordinate": {
+      "receipt_path": "/workspace/scratch/3be81c9e4efa/validation/outbox-pr141-verified/regression-receipt.json",
+      "receipt_sha256": "ae3e59f37ce38f770b8ee0121774f0bd099cbfbd5aee5ef2c0d4e790d095a323",
+      "status": "PASS_LOCAL_PG_REGRESSIONS",
+      "runner_sha256": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+      "source_head": "6c19d318b7aa6f03ed7bbe8cfcc2b768f8c67da6",
+      "commands": [
+        {
+          "name": "outbox",
+          "arguments": [
+            "test",
+            "--locked",
+            "--test",
+            "48_outbox_three_channels",
+            "--",
+            "--test-threads=2"
+          ],
+          "exit_code": 0,
+          "test_counts": [
+            {
+              "passed": 23,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 54.325
+        }
+      ],
+      "source_manifest_hash_matches_receipt": true,
+      "package_artifacts_cleaned": true,
+      "cluster_ownership_verified_before_writes": true,
+      "owned_postgres_stopped": true,
+      "sources_unchanged": true,
+      "logs": {
+        "outbox": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/outbox-pr141-verified/outbox.log",
+          "sha256": "4f1d7ddc899522951a390163e63b960a8f69b8ba9b8ee6cbefdd0a9fc7960e62",
+          "test_counts_observed": [
+            [
+              "23",
+              "0",
+              "0"
+            ]
+          ]
+        }
+      }
+    },
+    "wake_final_current_runner": {
+      "receipt_path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-complete-inputs/regression-receipt.json",
+      "receipt_sha256": "e239b75eb4a0ce42f9eadaed743a5fb7236a68ff5f9984c971a9bc7601a5b130",
+      "status": "PASS_LOCAL_PG_REGRESSIONS",
+      "runner_sha256": "c82cc437e6f5ca38caece0579eafebadbc7603531967bdae1316c7f658f54821",
+      "source_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+      "commands": [
+        {
+          "name": "wake-codec",
+          "arguments": [
+            "test",
+            "--locked",
+            "--lib",
+            "wake_transaction::tests",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "test_counts": [
+            {
+              "passed": 2,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 32.009
+        },
+        {
+          "name": "visit-activation",
+          "arguments": [
+            "test",
+            "--locked",
+            "--test",
+            "28_visit_activation_v1",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "test_counts": [
+            {
+              "passed": 17,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "elapsed_seconds": 70.099
+        }
+      ],
+      "source_manifest_hash_matches_receipt": true,
+      "package_artifacts_cleaned": true,
+      "cluster_ownership_verified_before_writes": true,
+      "owned_postgres_stopped": true,
+      "sources_unchanged": true,
+      "logs": {
+        "wake-codec": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-complete-inputs/wake-codec.log",
+          "sha256": "976118f3ac841019892add138b01e34a6c3d80af3cc222377ef5dfb7f26f276c",
+          "test_counts_observed": [
+            [
+              "2",
+              "0",
+              "0"
+            ]
+          ]
+        },
+        "visit-activation": {
+          "path": "/workspace/scratch/3be81c9e4efa/validation/wake-final-complete-inputs/visit-activation.log",
+          "sha256": "59667ea7bacff30536d4883673905e7b7cc030fd4808f5cd142aa519d808c666",
+          "test_counts_observed": [
+            [
+              "17",
+              "0",
+              "0"
+            ]
+          ]
+        }
+      }
+    }
+  },
+  "comparison": {
+    "candidate_frozen_inputs_match_current": true,
+    "candidate_vs_negative_manifest_differences": {
+      "docs/specs/SVC_WORKFLOW_DEFINITION_GRAPH_DIAGNOSTICS_V1.md": {
+        "candidate": "81a76db7948b9388b8a489cea07aabde04c9853981d033eeacd5f8a41cb02c7e",
+        "negative": "MISSING"
+      },
+      "src/store/postgres/workflow_instance_repository/wake_transaction.rs": {
+        "candidate": "26dcec8770d6522b50a83ec8c7abbaa56b70b8ff5e766d66477d58c7fef1be5d",
+        "negative": "96da7ca85b921233ec42620c0c13b64b0d8fd50aee44e0cde5fcc23cf3ac827c"
+      }
+    },
+    "interpretation": "Same integration test bytes run against old Wake source produced 10 pass / 7 fail; candidate produced 17 pass. Negative Spec MISSING is cfg(test)-only for the library and inactive in integration-only target. Negative failures include actual NoOp replay HTTP503, missing rejected receipts, missing applied audit and incorrect commit-failure classification.",
+    "final_current_runner_inputs_match_current": true,
+    "final_current_runner_log_counts_match_receipt": true
+  },
+  "limitations": [
+    "No independent Cargo/PostgreSQL execution by this reviewer; read actual logs and receipts, executed only pure source_manifest input hashing and Python syntax parsing.",
+    "Known deferred database commit rejection is not lost commit acknowledgement or production crash/UNKNOWN validation.",
+    "Old Wake candidate/negative and latest Outbox23 receipts use preserved c2be runner; current c82cc adds complete known concat-input coverage without retroactively changing earlier receipts.",
+    "Cluster ownership is verified read-only before database creation; this review does not assert the runner proves arbitrary hostile host/process scheduling behavior.",
+    "No whole-repository, production or original business-task acceptance claim."
+  ],
+  "source_edits_during_this_review": false,
+  "blockers": []
+}

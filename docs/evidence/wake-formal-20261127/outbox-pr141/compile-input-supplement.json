@@ -1,0 +1,10 @@
+{
+  "scope": "supplementary post-run input identity check; not a retroactive before/after freeze",
+  "repository_head": "6c19d318b7aa6f03ed7bbe8cfcc2b768f8c67da6",
+  "git_worktree_clean_at_check": true,
+  "path": "docs/evidence/human-executor-normalization-v2/exact-17-plan.tsv",
+  "sha256": "57146935b5aef4a6d737cc3d709d1f8967052616bd730ec10dea367b2f94d0c5",
+  "matches_exact_git_tree": true,
+  "original_runner": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+  "final_runner_now_includes_this_path": true
+}

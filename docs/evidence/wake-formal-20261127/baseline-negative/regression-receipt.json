@@ -1,0 +1,43 @@
+{
+  "status": "FAIL_LOCAL_PG_REGRESSIONS",
+  "suite": "wake-database",
+  "repository": "/workspace/scratch/3be81c9e4efa/svc-wake-baseline",
+  "source_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+  "source_manifest_sha256": "38a6dee988497056d910fa29196adf08632a78619c7636e86b9c038ce49a5a0c",
+  "runner_sha256": "c2be4edf3a2e176a58a232a37e1375e4865a6fda59e24e4c9bc0bba2a6130865",
+  "commands": [
+    {
+      "name": "visit-activation",
+      "arguments": [
+        "test",
+        "--locked",
+        "--test",
+        "28_visit_activation_v1",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "test_counts": [
+        {
+          "passed": 10,
+          "failed": 7,
+          "ignored": 0
+        }
+      ],
+      "elapsed_seconds": 69.956
+    }
+  ],
+  "boundaries": [
+    "disposable local PostgreSQL, no production access",
+    "Rust/SQL regression evidence, not a proof of PostgreSQL or live-task acceptance",
+    "deferred constraint rejection is a known rollback, not lost commit acknowledgement"
+  ],
+  "postgres_version": "postgres (PostgreSQL) 16.13",
+  "cargo_version": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+  "rustc_version": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "package_artifacts_cleaned": true,
+  "cluster_ownership_verified_before_writes": true,
+  "database_identity": "formal_tests|postgres|127.0.0.1|48531",
+  "owned_postgres_stopped": true,
+  "sources_unchanged": true
+}

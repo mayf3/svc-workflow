@@ -17,6 +17,9 @@
 #[path = "common/mod.rs"]
 mod common;
 
+#[path = "visit_activation_v1/wake_receipts.rs"]
+mod wake_receipts;
+
 use axum::body::{to_bytes, Body};
 use axum::http::Request;
 use serde_json::{json, Value};

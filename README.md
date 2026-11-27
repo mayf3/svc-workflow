@@ -54,3 +54,17 @@ cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
+
+## Wake 回执的数学模型与验证
+
+[Wake 模型说明](formal/wake/README.md) 定义 Applied、NoOp、确定性拒绝、同请求重放及提交未知的有界语义，提供固定 Lean 4.19.0 的 44 条条件模型定理、源码对应与审计回执。[本轮修复记录](docs/reports/WAKE_RECEIPT_FORMAL_REPAIR_20261127.md) 保留旧实现负对照、真实 PostgreSQL 回归及独立复审。
+
+```bash
+python3 formal/wake/verify.py --lean /absolute/path/to/lean
+python3 scripts/run_formal_regressions.py \
+  --postgres-bin /absolute/path/to/postgresql-16/bin \
+  --cargo /absolute/path/to/cargo \
+  --out-dir /new/empty/evidence-directory
+```
+
+数据库脚本自建并关闭一次性本地集群，不使用现有 `TEST_DATABASE_URL`。模型证明、Rust/SQL 验证与线上业务验收分别报告。

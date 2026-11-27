@@ -1,0 +1,53 @@
+{
+  "schema": "svc-workflow-review/outbox-final-head-v1",
+  "reviewer": "/root/wake_implementation",
+  "status": "PASS_EXACT_HEAD_NO_UNREVIEWED_SEMANTIC_CHANGE",
+  "repository": "mayf3/primitives",
+  "pull_request": "https://github.com/mayf3/primitives/pull/13",
+  "reported_pr_state": "draft; unmerged (root-provided state; no PR mutation performed by reviewer)",
+  "review_target_head": "6a0386588c767aaa998ff7552ee7364451c73da0",
+  "review_target_tree": "dfa2dd70ba902a49d9eab5c91a6324ab4f2bfaf3",
+  "base_head": "9500d8e24730fdbce334b8fdcde71830838c21f4",
+  "local_head_tree_matches_remote_commit_tree": true,
+  "tracked_worktree_clean": true,
+  "source_sha256": {
+    "domains/agent-workflow/FORMALIZATION.md": "0cb24a2228950c0bdda8aa849ee883cf85dda02ca41b77b04ff98eb61b36adf9",
+    "domains/agent-workflow/OUTBOX_RETRY_CAP_FEEDBACK.md": "00e7851cbaa9ce7a016cdca2ad706793bf723a85ff99847b82ab5532d5eefe38",
+    "domains/agent-workflow/evidence/OUTBOX_RETRY_CAP_REVIEW_20261127.json": "c139e326590dc36bb84ae998be50e7de932f1747b05dbb757f8dada46d87e9d5",
+    "domains/agent-workflow/lean/AgentWorkflow/Outbox.lean": "d166fc5c9d25c0afab1fd6e58752129683870987436a0069f014775819cf06f7",
+    "domains/agent-workflow/lean/README.md": "82ef5b7561c55b84a663351a35f998a43f6741bd3626c87581e6e830f5c5eb37",
+    "lean-verification.json": "211452db51dd1c508673b58fa5c5b21d5d882c876110ae59ed2e2fc995bad25a"
+  },
+  "prior_review": {
+    "path": "/workspace/scratch/3be81c9e4efa/outbox-independent-review.json",
+    "sha256": "c139e326590dc36bb84ae998be50e7de932f1747b05dbb757f8dada46d87e9d5",
+    "outbox_model_unchanged": true,
+    "lean_readme_unchanged": true,
+    "formalization_unchanged": true,
+    "full_gate_receipt_unchanged": true
+  },
+  "delta_since_independent_review": [
+    "Independent review JSON added byte-for-byte without changing its historical hash-bound scope.",
+    "Feedback document retains the exact previously reviewed prefix; appended two paragraphs describing independent compilation and the later consumer PostgreSQL run.",
+    "No model definition, theorem, assumption, gate implementation, proof input, or runtime change since prior review."
+  ],
+  "checks": {
+    "changed_path_set_matches_reviewed_scope_plus_review_record": true,
+    "all_full_gate_input_hashes_match_committed_blobs": true,
+    "full_gate_inputs_checked": 26,
+    "consumer_evidence_read": "/workspace/scratch/3be81c9e4efa/validation/outbox-pr141-verified/regression-receipt.json",
+    "consumer_evidence_sha256": "ae3e59f37ce38f770b8ee0121774f0bd099cbfbd5aee5ef2c0d4e790d095a323",
+    "consumer_test_head": "6c19d318b7aa6f03ed7bbe8cfcc2b768f8c67da6",
+    "consumer_counts": {
+      "passed": 23,
+      "failed": 0,
+      "ignored": 0
+    },
+    "consumer_unknown_at_cap_pass_present": true,
+    "consumer_runtime_matches_pinned_svc_baseline": true,
+    "consumer_source_manifest_digest_verified": true,
+    "builds_or_database_tests_rerun_in_final_recheck": false
+  },
+  "findings": [],
+  "assurance_boundary": "This recheck binds the prior independent model review and compilation to the exact final draft PR commit. Consumer test evidence was read and checked, not rerun by this reviewer. No merge or production acceptance is asserted."
+}
