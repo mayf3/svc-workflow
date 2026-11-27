@@ -1,0 +1,16 @@
+{
+  "status": "SOURCE_BYTES_RECOVERED_LIFECYCLE_NOT_FULLY_ESTABLISHED",
+  "source_commit": "c02916db775fb7e7d1e74cb77dd3df7079a7e54c",
+  "base_main": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+  "source_hashes": {
+    "docs/product/SVC_WORKFLOW_PRODUCT_BOUNDARY_V13.md": "646271316ac20804d0b1375b7a7bd1e35eff8c545bc2fd71e60eaa477a99726b",
+    "docs/architecture/SVC_WORKFLOW_ARCHITECTURE_V0_4_7.md": "59ea63c105c04ac314c63bf2ede774455c33040ada80f728afe9b60a50bb9024"
+  },
+  "matches_current_main_manifest": "docs/evidence/1359-r5/pre-stash-manifest.json",
+  "missing_acceptance_path": "ART/node-context-producer-spec-20261029/ROOT_OWNER_ACCEPTANCE.json",
+  "canonical_files_restored": false,
+  "limits": [
+    "Source hashes match historical manifest; this does not itself establish paired lifecycle activation or current ancestry.",
+    "No whole-repository conformance or automatic parent-authority replacement is claimed."
+  ]
+}

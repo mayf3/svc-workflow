@@ -60,7 +60,8 @@ fn storage(error: sqlx::Error) -> WakeDispatchIntentError {
 }
 
 /// Insert (or look up) the command receipt for this wake attempt.
-/// Returns `Ok(Some(command_id))` when the caller owns the request.
+/// A completed receipt carries its original status and business outcome;
+/// HTTP 200 alone cannot distinguish Applied from NoOp.
 async fn acquire_receipt(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     command_id: Uuid,
@@ -90,32 +91,43 @@ async fn acquire_receipt(
     }
 
     // Someone else owns this (principal, key) — classify replay.
-    let existing: Option<(Uuid, String, String, Option<i32>, Option<serde_json::Value>)> =
-        sqlx::query_as(
-            "SELECT command_id, command_type, request_hash, response_status, response_body
+    let existing: Option<(
+        Uuid,
+        String,
+        String,
+        String,
+        Option<i32>,
+        Option<serde_json::Value>,
+    )> = sqlx::query_as(
+        "SELECT command_id, command_type, request_hash, receipt_status::text,
+                    response_status, response_body
                FROM workflow_command_receipts
               WHERE principal_id = $1 AND idempotency_key = $2",
-        )
-        .bind(principal_id)
-        .bind(idempotency_key)
-        .fetch_optional(&mut **tx)
-        .await
-        .map_err(storage)?;
+    )
+    .bind(principal_id)
+    .bind(idempotency_key)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(storage)?;
 
     match existing {
         None => Err(WakeDispatchIntentError::InternalConsistency(
             "receipt insert neither inserted nor found an existing row".to_string(),
         )),
-        Some((existing_command_id, _, existing_hash, status, body)) => {
-            if existing_hash != request_hash {
+        Some((existing_command_id, command_type, existing_hash, receipt_status, status, body)) => {
+            if command_type != COMMAND_TYPE_WAKE_DISPATCH_INTENT || existing_hash != request_hash {
                 return Ok(ReceiptAcquire::Conflict {
                     command_id: existing_command_id,
                 });
             }
-            match (status, body) {
-                (Some(200), Some(body)) => Ok(ReceiptAcquire::ReplaySuccess { body }),
-                (Some(_), Some(body)) => Ok(ReceiptAcquire::ReplayFailure { body }),
-                _ => Ok(ReceiptAcquire::Processing),
+            match (receipt_status.as_str(), status, body) {
+                ("PROCESSING", _, _) => Ok(ReceiptAcquire::Processing),
+                ("COMPLETED", Some(status), Some(body)) => {
+                    Ok(ReceiptAcquire::Replay { status, body })
+                }
+                _ => Err(WakeDispatchIntentError::InternalConsistency(
+                    "wake receipt has an invalid completion state".to_string(),
+                )),
             }
         }
     }
@@ -123,10 +135,65 @@ async fn acquire_receipt(
 
 enum ReceiptAcquire {
     Owned(Uuid),
-    ReplaySuccess { body: serde_json::Value },
-    ReplayFailure { body: serde_json::Value },
-    Conflict { command_id: Uuid },
+    Replay {
+        status: i32,
+        body: serde_json::Value,
+    },
+    Conflict {
+        command_id: Uuid,
+    },
     Processing,
+}
+
+/// Decode only outcomes that this command actually persists. The request
+/// hash has already matched before this function is called. In particular,
+/// it binds `cause`, so a legacy `{ "error": "invalid_cause" }` receipt can
+/// reproduce the original public detail without changing receipt bytes.
+fn decode_replay(
+    status: i32,
+    body: serde_json::Value,
+    cause: Option<&str>,
+) -> Result<WakeOutcome, WakeDispatchIntentError> {
+    let malformed = || {
+        WakeDispatchIntentError::InternalConsistency(
+            "wake receipt has an invalid outcome".to_string(),
+        )
+    };
+    if status == 200 {
+        return match body.get("wakeApplied").and_then(serde_json::Value::as_bool) {
+            Some(true) => {
+                let mut result: WakeAppliedResult =
+                    serde_json::from_value(body).map_err(|_| malformed())?;
+                result.replayed = true;
+                Ok(WakeOutcome::Applied(result))
+            }
+            Some(false) => {
+                let mut result: WakeNoOpResult =
+                    serde_json::from_value(body).map_err(|_| malformed())?;
+                result.replayed = true;
+                Ok(WakeOutcome::NoOp(result))
+            }
+            None => Err(malformed()),
+        };
+    }
+
+    Err(
+        match (
+            status,
+            body.get("error").and_then(serde_json::Value::as_str),
+        ) {
+            (422, Some("invalid_cause")) => {
+                WakeDispatchIntentError::InvalidCause(cause.ok_or_else(malformed)?.to_string())
+            }
+            (404, Some("principal_not_found")) => WakeDispatchIntentError::PrincipalNotFound,
+            (403, Some("principal_disabled")) => WakeDispatchIntentError::PrincipalDisabled,
+            (404, Some("instance_not_found")) => WakeDispatchIntentError::InstanceNotFound,
+            (404, Some("dispatch_intent_not_found")) => {
+                WakeDispatchIntentError::DispatchIntentNotFound
+            }
+            _ => malformed(),
+        },
+    )
 }
 
 async fn complete_receipt(
@@ -135,8 +202,8 @@ async fn complete_receipt(
     status: i32,
     body: &serde_json::Value,
 ) -> Result<(), WakeDispatchIntentError> {
-    let response_digest = digest::compute_json_digest(body)
-        .map_err(WakeDispatchIntentError::StorageError)?;
+    let response_digest =
+        digest::compute_json_digest(body).map_err(WakeDispatchIntentError::StorageError)?;
     sqlx::query(
         "UPDATE workflow_command_receipts
             SET receipt_status = 'COMPLETED', response_status = $2,
@@ -183,15 +250,43 @@ async fn write_attempt_audit(
     Ok(())
 }
 
-/// Deterministic failure: persist the failure receipt, commit, and return
-/// the error (the caller's HTTP mapping keeps the original class).
-macro_rules! deterministic_failure {
-    ($tx:expr, $command_id:expr, $principal:expr, $key:expr, $hash:expr,
-     $status:expr, $code:expr, $err:expr) => {{
-        let body = serde_json::json!({ "error": $code });
-        complete_receipt($tx, $command_id, $status, &body).await?;
-        return Err($err);
-    }};
+/// This consumes the owned transaction so successful rejection persistence
+/// cannot accidentally roll back on return. A commit error is propagated as
+/// storage uncertainty, never replaced with the intended deterministic error.
+async fn deterministic_failure(
+    mut tx: sqlx::Transaction<'_, sqlx::Postgres>,
+    command_id: Uuid,
+    cmd: &WakeDispatchIntentCommand,
+    request_hash: &str,
+    error: WakeDispatchIntentError,
+) -> Result<WakeOutcome, WakeDispatchIntentError> {
+    let (status, code) = match &error {
+        WakeDispatchIntentError::InvalidCause(_) => (422, "invalid_cause"),
+        WakeDispatchIntentError::PrincipalNotFound => (404, "principal_not_found"),
+        WakeDispatchIntentError::PrincipalDisabled => (403, "principal_disabled"),
+        WakeDispatchIntentError::InstanceNotFound => (404, "instance_not_found"),
+        WakeDispatchIntentError::DispatchIntentNotFound => (404, "dispatch_intent_not_found"),
+        _ => {
+            return Err(WakeDispatchIntentError::InternalConsistency(
+                "non-deterministic wake failure cannot be completed as a rejection".to_string(),
+            ));
+        }
+    };
+    let body = serde_json::json!({ "error": code });
+    complete_receipt(&mut tx, command_id, status, &body).await?;
+    write_attempt_audit(
+        &mut tx,
+        Uuid::new_v4(),
+        command_id,
+        cmd.principal_id.into_uuid(),
+        &cmd.idempotency_key,
+        "WAKE_REJECTED",
+        Some(code),
+        request_hash,
+    )
+    .await?;
+    tx.commit().await.map_err(storage)?;
+    Err(error)
 }
 
 /// Execute the atomic wake.
@@ -220,19 +315,9 @@ pub async fn wake_dispatch_intent_atomically(
 
     let actual_command_id = match receipt {
         ReceiptAcquire::Owned(id) => id,
-        ReceiptAcquire::ReplaySuccess { body } => {
+        ReceiptAcquire::Replay { status, body } => {
             tx.commit().await.map_err(storage)?;
-            let mut result: WakeAppliedResult = serde_json::from_value(body)
-                .map_err(|e| WakeDispatchIntentError::InternalConsistency(e.to_string()))?;
-            result.replayed = true;
-            return Ok(WakeOutcome::Applied(result));
-        }
-        ReceiptAcquire::ReplayFailure { body } => {
-            tx.commit().await.map_err(storage)?;
-            let mut result: WakeNoOpResult = serde_json::from_value(body)
-                .map_err(|e| WakeDispatchIntentError::InternalConsistency(e.to_string()))?;
-            result.replayed = true;
-            return Ok(WakeOutcome::NoOp(result));
+            return decode_replay(status, body, cmd.cause.as_deref());
         }
         ReceiptAcquire::Conflict { command_id } => {
             let _ = write_attempt_audit(
@@ -262,15 +347,16 @@ pub async fn wake_dispatch_intent_atomically(
     // Step 2: Validate the optional wake cause (deterministic failure).
     // ---------------------------------------------------------------
     if let Some(cause) = &cmd.cause {
-        let invalid = cause.is_empty()
-            || cause.len() > 64
-            || cause.chars().any(|c| c.is_control());
+        let invalid = cause.is_empty() || cause.len() > 64 || cause.chars().any(|c| c.is_control());
         if invalid {
-            deterministic_failure!(
-                &mut tx, actual_command_id, principal_uuid, &cmd.idempotency_key,
-                request_hash, 422, "invalid_cause",
-                WakeDispatchIntentError::InvalidCause(cause.clone())
-            );
+            return deterministic_failure(
+                tx,
+                actual_command_id,
+                &cmd,
+                request_hash,
+                WakeDispatchIntentError::InvalidCause(cause.clone()),
+            )
+            .await;
         }
     }
 
@@ -284,60 +370,77 @@ pub async fn wake_dispatch_intent_atomically(
             .await
             .map_err(storage)?;
     match actor_row {
-        None => deterministic_failure!(
-            &mut tx, actual_command_id, principal_uuid, &cmd.idempotency_key,
-            request_hash, 404, "principal_not_found",
-            WakeDispatchIntentError::PrincipalNotFound
-        ),
-        Some((false,)) => deterministic_failure!(
-            &mut tx, actual_command_id, principal_uuid, &cmd.idempotency_key,
-            request_hash, 403, "principal_disabled",
-            WakeDispatchIntentError::PrincipalDisabled
-        ),
+        None => {
+            return deterministic_failure(
+                tx,
+                actual_command_id,
+                &cmd,
+                request_hash,
+                WakeDispatchIntentError::PrincipalNotFound,
+            )
+            .await
+        }
+        Some((false,)) => {
+            return deterministic_failure(
+                tx,
+                actual_command_id,
+                &cmd,
+                request_hash,
+                WakeDispatchIntentError::PrincipalDisabled,
+            )
+            .await
+        }
         Some((true,)) => {}
     }
 
     // ---------------------------------------------------------------
     // Step 4: Lock the instance and read projections.
     // ---------------------------------------------------------------
-    let instance_row: Option<(i32, Option<Uuid>, bool, Option<chrono::DateTime<chrono::Utc>>)> =
-        sqlx::query_as(
-            "SELECT workflow_state_version, current_node_visit_id, cancelled, archived_at
+    let instance_row: Option<(
+        i32,
+        Option<Uuid>,
+        bool,
+        Option<chrono::DateTime<chrono::Utc>>,
+    )> = sqlx::query_as(
+        "SELECT workflow_state_version, current_node_visit_id, cancelled, archived_at
                FROM workflow_instances
               WHERE workflow_instance_id = $1
               FOR UPDATE",
-        )
-        .bind(instance_uuid)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(storage)?;
+    )
+    .bind(instance_uuid)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(storage)?;
 
     let Some((current_state_version, current_visit_id, cancelled, archived_at)) = instance_row
     else {
-        deterministic_failure!(
-            &mut tx, actual_command_id, principal_uuid, &cmd.idempotency_key,
-            request_hash, 404, "instance_not_found",
-            WakeDispatchIntentError::InstanceNotFound
-        );
+        return deterministic_failure(
+            tx,
+            actual_command_id,
+            &cmd,
+            request_hash,
+            WakeDispatchIntentError::InstanceNotFound,
+        )
+        .await;
     };
 
     // ---------------------------------------------------------------
     // Step 5: Resolve the DISPATCH_INTENT activation for this Visit.
     // ---------------------------------------------------------------
-    let activation = activation_facts::find_dispatch_activation_for_wake(
-        &mut tx,
-        instance_uuid,
-        visit_uuid,
-    )
-    .await
-    .map_err(storage)?;
+    let activation =
+        activation_facts::find_dispatch_activation_for_wake(&mut tx, instance_uuid, visit_uuid)
+            .await
+            .map_err(storage)?;
 
     let Some(activation) = activation else {
-        deterministic_failure!(
-            &mut tx, actual_command_id, principal_uuid, &cmd.idempotency_key,
-            request_hash, 404, "dispatch_intent_not_found",
-            WakeDispatchIntentError::DispatchIntentNotFound
-        );
+        return deterministic_failure(
+            tx,
+            actual_command_id,
+            &cmd,
+            request_hash,
+            WakeDispatchIntentError::DispatchIntentNotFound,
+        )
+        .await;
     };
 
     // ---------------------------------------------------------------
@@ -345,11 +448,10 @@ pub async fn wake_dispatch_intent_atomically(
     // ---------------------------------------------------------------
     // Authoritative server now comes from the database clock so the
     // eligibility fact, the due comparison, and the Event share one instant.
-    let (db_now,): (chrono::DateTime<chrono::Utc>,) =
-        sqlx::query_as("SELECT now()::timestamptz")
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(storage)?;
+    let (db_now,): (chrono::DateTime<chrono::Utc>,) = sqlx::query_as("SELECT now()::timestamptz")
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(storage)?;
 
     let no_op_reason: Option<&'static str> = if cancelled || archived_at.is_some() {
         Some("INSTANCE_CLOSED")
@@ -401,13 +503,11 @@ pub async fn wake_dispatch_intent_atomically(
     // ---------------------------------------------------------------
     // Step 7: Apply the wake — eligibility fact + version + Event, atomic.
     // ---------------------------------------------------------------
-    let previous = activation
-        .current_next_eligible_at
-        .ok_or_else(|| {
-            WakeDispatchIntentError::InternalConsistency(
-                "active DISPATCH_INTENT without a current nextEligibleAt".to_string(),
-            )
-        })?;
+    let previous = activation.current_next_eligible_at.ok_or_else(|| {
+        WakeDispatchIntentError::InternalConsistency(
+            "active DISPATCH_INTENT without a current nextEligibleAt".to_string(),
+        )
+    })?;
 
     let eligibility_event_id = Uuid::new_v4();
     activation_facts::insert_eligibility_event(
@@ -422,13 +522,9 @@ pub async fn wake_dispatch_intent_atomically(
     .await
     .map_err(storage)?;
 
-    let new_state_version = current_state_version
-        .checked_add(1)
-        .ok_or_else(|| {
-            WakeDispatchIntentError::InternalConsistency(
-                "workflow state version overflow".to_string(),
-            )
-        })?;
+    let new_state_version = current_state_version.checked_add(1).ok_or_else(|| {
+        WakeDispatchIntentError::InternalConsistency("workflow state version overflow".to_string())
+    })?;
 
     let affected = sqlx::query(
         "UPDATE workflow_instances
@@ -497,6 +593,17 @@ pub async fn wake_dispatch_intent_atomically(
         "eventSequence": event_sequence,
         "nextEligibleAt": db_now.to_rfc3339(),
     });
+    write_attempt_audit(
+        &mut tx,
+        Uuid::new_v4(),
+        actual_command_id,
+        principal_uuid,
+        &cmd.idempotency_key,
+        "WAKE_APPLIED",
+        None,
+        request_hash,
+    )
+    .await?;
     complete_receipt(&mut tx, actual_command_id, 200, &body).await?;
     tx.commit().await.map_err(storage)?;
 
@@ -508,4 +615,91 @@ pub async fn wake_dispatch_intent_atomically(
         next_eligible_at: db_now,
         replayed: false,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn replay_requires_the_business_discriminator_and_variant_fields() {
+        let instance = Uuid::from_u128(1);
+        let visit = Uuid::from_u128(2);
+        for reason in [
+            "ALREADY_DUE",
+            "VERSION_MISMATCH",
+            "INSTANCE_CLOSED",
+            "ACTIVATION_CLOSED",
+            "VISIT_NOT_CURRENT",
+        ] {
+            let outcome = decode_replay(
+                200,
+                json!({
+                    "wakeApplied": false, "workflowInstanceId": instance,
+                    "nodeVisitId": visit, "reason": reason,
+                }),
+                None,
+            )
+            .unwrap_or_else(|error| panic!("valid NoOp: {error}"));
+            let WakeOutcome::NoOp(result) = outcome else {
+                panic!("NoOp became Applied")
+            };
+            assert!(result.replayed);
+            assert_eq!(result.reason, reason);
+            assert_eq!(result.workflow_instance_id, instance);
+            assert_eq!(result.node_visit_id, visit);
+        }
+        for body in [
+            json!({"workflowInstanceId": instance, "nodeVisitId": visit, "reason": "ALREADY_DUE"}),
+            json!({"wakeApplied": "false", "workflowInstanceId": instance, "nodeVisitId": visit, "reason": "ALREADY_DUE"}),
+            json!({"wakeApplied": false, "workflowInstanceId": instance, "nodeVisitId": visit}),
+            json!({"wakeApplied": true, "workflowInstanceId": instance, "nodeVisitId": visit, "reason": "ALREADY_DUE"}),
+            json!({"error": "instance_not_found"}),
+        ] {
+            assert!(matches!(
+                decode_replay(200, body, None),
+                Err(WakeDispatchIntentError::InternalConsistency(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn replay_rejection_preserves_status_code_and_hash_bound_detail() {
+        for detail in ["", "bad\ncause"] {
+            assert!(matches!(
+                decode_replay(422, json!({"error": "invalid_cause"}), Some(detail)),
+                Err(WakeDispatchIntentError::InvalidCause(original)) if original == detail
+            ));
+        }
+        assert!(matches!(
+            decode_replay(404, json!({"error": "principal_not_found"}), None),
+            Err(WakeDispatchIntentError::PrincipalNotFound)
+        ));
+        assert!(matches!(
+            decode_replay(403, json!({"error": "principal_disabled"}), None),
+            Err(WakeDispatchIntentError::PrincipalDisabled)
+        ));
+        assert!(matches!(
+            decode_replay(404, json!({"error": "instance_not_found"}), None),
+            Err(WakeDispatchIntentError::InstanceNotFound)
+        ));
+        assert!(matches!(
+            decode_replay(404, json!({"error": "dispatch_intent_not_found"}), None),
+            Err(WakeDispatchIntentError::DispatchIntentNotFound)
+        ));
+
+        for (status, body) in [
+            (422, json!({"error": "invalid_cause"})),
+            (403, json!({"error": "instance_not_found"})),
+            (404, json!({"error": "unknown_code"})),
+            (503, json!({"error": "instance_not_found"})),
+            (404, json!({"wakeApplied": false, "reason": "ALREADY_DUE"})),
+        ] {
+            assert!(matches!(
+                decode_replay(status, body, None),
+                Err(WakeDispatchIntentError::InternalConsistency(_))
+            ));
+        }
+    }
 }

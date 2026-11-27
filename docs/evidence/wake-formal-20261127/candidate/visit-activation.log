@@ -1,0 +1,25 @@
+   Compiling svc-workflow v0.1.0 (/workspace/scratch/3be81c9e4efa/svc-workflow-review)
+    Finished `test` profile [unoptimized] target(s) in 36.66s
+     Running tests/28_visit_activation_v1.rs (/workspace/scratch/3be81c9e4efa/svc-rust-target/debug/build/svc-workflow/bdac2506448235b3/out/28_visit_activation_v1-bdac2506448235b3)
+
+running 17 tests
+test activation_facts_are_immutable ... ok
+test agent_owned_entry_creates_due_dispatch_intent ... ok
+test cancel_closes_and_archive_fails_on_active_activation ... ok
+test due_read_gate_and_projection ... ok
+test human_owned_entry_creates_human_work_item ... ok
+test legacy_protection_and_v1_command_guards ... ok
+test service_owner_fails_closed ... ok
+test transition_closes_and_creates_activations ... ok
+test wake_applies_and_noops ... ok
+test wake_receipts::wake_applied_replay_and_conflict_preserve_exact_effects ... ok
+test wake_receipts::wake_commit_rejection_rolls_back_receipt_and_audit ... ok
+test wake_receipts::wake_concurrent_distinct_keys_cas_allows_one_applied ... ok
+test wake_receipts::wake_concurrent_same_key_has_one_committed_effect ... ok
+test wake_receipts::wake_deterministic_rejections_are_durable_and_replay_exact_http_errors ... ok
+test wake_receipts::wake_disabled_actor_rejection_replays_after_actor_is_enabled ... ok
+test wake_receipts::wake_noop_replay_preserves_original_after_real_transition ... ok
+test wake_receipts::wake_version_mismatch_and_cancelled_noops_replay ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.35s
+

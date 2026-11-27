@@ -1,0 +1,105 @@
+{
+  "schema": "svc-workflow-wake-independent-source-review/v1",
+  "reviewed_at_utc": "2026-11-27T09:05:58.112412+00:00",
+  "status": "PASS_INDEPENDENT_SOURCE_REVIEW",
+  "repository": "mayf3/svc-workflow",
+  "branch": "fix/wake-receipt-formal-20261127",
+  "base_head": "c50ab2ac98decceaa26138a282c34dd92ede0ddc",
+  "review_target": "uncommitted candidate identified by exact file hashes",
+  "reviewer": "/root/outbox_formal",
+  "implementation_author": "/root/wake_implementation",
+  "author_independence": "PASS; reviewer did not author or edit the Wake implementation or its tests",
+  "candidate_sha256": {
+    "src/store/postgres/workflow_instance_repository/wake_transaction.rs": "26dcec8770d6522b50a83ec8c7abbaa56b70b8ff5e766d66477d58c7fef1be5d",
+    "tests/28_visit_activation_v1.rs": "f8590cb640373d4472d8b6d5592eec4386050eb94bd6e3c162c3eb272b9b1273",
+    "tests/visit_activation_v1/wake_receipts.rs": "8b85844ea802b4cd7741d095803ef39f326b9ac23fbe8325ebed7a4f006c463a"
+  },
+  "context_sha256": {
+    "src/application/workflow_instance/wake.rs": "8bb5a3fe759ce41248aa7617d641157a14a3c5adf93ef79d577bca6254fb370d",
+    "src/application/workflow_instance/idempotency.rs": "056dc60d3aaa0f00c3bc39289daa0b657512daefd40216815740932d99638c24",
+    "src/http/handlers/wake.rs": "46bbbe2d75e70cc14a4e8de0397f9b28f178e45efa376859f95931f0c5848ef4",
+    "src/http/error.rs": "8bf28f7a3e2ee6b3dd1e56f8f904fc176de10b28a2f5d222b094becae600e02f",
+    "migrations/0005_command_audit.sql": "dcc076d4d7c1083b96c162f3038d6b0a027ba15526007ad64624dcfeac8b3607",
+    "docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3.md": "7a25792a463f34c43b8a9190c80473d7b226e7a3eb4c987570edbccdfcc99159",
+    "docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_3.md": "631ffa9fe71283e07b54b275129a5f172e29530cb57e0fd5fd625677813c1b53"
+  },
+  "governance": {
+    "mode": "REVIEW",
+    "kind": "AFFECTED_CONTRACT",
+    "authority_action": "REUSE",
+    "assurance": "DURABLE",
+    "primary_contracts": [
+      "CTR-VAI-008",
+      "CTR-VAI-014",
+      "ACC-VAI-005",
+      "ACC-VAI-009"
+    ],
+    "authority_review": "PASS for the bounded present accepted-contract repair",
+    "scope_review": "PASS; receipt decoding, atomic deterministic rejection and required audit only",
+    "authority_gap": "Registered Product V13 / Architecture V0_4_7 files absent from base. Root reports recovered candidate bytes at c02916..., but acceptance artifact and ancestry are not established. This review neither restores canonical authority nor certifies whole-repository conformance.",
+    "merge_ready": false,
+    "merge_ready_reason": "Root must attach actual required validation and bind final committed candidate; this source review does not claim pending tests executed.",
+    "production_operation_authority": "none",
+    "acceptance_performed": false
+  },
+  "checks": [
+    {
+      "claim": "HTTP 200 no longer conflates Applied and NoOp",
+      "evidence": "decode_replay requires boolean wakeApplied and then deserializes the matching result type; missing discriminator, wrong type or variant fields fail InternalConsistency."
+    },
+    {
+      "claim": "Stored deterministic rejection remains an error with the same mapped status and code",
+      "evidence": "Explicit supported (status,error code) pairs reconstruct the five existing error variants. Unknown or mismatched pairs fail closed. InvalidCause preserves original detail from the hash-bound cause."
+    },
+    {
+      "claim": "Cause reconstruction is bound to the original request",
+      "evidence": "Unchanged compute_wake_request_hash includes command schema/type, principal, exact instance/visit, expected version and Option<String> cause in the JCS envelope; acquire_receipt compares its hash before decode_replay. Relies on the normal application caller and hash integrity, not on arbitrary externally supplied storage hashes."
+    },
+    {
+      "claim": "Receipt ownership, processing and command identity are retained",
+      "evidence": "Scope remains principal_id+idempotency_key under the existing unique constraint. Replay requires the Wake command type, matching hash and COMPLETED with status/body. PROCESSING is returned without taking ownership; other incomplete completion shapes fail InternalConsistency."
+    },
+    {
+      "claim": "Replay does not re-evaluate fresh business state",
+      "evidence": "Receipt replay returns before actor/business-state/visit/CAS classification. Real-transition tests preserve previously stored NoOp and Applied outcomes after visit/version changes."
+    },
+    {
+      "claim": "Deterministic rejection is durably completed before it is reported",
+      "evidence": "deterministic_failure consumes the actual owned transaction, completes the existing receipt, adds a non-sensitive WAKE_REJECTED code audit, awaits commit, then returns the original domain error. Every call site is before business success mutation."
+    },
+    {
+      "claim": "Commit failure is not mislabeled as successful or known deterministic rejection",
+      "evidence": "All outcomes await commit with storage error propagation. New deferred-constraint test targets rejection and Applied paths and distinguishes known database rejection from lost commit acknowledgement."
+    },
+    {
+      "claim": "Applied/NoOp audit and business cardinalities follow the affected contracts",
+      "evidence": "Applied adds WAKE_APPLIED in the same transaction as one eligibility event, one version increment, one business Event and one receipt. NoOp preserves business state while keeping its existing receipt and WAKE_NO_OP audit. Replays preserve the original owned-outcome records; conflicts use the existing conflict audit."
+    },
+    {
+      "claim": "No new auth rule, public error taxonomy, schema or production operation is introduced",
+      "evidence": "HTTP scope/direct-token/scheduler-role checks, DTOs, request hashing, error mapping and migrations are unchanged. Audit labels fit existing free-text attempt_type constraints; rejection audits store code rather than cause payload."
+    },
+    {
+      "claim": "Regressions exercise material boundaries rather than only mirroring a decoder",
+      "evidence": "Eight new PG/application/HTTP test functions cover natural ALREADY_DUE, mismatch/cancel/closed, state change replay, exact Applied effects, changed-hash conflict, durable rejections, disabled-actor original result, two concurrent-key patterns, and deferred commit rejection. Two unit tests cover malformed receipt schema/status/code."
+    }
+  ],
+  "test_design": {
+    "integration_functions_reviewed": 8,
+    "unit_functions_reviewed": 2,
+    "execution_by_this_reviewer": "NOT_RUN; root owns Rust/PostgreSQL validation and records its own evidence",
+    "future_eligibility_fixture": "Direct immutable SCHEDULER_DEFER row is explicitly test setup; it does not establish current production reachability of a defer command.",
+    "concurrency_scope": "Two concurrent application invocations observed by tests; no claim of exhaustive PostgreSQL schedules or formal SQL serializability proof.",
+    "unknown_scope": "Deferred trigger injects known commit rejection and verifies rollback. It does not simulate lost acknowledgement/network UNKNOWN."
+  },
+  "blockers": [],
+  "unresolved_boundaries": [
+    "No Rust/SQL whole-program formal refinement or production acceptance is claimed.",
+    "PrincipalNotFound has a supported decoder branch, but normal new receipt acquisition is constrained by the principal FK and HTTP gate; this is not a claimed successful PG fixture for a nonexistent actor.",
+    "VISIT_NOT_CURRENT is covered at codec level only. Normal transition fixtures close the source activation first and legitimately exercise ACTIVATION_CLOSED.",
+    "Storage errors remain the existing public infrastructure class; no new committed/rolled-back certainty is inferred from a lost acknowledgement.",
+    "Replay assumes integrity of completed receipt content and request hashing; full JSON/parser/cryptographic correctness is outside this source review.",
+    "Missing parent-authority acceptance and full-repository governance conformance remain separately unresolved; the patch does not silently restore recovered files."
+  ],
+  "final_file_hashes_match_author_freeze": true
+}

@@ -1,0 +1,45 @@
+{
+  "status": "PASS_CONDITIONAL_MODEL_PROOFS",
+  "created_at": "2026-11-27T09:05:13.982501+00:00",
+  "lean_version": "Lean (version 4.19.0, x86_64-unknown-linux-gnu, commit 6caaee842e94, Release)",
+  "clean_build": true,
+  "source_hashes_frozen_before_and_after": true,
+  "theorem_count": 44,
+  "modules": {
+    "WakeReceipt": 21,
+    "WakeDurability": 23
+  },
+  "compiled_declarations_audited": 828,
+  "compiled_theorems_audited": 328,
+  "source_sha256": {
+    "WakeReceipt.lean": "1883864d698439b1335660c456b0d4ec4ed74a69c4ce5faeb2f5443b0e31a1c5",
+    "WakeDurability.lean": "3123cc0163f1c74b8dfe8e9995166e6c60f4486a4c0589487e5cdd9eac9b27dd",
+    "model-manifest.json": "73c82d4ef62f589bfa0afbf91881c7433f9d2688dfd771e6c68056916cf6ac54",
+    "lean-toolchain": "55e97be96000b5e9e290c9e74482e5e317861499a5540353ce845471bded8cea",
+    "verify.py": "a72306ff3c4da8bc6c34b85014549f7699d46ab38f92d7b1061c4bcd2aedbbb5",
+    "README.md": "48d12c7f02b95d7514be364882b96e4142cb183beafd5dd954e482eafdf0e803"
+  },
+  "implementation_context_sha256": {
+    "src/store/postgres/workflow_instance_repository/wake_transaction.rs": "26dcec8770d6522b50a83ec8c7abbaa56b70b8ff5e766d66477d58c7fef1be5d",
+    "src/store/postgres/workflow_instance_repository/activation_facts.rs": "622e7070a7a59c34fea8090324b29031fa334eab77de14970c11ad0ae2afc42e",
+    "src/application/workflow_instance/wake.rs": "8bb5a3fe759ce41248aa7617d641157a14a3c5adf93ef79d577bca6254fb370d",
+    "src/application/workflow_instance/idempotency.rs": "056dc60d3aaa0f00c3bc39289daa0b657512daefd40216815740932d99638c24",
+    "src/domain/workflow_instance/errors.rs": "ade2a7ee3bbdfe7ddcc7a456ce67c264ff55c13acb9be66013ac61b7964679e9",
+    "src/http/error.rs": "8bf28f7a3e2ee6b3dd1e56f8f904fc176de10b28a2f5d222b094becae600e02f",
+    "docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3.md": "7a25792a463f34c43b8a9190c80473d7b226e7a3eb4c987570edbccdfcc99159",
+    "docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_3.md": "631ffa9fe71283e07b54b275129a5f172e29530cb57e0fd5fd625677813c1b53"
+  },
+  "generated_audit_sha256": "ebaf3633d1f9c4f54977803e3cf368ca3c2c2c792f091e672f448417569bec62",
+  "limits": [
+    "Conditional model proofs, not a Lean refinement of Rust, SQLx or PostgreSQL.",
+    "Implementation hashes bind the reviewed context; hashing does not prove implementation conformance.",
+    "WakeReceipt.run assumes one atomic serialized transaction after valid instance/activation resolution.",
+    "WakeDurability.settle describes possible durable outcomes, not a proof of commit, rollback or crash behavior.",
+    "Matching request hash must bind original cause; hash collision resistance and canonicalization are unproved.",
+    "Authorization, fresh rejection classification and full JSON parsing remain implementation obligations.",
+    "No production task completion, deployment or liveness result is asserted."
+  ],
+  "record_kind": "summary_of_actual_independent_clean_run",
+  "full_run_receipt_sha256": "6f67b54bb1f8a540af0c730ab68f391715a154e967eb2530e78d55ecfb975c25",
+  "compiled_audit_sha256": "f7e243972e307acedf8007bb3f6419236d9e933e7142b757588a507abf9f7216"
+}

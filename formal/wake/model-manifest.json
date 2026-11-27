@@ -1,0 +1,26 @@
+{
+  "schema": "svc-workflow-wake-models/v1",
+  "toolchain": "leanprover/lean4:v4.19.0",
+  "models": [
+    {
+      "module": "WakeReceipt",
+      "namespace": "SvcWorkflow.WakeReceipt",
+      "imports": ["Std"]
+    },
+    {
+      "module": "WakeDurability",
+      "namespace": "SvcWorkflow.WakeDurability",
+      "imports": ["WakeReceipt"]
+    }
+  ],
+  "implementation_context": [
+    "src/store/postgres/workflow_instance_repository/wake_transaction.rs",
+    "src/store/postgres/workflow_instance_repository/activation_facts.rs",
+    "src/application/workflow_instance/wake.rs",
+    "src/application/workflow_instance/idempotency.rs",
+    "src/domain/workflow_instance/errors.rs",
+    "src/http/error.rs",
+    "docs/specs/SVC_WORKFLOW_VISIT_ACTIVATION_IMPL_V3.md",
+    "docs/contracts/POSTGRES_STORAGE_CONTRACT_V0_3.md"
+  ]
+}
